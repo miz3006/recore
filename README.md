@@ -1,56 +1,48 @@
-# Welcome to your Expo app 👋
+# Recore
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A workout log you **write in** — like Apple Notes, but it understands training.
+Type a messy free-form note (`bench 3x8 80kg superset with flyes 12x`) and the
+app parses it into clean structure, compares each line against your previous
+session in the right gutter, and pre-fills your next session as ghost text.
 
-## Get started
+Local-first: every keystroke is saved to on-device SQLite instantly and synced
+to Supabase in the background. The app works fully offline.
 
-1. Install dependencies
+See `CLAUDE.md` for the product spec and `SECURITY.md` for the security model
+and the one-time backend setup (Supabase project, OAuth providers, AI key).
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run it
 
 ```bash
-npm run reset-project
+npm install
+
+# 1. Backend (once): create a Supabase project, then
+supabase link --project-ref <ref>
+supabase db push                                  # applies migrations + RLS
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-... # server-side only, never in the app
+supabase functions deploy parse-workout
+# ...and enable Apple + Google in Authentication → Providers (see SECURITY.md)
+
+# 2. Client env
+cp .env.example .env                              # fill in URL + anon key
+
+# 3. Native dev build (Apple sign-in + Keychain need real entitlements)
+npx expo run:ios
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Useful scripts: `npm run typecheck`, `npm run lint`.
 
-### Other setup steps
+## Layout
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```
+src/app/                 expo-router routes (home, sign-in, stubs)
+src/components/          note surface, right gutter, ghost prediction, bars
+src/lib/db/              SQLite source of truth (schema mirrors Postgres)
+src/lib/parse/           edge-fn client, response validation, apply → items/sets
+src/lib/predict/         prediction engine (placeholder math, final plumbing)
+src/lib/sync/            background push/pull to Supabase
+src/lib/auth/            Apple / Google sign-in + session provider
+supabase/migrations/     Postgres schema + Row Level Security
+supabase/functions/      parse-workout edge function (server-side AI call)
+supabase/tests/          RLS cross-user isolation test
+```

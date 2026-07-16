@@ -1,0 +1,9 @@
+# Supabase project config (CLI). The parse-workout function requires a valid
+# Supabase JWT at the platform level (verify_jwt) IN ADDITION to the explicit
+# getUser() check inside the function — defense in depth.
+
+[functions.parse-workout]
+verify_jwt = true
+
+[functions.explain-prediction]
+verify_jwt = true
