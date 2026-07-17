@@ -3,24 +3,25 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getAdherenceRecord } from '@/lib/db/insights';
 import { tap, tapMedium } from '@/lib/haptics';
-import { alpha, color, CONTROL_HEIGHT, ink, MAX_FONT_SCALE, radius, spacing, type } from '@/lib/theme';
+import { namesMatch, typedNameOf } from '@/lib/parse/receipt';
+import { alpha, color, CONTROL_HEIGHT, ink, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
-import { BODY_PADDING_H, BODY_PADDING_TOP, NOTE_FONT_SIZE, NOTE_LINE_HEIGHT } from './note-metrics';
-
 /**
- * The cached next-session prediction (CLAUDE.md §7, §8), read from the local
- * predictions table — never computed on open. The moat, finally dressed: a
- * labeled card ("NEXT SESSION") so the ghost reads as the machine's work, not
- * a stale draft. Prescribed loads speak in the machine's volt ink; the one
- * justification line sits behind a volt rule; and when the predictor has a
- * track record (≥3 settled outcomes, majority followed) it says so — evidence,
- * not promises. If the engine had no reason, no line is shown — silence beats
- * generic encouragement. Start commits the ghost text into the note;
- * Something else clears to a blank page.
+ * The planned session as a CHECKLIST (CLAUDE.md §7, §8) — Strong-style, in
+ * Recore's voice. The cached prediction renders as grey rows with the
+ * prescribed load in volt; each row carries a circle on the right. Tap the
+ * circle when you've done it: the prescribed line becomes real typed text in
+ * the note (raw_text stays the source of truth) and the row turns into a volt
+ * check. Did something different? Just write it — the row checks itself off
+ * the moment the parse recognizes the exercise. Start commits the whole plan
+ * at once; Something else dismisses without judgment. The reason line and the
+ * trust record ("Followed X of last Y", only with ≥3 settled outcomes and a
+ * majority followed) stay — evidence, not promises.
  */
 const WEIGHT_TOKEN = /(\d+(?:\.\d+)?\s*kg)/i;
 const TRUST_MIN_SETTLED = 3;
+const CHECK_SIZE = moderateScale(24);
 
 export function GhostPrediction({
   onStart,
@@ -31,6 +32,9 @@ export function GhostPrediction({
 }) {
   const ghost = useSession((s) => s.ghost);
   const userId = useSession((s) => s.userId);
+  const note = useSession((s) => s.note);
+  const lineExercises = useSession((s) => s.lineExercises);
+  const checkGhostLine = useSession((s) => s.checkGhostLine);
 
   // The predictor's public record — shown only when it's actually evidence.
   const trust = useMemo(() => {
@@ -41,6 +45,35 @@ export function GhostPrediction({
     return `Followed ${record.followed} of the last ${record.settled}`;
   }, [userId]);
 
+  const planLines = useMemo(
+    () => (ghost ? ghost.ghostText.split('\n').filter((l) => l.trim().length > 0) : []),
+    [ghost],
+  );
+
+  // A plan row is DONE when the note already carries that exercise — either
+  // parsed (canonical names) or freshly typed/checked (instant feedback while
+  // the parse is still in flight).
+  const doneFlags = useMemo(() => {
+    const parsedNames = Object.values(lineExercises);
+    const typedNames = note
+      .split('\n')
+      .map((l) => typedNameOf(l))
+      .filter((n) => n.length > 0);
+    return planLines.map((line) => {
+      const name = typedNameOf(line);
+      if (!name) return false;
+      return (
+        parsedNames.some((c) => namesMatch(name, c)) ||
+        typedNames.some((t) => namesMatch(name, t))
+      );
+    });
+  }, [planLines, lineExercises, note]);
+
+  if (!ghost || planLines.length === 0) return null;
+
+  const doneCount = doneFlags.filter(Boolean).length;
+  const noteEmpty = note.trim().length === 0;
+
   const handleStart = () => {
     tapMedium();
     onStart();
@@ -49,59 +82,81 @@ export function GhostPrediction({
     tap();
     onSomethingElse();
   };
-
-  if (!ghost) return null;
-
-  const lines = ghost.ghostText.split('\n');
+  const handleCheck = (line: string) => {
+    tapMedium();
+    checkGhostLine(line);
+  };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <View style={styles.header}>
-          <Text style={styles.headerLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            NEXT SESSION
-          </Text>
-          <Text style={styles.headerMeta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            written from your notes
-          </Text>
-        </View>
+    <View style={styles.card}>
+      <View style={styles.header}>
+        <Text style={styles.headerLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          NEXT SESSION
+        </Text>
+        <Text style={styles.headerMeta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {doneCount > 0 ? `${doneCount}/${planLines.length} done` : 'written from your notes'}
+        </Text>
+      </View>
 
-        <View style={styles.body}>
-          {lines.map((line, i) => {
-            // Emphasis belongs to the machine: prescribed loads in volt.
-            const parts = line.split(WEIGHT_TOKEN);
-            return (
-              <Text key={i} style={styles.line} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {parts.map((part, j) =>
-                  WEIGHT_TOKEN.test(part) ? (
-                    <Text key={j} style={styles.weight}>
-                      {part}
-                    </Text>
-                  ) : (
-                    <Text key={j} style={styles.ghost}>
-                      {part}
-                    </Text>
-                  ),
-                )}
-              </Text>
-            );
-          })}
-        </View>
-
-        {ghost.reason ? (
-          <View style={styles.reasonRow}>
-            <Text style={styles.reason} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {ghost.reason}
+      {planLines.map((line, i) => {
+        const done = doneFlags[i] ?? false;
+        const parts = line.split(WEIGHT_TOKEN);
+        return (
+          <Pressable
+            key={i}
+            disabled={done}
+            onPress={() => handleCheck(line)}
+            style={({ pressed }) => [styles.row, pressed && !done && styles.rowPressed]}>
+            <Text
+              style={styles.rowText}
+              numberOfLines={1}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {parts.map((part, j) =>
+                WEIGHT_TOKEN.test(part) ? (
+                  <Text key={j} style={done ? styles.doneText : styles.weight}>
+                    {part}
+                  </Text>
+                ) : (
+                  <Text key={j} style={done ? styles.doneText : styles.ghost}>
+                    {part}
+                  </Text>
+                ),
+              )}
             </Text>
-          </View>
-        ) : null}
+            {done ? (
+              <View style={[styles.check, styles.checkDone]}>
+                <Text style={styles.checkMark} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  ✓
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.check} />
+            )}
+          </Pressable>
+        );
+      })}
 
-        {trust ? (
-          <Text style={styles.trust} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {trust}
+      {doneCount === 0 ? (
+        <Text style={styles.hint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          Tap a line when it&apos;s done — or just write what you did.
+        </Text>
+      ) : null}
+
+      {ghost.reason ? (
+        <View style={styles.reasonRow}>
+          <Text style={styles.reason} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {ghost.reason}
           </Text>
-        ) : null}
+        </View>
+      ) : null}
 
+      {trust ? (
+        <Text style={styles.trust} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {trust}
+        </Text>
+      ) : null}
+
+      {noteEmpty ? (
         <View style={styles.buttons}>
           <Pressable
             onPress={handleStart}
@@ -118,28 +173,25 @@ export function GhostPrediction({
             </Text>
           </Pressable>
         </View>
-      </View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: BODY_PADDING_H,
-    paddingTop: BODY_PADDING_TOP,
-  },
   card: {
     backgroundColor: color.surface,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: alpha(color.accent, ink.hairline),
     padding: spacing.lg,
+    marginBottom: spacing.lg,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   headerLabel: {
     fontSize: type.caption.fontSize,
@@ -150,13 +202,24 @@ const styles = StyleSheet.create({
   headerMeta: {
     fontSize: type.caption.fontSize,
     color: color.textMuted,
+    fontVariant: ['tabular-nums'],
   },
-  body: {
-    marginBottom: spacing.xs,
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm + 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: alpha(color.accent, ink.divider),
+    borderRadius: radius.sm,
   },
-  line: {
-    fontSize: NOTE_FONT_SIZE, // shares the editor's grid — Start swaps in place
-    lineHeight: NOTE_LINE_HEIGHT,
+  rowPressed: {
+    backgroundColor: color.surfaceHigh,
+  },
+  rowText: {
+    flex: 1,
+    fontSize: type.subhead.fontSize,
+    lineHeight: type.subhead.lineHeight,
   },
   ghost: {
     color: color.textSecondary,
@@ -165,6 +228,32 @@ const styles = StyleSheet.create({
   weight: {
     color: color.signal, // the machine's ink: the load it prescribed
     fontWeight: '600',
+  },
+  doneText: {
+    color: color.textMuted, // done rows recede — the note carries them now
+    fontWeight: '400',
+  },
+  check: {
+    width: CHECK_SIZE,
+    height: CHECK_SIZE,
+    borderRadius: CHECK_SIZE / 2,
+    borderWidth: 1,
+    borderColor: alpha(color.accent, ink.rule),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkDone: {
+    borderColor: alpha(color.signal, ink.pill),
+  },
+  checkMark: {
+    color: color.signal,
+    fontSize: type.caption.fontSize,
+    fontWeight: '700',
+  },
+  hint: {
+    marginTop: spacing.sm,
+    fontSize: type.caption.fontSize,
+    color: color.textMuted,
   },
   reasonRow: {
     marginTop: spacing.md,

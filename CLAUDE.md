@@ -368,11 +368,20 @@ deltas, total tonnage in statNumber, staged "READING YOUR LOG…" header while a
 parse is in flight (labor illusion). An EMPTY day is never a void
 (`components/empty-note-cards.tsx`): LAST SESSION peek card (tap → that day),
 or the self-typing demo card on a blank account. Ghost prediction on a new
-training day: a labeled **NEXT SESSION card** (prescribed loads in volt, one
-reason line behind a volt rule, "Followed X of last Y" trust line when the
-adherence record has ≥3 settled outcomes and a majority followed), **Start** /
-**Something else**. Bottom toolbar: tonnage pill with unit (routes to /stats) ·
-mic · + · keyboard toggle (camera removed until it works).
+training day: a labeled **NEXT SESSION CHECKLIST** (Strong-style, 2026-07-17) —
+grey rows with prescribed loads in volt, a circle on the right per row. Tap the
+circle when done → `checkGhostLine` commits that ONE prescribed line into the
+note (raw_text stays the source of truth) and the row turns into a volt ✓; rows
+also check themselves off the moment the parse (or fresh typing) carries that
+exercise (`typedNameOf`/`namesMatch` in `parse/receipt.ts`, pure + tested). The
+card SURVIVES typing (header counts "2/5 done"), hides in receipt mode, and
+keeps the reason line + "Followed X of last Y" trust line (≥3 settled outcomes,
+majority followed). **Start** (note empty only) commits the whole plan;
+**Something else** dismisses. **Correction marks:** when the parser fixes a
+typo ("tricpes" → Triceps Pushdown), the ledger row shows a quiet volt ✓ with
+the user's original word — the auto-fix is visible and reviewable (long-press
+still opens FixSheet). Bottom toolbar: tonnage pill with unit (routes to
+/stats) · mic · + · keyboard toggle (camera removed until it works).
 
 **Receipt mode (BUILT — `parse/receipt.ts` pure + tested,
 `components/session-receipt.tsx`).** When the whole workout is typed in at

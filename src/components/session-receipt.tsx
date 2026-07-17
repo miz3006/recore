@@ -12,7 +12,7 @@ import Animated, {
 
 import { tap } from '@/lib/haptics';
 import { groupThousands } from '@/lib/parse/estimate';
-import { type ReceiptData, type ReceiptRow } from '@/lib/parse/receipt';
+import { namesMatch, typedNameOf, type ReceiptData, type ReceiptRow } from '@/lib/parse/receipt';
 import { alpha, color, fonts, ink, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 
 import { signalText, signalTint } from './gutter-value';
@@ -57,12 +57,17 @@ function ReadingLabel() {
 
 function Row({
   row,
+  typed,
   order,
   revision,
   onExercise,
   onFix,
 }: {
   row: ReceiptRow;
+  /** What the user actually wrote, when it materially differs from the
+   * resolved name ("tricpes") — rendered as a quiet ✓-marked correction so
+   * the auto-fix is visible and reviewable (long-press still opens FixSheet). */
+  typed: string | null;
   order: number;
   revision: string;
   onExercise: (canonical: string) => void;
@@ -128,9 +133,17 @@ function Row({
           tap();
           onFix(row.line);
         }}>
-        <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {row.exercise}
-        </Text>
+        <View style={styles.nameCell}>
+          <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {row.exercise}
+          </Text>
+          {typed ? (
+            <Text style={styles.fixedNote} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              <Text style={styles.fixedTick}>✓ </Text>
+              {`“${typed}”`}
+            </Text>
+          ) : null}
+        </View>
         <Text style={styles.set} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           {row.setText}
         </Text>
@@ -163,6 +176,7 @@ function Row({
 
 export function SessionReceipt({
   data,
+  noteLines = [],
   reason,
   revision,
   stale,
@@ -171,6 +185,9 @@ export function SessionReceipt({
   onFix,
 }: {
   data: ReceiptData;
+  /** The raw note split by line — lets each row show what the user actually
+   * typed when the parser corrected it. */
+  noteLines?: string[];
   /** The ONE line the AI may say (next-session reason). Null = silence. */
   reason: string | null;
   /** Identity of the parse pass — a new revision replays the settle sweep. */
@@ -185,6 +202,13 @@ export function SessionReceipt({
   if (data.rows.length === 0) return null;
 
   const exercises = new Set(data.rows.map((r) => r.exercise)).size;
+
+  // "tricpes" → "Triceps Pushdown" is a real fix, worth a visible mark; a
+  // plain shorthand that reads as the same words stays unmarked.
+  const typedFor = (row: ReceiptRow): string | null => {
+    const t = typedNameOf(noteLines[row.line] ?? '');
+    return t.length >= 3 && !namesMatch(t, row.exercise) ? t : null;
+  };
 
   return (
     <View style={[styles.wrap, stale && styles.stale]}>
@@ -205,6 +229,7 @@ export function SessionReceipt({
         <Row
           key={`${row.line}:${row.exercise}`}
           row={row}
+          typed={typedFor(row)}
           order={i}
           revision={revision}
           onExercise={onExercise}
@@ -271,7 +296,7 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'flex-start',
     gap: spacing.md,
     paddingVertical: spacing.sm + 1,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -281,11 +306,22 @@ const styles = StyleSheet.create({
   rowPressed: {
     backgroundColor: color.surfaceHigh,
   },
-  name: {
+  nameCell: {
     flex: 1,
+    gap: 1,
+  },
+  name: {
     fontSize: type.subhead.fontSize,
     fontWeight: '500',
     color: color.textPrimary,
+  },
+  fixedNote: {
+    fontSize: type.caption.fontSize,
+    color: color.textMuted,
+  },
+  fixedTick: {
+    color: color.signal,
+    fontWeight: '600',
   },
   set: {
     fontFamily: fonts.mono,
@@ -294,10 +330,12 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     color: color.textPrimary,
     opacity: ECHO_OPACITY,
+    marginTop: 1, // optical baseline vs the subhead name
   },
   sigCell: {
     minWidth: moderateScale(58),
     alignItems: 'flex-end',
+    marginTop: 1,
   },
   signal: {
     fontFamily: fonts.mono,

@@ -67,6 +67,8 @@ interface SessionState {
   selectDay: (day: DayKey) => void;
   setNote: (text: string) => void;
   startFromGhost: () => void;
+  /** Strong-style check-off: commit ONE prescribed line into the note. */
+  checkGhostLine: (lineText: string) => void;
   dismissGhost: () => void;
   openExerciseSheet: (canonical: string) => void;
   closeExerciseSheet: () => void;
@@ -275,6 +277,20 @@ export const useSession = create<SessionState>((set, get) => ({
     }
   },
 
+  /** Tap the circle on a planned line: the prescription becomes real typed
+   * text in the note (raw_text stays the source of truth), the parse confirms
+   * it, and the checklist row turns into a volt check. First check = the
+   * ghost earned an accept (adherence, §7.2 Gap 3). */
+  checkGhostLine: (lineText) => {
+    const { ghost, note } = get();
+    if (!ghost) return;
+    markPredictionAccepted(ghost.id);
+    const base = note.replace(/\s+$/, '');
+    get().setNote(base.length > 0 ? `${base}\n${lineText}` : lineText);
+    // Checking off the plan is live-logging, never an end-of-training dump.
+    dumpStartedAt = null;
+  },
+
   dismissGhost: () => set({ ghostDismissed: true }),
 
   openExerciseSheet: (canonical) => set({ sheetExercise: canonical }),
@@ -390,15 +406,16 @@ setParseListener((outcome) => {
 export const useCurrentNote = () => useSession((s) => s.note);
 
 /**
- * Ghost text shows only on a new training day: today, still empty, not yet
- * dismissed, and a cached prediction exists (CLAUDE.md §8). If the AI has
- * nothing useful, it says nothing.
+ * The planned-session checklist shows on today whenever a cached prediction
+ * exists and wasn't dismissed (CLAUDE.md §8). It SURVIVES typing — grey rows
+ * check off as the note fills, Strong-style — but never appears over a
+ * receipt-mode dump. If the AI has nothing useful, it says nothing.
  */
 export const useGhostVisible = () =>
   useSession(
     (s) =>
       s.selectedDay === todayKey() &&
-      s.note.length === 0 &&
       !s.ghostDismissed &&
+      !s.receiptMode &&
       s.ghost !== null,
   );

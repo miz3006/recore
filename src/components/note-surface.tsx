@@ -55,7 +55,6 @@ export function NoteSurface() {
 
   // The module-level ref (note-focus.ts) so the toolbar's + can focus us too.
   const inputRef = noteInputRef;
-  const [autoFocus, setAutoFocus] = useState(false);
   // Height of each logical line as actually laid out (accounts for wrapping),
   // measured off an invisible mirror so the gutter column can match it row-for-row.
   const [lineHeights, setLineHeights] = useState<number[]>([]);
@@ -63,8 +62,8 @@ export function NoteSurface() {
   const focusInput = () => inputRef.current?.focus();
 
   const handleStart = () => {
-    setAutoFocus(true); // the editor mounts next; drop the user straight into it
     startFromGhost();
+    focusInput(); // the editor is always mounted now — drop the user in
   };
   const handleSomethingElse = () => {
     dismissGhost(); // just clears — no keyboard
@@ -98,14 +97,6 @@ export function NoteSurface() {
     return parsedSnapshot === null || lines[i] !== snapshotLines[i];
   };
 
-  if (ghostVisible) {
-    return (
-      <View style={styles.body}>
-        <GhostPrediction onStart={handleStart} onSomethingElse={handleSomethingElse} />
-      </View>
-    );
-  }
-
   // RECEIPT MODE: full-width note, no gutter, no measuring mirror. One quiet
   // thinking row while the parse is in flight; the summary settles below.
   if (receiptMode) {
@@ -128,7 +119,6 @@ export function NoteSurface() {
             value={note}
             onChangeText={setNote}
             multiline
-            autoFocus={autoFocus}
             scrollEnabled={false}
             placeholder={EMPTY_PLACEHOLDER}
             placeholderTextColor={color.textMuted}
@@ -154,6 +144,7 @@ export function NoteSurface() {
           {receipt ? (
             <SessionReceipt
               data={receipt}
+              noteLines={lines}
               reason={receiptReason}
               revision={parsedSnapshot ?? ''}
               stale={parsedSnapshot !== null && parsedSnapshot !== note}
@@ -188,6 +179,12 @@ export function NoteSurface() {
           tap();
           focusInput();
         }}>
+        {/* THE PLAN (CLAUDE.md §7): today's prescription as a grey checklist —
+            rows check off as the note fills, or on a tap of the circle. */}
+        {ghostVisible ? (
+          <GhostPrediction onStart={handleStart} onSomethingElse={handleSomethingElse} />
+        ) : null}
+
         <View style={styles.editor}>
           {/* EDITING LAYER — the real, editable note. */}
           <TextInput
@@ -196,7 +193,6 @@ export function NoteSurface() {
             value={note}
             onChangeText={setNote}
             multiline
-            autoFocus={autoFocus}
             scrollEnabled={false}
             placeholder={EMPTY_PLACEHOLDER}
             placeholderTextColor={color.textMuted}
@@ -278,8 +274,9 @@ export function NoteSurface() {
           </View>
         </View>
 
-        {/* The blank page is never a void: last session peek / first-run demo. */}
-        {note.trim().length === 0 ? <EmptyDayCards /> : null}
+        {/* The blank page is never a void: last session peek / first-run demo.
+            The checklist above is richer content — don't stack both. */}
+        {note.trim().length === 0 && !ghostVisible ? <EmptyDayCards /> : null}
 
         {/* THE LEDGER: every parsed session settles into one structured card
             under the note — resolved names, top sets, deltas, a total. The
@@ -288,6 +285,7 @@ export function NoteSurface() {
         {note.trim().length > 0 && receipt && receipt.rows.length >= 2 ? (
           <SessionReceipt
             data={receipt}
+            noteLines={lines}
             reason={receiptReason}
             revision={parsedSnapshot ?? ''}
             stale={parsedSnapshot !== null && parsedSnapshot !== note}

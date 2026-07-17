@@ -37,6 +37,36 @@ export interface ReceiptData {
  * signals ('set') are not comparisons and never show in the signal column —
  * the set text already says what happened.
  */
+/** The exercise words the user actually typed on a line — everything before
+ * the first digit ("tricpes 27kgx12x2" → "tricpes"). Empty when the line
+ * starts with a number or has no letters. */
+export function typedNameOf(lineText: string): string {
+  const beforeDigit = lineText.split(/\d/, 1)[0] ?? '';
+  return beforeDigit
+    .replace(/[^\p{L} ]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Loose same-exercise test: letters only, plural-insensitive, containment
+ * either way — "dips" matches "Dip", "incline smith machine" matches
+ * "Incline Smith Machine Press". A typo like "tricpes" does NOT match
+ * "Triceps Pushdown": that's a real correction, worth marking in the ledger.
+ */
+export function namesMatch(a: string, b: string): boolean {
+  const key = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^\p{L}]+/gu, '')
+      .replace(/s$/u, '');
+  const ka = key(a);
+  const kb = key(b);
+  if (!ka || !kb) return false;
+  return ka.includes(kb) || kb.includes(ka);
+}
+
 export function buildReceipt(result: ParseResult, signals: LineSignal[]): ReceiptData {
   const signalByLine = new Map<number, GutterSignal>();
   for (const s of signals) {
