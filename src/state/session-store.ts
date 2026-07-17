@@ -5,12 +5,12 @@ import { getMeta, setMeta } from '@/lib/db/index';
 import { computeStreak, getWorkoutForDay, saveRawText } from '@/lib/db/workouts';
 import { getPredictionForOpen, markPredictionAccepted } from '@/lib/db/predictions';
 import { getParseCache } from '@/lib/parse/apply';
-import { parseWorkout } from '@/lib/parse/client';
+import { parseWorkout, type ParseOutcome } from '@/lib/parse/client';
 import { applyCorrection, getFixTarget, type FixTarget } from '@/lib/parse/correct';
 import { parsedVolume } from '@/lib/db/history';
 import { buildReceipt, type ReceiptData } from '@/lib/parse/receipt';
 import { validateParseResult, type LineSignal, type ParsedSet } from '@/lib/parse/types';
-import { scheduleSync } from '@/lib/sync/index';
+import { scheduleSync, setParseListener } from '@/lib/sync/index';
 
 /**
  * Home-screen state, backed by SQLite (CLAUDE.md §6):
@@ -77,6 +77,20 @@ interface SessionState {
 
 const PARSE_DEBOUNCE_MS = 900;
 let parseTimer: ReturnType<typeof setTimeout> | null = null;
+
+// A transient parse failure (offline blip, server rate limit) retries with
+// backoff while the user is still looking at the workout — a silent failure
+// that never retries reads as "the AI didn't understand me". After the last
+// attempt the sync loop + foreground listener remain the safety net.
+const PARSE_RETRY_DELAYS_MS = [3_000, 8_000, 20_000];
+let parseRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let parseRetryAttempt = 0;
+
+function clearParseRetry() {
+  if (parseRetryTimer) clearTimeout(parseRetryTimer);
+  parseRetryTimer = null;
+  parseRetryAttempt = 0;
+}
 
 // --- receipt-mode detection (CLAUDE.md §9) -----------------------------------
 // A "dump" = the note went from empty to ≥4 parsed exercises inside a minute:
@@ -192,6 +206,7 @@ export const useSession = create<SessionState>((set, get) => ({
 
   reset: () => {
     if (parseTimer) clearTimeout(parseTimer);
+    clearParseRetry();
     dumpStartedAt = null;
     set({
       userId: null,
@@ -218,6 +233,7 @@ export const useSession = create<SessionState>((set, get) => ({
     const { userId, selectedDay } = get();
     if (!userId || day === selectedDay) return;
     if (parseTimer) clearTimeout(parseTimer);
+    clearParseRetry();
     dumpStartedAt = null;
     set({ selectedDay: day, ...loadDay(userId, day) });
   },
@@ -235,7 +251,9 @@ export const useSession = create<SessionState>((set, get) => ({
     set({ note: text, workoutId, streak: computeStreak(userId, todayKey()) });
 
     // 2. Fire the background parse after the typing pause; push in background.
+    // A fresh keystroke supersedes any failure-retry chain in flight.
     if (parseTimer) clearTimeout(parseTimer);
+    clearParseRetry();
     parseTimer = setTimeout(() => void runParse(workoutId), PARSE_DEBOUNCE_MS);
     scheduleSync();
   },
@@ -285,7 +303,45 @@ export const useSession = create<SessionState>((set, get) => ({
   },
 }));
 
-/** Background parse → applies items/sets → signals fade into the gutter. */
+/** Surface a landed parse on the open screen — shared by the foreground
+ * debounce path and the sync loop's retry path (via setParseListener), so a
+ * parse that lands EITHER way reaches the gutter/receipt immediately. */
+function applyParseOutcome(userId: string, outcome: ParseOutcome) {
+  // Only surface signals if the user is still looking at this workout.
+  const state = useSession.getState();
+  if (state.workoutId !== outcome.workoutId) return;
+
+  // Receipt-mode detection (CLAUDE.md §9): this parse turned a just-empty
+  // note into a full session → it's an end-of-training dump. Sticky per
+  // workout via the meta KV, so the day re-opens in receipt mode too.
+  let receiptMode = state.receiptMode;
+  if (!receiptMode && outcome.receipt) {
+    const distinctExercises = new Set(Object.values(outcome.lineExercises)).size;
+    if (
+      distinctExercises >= RECEIPT_MIN_EXERCISES &&
+      dumpStartedAt !== null &&
+      Date.now() - dumpStartedAt <= RECEIPT_DUMP_WINDOW_MS
+    ) {
+      receiptMode = true;
+      setMeta(receiptModeKey(outcome.workoutId), '1');
+    }
+  }
+
+  useSession.setState({
+    signals: outcome.signals,
+    parsedSnapshot: outcome.rawSnapshot,
+    parsedVolume: outcome.volume,
+    lineExercises: outcome.lineExercises,
+    receiptMode,
+    receipt: outcome.receipt,
+    receiptReason: outcome.receipt ? reasonForReceipt(userId, state.selectedDay) : null,
+  });
+}
+
+/** Background parse → applies items/sets → signals fade into the gutter.
+ * Transient failures retry with backoff (the dots stay on while a retry is
+ * queued — the machine is honestly still working); the sync loop remains the
+ * long-tail safety net. */
 async function runParse(workoutId: string) {
   const { userId } = useSession.getState();
   if (!userId) return;
@@ -294,46 +350,41 @@ async function runParse(workoutId: string) {
     useSession.setState({ parsing: true });
   }
 
+  let outcome: ParseOutcome | null = null;
   try {
-    const outcome = await parseWorkout(userId, workoutId);
-    if (!outcome) return; // offline/failed — needs_parse stays set, sync retries
-
-    // Only surface signals if the user is still looking at this workout.
-    const state = useSession.getState();
-    if (state.workoutId !== outcome.workoutId) return;
-
-    // Receipt-mode detection (CLAUDE.md §9): this parse turned a just-empty
-    // note into a full session → it's an end-of-training dump. Sticky per
-    // workout via the meta KV, so the day re-opens in receipt mode too.
-    let receiptMode = state.receiptMode;
-    if (!receiptMode && outcome.receipt) {
-      const distinctExercises = new Set(Object.values(outcome.lineExercises)).size;
-      if (
-        distinctExercises >= RECEIPT_MIN_EXERCISES &&
-        dumpStartedAt !== null &&
-        Date.now() - dumpStartedAt <= RECEIPT_DUMP_WINDOW_MS
-      ) {
-        receiptMode = true;
-        setMeta(receiptModeKey(outcome.workoutId), '1');
-      }
+    outcome = await parseWorkout(userId, workoutId);
+    if (outcome) {
+      clearParseRetry();
+      applyParseOutcome(userId, outcome);
+      scheduleSync();
+    } else if (
+      useSession.getState().workoutId === workoutId &&
+      parseRetryAttempt < PARSE_RETRY_DELAYS_MS.length
+    ) {
+      const delay = PARSE_RETRY_DELAYS_MS[parseRetryAttempt]!;
+      parseRetryAttempt += 1;
+      if (parseRetryTimer) clearTimeout(parseRetryTimer);
+      parseRetryTimer = setTimeout(() => {
+        parseRetryTimer = null;
+        void runParse(workoutId);
+      }, delay);
     }
-
-    useSession.setState({
-      signals: outcome.signals,
-      parsedSnapshot: outcome.rawSnapshot,
-      parsedVolume: outcome.volume,
-      lineExercises: outcome.lineExercises,
-      receiptMode,
-      receipt: outcome.receipt,
-      receiptReason: outcome.receipt ? reasonForReceipt(userId, state.selectedDay) : null,
-    });
-    scheduleSync();
   } finally {
     if (useSession.getState().workoutId === workoutId) {
-      useSession.setState({ parsing: false });
+      // Dots stay on while a retry is pending; off on success or final failure.
+      useSession.setState({ parsing: outcome === null && parseRetryTimer !== null });
     }
   }
 }
+
+// A parse that lands via the sync loop (offline recovery, app-foreground
+// re-sync) must reach the open screen too — without this the data updates in
+// SQLite while the gutter and receipt stay stale until an app restart.
+setParseListener((outcome) => {
+  const { userId } = useSession.getState();
+  if (!userId) return;
+  applyParseOutcome(userId, outcome);
+});
 
 /** The note text for the currently-selected day. */
 export const useCurrentNote = () => useSession((s) => s.note);

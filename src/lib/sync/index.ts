@@ -16,7 +16,7 @@ import {
 import { getWorkoutsNeedingParse } from '@/lib/db/workouts';
 import { isSupabaseConfigured } from '@/lib/env';
 import { devLog } from '@/lib/log';
-import { parseWorkout } from '@/lib/parse/client';
+import { parseWorkout, type ParseOutcome } from '@/lib/parse/client';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -376,10 +376,22 @@ async function pullStructure(workoutIds: string[]) {
 
 // --- deferred parses ----------------------------------------------------------
 
+/** The session store registers here so a parse that lands via the SYNC loop
+ * (not the foreground debounce) still reaches the open screen — without this,
+ * a retried parse updates SQLite but the gutter/receipt stay stale until the
+ * next day-switch or app restart. Registration keeps the dependency one-way:
+ * sync never imports UI state. */
+let parseListener: ((outcome: ParseOutcome) => void) | null = null;
+
+export function setParseListener(listener: ((outcome: ParseOutcome) => void) | null) {
+  parseListener = listener;
+}
+
 /** Retry parses that failed offline (CLAUDE.md §6 step 4). */
 async function retryPendingParses(userId: string) {
   const pending = getWorkoutsNeedingParse(userId);
   for (const w of pending) {
-    await parseWorkout(userId, w.id);
+    const outcome = await parseWorkout(userId, w.id);
+    if (outcome) parseListener?.(outcome);
   }
 }

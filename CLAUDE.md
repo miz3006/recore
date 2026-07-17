@@ -181,7 +181,10 @@ is in service of one bar: **the user never has to change how they write.**
    lines client-side (`parse/anchor.ts` — the model's line index is a hint,
    not a fact), stale-guarded against text typed while in flight, then applied
    to `items`/`sets` and rendered in the right gutter.
-4. Offline/failure: the raw line stays, parse retries on sync. The user never
+4. Offline/failure: the raw line stays; the UI retries with backoff (3s/8s/20s,
+   dots stay on) and the sync loop retries after that — a landed sync-retry
+   reaches the open screen via `setParseListener` (a silent success that only
+   updates SQLite reads as "the AI didn't understand me"). The user never
    waits and never loses data.
 5. After apply, the predictor (§7) recomputes and caches the next session.
 
