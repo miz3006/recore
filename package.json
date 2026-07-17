@@ -35,6 +35,7 @@
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
+    "react-native-view-shot": "4.0.3",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.5.1",
     "zustand": "^5.0.14"
@@ -54,7 +55,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/lib/predict/engine.test.ts src/lib/predict/split.test.ts src/lib/parse/overlay.test.ts src/lib/parse/receipt.test.ts",
+    "test": "node --test src/lib/predict/engine.test.ts src/lib/predict/split.test.ts src/lib/parse/overlay.test.ts src/lib/parse/receipt.test.ts src/lib/plates.test.ts",
     "eval": "node scripts/parse-eval.ts"
   },
   "private": true

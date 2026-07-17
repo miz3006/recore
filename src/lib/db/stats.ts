@@ -20,7 +20,7 @@ export interface StatsSummary {
   sessionsThisWeek: number;
 }
 
-function mondayOf(day: DayKey): DayKey {
+export function mondayOf(day: DayKey): DayKey {
   const [y, m, d] = day.split('-').map(Number);
   const date = new Date(y!, m! - 1, d!);
   const offset = (date.getDay() + 6) % 7; // 0 = Monday

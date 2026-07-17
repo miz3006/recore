@@ -2,8 +2,10 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { tap, tapMedium } from '@/lib/haptics';
+import { success, tap, tapMedium } from '@/lib/haptics';
 import { estimateVolume, groupThousands } from '@/lib/parse/estimate';
+import { formatDistanceTotal } from '@/lib/parse/summarize';
+import { getRestSeconds, REST_OPTIONS_S, setRestSeconds } from '@/lib/prefs';
 import { color, MAX_FONT_SCALE, moderateScale, radius, ROUND_BUTTON, spacing, type } from '@/lib/theme';
 import { startDictation, voiceAvailable, type DictationHandle } from '@/lib/voice';
 import { useCurrentNote, useGhostVisible, useSession } from '@/state/session-store';
@@ -29,9 +31,13 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
   const setNote = useSession((s) => s.setNote);
   const parsedSnapshot = useSession((s) => s.parsedSnapshot);
   const parsedVolume = useSession((s) => s.parsedVolume);
+  const receipt = useSession((s) => s.receipt);
   const ghostVisible = useGhostVisible();
   const dismissGhost = useSession((s) => s.dismissGhost);
   const total = parsedSnapshot === note ? parsedVolume : estimateVolume(note);
+  // A run-only session totals in distance, not an empty pill (kg still wins
+  // when both exist — the mixed-session detail lives in the receipt).
+  const distanceM = total === 0 && parsedSnapshot === note ? (receipt?.distanceM ?? 0) : 0;
 
   const [recording, setRecording] = useState(false);
   const dictation = useRef<DictationHandle | null>(null);
@@ -99,17 +105,22 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
         }}
         style={({ pressed }) => [styles.volumePill, pressed && styles.roundPressed]}>
         <Icon name="chart" size={moderateScale(15)} tint={color.textSecondary} />
-        {/* No number, no voice (CLAUDE.md §9): the session tonnage joins the
-            chart glyph only once there is real volume behind it. */}
+        {/* No number, no voice (CLAUDE.md §9): the session total joins the
+            chart glyph only once there is a real number behind it. */}
         {total > 0 ? (
           <Text style={styles.volumeText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {groupThousands(total)}
             <Text style={styles.volumeUnit}> kg</Text>
           </Text>
+        ) : distanceM > 0 ? (
+          <Text style={styles.volumeText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {formatDistanceTotal(distanceM)}
+          </Text>
         ) : null}
       </Pressable>
 
       <View style={styles.actions}>
+        <RestTimer />
         <Pressable
           onPress={() => void handleMic()}
           style={({ pressed }) => [
@@ -127,6 +138,97 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
         <RoundButton name="keyboard" onPress={() => Keyboard.dismiss()} />
       </View>
     </View>
+  );
+}
+
+/**
+ * The rest timer — the second most-quoted five-star feature in this category.
+ * Tap to start (the button becomes a live mono countdown), tap again to stop.
+ * Long-press while idle cycles the length (1:00 → 1:30 → 2:00 → 3:00, saved).
+ * The last ten seconds speak in volt; the finish is a success haptic and a
+ * quiet volt "go" — never an alarm.
+ */
+const TIMER_TICK_MS = 250;
+const GO_FLASH_MS = 1800;
+
+function fmtClock(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function RestTimer() {
+  const [endsAt, setEndsAt] = useState<number | null>(null);
+  const [remaining, setRemaining] = useState(0);
+  const [preview, setPreview] = useState<number | null>(null); // freshly-set length
+  const [go, setGo] = useState(false);
+
+  useEffect(() => {
+    if (endsAt === null) return;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      setRemaining(left);
+      if (left <= 0) {
+        setEndsAt(null);
+        setGo(true);
+        success();
+        setTimeout(() => setGo(false), GO_FLASH_MS);
+      }
+    };
+    tick();
+    const t = setInterval(tick, TIMER_TICK_MS);
+    return () => clearInterval(t);
+  }, [endsAt]);
+
+  useEffect(() => {
+    if (preview === null) return;
+    const t = setTimeout(() => setPreview(null), 1200);
+    return () => clearTimeout(t);
+  }, [preview]);
+
+  const handlePress = () => {
+    tap();
+    setGo(false);
+    if (endsAt !== null) {
+      setEndsAt(null); // stopped early — no judgment
+      return;
+    }
+    setEndsAt(Date.now() + getRestSeconds() * 1000);
+  };
+
+  const handleLongPress = () => {
+    if (endsAt !== null) return;
+    tapMedium();
+    const current = getRestSeconds();
+    const idx = REST_OPTIONS_S.indexOf(current as (typeof REST_OPTIONS_S)[number]);
+    const next = REST_OPTIONS_S[(idx + 1) % REST_OPTIONS_S.length]!;
+    setRestSeconds(next);
+    setPreview(next);
+  };
+
+  const running = endsAt !== null;
+  const lastTen = running && remaining <= 10;
+  const label = go ? 'go' : preview !== null ? fmtClock(preview) : running ? fmtClock(remaining) : null;
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      onLongPress={handleLongPress}
+      style={({ pressed }) => [
+        label !== null ? styles.timerPill : styles.round,
+        go && styles.timerGo,
+        pressed && styles.roundPressed,
+      ]}>
+      {label !== null ? (
+        <Text
+          style={[styles.timerText, (lastTen || go) && styles.timerTextSignal]}
+          maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {label}
+        </Text>
+      ) : (
+        <Icon name="timer" size={moderateScale(20)} tint={color.textSecondary} />
+      )}
+    </Pressable>
   );
 }
 
@@ -190,5 +292,27 @@ const styles = StyleSheet.create({
   // "the app spoke" emphasis as the Start button and the PR pill.
   roundActive: {
     backgroundColor: color.accent,
+  },
+  timerPill: {
+    height: ROUND_BUTTON,
+    minWidth: ROUND_BUTTON,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: color.surface,
+  },
+  timerGo: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.signal,
+  },
+  timerText: {
+    fontSize: type.subhead.fontSize,
+    fontWeight: '600',
+    color: color.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  timerTextSignal: {
+    color: color.signal,
   },
 });

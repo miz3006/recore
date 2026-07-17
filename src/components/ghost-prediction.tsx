@@ -1,10 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown, useReducedMotion, ZoomIn } from 'react-native-reanimated';
 
 import { getAdherenceRecord } from '@/lib/db/insights';
 import { tap, tapMedium } from '@/lib/haptics';
 import { namesMatch, typedNameOf } from '@/lib/parse/receipt';
-import { alpha, color, CONTROL_HEIGHT, ink, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { plateLine } from '@/lib/plates';
+import { getBarWeightKg, getSmallestPlateKg } from '@/lib/prefs';
+import { alpha, color, CONTROL_HEIGHT, fonts, ink, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 /**
@@ -35,6 +38,9 @@ export function GhostPrediction({
   const note = useSession((s) => s.note);
   const lineExercises = useSession((s) => s.lineExercises);
   const checkGhostLine = useSession((s) => s.checkGhostLine);
+  const reduceMotion = useReducedMotion();
+  /** Which row's plate math is open (long-press toggles). */
+  const [platesLine, setPlatesLine] = useState<number | null>(null);
 
   // The predictor's public record — shown only when it's actually evidence.
   const trust = useMemo(() => {
@@ -86,9 +92,23 @@ export function GhostPrediction({
     tapMedium();
     checkGhostLine(line);
   };
+  const handlePlates = (i: number) => {
+    tap();
+    setPlatesLine((cur) => (cur === i ? null : i));
+  };
+
+  /** "hold for plates": the per-side breakdown for a row's prescribed load. */
+  const platesFor = (line: string): string | null => {
+    const match = line.match(WEIGHT_TOKEN);
+    if (!match) return null;
+    const target = Number.parseFloat(match[1]!);
+    return plateLine(target, getBarWeightKg(), getSmallestPlateKg());
+  };
 
   return (
-    <View style={styles.card}>
+    <Animated.View
+      entering={reduceMotion ? undefined : FadeInDown.duration(260)}
+      style={styles.card}>
       <View style={styles.header}>
         <Text style={styles.headerLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           NEXT SESSION
@@ -101,34 +121,49 @@ export function GhostPrediction({
       {planLines.map((line, i) => {
         const done = doneFlags[i] ?? false;
         const parts = line.split(WEIGHT_TOKEN);
+        const plates = platesLine === i && !done ? platesFor(line) : null;
         return (
           <Pressable
             key={i}
             disabled={done}
             onPress={() => handleCheck(line)}
+            onLongPress={() => handlePlates(i)}
             style={({ pressed }) => [styles.row, pressed && !done && styles.rowPressed]}>
-            <Text
-              style={styles.rowText}
-              numberOfLines={1}
-              maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {parts.map((part, j) =>
-                WEIGHT_TOKEN.test(part) ? (
-                  <Text key={j} style={done ? styles.doneText : styles.weight}>
-                    {part}
-                  </Text>
-                ) : (
-                  <Text key={j} style={done ? styles.doneText : styles.ghost}>
-                    {part}
-                  </Text>
-                ),
-              )}
-            </Text>
+            <View style={styles.rowBody}>
+              <Text
+                style={styles.rowText}
+                numberOfLines={1}
+                maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {parts.map((part, j) =>
+                  WEIGHT_TOKEN.test(part) ? (
+                    <Text key={j} style={done ? styles.doneText : styles.weight}>
+                      {part}
+                    </Text>
+                  ) : (
+                    <Text key={j} style={done ? styles.doneText : styles.ghost}>
+                      {part}
+                    </Text>
+                  ),
+                )}
+              </Text>
+              {plates ? (
+                <Animated.Text
+                  entering={reduceMotion ? undefined : FadeIn.duration(200)}
+                  style={styles.plates}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  {plates}
+                </Animated.Text>
+              ) : null}
+            </View>
             {done ? (
-              <View style={[styles.check, styles.checkDone]}>
+              <Animated.View
+                entering={reduceMotion ? undefined : ZoomIn.duration(220)}
+                style={[styles.check, styles.checkDone]}>
                 <Text style={styles.checkMark} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                   ✓
                 </Text>
-              </View>
+              </Animated.View>
             ) : (
               <View style={styles.check} />
             )}
@@ -138,7 +173,7 @@ export function GhostPrediction({
 
       {doneCount === 0 ? (
         <Text style={styles.hint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          Tap a line when it&apos;s done — or just write what you did.
+          Tap a line when it&apos;s done · hold it for plate math · or just write what you did.
         </Text>
       ) : null}
 
@@ -174,7 +209,7 @@ export function GhostPrediction({
           </Pressable>
         </View>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -216,10 +251,19 @@ const styles = StyleSheet.create({
   rowPressed: {
     backgroundColor: color.surfaceHigh,
   },
-  rowText: {
+  rowBody: {
     flex: 1,
+    gap: 2,
+  },
+  rowText: {
     fontSize: type.subhead.fontSize,
     lineHeight: type.subhead.lineHeight,
+  },
+  plates: {
+    fontFamily: fonts.mono,
+    fontSize: type.caption.fontSize,
+    fontVariant: ['tabular-nums'],
+    color: color.textMuted,
   },
   ghost: {
     color: color.textSecondary,

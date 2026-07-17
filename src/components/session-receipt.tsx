@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { captureRef } from 'react-native-view-shot';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -13,6 +14,9 @@ import Animated, {
 import { tap } from '@/lib/haptics';
 import { groupThousands } from '@/lib/parse/estimate';
 import { namesMatch, typedNameOf, type ReceiptData, type ReceiptRow } from '@/lib/parse/receipt';
+import { formatDistanceTotal } from '@/lib/parse/summarize';
+
+import { Icon } from './icon';
 import { alpha, color, fonts, ink, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 
 import { signalText, signalTint } from './gutter-value';
@@ -199,6 +203,11 @@ export function SessionReceipt({
   onExercise: (canonical: string) => void;
   onFix: (line: number) => void;
 }) {
+  const cardRef = useRef<View>(null);
+  // The share capture briefly renders the Recore mark inside the card — the
+  // image carries the brand, the in-app card stays quiet.
+  const [branding, setBranding] = useState(false);
+
   if (data.rows.length === 0) return null;
 
   const exercises = new Set(data.rows.map((r) => r.exercise)).size;
@@ -210,8 +219,23 @@ export function SessionReceipt({
     return t.length >= 3 && !namesMatch(t, row.exercise) ? t : null;
   };
 
+  // The organic-growth artifact (CLAUDE.md §11): the receipt as a dark PNG.
+  const handleShare = async () => {
+    tap();
+    setBranding(true);
+    await new Promise((r) => setTimeout(r, 80)); // let the brand row paint
+    try {
+      const uri = await captureRef(cardRef, { format: 'png', quality: 1 });
+      await Share.share({ url: uri });
+    } catch {
+      // sharing is a bonus, never an error surface
+    } finally {
+      setBranding(false);
+    }
+  };
+
   return (
-    <View style={[styles.wrap, stale && styles.stale]}>
+    <View ref={cardRef} collapsable={false} style={[styles.wrap, stale && styles.stale]}>
       <View style={styles.header}>
         {parsing ? (
           <ReadingLabel />
@@ -220,9 +244,19 @@ export function SessionReceipt({
             SESSION
           </Text>
         )}
-        <Text style={styles.headerMeta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {exercises} {exercises === 1 ? 'exercise' : 'exercises'}
-        </Text>
+        <View style={styles.headerRight}>
+          <Text style={styles.headerMeta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {exercises} {exercises === 1 ? 'exercise' : 'exercises'}
+          </Text>
+          {!stale && !parsing && !branding ? (
+            <Pressable
+              onPress={() => void handleShare()}
+              hitSlop={spacing.sm}
+              style={({ pressed }) => pressed && styles.sharePressed}>
+              <Icon name="share" size={moderateScale(15)} tint={color.textMuted} />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       {data.rows.map((row, i) => (
@@ -237,16 +271,39 @@ export function SessionReceipt({
         />
       ))}
 
-      {/* The total gives every session an ending — the receipt's hero line. */}
+      {/* The total gives every session an ending — the receipt's hero line.
+          kg leads; a run-only session totals in distance instead of 0 kg. */}
       <View style={styles.total}>
         <Text style={styles.totalValue} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {data.volume > 0 ? groupThousands(data.volume) : String(data.totalSets)}
-          <Text style={styles.totalUnit}>{data.volume > 0 ? ' kg' : ' sets'}</Text>
+          {data.volume > 0 ? (
+            <>
+              {groupThousands(data.volume)}
+              <Text style={styles.totalUnit}> kg</Text>
+            </>
+          ) : data.distanceM > 0 ? (
+            formatDistanceTotal(data.distanceM)
+          ) : (
+            <>
+              {String(data.totalSets)}
+              <Text style={styles.totalUnit}> sets</Text>
+            </>
+          )}
         </Text>
         <Text style={styles.totalMeta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {data.volume > 0 ? `${data.totalSets} sets` : 'total'}
+          {data.volume > 0
+            ? `${data.totalSets} sets` +
+              (data.distanceM > 0 ? ` · ${formatDistanceTotal(data.distanceM)}` : '')
+            : data.distanceM > 0
+              ? `${data.totalSets} ${data.totalSets === 1 ? 'set' : 'sets'}`
+              : 'total'}
         </Text>
       </View>
+
+      {branding ? (
+        <Text style={styles.brand} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          Recore
+        </Text>
+      ) : null}
 
       {reason ? (
         <View style={styles.aiLine}>
@@ -289,10 +346,26 @@ const styles = StyleSheet.create({
   labelReading: {
     color: color.signal,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
   headerMeta: {
     fontSize: type.caption.fontSize,
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
+  },
+  sharePressed: {
+    opacity: 0.5,
+  },
+  brand: {
+    marginTop: spacing.md,
+    textAlign: 'right',
+    fontSize: type.caption.fontSize,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    color: color.textMuted,
   },
   row: {
     flexDirection: 'row',

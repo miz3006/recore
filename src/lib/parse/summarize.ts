@@ -99,6 +99,26 @@ export function echoTextOf(top: SetSummary): string | null {
   return null;
 }
 
+/** Session distance from PARSED sets (runs, sled, carries), in meters. The
+ * page speaks kg first, but a run-only session totals in distance — Recore is
+ * a training log, not only a barbell log. */
+export function parsedDistance(result: ParseResult): number {
+  let total = 0;
+  for (const item of result.items) {
+    for (const s of item.sets) {
+      if (s.kind === 'warmup') continue;
+      if (s.distance_m != null) total += s.distance_m;
+    }
+  }
+  return Math.round(total);
+}
+
+/** "5.2 km" above a kilometer, "400 m" below it. */
+export function formatDistanceTotal(meters: number): string {
+  if (meters >= 1000) return `${Math.round(meters / 100) / 10} km`;
+  return `${meters} m`;
+}
+
 /** Session volume from PARSED sets, excluding warm-ups (CLAUDE.md §3). */
 export function parsedVolume(result: ParseResult): number {
   let total = 0;

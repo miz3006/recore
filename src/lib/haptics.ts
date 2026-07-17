@@ -16,3 +16,9 @@ export function tapMedium() {
   if (Platform.OS === 'web') return;
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 }
+
+/** The rest timer's "go again" moment — a success pattern, not an alarm. */
+export function success() {
+  if (Platform.OS === 'web') return;
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+}

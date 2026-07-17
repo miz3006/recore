@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeInDown, useReducedMotion } from 'react-native-reanimated';
 
 import { getRecentSessions, getSessionExerciseNames } from '@/lib/db/insights';
 import { tap } from '@/lib/haptics';
@@ -21,6 +22,7 @@ export function EmptyDayCards() {
   const userId = useSession((s) => s.userId);
   const selectedDay = useSession((s) => s.selectedDay);
   const selectDay = useSession((s) => s.selectDay);
+  const reduceMotion = useReducedMotion();
 
   const last = useMemo(() => {
     if (!userId) return null;
@@ -33,7 +35,9 @@ export function EmptyDayCards() {
 
   if (!last) {
     return (
-      <View style={styles.demoCard}>
+      <Animated.View
+        entering={reduceMotion ? undefined : FadeInDown.duration(260)}
+        style={styles.demoCard}>
         <Text style={styles.label} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           HOW IT WORKS
         </Text>
@@ -41,12 +45,13 @@ export function EmptyDayCards() {
         <Text style={styles.demoCaption} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           Type it like you&apos;d text a friend. Recore reads the rest — sets, weights, PRs.
         </Text>
-      </View>
+      </Animated.View>
     );
   }
 
   return (
-    <Pressable
+    <AnimatedPressable
+      entering={reduceMotion ? undefined : FadeInDown.duration(260)}
       onPress={() => {
         tap();
         selectDay(last.day);
@@ -72,9 +77,11 @@ export function EmptyDayCards() {
           {last.sets} sets
         </Text>
       ) : null}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const styles = StyleSheet.create({
   card: {

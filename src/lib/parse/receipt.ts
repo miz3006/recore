@@ -8,7 +8,7 @@
  * is a projection below it.
  */
 import { type GutterSignal, type LineSignal, type ParseResult } from './types.ts';
-import { countedSets, echoTextOf, parsedVolume, topOfSets } from './summarize.ts';
+import { countedSets, echoTextOf, parsedDistance, parsedVolume, topOfSets } from './summarize.ts';
 
 export interface ReceiptRow {
   /** Physical line — long-press opens the FixSheet for it. */
@@ -28,6 +28,9 @@ export interface ReceiptData {
   totalSets: number;
   /** Volume in kg, warm-ups excluded. */
   volume: number;
+  /** Distance in meters (runs, sled, carries) — a run-only session totals
+   * in km instead of an empty 0 kg. */
+  distanceM: number;
 }
 
 /**
@@ -93,5 +96,10 @@ export function buildReceipt(result: ParseResult, signals: LineSignal[]): Receip
     });
   }
 
-  return { rows, totalSets: countedSets(result), volume: parsedVolume(result) };
+  return {
+    rows,
+    totalSets: countedSets(result),
+    volume: parsedVolume(result),
+    distanceM: parsedDistance(result),
+  };
 }

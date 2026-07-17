@@ -17,7 +17,9 @@ export type IconName =
   | 'google'
   | 'chevron-back'
   | 'chevron-forward'
-  | 'chart';
+  | 'chart'
+  | 'timer'
+  | 'share';
 
 type Glyph =
   | { set: 'ion'; name: ComponentProps<typeof Ionicons>['name'] }
@@ -38,6 +40,8 @@ const MAP: Record<IconName, Glyph> = {
   'chevron-back': { set: 'ion', name: 'chevron-back' },
   'chevron-forward': { set: 'ion', name: 'chevron-forward' },
   chart: { set: 'ion', name: 'stats-chart-outline' },
+  timer: { set: 'ion', name: 'timer-outline' },
+  share: { set: 'ion', name: 'share-outline' },
 };
 
 type IconProps = {

@@ -78,8 +78,23 @@ UI (Hevy-lane pricing, Bill of Rights), react-native-svg charts, primitives
 (Card/CaptionLabel/StatTile), e1RM Sparkline in ExerciseSheet, `db/insights.ts`
 (adherence record, all-time PRs, recent sessions, e1RM series).
 
+**In-gym pack SHIPPED 2026-07-17 (review-mining-driven):** LAST-TIME gutter
+hint (name an exercise, no numbers → last session's top set instantly, pure
+local `db/last-set.ts`, textMuted so it can't read as a result, tap → sheet);
+REST TIMER in the toolbar (tap start/stop, long-press cycles 1:00–3:00 via
+prefs, last 10 s + finish "go" in volt, success haptic — never an alarm);
+WEEKLY RECAP card (`week-recap-card.tsx` — first empty open of a new week:
+last week's tonnage/sessions/WoW/PRs, share + done, meta-keyed once per week);
+SHARE CARDS (react-native-view-shot: receipt + recap capture as dark PNG with
+a Recore mark rendered only during capture); PLATE MATH (`lib/plates.ts` pure
++ tested — checklist long-press shows "25 + 5 + 1.25 a side"; bar weight pref
+in /settings); CARDIO/RUNNING as first-class (parsedDistance/formatDistanceTotal
+in summarize, receipt + toolbar total in km when no kg, InsightHeader speaks
+sessions for run/bodyweight weeks); micro-motion pass (FadeInDown card
+entrances, ZoomIn check, all reduceMotion-gated, one vocabulary).
+
 **Still stubs:** RevenueCat billing (the /paywall UI is real; purchases need
-the dev build), weekly recap, share card.
+the dev build), recap push notification (in-app card shipped).
 
 Constraints: user runs Expo Go (SDK 54) — Apple sign-in, Keychain entitlements
 and voice need a dev build (`npx expo run:ios`). Install with

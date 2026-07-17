@@ -105,3 +105,14 @@ test('namesMatch is plural-insensitive containment, so typos do NOT match', () =
   assert.ok(!namesMatch('', 'Bench Press'));
   assert.ok(!namesMatch('bench press', 'Row'));
 });
+
+test('a run-only session totals in distance, not an empty 0 kg', () => {
+  const run: ParsedItem = {
+    ...item('Run', 0, [set({ distance_m: 5000, kind: 'working' })]),
+    modality: 'cardio',
+  };
+  const receipt = buildReceipt(resultOf(run), []);
+  assert.equal(receipt.volume, 0);
+  assert.equal(receipt.distanceM, 5000);
+  assert.equal(receipt.totalSets, 1);
+});

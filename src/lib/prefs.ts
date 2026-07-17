@@ -15,6 +15,8 @@ const KEYS = {
   goal: 'pref_goal',
   logSource: 'pref_log_source',
   smallestPlate: 'pref_smallest_plate_kg',
+  restSeconds: 'pref_rest_seconds',
+  barWeight: 'pref_bar_weight_kg',
 } as const;
 
 export function isOnboardingDone(): boolean {
@@ -53,4 +55,29 @@ export function getSmallestPlateKg(): number | null {
   if (v == null) return null;
   const n = Number.parseFloat(v);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Rest-timer length; the toolbar long-press cycles these. */
+export const REST_OPTIONS_S = [60, 90, 120, 180] as const;
+export const DEFAULT_REST_S = 120;
+
+export function setRestSeconds(s: number) {
+  setMeta(KEYS.restSeconds, String(s));
+}
+
+export function getRestSeconds(): number {
+  const n = Number.parseFloat(getMeta(KEYS.restSeconds) ?? '');
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_REST_S;
+}
+
+/** The bar the plate math loads against (checklist long-press). */
+export const DEFAULT_BAR_KG = 20;
+
+export function setBarWeightKg(kg: number) {
+  setMeta(KEYS.barWeight, String(kg));
+}
+
+export function getBarWeightKg(): number {
+  const n = Number.parseFloat(getMeta(KEYS.barWeight) ?? '');
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_BAR_KG;
 }

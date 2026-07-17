@@ -10,7 +10,15 @@ import { buildWorkoutsCsv } from '@/lib/export-csv';
 import { tap, tapMedium } from '@/lib/haptics';
 import { pickAndImportCsv } from '@/lib/import/pick';
 import { recachePredictionFromLatest } from '@/lib/predict/cache';
-import { getGoal, getSmallestPlateKg, setGoal, setSmallestPlateKg, type Goal } from '@/lib/prefs';
+import {
+  getBarWeightKg,
+  getGoal,
+  getSmallestPlateKg,
+  setBarWeightKg,
+  setGoal,
+  setSmallestPlateKg,
+  type Goal,
+} from '@/lib/prefs';
 import { scheduleSync } from '@/lib/sync/index';
 import { color, CONTROL_HEIGHT, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 import { fmtNumber } from '@/lib/parse/summarize';
@@ -31,6 +39,9 @@ const GOAL_OPTIONS: { id: Goal; label: string }[] = [
 /** Same options onboarding offers — one source of plate truth for the picker. */
 const PLATE_OPTIONS = [0.5, 1.25, 2.5] as const;
 
+/** Olympic 20 or the common 15 — feeds the checklist's plate math. */
+const BAR_OPTIONS = [15, 20] as const;
+
 export default function Settings() {
   const router = useRouter();
   const userId = useSession((s) => s.userId);
@@ -40,6 +51,13 @@ export default function Settings() {
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [goal, setGoalState] = useState<Goal | null>(() => getGoal());
   const [plate, setPlateState] = useState<number | null>(() => getSmallestPlateKg());
+  const [bar, setBarState] = useState<number>(() => getBarWeightKg());
+
+  const handleBar = (kg: number) => {
+    tap();
+    setBarWeightKg(kg);
+    setBarState(kg);
+  };
 
   const handleGoal = (g: Goal) => {
     tap();
@@ -156,6 +174,25 @@ export default function Settings() {
                     style={[styles.segmentLabel, plate === p && styles.segmentLabelSelected]}
                     maxFontSizeMultiplier={MAX_FONT_SCALE}>
                     {fmtNumber(p)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+          <View style={[styles.row, styles.rowDivider]}>
+            <Text style={styles.rowLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              Bar weight
+            </Text>
+            <View style={styles.segments}>
+              {BAR_OPTIONS.map((b) => (
+                <Pressable
+                  key={b}
+                  onPress={() => handleBar(b)}
+                  style={[styles.segment, bar === b && styles.segmentSelected]}>
+                  <Text
+                    style={[styles.segmentLabel, bar === b && styles.segmentLabelSelected]}
+                    maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    {b} kg
                   </Text>
                 </Pressable>
               ))}

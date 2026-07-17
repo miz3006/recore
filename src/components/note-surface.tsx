@@ -1,13 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
+import { getLastSetHint, type LastSetHint } from '@/lib/db/last-set';
 import { tap } from '@/lib/haptics';
+import { typedNameOf } from '@/lib/parse/receipt';
 import { type GutterSignal } from '@/lib/parse/types';
 import { color, MAX_FONT_SCALE } from '@/lib/theme';
 import { useCurrentNote, useGhostVisible, useSession } from '@/state/session-store';
 
 import { GhostPrediction } from './ghost-prediction';
-import { GutterPending, GutterValue, PENDING_STEP_MS, PendingDot } from './gutter-value';
+import { GutterHint, GutterPending, GutterValue, PENDING_STEP_MS, PendingDot } from './gutter-value';
 import {
   BODY_PADDING_H,
   BODY_PADDING_TOP,
@@ -19,6 +21,7 @@ import {
 import { EmptyDayCards } from './empty-note-cards';
 import { noteInputRef } from './note-focus';
 import { SessionReceipt } from './session-receipt';
+import { WeekRecapCard } from './week-recap-card';
 
 const EMPTY_PLACEHOLDER = 'Start logging your workout…';
 
@@ -39,6 +42,8 @@ const EMPTY_PLACEHOLDER = 'Start logging your workout…';
  */
 export function NoteSurface() {
   const note = useCurrentNote();
+  const userId = useSession((s) => s.userId);
+  const workoutId = useSession((s) => s.workoutId);
   const setNote = useSession((s) => s.setNote);
   const startFromGhost = useSession((s) => s.startFromGhost);
   const dismissGhost = useSession((s) => s.dismissGhost);
@@ -95,6 +100,25 @@ export function NoteSurface() {
     if (!parsing) return false;
     if (!lines[i] || lines[i].trim().length === 0) return false;
     return parsedSnapshot === null || lines[i] !== snapshotLines[i];
+  };
+
+  // THE "LAST TIME" HINT: a line that names an exercise but has no numbers yet
+  // instantly shows last session's top set — pure local lookup, cached per
+  // shorthand for the day so keystrokes stay free.
+  const hintCache = useRef(new Map<string, LastSetHint | null>());
+  useEffect(() => {
+    hintCache.current.clear();
+  }, [workoutId]);
+
+  const hintForLine = (i: number): LastSetHint | null => {
+    if (!userId) return null;
+    const line = lines[i] ?? '';
+    if (line.trim().length === 0 || /\d/.test(line)) return null;
+    const typed = typedNameOf(line);
+    if (typed.length < 3) return null;
+    const cache = hintCache.current;
+    if (!cache.has(typed)) cache.set(typed, getLastSetHint(userId, typed, workoutId));
+    return cache.get(typed) ?? null;
   };
 
   // RECEIPT MODE: full-width note, no gutter, no measuring mirror. One quiet
@@ -179,6 +203,9 @@ export function NoteSurface() {
           tap();
           focusInput();
         }}>
+        {/* Monday's quiet ceremony: last week, summed — once, dismissible. */}
+        {note.trim().length === 0 ? <WeekRecapCard /> : null}
+
         {/* THE PLAN (CLAUDE.md §7): today's prescription as a grey checklist —
             rows check off as the note fills, or on a tap of the circle. */}
         {ghostVisible ? (
@@ -238,10 +265,20 @@ export function NoteSurface() {
             {lines.map((_, i) => {
               const signal = signalForLine(i);
               const exercise = signal ? lineExercises[i] : undefined;
+              const hint = !signal && !pendingForLine(i) ? hintForLine(i) : null;
               return (
                 <View key={i} pointerEvents="box-none" style={{ height: lineHeights[i] ?? NOTE_LINE_HEIGHT }}>
                   {!signal && pendingForLine(i) ? (
                     <GutterPending rowHeight={NOTE_LINE_HEIGHT} />
+                  ) : hint ? (
+                    <Pressable
+                      hitSlop={{ left: 8, right: 0, top: 0, bottom: 0 }}
+                      onPress={() => {
+                        tap();
+                        openExerciseSheet(hint.canonical);
+                      }}>
+                      <GutterHint rowHeight={NOTE_LINE_HEIGHT} text={hint.echo} />
+                    </Pressable>
                   ) : exercise ? (
                     <Pressable
                       hitSlop={{ left: 8, right: 0, top: 0, bottom: 0 }}

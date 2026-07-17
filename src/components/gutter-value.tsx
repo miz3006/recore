@@ -167,6 +167,40 @@ export function GutterValue({
 }
 
 /**
+ * The "LAST TIME" hint — the most-quoted five-star feature in this category:
+ * name an exercise (no numbers yet) and the gutter instantly shows last
+ * session's top set, straight from local SQLite. It sits a full step quieter
+ * than parse output (textMuted, not white) so it can't be mistaken for a
+ * logged result, and vanishes the moment numbers appear on the line.
+ */
+export function GutterHint({ text, rowHeight }: { text: string; rowHeight: number }) {
+  const reduceMotion = useReducedMotion();
+  const opacity = useSharedValue(reduceMotion ? 1 : 0);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    opacity.value = withTiming(1, { duration: SETTLE_MS, easing: Easing.out(Easing.cubic) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return (
+    <Animated.View style={[{ height: rowHeight }, styles.row, animatedStyle]}>
+      <Text
+        style={styles.hint}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+        allowFontScaling
+        maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {text}
+      </Text>
+    </Animated.View>
+  );
+}
+
+/**
  * The "analyzing" state: while a parse is in flight, each pending line shows a
  * three-dot wave — the universal "thinking" indicator — in the SAME place its
  * result will land. Dots light up one after another (0.25 → 0.8 opacity, still
@@ -228,6 +262,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     fontVariant: ['tabular-nums'],
     color: color.textPrimary,
+  },
+  hint: {
+    fontFamily: fonts.mono,
+    fontSize: NOTE_FONT_SIZE,
+    lineHeight: NOTE_LINE_HEIGHT,
+    fontWeight: '400',
+    letterSpacing: 0.2,
+    fontVariant: ['tabular-nums'],
+    color: color.textMuted, // a memory, not a result
   },
   pendingRow: {
     flexDirection: 'row',
