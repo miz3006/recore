@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildReceipt, namesMatch, typedNameOf } from './receipt.ts';
+import { buildReceipt, matchPlanIndex, nameKey, namesMatch, typedNameOf } from './receipt.ts';
 import { echoTextOf, topOfSets } from './summarize.ts';
 import { type LineSignal, type ParseResult, type ParsedItem, type ParsedSet } from './types.ts';
 
@@ -104,6 +104,24 @@ test('namesMatch is plural-insensitive containment, so typos do NOT match', () =
   assert.ok(!namesMatch('tricpes', 'Triceps Pushdown'));
   assert.ok(!namesMatch('', 'Bench Press'));
   assert.ok(!namesMatch('bench press', 'Row'));
+  // Two-letter fragments carry no evidence — mid-keystroke text never matches.
+  assert.ok(!namesMatch('d', 'Deadlift'));
+  assert.ok(!namesMatch('be', 'Bench Press'));
+});
+
+test('matchPlanIndex: exact wins, single containment passes, ambiguity checks nothing', () => {
+  const plan = ['benchpres', 'overheadpres', 'squat'].map((k) => k);
+  assert.equal(matchPlanIndex('bench press', plan), 0);
+  assert.equal(matchPlanIndex('overhead press', plan), 1);
+  assert.equal(matchPlanIndex('front squat', plan), 2); // single containment
+  assert.equal(matchPlanIndex('press', plan), null); // ambiguous → silence
+  assert.equal(matchPlanIndex('be', plan), null); // mid-keystroke fragment
+  assert.equal(matchPlanIndex('deadlift', plan), null); // not in the plan
+});
+
+test('nameKey strips to letters and singular', () => {
+  assert.equal(nameKey('Weighted Dips'), 'weighteddip');
+  assert.equal(nameKey('21s'), ''); // digit-led names key to nothing
 });
 
 test('a run-only session totals in distance, not an empty 0 kg', () => {

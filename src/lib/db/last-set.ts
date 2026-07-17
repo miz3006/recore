@@ -52,11 +52,16 @@ function resolveForHint(userId: string, typed: string): ExerciseRow | null {
     if (aliasesOf(row).some((a) => normalize(a) === needle)) return row;
   }
   // Looser pass so "rows" still finds "Row" — exact matches already won above.
+  // Ambiguity ("press" hitting bench AND overhead) resolves to SILENCE, not a
+  // guess: a wrong hint costs more trust than no hint.
+  let loose: ExerciseRow | null = null;
   for (const row of rows) {
-    if (namesMatch(needle, row.canonical)) return row;
-    if (aliasesOf(row).some((a) => namesMatch(needle, a))) return row;
+    const hit = namesMatch(needle, row.canonical) || aliasesOf(row).some((a) => namesMatch(needle, a));
+    if (!hit) continue;
+    if (loose && loose.id !== row.id) return null;
+    loose = loose ?? row;
   }
-  return null;
+  return loose;
 }
 
 export function getLastSetHint(

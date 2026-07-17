@@ -4,7 +4,7 @@ import Animated, { FadeIn, FadeInDown, useReducedMotion, ZoomIn } from 'react-na
 
 import { getAdherenceRecord } from '@/lib/db/insights';
 import { tap, tapMedium } from '@/lib/haptics';
-import { namesMatch, typedNameOf } from '@/lib/parse/receipt';
+import { matchPlanIndex, nameKey, typedNameOf } from '@/lib/parse/receipt';
 import { plateLine } from '@/lib/plates';
 import { getBarWeightKg, getSmallestPlateKg } from '@/lib/prefs';
 import { alpha, color, CONTROL_HEIGHT, fonts, ink, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
@@ -56,23 +56,30 @@ export function GhostPrediction({
     [ghost],
   );
 
-  // A plan row is DONE when the note already carries that exercise — either
-  // parsed (canonical names) or freshly typed/checked (instant feedback while
-  // the parse is still in flight).
+  // A plan row is DONE when the note already carries that exercise — parsed
+  // (canonical names) or freshly typed/checked (instant feedback while the
+  // parse is in flight). Each note name checks off AT MOST ONE row (exact key
+  // wins, ambiguity checks nothing — matchPlanIndex, pure + tested), prose
+  // sentences and mid-keystroke fragments never participate, and a checked
+  // line always re-matches its own row verbatim as the safety net.
   const doneFlags = useMemo(() => {
-    const parsedNames = Object.values(lineExercises);
-    const typedNames = note
-      .split('\n')
-      .map((l) => typedNameOf(l))
-      .filter((n) => n.length > 0);
-    return planLines.map((line) => {
-      const name = typedNameOf(line);
-      if (!name) return false;
-      return (
-        parsedNames.some((c) => namesMatch(name, c)) ||
-        typedNames.some((t) => namesMatch(name, t))
-      );
-    });
+    const planKeys = planLines.map((l) => nameKey(typedNameOf(l)));
+    const noteLines = note.split('\n');
+    const noteNames = [
+      ...Object.values(lineExercises),
+      ...noteLines
+        .filter((l) => /\d/.test(l) || l.trim().split(/\s+/).length <= 4)
+        .map((l) => typedNameOf(l)),
+    ];
+
+    const done = planLines.map(
+      (line) => noteLines.some((l) => l.trim() === line.trim()), // checked verbatim
+    );
+    for (const name of noteNames) {
+      const i = matchPlanIndex(name, planKeys);
+      if (i !== null) done[i] = true;
+    }
+    return done;
   }, [planLines, lineExercises, note]);
 
   if (!ghost || planLines.length === 0) return null;
@@ -258,6 +265,7 @@ const styles = StyleSheet.create({
   rowText: {
     fontSize: type.subhead.fontSize,
     lineHeight: type.subhead.lineHeight,
+    fontVariant: ['tabular-nums'],
   },
   plates: {
     fontFamily: fonts.mono,

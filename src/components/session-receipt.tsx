@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
 import Animated, {
   Easing,
@@ -226,7 +227,9 @@ export function SessionReceipt({
     await new Promise((r) => setTimeout(r, 80)); // let the brand row paint
     try {
       const uri = await captureRef(cardRef, { format: 'png', quality: 1 });
-      await Share.share({ url: uri });
+      // view-shot returns file:// on Android but a bare path on iOS.
+      const url = uri.startsWith('file://') ? uri : `file://${uri}`;
+      await Sharing.shareAsync(url, { mimeType: 'image/png', UTI: 'public.png' });
     } catch {
       // sharing is a bonus, never an error surface
     } finally {

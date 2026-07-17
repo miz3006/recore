@@ -56,6 +56,7 @@ export function NoteSurface() {
   const receiptReason = useSession((s) => s.receiptReason);
   const openExerciseSheet = useSession((s) => s.openExerciseSheet);
   const openFixSheet = useSession((s) => s.openFixSheet);
+  const fixRevision = useSession((s) => s.fixRevision);
   const ghostVisible = useGhostVisible();
 
   // The module-level ref (note-focus.ts) so the toolbar's + can focus us too.
@@ -108,7 +109,7 @@ export function NoteSurface() {
   const hintCache = useRef(new Map<string, LastSetHint | null>());
   useEffect(() => {
     hintCache.current.clear();
-  }, [workoutId]);
+  }, [workoutId, fixRevision]);
 
   const hintForLine = (i: number): LastSetHint | null => {
     if (!userId) return null;
@@ -168,7 +169,7 @@ export function NoteSurface() {
           {receipt ? (
             <SessionReceipt
               data={receipt}
-              noteLines={lines}
+              noteLines={snapshotLines}
               reason={receiptReason}
               revision={parsedSnapshot ?? ''}
               stale={parsedSnapshot !== null && parsedSnapshot !== note}
@@ -322,7 +323,7 @@ export function NoteSurface() {
         {note.trim().length > 0 && receipt && receipt.rows.length >= 2 ? (
           <SessionReceipt
             data={receipt}
-            noteLines={lines}
+            noteLines={snapshotLines}
             reason={receiptReason}
             revision={parsedSnapshot ?? ''}
             stale={parsedSnapshot !== null && parsedSnapshot !== note}

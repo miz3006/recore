@@ -131,7 +131,7 @@ export default function Stats() {
             delta={wow != null ? `${wow >= 0 ? '↑' : '↓'} ${Math.abs(wow)}% vs last week` : undefined}
             // A lighter week is normal training, not a warning — red stays
             // reserved for deloads/errors (CLAUDE.md §8).
-            deltaTone={wow != null && wow >= 0 ? 'signal' : 'muted'}
+            deltaTone={wow != null && wow > 0 ? 'signal' : 'muted'}
           />
           <StatTile
             label="Sessions"

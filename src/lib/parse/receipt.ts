@@ -52,22 +52,52 @@ export function typedNameOf(lineText: string): string {
     .toLowerCase();
 }
 
+/** Letters-only, plural-insensitive comparison key ("Weighted Dips" →
+ * "weighteddip"). The shared currency of all loose name matching. */
+export function nameKey(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^\p{L}]+/gu, '')
+    .replace(/s$/u, '');
+}
+
 /**
- * Loose same-exercise test: letters only, plural-insensitive, containment
- * either way — "dips" matches "Dip", "incline smith machine" matches
- * "Incline Smith Machine Press". A typo like "tricpes" does NOT match
- * "Triceps Pushdown": that's a real correction, worth marking in the ledger.
+ * Loose same-exercise test: keys with containment either way — "dips" matches
+ * "Dip", "incline smith machine" matches "Incline Smith Machine Press". A typo
+ * like "tricpes" does NOT match "Triceps Pushdown": that's a real correction,
+ * worth marking in the ledger. Keys under three letters never match — a
+ * two-letter fragment contains no evidence.
  */
 export function namesMatch(a: string, b: string): boolean {
-  const key = (s: string) =>
-    s
-      .toLowerCase()
-      .replace(/[^\p{L}]+/gu, '')
-      .replace(/s$/u, '');
-  const ka = key(a);
-  const kb = key(b);
-  if (!ka || !kb) return false;
+  const ka = nameKey(a);
+  const kb = nameKey(b);
+  if (ka.length < 3 || kb.length < 3) return false;
   return ka.includes(kb) || kb.includes(ka);
+}
+
+/**
+ * Which plan row does a typed/parsed exercise name check off? Exact key
+ * equality wins outright; otherwise a SINGLE unambiguous containment match;
+ * anything ambiguous ("press" against both Bench Press and Overhead Press)
+ * checks nothing — silence beats a guess (CLAUDE.md §7.4).
+ */
+export function matchPlanIndex(name: string, planKeys: string[]): number | null {
+  const n = nameKey(name);
+  if (n.length < 3) return null;
+
+  const exact = planKeys.findIndex((k) => k === n);
+  if (exact !== -1) return exact;
+
+  let found = -1;
+  for (let i = 0; i < planKeys.length; i++) {
+    const k = planKeys[i]!;
+    if (k.length < 3) continue;
+    if (k.includes(n) || n.includes(k)) {
+      if (found !== -1 && planKeys[found] !== k) return null; // ambiguous
+      if (found === -1) found = i;
+    }
+  }
+  return found === -1 ? null : found;
 }
 
 export function buildReceipt(result: ParseResult, signals: LineSignal[]): ReceiptData {

@@ -61,7 +61,7 @@ export function getAllTimePRs(userId: string, limit = 12): PrRecord[] {
               w.performed_at AS performed_at,
               ROW_NUMBER() OVER (
                 PARTITION BY lower(e.canonical)
-                ORDER BY s.weight_kg DESC, COALESCE(s.reps, 0) DESC, w.performed_at DESC
+                ORDER BY s.weight_kg DESC, COALESCE(s.reps, 0) DESC, w.performed_at ASC
               ) AS rn
        FROM sets s
        JOIN items i ON s.item_id = i.id

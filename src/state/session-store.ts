@@ -58,6 +58,8 @@ interface SessionState {
   sheetExercise: string | null;
   /** The parsed line being corrected (long-press on a gutter value), or null. */
   fixTarget: FixTarget | null;
+  /** Bumped after every landed correction — read-side caches key on it. */
+  fixRevision: number;
   streak: number;
   ghost: GhostData | null;
   ghostDismissed: boolean;
@@ -186,6 +188,7 @@ export const useSession = create<SessionState>((set, get) => ({
   receiptReason: null,
   sheetExercise: null,
   fixTarget: null,
+  fixRevision: 0,
   streak: 0,
   ghost: null,
   ghostDismissed: false,
@@ -284,6 +287,9 @@ export const useSession = create<SessionState>((set, get) => ({
   checkGhostLine: (lineText) => {
     const { ghost, note } = get();
     if (!ghost) return;
+    // Idempotent: a line already in the note never appends twice (covers the
+    // fast double-tap and plan rows whose name can't be extracted).
+    if (note.split('\n').some((l) => l.trim() === lineText.trim())) return;
     markPredictionAccepted(ghost.id);
     const base = note.replace(/\s+$/, '');
     get().setNote(base.length > 0 ? `${base}\n${lineText}` : lineText);
@@ -308,13 +314,17 @@ export const useSession = create<SessionState>((set, get) => ({
   closeFixSheet: () => set({ fixTarget: null }),
 
   /** Persist the user's fix, then re-read the day from the (rebuilt) cache so
-   * the gutter reflects the corrected structure immediately. */
+   * the gutter reflects the corrected structure immediately. `fixRevision`
+   * lets read-side caches (the last-time hint) drop stale resolutions. */
   submitFix: (exercise, sets) => {
     const { userId, selectedDay, fixTarget } = get();
     if (!userId || !fixTarget) return;
 
     const changed = applyCorrection(userId, fixTarget, { exercise, sets });
-    set({ fixTarget: null, ...(changed ? loadDay(userId, selectedDay) : {}) });
+    set({
+      fixTarget: null,
+      ...(changed ? { ...loadDay(userId, selectedDay), fixRevision: get().fixRevision + 1 } : {}),
+    });
     if (changed) scheduleSync();
   },
 }));

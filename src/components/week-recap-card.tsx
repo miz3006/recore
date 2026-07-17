@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
-import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, useReducedMotion } from 'react-native-reanimated';
+import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
 
 import { getMeta, setMeta } from '@/lib/db/index';
@@ -26,6 +27,7 @@ const seenKey = (weekStart: string) => `recap_seen:${weekStart}`;
 
 export function WeekRecapCard() {
   const userId = useSession((s) => s.userId);
+  const selectedDay = useSession((s) => s.selectedDay);
   const reduceMotion = useReducedMotion();
   const cardRef = useRef<View>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -33,6 +35,8 @@ export function WeekRecapCard() {
 
   const recap = useMemo(() => {
     if (!userId) return null;
+    // Today only — browsing an old empty day is history, not a Monday ritual.
+    if (selectedDay !== todayKey()) return null;
     const thisMonday = mondayOf(todayKey());
     if (getMeta(seenKey(thisMonday)) === '1') return null;
 
@@ -47,12 +51,12 @@ export function WeekRecapCard() {
         : null;
 
     // All-time bests whose date fell inside last week — the PRs that stuck.
-    const prs = getAllTimePRs(userId, 50).filter(
+    const prs = getAllTimePRs(userId, 1000).filter(
       (pr) => pr.day >= lastWeek.weekStart && pr.day < thisMonday,
     );
 
     return { thisMonday, lastWeek, delta, prs };
-  }, [userId]);
+  }, [userId, selectedDay]);
 
   if (!recap || dismissed) return null;
 
@@ -68,7 +72,9 @@ export function WeekRecapCard() {
     await new Promise((r) => setTimeout(r, 80));
     try {
       const uri = await captureRef(cardRef, { format: 'png', quality: 1 });
-      await Share.share({ url: uri });
+      // view-shot returns file:// on Android but a bare path on iOS.
+      const url = uri.startsWith('file://') ? uri : `file://${uri}`;
+      await Sharing.shareAsync(url, { mimeType: 'image/png', UTI: 'public.png' });
     } catch {
       // sharing is a bonus, never an error surface
     } finally {
@@ -112,9 +118,13 @@ export function WeekRecapCard() {
         <Text style={styles.meta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           {recap.lastWeek.sessions} {recap.lastWeek.sessions === 1 ? 'session' : 'sessions'}
           {recap.delta != null ? (
-            <Text style={recap.delta >= 0 ? styles.deltaUp : styles.deltaDown}>
+            <Text style={recap.delta > 0 ? styles.deltaUp : styles.deltaDown}>
               {'  '}
-              {recap.delta >= 0 ? '↑' : '↓'} {Math.abs(recap.delta)}%
+              {recap.delta > 0
+                ? `↑ ${recap.delta}%`
+                : recap.delta < 0
+                  ? `↓ ${Math.abs(recap.delta)}%`
+                  : '= same'}
             </Text>
           ) : null}
         </Text>

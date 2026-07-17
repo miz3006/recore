@@ -8,7 +8,7 @@ import { formatDistanceTotal } from '@/lib/parse/summarize';
 import { getRestSeconds, REST_OPTIONS_S, setRestSeconds } from '@/lib/prefs';
 import { color, MAX_FONT_SCALE, moderateScale, radius, ROUND_BUTTON, spacing, type } from '@/lib/theme';
 import { startDictation, voiceAvailable, type DictationHandle } from '@/lib/voice';
-import { useCurrentNote, useGhostVisible, useSession } from '@/state/session-store';
+import { useCurrentNote, useSession } from '@/state/session-store';
 
 import { Icon, type IconName } from './icon';
 import { focusNote } from './note-focus';
@@ -32,8 +32,6 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
   const parsedSnapshot = useSession((s) => s.parsedSnapshot);
   const parsedVolume = useSession((s) => s.parsedVolume);
   const receipt = useSession((s) => s.receipt);
-  const ghostVisible = useGhostVisible();
-  const dismissGhost = useSession((s) => s.dismissGhost);
   const total = parsedSnapshot === note ? parsedVolume : estimateVolume(note);
   // A run-only session totals in distance, not an empty pill (kg still wins
   // when both exist — the mixed-session detail lives in the receipt).
@@ -85,12 +83,11 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
     }
   };
 
-  // + = "start a new line": dismiss the ghost if it's covering the page,
-  // make sure the note ends on a fresh line, and drop the cursor in.
+  // + = "start a new line": make sure the note ends on a fresh line and drop
+  // the cursor in. (The checklist card has its own dismiss — the + must never
+  // silently destroy a surviving plan.)
   const handlePlus = () => {
-    if (ghostVisible) {
-      dismissGhost();
-    } else if (note.length > 0 && !note.endsWith('\n')) {
+    if (note.length > 0 && !note.endsWith('\n')) {
       setNote(`${note}\n`);
     }
     focusNote();
@@ -145,8 +142,9 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
  * The rest timer — the second most-quoted five-star feature in this category.
  * Tap to start (the button becomes a live mono countdown), tap again to stop.
  * Long-press while idle cycles the length (1:00 → 1:30 → 2:00 → 3:00, saved).
- * The last ten seconds speak in volt; the finish is a success haptic and a
- * quiet volt "go" — never an alarm.
+ * The last ten seconds firm up; the finish is a success haptic and the pill
+ * inverting to white — the same "the app spoke" emphasis as the live mic.
+ * Never an alarm, and never volt: the machine's ink belongs to the AI.
  */
 const TIMER_TICK_MS = 250;
 const GO_FLASH_MS = 1800;
@@ -217,11 +215,11 @@ function RestTimer() {
       style={({ pressed }) => [
         label !== null ? styles.timerPill : styles.round,
         go && styles.timerGo,
-        pressed && styles.roundPressed,
+        pressed && !go && styles.roundPressed,
       ]}>
       {label !== null ? (
         <Text
-          style={[styles.timerText, (lastTen || go) && styles.timerTextSignal]}
+          style={[styles.timerText, lastTen && styles.timerTextFirm, go && styles.timerTextGo]}
           maxFontSizeMultiplier={MAX_FONT_SCALE}>
           {label}
         </Text>
@@ -302,9 +300,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: color.surface,
   },
+  // Finished = the app spoke: solid white, black text (same as the live mic).
   timerGo: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: color.signal,
+    backgroundColor: color.accent,
   },
   timerText: {
     fontSize: type.subhead.fontSize,
@@ -312,7 +310,11 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
     fontVariant: ['tabular-nums'],
   },
-  timerTextSignal: {
-    color: color.signal,
+  timerTextFirm: {
+    fontWeight: '700',
+  },
+  timerTextGo: {
+    color: color.bg,
+    fontWeight: '700',
   },
 });
