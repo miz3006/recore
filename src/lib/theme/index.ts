@@ -1,4 +1,4 @@
-export { color, alpha, type ColorToken } from './color';
+export { color, alpha, ink, type ColorToken } from './color';
 export {
   spacing,
   radius,

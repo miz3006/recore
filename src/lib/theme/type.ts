@@ -33,6 +33,10 @@ export const type = {
   subhead: { fontSize: moderateScale(15), lineHeight: moderateScale(20), fontWeight: '400' }, // secondary / grey
   caption: { fontSize: moderateScale(13), lineHeight: moderateScale(18), fontWeight: '400' },
   bigNumber: { fontSize: moderateScale(44), lineHeight: moderateScale(50), fontWeight: '700' }, // 175 cm, 70.0 kg
+  /** Stat-tile numerals (Progress hub, insight header). Always tabular-nums. */
+  statNumber: { fontSize: moderateScale(34), lineHeight: moderateScale(40), fontWeight: '700' },
+  /** The one hero numeral per screen (receipt total). Always tabular-nums. */
+  heroNumber: { fontSize: moderateScale(48), lineHeight: moderateScale(54), fontWeight: '700' },
 } as const satisfies Record<string, TextStyle>;
 
 /**

@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getExerciseStats, type ExerciseStats } from '@/lib/db/exercise-stats';
+import { getE1rmSeries } from '@/lib/db/insights';
 import { tap } from '@/lib/haptics';
 import {
   alpha,
@@ -18,6 +19,7 @@ import {
 import { groupThousands } from '@/lib/parse/estimate';
 import { labelForDay, useSession } from '@/state/session-store';
 
+import { Sparkline } from './charts';
 import { SheetGrabber } from './sheet-grabber';
 
 /**
@@ -39,6 +41,13 @@ export function ExerciseSheet() {
     if (!userId || !sheetExercise) return null;
     return getExerciseStats(userId, sheetExercise);
   }, [userId, sheetExercise]);
+
+  // The e1RM trend — the number a serious lifter actually chases over time.
+  const e1rmSeries = useMemo(() => {
+    if (!userId || !sheetExercise) return [];
+    return getE1rmSeries(userId, sheetExercise);
+  }, [userId, sheetExercise]);
+  const [chartWidth, setChartWidth] = useState(0);
 
   const close = () => {
     tap();
@@ -80,25 +89,41 @@ export function ExerciseSheet() {
                 </View>
               ) : null}
 
-              {/* Volume per session — latest at full white. */}
-              <View style={styles.chart}>
-                {stats.sessions.map((s, i) => (
-                  <View key={s.day} style={styles.barSlot}>
-                    <View
-                      style={[
-                        styles.bar,
-                        {
-                          height: Math.max(3, (s.volume / maxVolume) * CHART_HEIGHT),
-                          backgroundColor:
-                            i === stats.sessions.length - 1
-                              ? color.accent
-                              : alpha(color.accent, 0.28),
-                        },
-                      ]}
-                    />
+              {/* The e1RM trend line over recent sessions — the latest point
+                  in signal. Bodyweight work (no e1RM) falls back to per-session
+                  volume bars. */}
+              {e1rmSeries.length >= 2 ? (
+                <View style={styles.trend} onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}>
+                  <Sparkline values={e1rmSeries.map((p) => p.e1rm)} width={chartWidth} />
+                  <View style={styles.trendAxis}>
+                    <Text style={styles.trendLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                      {labelForDay(e1rmSeries[0]!.day)}
+                    </Text>
+                    <Text style={styles.trendLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                      {labelForDay(e1rmSeries[e1rmSeries.length - 1]!.day)}
+                    </Text>
                   </View>
-                ))}
-              </View>
+                </View>
+              ) : (
+                <View style={styles.chart}>
+                  {stats.sessions.map((s, i) => (
+                    <View key={s.day} style={styles.barSlot}>
+                      <View
+                        style={[
+                          styles.bar,
+                          {
+                            height: Math.max(3, (s.volume / maxVolume) * CHART_HEIGHT),
+                            backgroundColor:
+                              i === stats.sessions.length - 1
+                                ? color.accent
+                                : alpha(color.accent, 0.28),
+                          },
+                        ]}
+                      />
+                    </View>
+                  ))}
+                </View>
+              )}
 
               {/* Last sessions, newest first. */}
               <View style={styles.rows}>
@@ -192,6 +217,18 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     height: CHART_HEIGHT,
     marginTop: spacing.xl,
+  },
+  trend: {
+    marginTop: spacing.xl,
+  },
+  trendAxis: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing.xs,
+  },
+  trendLabel: {
+    ...type.caption,
+    color: color.textMuted,
   },
   barSlot: {
     flex: 1,

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { tap } from '@/lib/haptics';
-import { color, HIT, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { color, fonts, HIT, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 import { labelForDay, useSession } from '@/state/session-store';
 
 import { CalendarSheet } from './calendar-sheet';
@@ -45,15 +45,12 @@ export function TopBar() {
       <CalendarSheet visible={calendarOpen} onClose={() => setCalendarOpen(false)} />
 
       <View style={[styles.side, styles.right]}>
-        {/* A streak of 0 is not a number worth speaking — the flame appears
-            only once there is one (CLAUDE.md §9: no number, no voice). */}
+        {/* The streak is a bare mono number (CLAUDE.md §1 — no flame, no
+            emoji); zero is not a number worth speaking. */}
         {streak > 0 ? (
-          <View style={styles.streak}>
-            <Icon name="flame" size={moderateScale(17)} tint={color.textSecondary} />
-            <Text style={styles.streakNum} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {streak}
-            </Text>
-          </View>
+          <Text style={styles.streakNum} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {streak}
+          </Text>
         ) : null}
         <Pressable
           onPress={() => {
@@ -109,15 +106,12 @@ const styles = StyleSheet.create({
     fontSize: type.subhead.fontSize,
     fontWeight: '600',
   },
-  streak: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
   streakNum: {
-    color: color.textPrimary,
+    fontFamily: fonts.mono,
+    color: color.textSecondary,
     fontSize: type.subhead.fontSize,
-    fontWeight: '600',
+    fontWeight: '500',
+    letterSpacing: 0.2,
     fontVariant: ['tabular-nums'],
   },
   pressedIcon: {

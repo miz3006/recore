@@ -12,17 +12,18 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { type GutterSignal } from '@/lib/parse/types';
-import { alpha, color, fonts, MAX_FONT_SCALE, moderateScale, radius, spacing } from '@/lib/theme';
+import { alpha, color, fonts, ink, MAX_FONT_SCALE, moderateScale, radius, spacing } from '@/lib/theme';
 
 import { NOTE_FONT_SIZE, NOTE_LINE_HEIGHT } from './note-metrics';
 
 /**
  * The parsed value in the RIGHT GUTTER of a line (CLAUDE.md §5, §8).
  *
- * Same white as the user's text, separated by TEXTURE and PLACE, not hue —
- * muted monospace, right-aligned, sharing the note's baseline grid. Hierarchy
- * is pure opacity: the top-set ECHO ("80 ×8") sits quietest at 45%, a
- * comparison signal (↑ ↓ =) at 70%, a PR at 100% inside a hairline white pill.
+ * TWO INKS: the user's text is white; the machine's voice is mono, and when it
+ * has something to SAY — you went up, you set a PR — it says it in signal
+ * volt. The first-time echo ("80 ×8") stays quiet white, comparisons speak at
+ * ink.delta, and progress (↑ / PR) carries the accent. Hierarchy is opacity +
+ * hue with one meaning: volt = you got stronger.
  *
  * THE PARSE SWEEP (CLAUDE.md §9): when a parse result lands, values settle in
  * top-to-bottom — each one fades in and slides 4px from the right with a small
@@ -31,9 +32,9 @@ import { NOTE_FONT_SIZE, NOTE_LINE_HEIGHT } from './note-metrics';
  * a new revision replays the sweep. Under reduceMotion the structure appears
  * instantly, no sweep.
  */
-const ECHO_OPACITY = 0.45;
-const SIGNAL_OPACITY = 0.7;
-const PR_OPACITY = 1;
+const ECHO_OPACITY = ink.echo;
+const SIGNAL_OPACITY = ink.delta;
+const PR_OPACITY = ink.full;
 const STAGGER_MS = 45;
 const SETTLE_MS = 260;
 const SETTLE_SHIFT = 4;
@@ -66,6 +67,11 @@ function targetOpacity(signal: GutterSignal): number {
     default:
       return SIGNAL_OPACITY;
   }
+}
+
+/** Progress speaks in the machine's ink; everything else stays white. */
+export function signalTint(signal: GutterSignal): string {
+  return signal.kind === 'up' || signal.kind === 'pr' ? color.signal : color.textPrimary;
 }
 
 export function GutterValue({
@@ -147,7 +153,7 @@ export function GutterValue({
         </View>
       ) : (
         <Text
-          style={styles.signal}
+          style={[styles.signal, { color: signalTint(signal) }]}
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.75}
@@ -240,13 +246,13 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: alpha(color.accent, 0.5),
+    borderColor: alpha(color.signal, ink.pill),
   },
   prText: {
     fontFamily: fonts.mono,
     fontSize: moderateScale(11),
     fontWeight: '500',
     letterSpacing: 1,
-    color: color.textPrimary,
+    color: color.signal,
   },
 });

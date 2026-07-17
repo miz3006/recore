@@ -98,12 +98,13 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
           router.push('/stats');
         }}
         style={({ pressed }) => [styles.volumePill, pressed && styles.roundPressed]}>
-        <Icon name="flame" size={moderateScale(16)} tint={color.textSecondary} />
-        {/* No number, no voice (CLAUDE.md §9): the count joins the flame only
-            once there is real volume behind it. */}
+        <Icon name="chart" size={moderateScale(15)} tint={color.textSecondary} />
+        {/* No number, no voice (CLAUDE.md §9): the session tonnage joins the
+            chart glyph only once there is real volume behind it. */}
         {total > 0 ? (
           <Text style={styles.volumeText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {groupThousands(total)}
+            <Text style={styles.volumeUnit}> kg</Text>
           </Text>
         ) : null}
       </Pressable>
@@ -122,7 +123,6 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
             tint={recording ? color.bg : color.textSecondary}
           />
         </Pressable>
-        <RoundButton name="camera" />
         <RoundButton name="plus" onPress={handlePlus} />
         <RoundButton name="keyboard" onPress={() => Keyboard.dismiss()} />
       </View>
@@ -165,6 +165,10 @@ const styles = StyleSheet.create({
     fontSize: type.subhead.fontSize,
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
+  },
+  volumeUnit: {
+    color: color.textSecondary,
+    fontWeight: '500',
   },
   actions: {
     flexDirection: 'row',

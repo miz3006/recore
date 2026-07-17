@@ -67,7 +67,19 @@ sync up as training data), **zero-config split matching** (§7.2 Gap 2 —
 **adherence instrumentation** (§7.2 Gap 3 — `accepted_at` on Start,
 `outcome` followed/edited/ignored settled after each parse).
 
-**Still stubs:** onboarding, paywall/RevenueCat.
+**Also built (2026-07-17 design overhaul, research-driven):** the TWO-INK
+system (signal volt `#C8FF00` = the machine's ink — see §8), universal session
+LEDGER (SessionReceipt for every parsed session, staged reading header),
+labeled NEXT SESSION ghost card with adherence trust line, InsightHeader
+landmark, empty-state cards (last-session peek / self-typing demo), Progress
+hub (/stats: StatTiles, WeekBars + session dots, record book, training log,
+predictor record), real /settings (goal + plate editable, CSV export), /paywall
+UI (Hevy-lane pricing, Bill of Rights), react-native-svg charts, primitives
+(Card/CaptionLabel/StatTile), e1RM Sparkline in ExerciseSheet, `db/insights.ts`
+(adherence record, all-time PRs, recent sessions, e1RM series).
+
+**Still stubs:** RevenueCat billing (the /paywall UI is real; purchases need
+the dev build), weekly recap, share card.
 
 Constraints: user runs Expo Go (SDK 54) — Apple sign-in, Keychain entitlements
 and voice need a dev build (`npx expo run:ios`). Install with
@@ -307,41 +319,57 @@ every size comes from the tokens in `src/lib/theme/type.ts`, which run through
 ONLY in the right gutter, aligned via measured line heights — never for
 headings or buttons.
 
-### Color
-White is the accent. Monochrome, near-black canvas, no decorative hue — the
-restraint IS the aesthetic (Vercel, Linear, Things 3):
+### Color — TWO INKS (2026-07-17 design overhaul)
+The user writes in white; **the machine answers in SIGNAL volt `#C8FF00`**.
+Monochrome base, near-black canvas, and exactly ONE semantic accent at ~10%
+coverage (research: Whoop/Oura/Peloton — zero-accent monochrome reads
+unfinished; one meaningful accent reads premium):
 
 ```ts
 bg '#0A0A0A' · surface '#161616' · surfaceHigh '#202020' · accent '#FFFFFF'
-textPrimary '#FFFFFF' · textSecondary '#9A9A9E' · textMuted '#5A5A5E'
+signal '#C8FF00' (THE MACHINE'S INK) · textPrimary '#FFFFFF'
+textSecondary '#9A9A9E' · textMuted '#5A5A5E'
 border '#222222' (hairline 0.5px) · error '#FF453A' (deload/warnings ONLY)
 ```
 
-**White-on-white craft:** the user's text and the AI's output are separated by
-weight, opacity, texture and position — never hue. User text: full-opacity
-regular, LEFT. AI parse: mono at ~70% opacity, RIGHT gutter — it recedes until
-looked at. PR flags / live prediction: full-opacity white + subtle pill or
-thin white left-border. Cursor: pure white.
+**The signal rule (never violate):** volt appears ONLY where the AI asserts or
+the user got stronger — parse status, ↑ deltas, PR pills, ghost prescriptions,
+current-week chart bars, predictor record. NEVER decoration, NEVER chrome,
+NEVER marketing (the paywall is white). Primary CTAs stay white-fill
+black-text — the restraint is the brand. The opacity ladder is centralized in
+`theme/color.ts` as `ink` tokens (echo 0.55 · delta 0.8 · full 1.0 · grabber
+0.18 · rule 0.28 · wash 0.14) — never inline new opacities.
 
 **Premium details everywhere:** hairline borders, 16–20 px card radii, pill
 controls, generous whitespace, no gradients/shadows/glow, primary buttons
 white-fill black-text, press states via `surfaceHigh` not opacity flashes.
-Emphasis appears ONLY where the AI spoke. **No emoji in the UI, ever** — the
-streak is a mono number in the top bar, not a flame.
+Shared primitives live in `components/primitives.tsx` (Card, CaptionLabel,
+StatTile) and `components/charts.tsx` (WeekBars, MicroBars, Sparkline —
+react-native-svg, bundled in Expo Go). **No emoji in the UI, ever** — the
+streak is a bare mono number in the top bar, no flame.
 
 ---
 
 ## 9. Surfaces
 
-**Home (90% of time — must feel like Apple Notes).** Top bar: Recore mark ·
-date pill (tap → calendar sheet) · streak count + settings. Body: the blank
-page; tap anywhere focuses; white cursor; placeholder `Start logging your
-workout…`. Each typed line's parsed result appears in the RIGHT GUTTER of the
-same line in muted mono — comparison signals `↑ = ↓ PR` against the previous
-session of that exercise, day-one lines echo `3×12 100`. Ghost prediction on a
-new training day: grey pre-filled note (weights emphasized white), one grey
-reason line, **Start** / **Something else**. Bottom toolbar: volume pill
-(routes to /stats) · mic · camera · + · keyboard toggle.
+**Home (90% of time — a note that proves it was read).** Top bar: Recore mark ·
+date pill (tap → calendar sheet) · bare mono streak + settings. Below it the
+**InsightHeader** landmark (`components/insight-header.tsx`): THIS WEEK tonnage
+in statNumber + the 8-week MicroBars strip + session count; taps to /stats;
+hides while the keyboard is up and renders nothing with zero history. Body: the
+blank page; tap anywhere focuses; white cursor. Each typed line's parsed result
+appears in the RIGHT GUTTER in mono — ↑ deltas and PR pills in signal volt,
+echoes quiet white. **THE LEDGER**: every parsed session (≥2 exercises) settles
+a SessionReceipt card under the note — resolved exercise names, top sets,
+deltas, total tonnage in statNumber, staged "READING YOUR LOG…" header while a
+parse is in flight (labor illusion). An EMPTY day is never a void
+(`components/empty-note-cards.tsx`): LAST SESSION peek card (tap → that day),
+or the self-typing demo card on a blank account. Ghost prediction on a new
+training day: a labeled **NEXT SESSION card** (prescribed loads in volt, one
+reason line behind a volt rule, "Followed X of last Y" trust line when the
+adherence record has ≥3 settled outcomes and a majority followed), **Start** /
+**Something else**. Bottom toolbar: tonnage pill with unit (routes to /stats) ·
+mic · + · keyboard toggle (camera removed until it works).
 
 **Receipt mode (BUILT — `parse/receipt.ts` pure + tested,
 `components/session-receipt.tsx`).** When the whole workout is typed in at
@@ -361,9 +389,19 @@ edits. The receipt is also the natural seed for the §11 share card.
 **ExerciseSheet** (tap a gutter value): last 5 sessions, volume/weight chart,
 e1RM. Long-press = parse correction (§6.2).
 
-**/stats**: ONE chart (8-week volume), max two lines of insight, one
-prediction. Nothing else. **/settings**: profile, goals, gym profile
-(available plates — feeds `roundToPlate`), units, CSV import, export, sub stub.
+**/stats — the Progress hub** (rebuilt 2026-07-17): Tier 1 — four StatTiles
+(week tonnage + WoW%, sessions, heaviest lift, predictor record `X/Y
+followed`). Tier 2 — the 8-week WeekBars chart with per-week session dots and
+two quiet insight lines. Tier 3 — Next session card, Record book (all-time PRs
+via `db/insights.ts getAllTimePRs`, "Full record book · Recore Pro" affordance
+past 8 rows), Training log (recent sessions via `getRecentSessions`). Empty
+state offers the CSV import. **/settings**: goal + smallest plate (editable,
+feeds `roundToPlate`), CSV import AND export (`lib/export-csv.ts` — export is
+free forever, never hostage), Recore Pro row, sign out. **/paywall** (UI built
+2026-07-17; billing still stubbed): Hevy-lane pricing — $3.99/mo · $29.99/yr
+default with BEST VALUE pill · $79.99 lifetime — a "What Pro is" list, a "Free
+forever" Bill of Rights, honest beta CTA. No volt on this screen: the accent
+belongs to the AI, not marketing.
 
 ---
 

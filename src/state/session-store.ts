@@ -150,7 +150,8 @@ function loadDay(userId: string, day: DayKey) {
     lineExercises,
     receiptMode,
     receipt,
-    receiptReason: receiptMode ? reasonForReceipt(userId, day) : null,
+    // The one AI line under the ledger — today only, silence otherwise.
+    receiptReason: receipt ? reasonForReceipt(userId, day) : null,
   };
 }
 
@@ -324,7 +325,7 @@ async function runParse(workoutId: string) {
       lineExercises: outcome.lineExercises,
       receiptMode,
       receipt: outcome.receipt,
-      receiptReason: receiptMode ? reasonForReceipt(userId, state.selectedDay) : null,
+      receiptReason: outcome.receipt ? reasonForReceipt(userId, state.selectedDay) : null,
     });
     scheduleSync();
   } finally {

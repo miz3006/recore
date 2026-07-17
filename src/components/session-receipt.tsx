@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -13,29 +13,47 @@ import Animated, {
 import { tap } from '@/lib/haptics';
 import { groupThousands } from '@/lib/parse/estimate';
 import { type ReceiptData, type ReceiptRow } from '@/lib/parse/receipt';
-import { alpha, color, fonts, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { alpha, color, fonts, ink, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 
-import { signalText } from './gutter-value';
+import { signalText, signalTint } from './gutter-value';
 
 /**
- * Session receipt (CLAUDE.md §9): when a whole workout was typed in at once,
- * the per-line gutter is replaced by ONE summary under the note — what the
- * app understood and what it means. Same voice as the gutter, relocated:
- * exercise · top set in mono at 45% · comparison at 70% — the PR pill is the
- * only thing at full white. One AI line at most, with the thin white left
- * border ("the app spoke"). Rows settle top-to-bottom with the same quiet
- * sweep the gutter uses; a first-time exercise gets SILENCE in the signal
- * column, not a label.
+ * The session ledger (CLAUDE.md §9) — the proof that the machine read the
+ * note. For EVERY parsed session (not just the end-of-training dump) one card
+ * settles under the text: resolved exercise names, top sets in mono, the
+ * comparison vs last time — progress in the machine's volt ink — and a total
+ * row that gives the workout an ending. This is where the AI's understanding
+ * becomes impossible to miss: the user's messy paragraph above, the clean
+ * structure below.
  *
- * Tap a row → exercise history. Long-press → fix the parse (§6.2).
+ * Rows settle top-to-bottom with the same quiet sweep the gutter uses; a
+ * first-time exercise gets SILENCE in the signal column, not a label. Tap a
+ * row → exercise history. Long-press → fix the parse (§6.2).
  */
-const ECHO_OPACITY = 0.45;
-const SIGNAL_OPACITY = 0.7;
+const ECHO_OPACITY = ink.value;
 const STAGGER_MS = 45;
 const SETTLE_MS = 260;
 const SETTLE_SHIFT = 4;
 const PR_OVERSHOOT = 1.12;
 const PR_FROM = 0.8;
+
+/** The labor-illusion header (research: visible work reads as intelligence).
+ * Two quiet stages while the parse is in flight — never a spinner. */
+const READING_STAGES = ['READING YOUR LOG', 'MATCHING EXERCISES'];
+const READING_STAGE_MS = 700;
+
+function ReadingLabel() {
+  const [stage, setStage] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setStage((s) => (s + 1) % READING_STAGES.length), READING_STAGE_MS);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <Text style={[styles.label, styles.labelReading]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+      {READING_STAGES[stage]}…
+    </Text>
+  );
+}
 
 function Row({
   row,
@@ -127,7 +145,10 @@ function Row({
             </Animated.View>
           ) : (
             <View style={styles.sigCell}>
-              <Text style={styles.signal} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              <Text
+                style={[styles.signal, { color: signalTint(row.signal) }]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 {signalText(row.signal)}
               </Text>
             </View>
@@ -145,6 +166,7 @@ export function SessionReceipt({
   reason,
   revision,
   stale,
+  parsing = false,
   onExercise,
   onFix,
 }: {
@@ -155,16 +177,29 @@ export function SessionReceipt({
   revision: string;
   /** The note changed since this was computed — recede until re-parsed. */
   stale: boolean;
+  /** A parse is in flight — the header shows the staged reading label. */
+  parsing?: boolean;
   onExercise: (canonical: string) => void;
   onFix: (line: number) => void;
 }) {
   if (data.rows.length === 0) return null;
 
+  const exercises = new Set(data.rows.map((r) => r.exercise)).size;
+
   return (
     <View style={[styles.wrap, stale && styles.stale]}>
-      <Text style={styles.label} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        SESSION
-      </Text>
+      <View style={styles.header}>
+        {parsing ? (
+          <ReadingLabel />
+        ) : (
+          <Text style={styles.label} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            SESSION
+          </Text>
+        )}
+        <Text style={styles.headerMeta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {exercises} {exercises === 1 ? 'exercise' : 'exercises'}
+        </Text>
+      </View>
 
       {data.rows.map((row, i) => (
         <Row
@@ -177,13 +212,14 @@ export function SessionReceipt({
         />
       ))}
 
+      {/* The total gives every session an ending — the receipt's hero line. */}
       <View style={styles.total}>
-        <Text style={styles.totalLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          TOTAL
-        </Text>
         <Text style={styles.totalValue} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {data.volume > 0 ? `${groupThousands(data.volume)} kg · ` : ''}
-          {data.totalSets} sets
+          {data.volume > 0 ? groupThousands(data.volume) : String(data.totalSets)}
+          <Text style={styles.totalUnit}>{data.volume > 0 ? ' kg' : ' sets'}</Text>
+        </Text>
+        <Text style={styles.totalMeta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {data.volume > 0 ? `${data.totalSets} sets` : 'total'}
         </Text>
       </View>
 
@@ -200,20 +236,38 @@ export function SessionReceipt({
 
 const styles = StyleSheet.create({
   wrap: {
-    marginTop: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: color.border,
+    marginTop: spacing.xl,
+    backgroundColor: color.surface,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: alpha(color.accent, ink.hairline),
+    paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
   },
   stale: {
     opacity: 0.5,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
   },
   label: {
     fontSize: type.caption.fontSize,
     letterSpacing: 1.2,
     color: color.textMuted,
     fontWeight: '500',
-    marginBottom: spacing.xs,
+  },
+  // The machine at work speaks in its own ink.
+  labelReading: {
+    color: color.signal,
+  },
+  headerMeta: {
+    fontSize: type.caption.fontSize,
+    color: color.textMuted,
+    fontVariant: ['tabular-nums'],
   },
   row: {
     flexDirection: 'row',
@@ -221,7 +275,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingVertical: spacing.sm + 1,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: alpha(color.accent, 0.06),
+    borderTopColor: alpha(color.accent, ink.divider),
     borderRadius: radius.sm,
   },
   rowPressed: {
@@ -230,6 +284,7 @@ const styles = StyleSheet.create({
   name: {
     flex: 1,
     fontSize: type.subhead.fontSize,
+    fontWeight: '500',
     color: color.textPrimary,
   },
   set: {
@@ -249,22 +304,21 @@ const styles = StyleSheet.create({
     fontSize: type.caption.fontSize,
     fontWeight: '500',
     fontVariant: ['tabular-nums'],
-    color: color.textPrimary,
-    opacity: SIGNAL_OPACITY,
+    opacity: ink.delta,
   },
   prPill: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 1.5,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: alpha(color.accent, 0.5),
+    borderColor: alpha(color.signal, ink.pill),
   },
   prText: {
     fontFamily: fonts.mono,
     fontSize: moderateScale(11),
     fontWeight: '500',
     letterSpacing: 1,
-    color: color.textPrimary,
+    color: color.signal,
   },
   total: {
     flexDirection: 'row',
@@ -275,24 +329,26 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     paddingTop: spacing.md,
   },
-  totalLabel: {
-    fontSize: type.caption.fontSize,
-    letterSpacing: 1.2,
-    color: color.textMuted,
-    fontWeight: '500',
-  },
   totalValue: {
-    fontFamily: fonts.mono,
-    fontSize: type.caption.fontSize,
-    fontWeight: '500',
-    fontVariant: ['tabular-nums'],
+    ...type.statNumber,
     color: color.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  totalUnit: {
+    fontSize: type.subhead.fontSize,
+    fontWeight: '600',
+    color: color.textSecondary,
+  },
+  totalMeta: {
+    fontSize: type.caption.fontSize,
+    color: color.textMuted,
+    fontVariant: ['tabular-nums'],
   },
   aiLine: {
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     paddingLeft: spacing.md,
     borderLeftWidth: 1.5,
-    borderLeftColor: alpha(color.accent, 0.7),
+    borderLeftColor: alpha(color.signal, 0.7),
   },
   aiText: {
     ...type.caption,

@@ -6,6 +6,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BottomToolbar } from '@/components/bottom-toolbar';
 import { ExerciseSheet } from '@/components/exercise-sheet';
 import { FixSheet } from '@/components/fix-sheet';
+import { InsightHeader } from '@/components/insight-header';
 import { NoteSurface } from '@/components/note-surface';
 import { TopBar } from '@/components/top-bar';
 import { isOnboardingDone } from '@/lib/prefs';
@@ -45,6 +46,9 @@ export default function Home() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {/* The landmark recedes while typing — mid-workout the note owns the
+            screen (CLAUDE.md §8). */}
+        <InsightHeader hidden={keyboardOpen} />
         <NoteSurface />
         <BottomToolbar bottomInset={bottomInset} />
       </KeyboardAvoidingView>

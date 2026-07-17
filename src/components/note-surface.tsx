@@ -16,6 +16,7 @@ import {
   NOTE_FONT_SIZE,
   NOTE_LINE_HEIGHT,
 } from './note-metrics';
+import { EmptyDayCards } from './empty-note-cards';
 import { noteInputRef } from './note-focus';
 import { SessionReceipt } from './session-receipt';
 
@@ -142,7 +143,7 @@ export function NoteSurface() {
             maxFontSizeMultiplier={MAX_FONT_SCALE}
           />
 
-          {parsing ? (
+          {parsing && !receipt ? (
             <View style={styles.thinkingRow}>
               <PendingDot delay={0} />
               <PendingDot delay={PENDING_STEP_MS} />
@@ -156,6 +157,7 @@ export function NoteSurface() {
               reason={receiptReason}
               revision={parsedSnapshot ?? ''}
               stale={parsedSnapshot !== null && parsedSnapshot !== note}
+              parsing={parsing}
               onExercise={openExerciseSheet}
               onFix={openFixSheet}
             />
@@ -275,6 +277,25 @@ export function NoteSurface() {
             })}
           </View>
         </View>
+
+        {/* The blank page is never a void: last session peek / first-run demo. */}
+        {note.trim().length === 0 ? <EmptyDayCards /> : null}
+
+        {/* THE LEDGER: every parsed session settles into one structured card
+            under the note — resolved names, top sets, deltas, a total. The
+            gutter answers per line; this is where the AI's reading of the
+            whole session becomes impossible to miss (CLAUDE.md §9). */}
+        {note.trim().length > 0 && receipt && receipt.rows.length >= 2 ? (
+          <SessionReceipt
+            data={receipt}
+            reason={receiptReason}
+            revision={parsedSnapshot ?? ''}
+            stale={parsedSnapshot !== null && parsedSnapshot !== note}
+            parsing={parsing}
+            onExercise={openExerciseSheet}
+            onFix={openFixSheet}
+          />
+        ) : null}
       </Pressable>
     </ScrollView>
   );
