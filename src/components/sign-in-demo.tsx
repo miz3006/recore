@@ -10,7 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { alpha, color, fonts, MAX_FONT_SCALE, moderateScale, radius, spacing } from '@/lib/theme';
+import { alpha, color, fonts, ink, MAX_FONT_SCALE, moderateScale, radius, spacing } from '@/lib/theme';
 
 import { GutterPending } from './gutter-value';
 import { NOTE_FONT_SIZE, NOTE_LINE_HEIGHT } from './note-metrics';
@@ -36,7 +36,7 @@ const REVEAL_STEP_MS = 240;
 const HOLD_MS = 3400; // let the finished note be read
 const FADE_MS = 420;
 
-const SIGNAL_OPACITY = 0.7;
+const SIGNAL_OPACITY = ink.delta;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -172,8 +172,12 @@ function DemoSignal({ text, pr }: { text: string; pr: boolean }) {
       </Animated.View>
     );
   }
+  // Two inks, same as the real gutter: progress speaks in signal volt.
+  const up = text.startsWith('↑');
   return (
-    <Animated.Text style={[styles.signal, animatedStyle]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+    <Animated.Text
+      style={[styles.signal, up && styles.signalUp, animatedStyle]}
+      maxFontSizeMultiplier={MAX_FONT_SCALE}>
       {text}
     </Animated.Text>
   );
@@ -232,18 +236,21 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     color: color.textPrimary,
   },
+  signalUp: {
+    color: color.signal,
+  },
   prPill: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: alpha(color.accent, 0.5),
+    borderColor: alpha(color.signal, ink.pill),
   },
   prText: {
     fontFamily: fonts.mono,
     fontSize: moderateScale(11),
     fontWeight: '500',
     letterSpacing: 1,
-    color: color.textPrimary,
+    color: color.signal,
   },
 });
