@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
@@ -8,20 +8,8 @@ import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
 import { AppButton, Badge, Eyebrow, Rating, Testimonial } from '@/components/primitives';
 import { useAuth } from '@/lib/auth/provider';
 import { tap } from '@/lib/haptics';
-import { setDevBypass } from '@/lib/auth/dev-bypass';
 import { getName } from '@/lib/prefs';
-import {
-  HIT,
-  MAX_FONT_SCALE,
-  eyebrow,
-  hairline,
-  makeStyles,
-  moderateScale,
-  radius,
-  spacing,
-  type,
-  useTheme,
-} from '@/lib/theme';
+import { color, fonts, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 
 /**
  * /paywall — the LAST pre-account step of the conversion funnel (2026-07-23
@@ -87,25 +75,22 @@ function trialEndLabel(): string {
 }
 
 function CloseGlyph() {
-  const t = useTheme();
   return (
     <Svg width={moderateScale(13)} height={moderateScale(13)} viewBox="0 0 16 16">
-      <Path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke={t.inkMuted} strokeWidth={1.7} strokeLinecap="round" fill="none" />
+      <Path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke={color.textSecondary} strokeWidth={1.7} strokeLinecap="round" fill="none" />
     </Svg>
   );
 }
 
 function CheckGlyph() {
-  const t = useTheme();
   return (
     <Svg width={moderateScale(11)} height={moderateScale(11)} viewBox="0 0 16 16">
-      <Path d="M3 8.5L6.5 12 13 4.5" stroke={t.canvas} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <Path d="M3 8.5L6.5 12 13 4.5" stroke={color.bg} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </Svg>
   );
 }
 
 export default function Paywall() {
-  const styles = useStyles();
   const router = useRouter();
   const { session } = useAuth();
   const [plan, setPlan] = useState<Plan>('annual');
@@ -144,22 +129,6 @@ export default function Paywall() {
     router.push('/sign-in');
   };
 
-  /**
-   * Development entrance (PLAN.md 0.7). Skips the hard paywall with NO account,
-   * so the app can be worked on without signing in every launch. Sign-in still
-   * exists and still works — this only removes the gate, and `dev-bypass.ts`
-   * gives the local database a fixed id so Today has something behind it.
-   *
-   * Not a purchase stub and not an entitlement: it skips the SCREEN, never the
-   * account (CLAUDE.md §14.4 — the stub must be impossible to ship). `__DEV__`
-   * compiles the whole path out of release bundles.
-   */
-  const handleDevSkip = () => {
-    tap();
-    setDevBypass(true);
-    router.replace('/today');
-  };
-
   const ctaLabel = plan === 'annual' ? 'Start 7-day free trial' : 'Continue with Monthly';
 
   return (
@@ -173,27 +142,11 @@ export default function Paywall() {
           accessibilityLabel="Close">
           <CloseGlyph />
         </PressableScale>
-        <View style={styles.topRight}>
-          {__DEV__ ? (
-            <PressableScale
-              onPress={handleDevSkip}
-              activeScale={0.96}
-              haptic="none"
-              style={styles.devSkip}
-              pressedStyle={styles.devSkipPressed}
-              accessibilityRole="button"
-              accessibilityLabel="Development only: skip the paywall without an account">
-              <Text style={styles.devSkipLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                DEV · SKIP
-              </Text>
-            </PressableScale>
-          ) : null}
-          <Pressable onPress={handleRestore} hitSlop={spacing.sm} style={({ pressed }) => pressed && styles.quietPressed}>
-            <Text style={styles.restore} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              Restore purchases
-            </Text>
-          </Pressable>
-        </View>
+        <Pressable onPress={handleRestore} hitSlop={spacing.sm} style={({ pressed }) => pressed && styles.quietPressed}>
+          <Text style={styles.restore} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            Restore purchases
+          </Text>
+        </Pressable>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -302,17 +255,16 @@ export default function Paywall() {
               </>
             ) : null}
           </Text>
-
         </FadeSlideIn>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const useStyles = makeStyles((t) => ({
+const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: t.canvas,
+    backgroundColor: color.bg,
   },
   topRow: {
     paddingHorizontal: spacing.xl,
@@ -324,10 +276,10 @@ const useStyles = makeStyles((t) => ({
   closeButton: {
     width: moderateScale(38),
     height: moderateScale(38),
-    borderRadius: radius.capsule,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: t.rule,
-    backgroundColor: t.surface,
+    borderColor: color.border,
+    backgroundColor: color.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -335,9 +287,9 @@ const useStyles = makeStyles((t) => ({
     opacity: 0.5,
   },
   restore: {
-    ...type.callout,
+    ...type.subhead,
     fontWeight: '600',
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   scroll: {
     flex: 1,
@@ -349,8 +301,8 @@ const useStyles = makeStyles((t) => ({
     paddingBottom: spacing.lg,
   },
   headline: {
-    ...type.title1,
-    color: t.ink,
+    ...type.title,
+    color: color.textPrimary,
     marginTop: spacing.sm,
   },
   ratingWrap: {
@@ -358,9 +310,9 @@ const useStyles = makeStyles((t) => ({
   },
   subline: {
     marginTop: spacing.md,
-    ...type.callout,
+    ...type.subhead,
     lineHeight: moderateScale(23),
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   timeline: {
     marginTop: spacing.xxl,
@@ -375,20 +327,20 @@ const useStyles = makeStyles((t) => ({
   tlDot: {
     width: moderateScale(12),
     height: moderateScale(12),
-    borderRadius: radius.capsule,
+    borderRadius: radius.pill,
     marginTop: 3,
   },
   tlDotFilled: {
-    backgroundColor: t.ink,
+    backgroundColor: color.accent,
   },
   tlDotHollow: {
     borderWidth: 1.5,
-    borderColor: t.inkMuted,
+    borderColor: color.textSecondary,
   },
   tlLine: {
     width: 1.5,
     flex: 1,
-    backgroundColor: t.rule,
+    backgroundColor: color.border,
   },
   tlText: {
     flex: 1,
@@ -397,15 +349,15 @@ const useStyles = makeStyles((t) => ({
     paddingBottom: spacing.lg + 2,
   },
   tlTitle: {
-    ...type.callout,
+    ...type.subhead,
     fontWeight: '600',
-    color: t.ink,
+    color: color.textPrimary,
   },
   tlBody: {
     marginTop: 2,
     ...type.caption,
     lineHeight: moderateScale(20),
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   testimonial: {
     marginTop: spacing.xl,
@@ -418,7 +370,7 @@ const useStyles = makeStyles((t) => ({
     gap: spacing.md,
   },
   plan: {
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderRadius: radius.xxl,
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.lg + 2,
@@ -429,15 +381,15 @@ const useStyles = makeStyles((t) => ({
   },
   planIdle: {
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
   },
   planSelected: {
     borderWidth: 1.5,
-    borderColor: t.ink,
-    ...t.shadow.raised,
+    borderColor: color.accent,
+    ...shadow.raised,
   },
   planPressed: {
-    backgroundColor: t.surfaceHigh,
+    backgroundColor: color.surfaceHigh,
   },
   planText: {
     flex: 1,
@@ -449,105 +401,77 @@ const useStyles = makeStyles((t) => ({
     gap: spacing.sm,
   },
   planTitle: {
-    ...type.title3,
+    ...type.headline,
   },
   planTitleOn: {
-    color: t.ink,
+    color: color.textPrimary,
   },
   planTitleOff: {
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   planNote: {
-    ...type.caption,
+    ...type.footnote,
   },
   planNoteOn: {
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   planNoteOff: {
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   planRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
-  // The price sits at the plan title's size, in the data face — the two things
-  // the user is comparing get equal weight, and only the face tells them apart.
   planPrice: {
-    ...type.dataM,
+    fontFamily: fonts.mono,
+    fontSize: moderateScale(15),
     fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
   planPriceOn: {
-    color: t.ink,
+    color: color.textPrimary,
   },
   planPriceOff: {
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   radioFilled: {
     width: moderateScale(22),
     height: moderateScale(22),
-    borderRadius: radius.capsule,
-    backgroundColor: t.ink,
+    borderRadius: radius.pill,
+    backgroundColor: color.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   radioHollow: {
     width: moderateScale(22),
     height: moderateScale(22),
-    borderRadius: radius.capsule,
+    borderRadius: radius.pill,
     borderWidth: 1.5,
-    borderColor: t.rule,
+    borderColor: color.border,
   },
   cta: {
     marginTop: spacing.lg,
   },
   legal: {
     marginTop: spacing.md,
-    ...type.caption,
-    // Centred small print gets one rung of extra leading — short measures need
-    // the air to stay scannable, and this is the line App Review reads.
-    lineHeight: type.caption.lineHeight,
-    color: t.inkFaint,
+    ...type.footnote,
+    lineHeight: moderateScale(18),
+    color: color.textMuted,
     textAlign: 'center',
     paddingHorizontal: spacing.sm,
   },
   links: {
     marginTop: spacing.xs,
-    ...type.caption,
-    color: t.inkFaint,
+    ...type.footnote,
+    color: color.textMuted,
     textAlign: 'center',
   },
   link: {
-    color: t.inkFaint,
+    color: color.textMuted,
     textDecorationLine: 'underline',
   },
   linkSep: {
-    color: t.inkFaint,
+    color: color.textMuted,
   },
-  /**
-   * Dashed and muted on purpose: scaffolding must never read as product. No
-   * colour here either — the paywall stays monochrome (CLAUDE.md §14.3).
-   */
-  topRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  devSkip: {
-    minHeight: HIT,
-    borderRadius: radius.md,
-    borderWidth: hairline * 2,
-    borderColor: t.rule,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  devSkipPressed: {
-    backgroundColor: t.surfaceHigh,
-  },
-  devSkipLabel: {
-    ...eyebrow,
-    color: t.inkFaint,
-  },
-}));
+});

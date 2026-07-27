@@ -1,112 +1,83 @@
 /**
- * The Recore colour system (CLAUDE.md §6.3). Both themes ship; the default is
- * `system`. Dark is the design target — gyms are dark, phones are on auto — and
- * light is a full peer, not an afterthought.
+ * Recore color system — LIGHT scheme ("Recore Light" design project;
+ * scheme spec mirrored in `../design-import/` and the CLAUDE.md tokens).
  *
- * §6.1 is the whole idea: **everything recorded is cold, and the one thing that
- * is hot is what you are about to do.** The interface is graphite and chalk, and
- * exactly one hue exists — an ember orange spent on a single semantic: a number
- * you have not lifted yet. Not buttons, not the logo, not charts, not success
- * states. Because colour carries meaning here, it never has to carry decoration.
+ * THE RECORD CONTRACT still sets the palette, now on warm paper. Four data
+ * states — Written / Interpreted / Recorded / Planned — live on a warm paper
+ * canvas with a single meaningful accent: **green `#547C00` appears ONLY on
+ * planned, future prescription values**. Never on chrome, deltas, PRs, charts,
+ * or marketing. A PR is a neutral outlined label; comparisons are archival
+ * mono in muted grey; warnings are amber words, never color alone.
  *
- * Two invariants that must never break (§6.2):
- *   · Ember appears only on PLANNED. A PR is not ember. A positive delta is not
- *     ember. A chart line is not ember. A button is not ember.
- *   · READ never wears a checkmark — a checkmark asserts correctness, and a
- *     reading is a claim.
+ * Primary CTAs are ink-fill (`accent` #171914 on `bg`/`surface` text) —
+ * restraint IS the brand. If a pixel isn't a future prescription, it doesn't
+ * get green.
  *
- * **Elevation inverts between themes.** In dark, `surface` is *lighter* than
- * `canvas`; in light, `surface` is *whiter* and `surfaceHigh` is *darker*. The
- * token names and roles are identical across both, so no consumer ever branches
- * on the theme — it asks for `surface` and gets the right answer.
- *
- * This module is deliberately free of React and React Native imports: the
- * contrast test (1.5) runs under `node --test` and imports these palettes
- * directly. The hook that resolves them lives in `./use-theme`.
+ * Token roles are preserved from the dark scheme so every screen keeps reading
+ * the same names; only the values invert. Note the light elevation model:
+ * `surface` (#FBFCF6) is *raised* above the `bg` canvas (#F4F5EF), and
+ * `surfaceHigh` (#E9EAE2) is now the *recessed* tone (segmented containers,
+ * hairline fills, pressed states) — brighter is nearer in dark, recessed is
+ * nearer in light.
  */
-
-/** Dark — the design target. */
-export const dark = {
-  canvas: '#0E1113', // cold graphite — the floor at 6am
-  surface: '#161A1D', // raised: cards, sheets, rows
-  surfaceHigh: '#1F2427', // recessed: segmented tracks, pressed, inputs
-  ink: '#EDF0EF', // chalk — primary text and recorded values
-  inkMuted: '#98A2A4', // secondary text, comparisons, READ values
-  inkFaint: '#838C88', // captions, placeholders, disabled labels — lifted for AA (see Deviations)
-  rule: '#252B2F', // hairlines, table rules, card borders
-  ember: '#FF6B3D', // PLANNED ONLY
-  emberSoft: '#FF6B3D1F', // ember at 12% — target row wash, nothing else
-  warn: '#E0B14A',
-  danger: '#E45F53', // lifted for AA on surfaceHigh (see Deviations)
-  scrim: '#00000099',
+export const color = {
+  bg: '#F4F5EF', // warm paper canvas (screen bg; also ink-CTA label color)
+  surface: '#FBFCF6', // raised paper: cards, sheets, chips, pills, accessory bar, keys
+  surfaceHigh: '#E9EAE2', // recessed: segmented container, hairline fills, pressed states
+  accent: '#171914', // ink: primary CTA fill, emphasized borders — equals textPrimary
+  accentPressed: '#2C2F27', // ink-fill button pressed — never an opacity flash
+  signal: '#547C00', // PLANNED green: future prescription values ONLY
+  textPrimary: '#171914', // what the USER typed; headings; ink
+  textSecondary: '#687064', // supporting copy, gutter readings, tags, labels
+  textMuted: '#9AA093', // dates, evidence lines, placeholders, disabled
+  border: '#D4D7CC', // 1px card + control borders (hairline rule)
+  divider: '#E9EAE2', // row dividers inside cards
+  tableRule: '#E9EAE2', // hairline rules between table/receipt rows
+  warning: '#8A5613', // amber: CHECK chips, offline/allowance banners
+  warningBorder: '#D8BE86', // border for amber CHECK tags
+  error: '#A33D36', // failures ("Purchase didn't go through") + destructive ONLY
 } as const;
 
-/** Light — a full peer. Ember is darkened here to clear 4.5:1 on paper (§17). */
-export const light = {
-  canvas: '#F6F5F2', // warm paper
-  surface: '#FFFFFF',
-  surfaceHigh: '#EDEBE6',
-  ink: '#14181A',
-  inkMuted: '#5F6A6C',
-  inkFaint: '#656C6B', // darkened for AA — §6.3's #8E9896 failed at 2.49:1 (see Deviations)
-  rule: '#DFDCD5',
-  ember: '#BD3F0C', // §6.3's #C2410C, darkened the last step to clear AA on surfaceHigh
-  emberSoft: '#BD3F0C14',
-  warn: '#8A5613',
-  danger: '#A33D36',
-  scrim: '#0E111366',
+export type ColorToken = keyof typeof color;
+
+/**
+ * The opacity ladder — centralized so no component can silently drift.
+ * Echoes recede, readings stay quiet, disabled CTAs sit at 40%. Values are
+ * scheme-independent (they encode relative emphasis, not a hue), so they carry
+ * over unchanged from dark to light.
+ */
+export const ink = {
+  /** First-time echo ("3×12 100") — visible but quiet. */
+  echo: 0.55,
+  /** Quiet mono values (receipt top sets, record-book rows). */
+  value: 0.7,
+  /** Comparison lines — the archival voice. */
+  delta: 0.8,
+  /** Full-strength text. */
+  full: 1.0,
+  /** Disabled primary CTA (design frame 05: Finish at 40%). */
+  disabled: 0.4,
+  /** Sheet grabbers, structural whispers (home indicator = ink @ .18). */
+  grabber: 0.18,
+  /** Hairline rules on paper. */
+  rule: 0.28,
+  /** Subtle tinted fills (chips, chart history bars). */
+  wash: 0.14,
+  /** Card borders (legacy alpha-based hairlines). */
+  hairline: 0.08,
+  /** Row dividers inside cards (legacy alpha-based). */
+  divider: 0.06,
+  /** Outlined pill borders (PR). */
+  pill: 0.6,
 } as const;
 
-/** Both palettes carry identical keys — enforced at compile time. */
-export type Palette = { readonly [K in keyof typeof dark]: string };
-
-const _lightIsComplete: Palette = light;
-void _lightIsComplete;
-
-export type ColorToken = keyof typeof dark;
-
-/** What the user asked for. `system` follows the device and is the default. */
-export type ColorScheme = 'system' | 'light' | 'dark';
-
-/** What the device reports. Null while unknown, which resolves to dark. */
-export type SystemScheme = 'light' | 'dark' | null | undefined;
-
-export const PALETTES: Record<'light' | 'dark', Palette> = { light, dark };
-
 /**
- * Resolve a preference against the device. Pure and synchronous so the contrast
- * test and the hook share one definition of "which palette am I on".
- *
- * An unknown system scheme resolves to dark rather than light: dark is the
- * design target, and a wrong guess that flashes light in a dark gym is the more
- * expensive mistake.
- */
-export function resolveScheme(preference: ColorScheme, system: SystemScheme): 'light' | 'dark' {
-  if (preference !== 'system') return preference;
-  return system === 'light' ? 'light' : 'dark';
-}
-
-/** Resolve straight to the palette. */
-export function paletteFor(preference: ColorScheme, system: SystemScheme): Palette {
-  return PALETTES[resolveScheme(preference, system)];
-}
-
-/**
- * Apply an alpha to a hex colour. Accepts `#RGB`, `#RRGGBB` and `#RRGGBBAA`;
- * an existing alpha is replaced rather than appended, because `#RRGGBBAAAA` is
- * silently invalid on iOS and produces a colour nobody asked for.
+ * Apply an alpha to a hex color. Used to let readings recede — e.g. parsed
+ * gutter numbers sit at ~70% opacity so they stay quiet until looked at.
  */
 export function alpha(hex: string, opacity: number): string {
-  const clamped = Math.round(Math.max(0, Math.min(1, opacity)) * 255)
+  const a = Math.round(Math.max(0, Math.min(1, opacity)) * 255)
     .toString(16)
     .padStart(2, '0');
-  const body = hex.startsWith('#') ? hex.slice(1) : hex;
-  const rgb =
-    body.length === 3
-      ? body
-          .split('')
-          .map((c) => c + c)
-          .join('')
-      : body.slice(0, 6);
-  return `#${rgb}${clamped}`;
+  return `${hex}${a}`;
 }

@@ -1,17 +1,25 @@
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Linking, ScrollView, Share, Text, View } from 'react-native';
+import {
+  Alert,
+  LayoutAnimation,
+  Linking,
+  Platform,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  UIManager,
+  View,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
-  FadeIn,
-  FadeOut,
-  LinearTransition,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
 import { PressableScale, Stagger } from '@/components/motion';
@@ -35,21 +43,9 @@ import {
   type Goal,
   type ObLanguage,
 } from '@/lib/prefs';
+import { SPRING } from '@/lib/motion';
 import { scheduleSync } from '@/lib/sync/index';
-import {
-  easing,
-  hairline,
-  makeStyles,
-  MAX_FONT_SCALE,
-  moderateScale,
-  mono,
-  radius,
-  spacing,
-  spring,
-  timing,
-  type,
-  useTheme,
-} from '@/lib/theme';
+import { color, fonts, hairline, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 /**
@@ -67,6 +63,10 @@ import { useSession } from '@/state/session-store';
  * touch history.
  */
 
+// Android needs this opt-in for LayoutAnimation (the accordion's soft expand).
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const GOAL_OPTIONS: { id: Goal; label: string }[] = [
   { id: 'strength', label: 'Strength' },
@@ -110,8 +110,6 @@ const labelOf = <T,>(options: { id: T; label: string }[], id: T | null): string 
   options.find((o) => o.id === id)?.label ?? 'Not set';
 
 export default function Settings() {
-  const styles = useStyles();
-  const t = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
@@ -134,10 +132,8 @@ export default function Settings() {
   const providerLabel = provider === 'apple' ? 'Apple' : provider === 'google' ? 'Google' : null;
 
   const toggle = (key: Exclude<Expand, null>) => {
-    // The expand itself is animated by the row (Reanimated `layout`), not by
-    // `LayoutAnimation`: the app already runs one motion engine, and the legacy
-    // one both fights it and is a no-op on parts of the New Architecture.
     tap();
+    LayoutAnimation.configureNext(LayoutAnimation.create(180, 'easeInEaseOut', 'opacity'));
     setExpanded((cur) => (cur === key ? null : key));
   };
 
@@ -281,7 +277,7 @@ export default function Settings() {
           accessibilityLabel="Back"
           style={styles.backBtn}
           pressedStyle={styles.backBtnPressed}>
-          <Icon name="chevron-back" size={moderateScale(16)} tint={t.ink} />
+          <Icon name="chevron-back" size={moderateScale(16)} tint={color.textPrimary} />
         </PressableScale>
         <Text style={styles.navTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           Settings
@@ -320,6 +316,14 @@ export default function Settings() {
 
         {/* TRAINING — calm value rows that expand inline to a segmented editor. */}
         <Section label="Training" footnote="Predictions round to what your gym’s bar can actually hold.">
+          <Row
+            label="Your split"
+            sub="Plan what you train each day"
+            onPress={() => {
+              tap();
+              router.push('/split');
+            }}
+          />
           <AccordionRow
             label="Focus"
             value={labelOf(GOAL_OPTIONS, goal)}
@@ -442,7 +446,6 @@ function Section({
   footnoteActive?: boolean;
   children: React.ReactNode;
 }) {
-  const styles = useStyles();
   return (
     <View style={styles.section}>
       {label ? <Eyebrow tone="secondary" style={styles.sectionLabel}>{label}</Eyebrow> : null}
@@ -482,8 +485,6 @@ function Row({
   disabled?: boolean;
   onPress?: () => void;
 }) {
-  const styles = useStyles();
-  const t = useTheme();
   const body = (
     <>
       <View style={styles.rowLeft}>
@@ -510,7 +511,7 @@ function Row({
             ↗
           </Text>
         ) : null}
-        {chevron ? <Icon name="chevron-forward" size={moderateScale(14)} tint={t.inkFaint} /> : null}
+        {chevron ? <Icon name="chevron-forward" size={moderateScale(14)} tint={color.textMuted} /> : null}
       </View>
     </>
   );
@@ -548,12 +549,8 @@ function AccordionRow({
   divider?: boolean;
   children: React.ReactNode;
 }) {
-  const styles = useStyles();
-  const reduce = useReducedMotion();
   return (
-    <Animated.View
-      layout={reduce ? undefined : LinearTransition.duration(timing.base.duration).easing(easing.emphasized)}
-      style={divider ? styles.rowDivider : undefined}>
+    <View style={divider ? styles.rowDivider : undefined}>
       <PressableScale
         onPress={onToggle}
         haptic="none"
@@ -576,32 +573,23 @@ function AccordionRow({
           <Chevron open={open} />
         </View>
       </PressableScale>
-      {open ? (
-        <Animated.View
-          entering={reduce ? undefined : FadeIn.duration(timing.fast.duration).delay(40)}
-          exiting={reduce ? undefined : FadeOut.duration(timing.fast.duration)}
-          style={styles.editor}>
-          {children}
-        </Animated.View>
-      ) : null}
-    </Animated.View>
+      {open ? <View style={styles.editor}>{children}</View> : null}
+    </View>
   );
 }
 
 /** The accordion's disclosure chevron — springs 0°→180° on open (reduceMotion-safe).
  * The row height still animates via LayoutAnimation; this just spins the caret. */
 function Chevron({ open }: { open: boolean }) {
-  // `palette`, not `t` — this component already owns a shared value called `t`.
-  const palette = useTheme();
   const reduce = useReducedMotion();
   const t = useSharedValue(open ? 1 : 0);
   useEffect(() => {
-    t.value = reduce ? (open ? 1 : 0) : withSpring(open ? 1 : 0, spring.snap);
+    t.value = reduce ? (open ? 1 : 0) : withSpring(open ? 1 : 0, SPRING.snappy);
   }, [open, reduce, t]);
   const spin = useAnimatedStyle(() => ({ transform: [{ rotate: `${t.value * 180}deg` }] }));
   return (
     <Animated.View style={spin}>
-      <Icon name="chevron-down" size={moderateScale(14)} tint={palette.inkFaint} />
+      <Icon name="chevron-down" size={moderateScale(14)} tint={color.textMuted} />
     </Animated.View>
   );
 }
@@ -618,7 +606,6 @@ function Segmented<T extends string | number>({
   onSelect: (id: T) => void;
   mono?: boolean;
 }) {
-  const styles = useStyles();
   return (
     <View style={styles.segments}>
       {options.map((o) => {
@@ -648,10 +635,10 @@ function Segmented<T extends string | number>({
 
 const AVATAR = moderateScale(52);
 
-const useStyles = makeStyles((t) => ({
+const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: t.canvas,
+    backgroundColor: color.bg,
   },
   nav: {
     flexDirection: 'row',
@@ -664,20 +651,20 @@ const useStyles = makeStyles((t) => ({
   backBtn: {
     width: moderateScale(38),
     height: moderateScale(38),
-    borderRadius: radius.capsule,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: t.rule,
-    backgroundColor: t.surface,
+    borderColor: color.border,
+    backgroundColor: color.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   backBtnPressed: {
-    backgroundColor: t.surfaceHigh,
+    backgroundColor: color.surfaceHigh,
   },
   navTitle: {
-    ...type.title3,
+    ...type.headline,
     fontWeight: '700',
-    color: t.ink,
+    color: color.textPrimary,
   },
   scroll: {
     flex: 1,
@@ -701,33 +688,33 @@ const useStyles = makeStyles((t) => ({
     height: AVATAR,
     borderRadius: AVATAR / 2,
     borderWidth: 1,
-    borderColor: t.rule,
-    backgroundColor: t.surface,
+    borderColor: color.border,
+    backgroundColor: color.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarInitials: {
-    ...type.title3,
+    ...type.headline,
     fontWeight: '700',
     letterSpacing: 0.3,
-    color: t.ink,
+    color: color.textPrimary,
   },
   profileText: {
     flex: 1,
   },
   profileName: {
     ...type.title2,
-    color: t.ink,
+    color: color.textPrimary,
   },
   profileEmail: {
     marginTop: 2,
-    ...type.callout,
-    color: t.inkMuted,
+    ...type.subhead,
+    color: color.textSecondary,
   },
   profileProvider: {
     marginTop: 2,
-    ...type.caption,
-    color: t.inkFaint,
+    ...type.footnote,
+    color: color.textMuted,
   },
 
   // Sections & cards.
@@ -739,12 +726,12 @@ const useStyles = makeStyles((t) => ({
     marginLeft: spacing.xs,
   },
   card: {
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.divider,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.lg + 2,
-    ...t.shadow.card,
+    ...shadow.card,
   },
 
   // Rows.
@@ -757,30 +744,29 @@ const useStyles = makeStyles((t) => ({
     gap: spacing.md,
   },
   rowDivider: {
-    // A row rule, not a container edge — hairline at `border` (see Divider).
-    borderTopWidth: hairline,
-    borderTopColor: t.rule,
+    borderTopWidth: 1,
+    borderTopColor: color.divider,
   },
   rowPressed: {
-    backgroundColor: t.surfaceHigh,
+    backgroundColor: color.surfaceHigh,
   },
   rowLeft: {
     flexShrink: 1,
   },
   rowLabel: {
-    ...type.callout,
-    color: t.ink,
+    ...type.subhead,
+    color: color.textPrimary,
   },
   rowLabelBold: {
     fontWeight: '600',
   },
   rowLabelDanger: {
-    color: t.danger,
+    color: color.error,
   },
   rowSub: {
     ...type.caption,
     lineHeight: moderateScale(16),
-    color: t.inkFaint,
+    color: color.textMuted,
     marginTop: 2,
   },
   rowRight: {
@@ -792,18 +778,18 @@ const useStyles = makeStyles((t) => ({
   },
   rowValue: {
     flexShrink: 1,
-    ...type.callout,
-    color: t.inkMuted,
+    ...type.subhead,
+    color: color.textSecondary,
     textAlign: 'right',
   },
   rowValueOpen: {
-    color: t.ink,
+    color: color.textPrimary,
     fontWeight: '600',
   },
   external: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(14),
-    color: t.inkFaint,
+    color: color.textMuted,
   },
 
   // Inline segmented editor (revealed by an AccordionRow).
@@ -812,7 +798,7 @@ const useStyles = makeStyles((t) => ({
   },
   segments: {
     flexDirection: 'row',
-    backgroundColor: t.surfaceHigh,
+    backgroundColor: color.surfaceHigh,
     borderRadius: radius.sm,
     padding: moderateScale(3),
     gap: moderateScale(3),
@@ -827,43 +813,43 @@ const useStyles = makeStyles((t) => ({
     borderColor: 'transparent',
   },
   segmentSelected: {
-    backgroundColor: t.surface,
-    borderColor: t.rule,
+    backgroundColor: color.surface,
+    borderColor: color.border,
   },
   segmentLabel: {
     ...type.caption,
     fontWeight: '600',
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   segmentMono: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     letterSpacing: 0.2,
     fontVariant: ['tabular-nums'],
   },
   segmentLabelSelected: {
-    color: t.ink,
+    color: color.textPrimary,
   },
 
   footnote: {
-    ...type.caption,
+    ...type.footnote,
     lineHeight: moderateScale(16),
-    color: t.inkFaint,
+    color: color.textMuted,
     marginTop: spacing.sm,
     marginHorizontal: spacing.xs,
   },
   footnoteActive: {
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   version: {
-    ...type.caption,
-    color: t.inkFaint,
+    ...type.footnote,
+    color: color.textMuted,
     textAlign: 'center',
     marginTop: spacing.sm,
     marginBottom: spacing.md,
   },
   versionNum: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontVariant: ['tabular-nums'],
-    color: t.inkFaint,
+    color: color.textMuted,
   },
-}));
+});

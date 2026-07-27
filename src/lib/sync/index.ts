@@ -9,6 +9,14 @@ import { getDirtyCorrections, markCorrectionsClean } from '@/lib/db/corrections'
 import { getDirtyExercises, markExercisesClean, upsertExerciseFromRemote } from '@/lib/db/exercises';
 import { getDb, getMeta, setMeta } from '@/lib/db/index';
 import {
+  clearPlanDeletes,
+  deleteStalePlanDays,
+  getDirtyPlanDays,
+  getPlanDeletes,
+  markPlanDaysClean,
+  upsertPlanDayFromRemote,
+} from '@/lib/db/plan';
+import {
   getDirtyPredictions,
   markPredictionsClean,
   upsertPredictionFromRemote,
@@ -75,6 +83,7 @@ export async function syncNow(): Promise<void> {
     await pushAliasOverrides(userId);
     await pushCorrections(userId);
     await pushPredictions(userId);
+    await pushPlanDays(userId);
     await pullRemote(userId);
   } catch (err) {
     devLog('sync pass failed (offline?)', err instanceof Error ? err.message : '');
@@ -266,6 +275,35 @@ async function pushPredictions(userId: string) {
   markPredictionsClean(dirty.map((p) => p.id));
 }
 
+/** The declared weekly split (pre-plan). Tombstones are pushed as remote
+ * deletes FIRST so the pull can't resurrect a day the user removed. */
+async function pushPlanDays(userId: string) {
+  const deletes = getPlanDeletes();
+  if (deletes.length > 0) {
+    const { error } = await supabase.from('plan_days').delete().in('id', deletes);
+    if (error) throw error;
+    clearPlanDeletes(deletes);
+  }
+
+  const dirty = getDirtyPlanDays(userId);
+  if (dirty.length === 0) return;
+
+  const payload = dirty.map((d) => ({
+    id: d.id,
+    user_id: d.user_id,
+    position: d.position,
+    label: d.label,
+    weekday_mask: d.weekday_mask,
+    raw_text: d.raw_text,
+    parse_version: d.parse_version,
+    created_at: d.created_at,
+    updated_at: d.updated_at,
+  }));
+  const { error } = await supabase.from('plan_days').upsert(payload, { onConflict: 'id' });
+  if (error) throw error;
+  markPlanDaysClean(dirty.map((d) => d.id));
+}
+
 // --- pull --------------------------------------------------------------------
 
 async function pullRemote(userId: string) {
@@ -330,6 +368,20 @@ async function pullRemote(userId: string) {
     .gte('for_date', new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10));
   if (pError) throw pError;
   for (const p of predictions ?? []) upsertPredictionFromRemote(p);
+
+  // Plan days: the declared split — small, pull it flat, then reconcile deletes
+  // (rows gone remotely and not locally dirty) so a day removed on another
+  // device disappears here too.
+  const { data: planDays, error: pdError } = await supabase
+    .from('plan_days')
+    .select('id, user_id, position, label, weekday_mask, raw_text, parse_version, created_at, updated_at')
+    .eq('user_id', userId);
+  if (pdError) throw pdError;
+  for (const d of planDays ?? []) upsertPlanDayFromRemote(d);
+  deleteStalePlanDays(
+    userId,
+    (planDays ?? []).map((d) => d.id),
+  );
 
   setMeta(LAST_PULL_KEY, cursor);
 }

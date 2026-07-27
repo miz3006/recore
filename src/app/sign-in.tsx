@@ -1,6 +1,6 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useEffect, useState } from 'react';
-import { Platform, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
@@ -14,7 +14,7 @@ import {
 import { isSupabaseConfigured } from '@/lib/env';
 import { devLog } from '@/lib/log';
 import { getName } from '@/lib/prefs';
-import { makeStyles, useTheme, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 
 /**
  * Sign in — now the LAST step of the funnel (2026-07-23 redesign), not the
@@ -25,8 +25,6 @@ import { makeStyles, useTheme, MAX_FONT_SCALE, moderateScale, spacing, type } fr
  * logic (PKCE, busy/error states) is unchanged.
  */
 export default function SignIn() {
-  const styles = useStyles();
-  const t = useTheme();
   const name = getName();
   const [appleAvailable, setAppleAvailable] = useState(false);
   const [busy, setBusy] = useState<null | 'apple' | 'google'>(null);
@@ -86,7 +84,7 @@ export default function SignIn() {
               onPress={() => void run('apple', signInWithApple)}
               disabled={busy !== null}
               loading={busy === 'apple'}
-              leading={<Icon name="apple" size={moderateScale(18)} tint={t.canvas} />}
+              leading={<Icon name="apple" size={moderateScale(18)} tint={color.bg} />}
             />
           ) : null}
 
@@ -96,7 +94,7 @@ export default function SignIn() {
             onPress={() => void run('google', signInWithGoogle)}
             disabled={busy !== null}
             loading={busy === 'google'}
-            leading={<Icon name="google" size={moderateScale(16)} tint={t.ink} />}
+            leading={<Icon name="google" size={moderateScale(16)} tint={color.textPrimary} />}
           />
         </View>
 
@@ -122,17 +120,17 @@ export default function SignIn() {
   );
 }
 
-const useStyles = makeStyles((t) => ({
+const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: t.canvas,
+    backgroundColor: color.bg,
     paddingHorizontal: spacing.xxl,
   },
   wordmark: {
-    fontSize: type.title3.fontSize,
+    fontSize: type.headline.fontSize,
     fontWeight: '700',
     letterSpacing: -0.3,
-    color: t.ink,
+    color: color.textPrimary,
     marginTop: spacing.md,
     height: moderateScale(44),
     textAlignVertical: 'center',
@@ -144,11 +142,11 @@ const useStyles = makeStyles((t) => ({
   },
   headline: {
     ...type.display,
-    color: t.ink,
+    color: color.textPrimary,
   },
   sub: {
     ...type.body,
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   ratingWrap: {
     marginTop: spacing.sm,
@@ -161,17 +159,17 @@ const useStyles = makeStyles((t) => ({
     gap: spacing.md,
   },
   caption: {
-    ...type.caption,
-    color: t.inkFaint,
+    ...type.footnote,
+    color: color.textMuted,
     marginTop: spacing.xs,
   },
   error: {
     ...type.caption,
-    color: t.danger,
+    color: color.error,
   },
   configHint: {
     ...type.caption,
-    color: t.inkFaint,
+    color: color.textMuted,
     textAlign: 'center',
   },
-}));
+});

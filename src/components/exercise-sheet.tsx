@@ -1,33 +1,20 @@
 import { useMemo, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polyline } from 'react-native-svg';
 
 import { PressableScale, Stagger } from '@/components/motion';
 import { Eyebrow } from '@/components/primitives';
 import { type DayKey } from '@/lib/db/dates';
-import {
-  getExerciseStats,
-  type ExerciseSession,
-  type ExerciseStats,
-} from '@/lib/db/exercise-stats';
+import { getExerciseStats, type ExerciseSession, type ExerciseStats } from '@/lib/db/exercise-stats';
 import { findExerciseByName } from '@/lib/db/exercises';
 import { getAllTimePRs, getE1rmSeries } from '@/lib/db/insights';
 import { tap } from '@/lib/haptics';
-import {
-  makeStyles,
-  MAX_FONT_SCALE,
-  moderateScale,
-  mono,
-  radius,
-  spacing,
-  type,
-  useTheme,
-} from '@/lib/theme';
+import { color, fonts, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 import { fmtNumber } from '@/lib/parse/summarize';
 import { labelForDay, useSession } from '@/state/session-store';
 
-import { Sheet } from './sheet';
+import { BottomSheet } from './bottom-sheet';
 import { Icon } from './icon';
 
 /**
@@ -113,8 +100,6 @@ function ProgressionChart({
   unit: string;
   footNote: string;
 }) {
-  const styles = useStyles();
-  const t = useTheme();
   const [w, setW] = useState(0);
 
   if (points.length < 2) {
@@ -167,7 +152,7 @@ function ProgressionChart({
                 y1={prY}
                 x2={w - padX}
                 y2={prY}
-                stroke={t.rule}
+                stroke={color.border}
                 strokeWidth={1}
                 strokeDasharray="3 4"
               />
@@ -175,7 +160,7 @@ function ProgressionChart({
             <Polyline
               points={linePts}
               fill="none"
-              stroke={t.ink}
+              stroke={color.accent}
               strokeWidth={2}
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -188,8 +173,8 @@ function ProgressionChart({
                   cx={q.x}
                   cy={q.y}
                   r={latest ? moderateScale(4) : moderateScale(2.5)}
-                  fill={latest ? t.ink : t.canvas}
-                  stroke={t.ink}
+                  fill={latest ? color.accent : color.bg}
+                  stroke={color.accent}
                   strokeWidth={1.5}
                 />
               );
@@ -221,8 +206,6 @@ const METRIC_CHIP_LABEL: Record<ChartMetric, string> = {
 };
 
 export function ExerciseSheet() {
-  const styles = useStyles();
-  const t = useTheme();
   const insets = useSafeAreaInsets();
   const userId = useSession((s) => s.userId);
   const sheetExercise = useSession((s) => s.sheetExercise);
@@ -326,7 +309,7 @@ export function ExerciseSheet() {
   const ordered = stats ? [...stats.sessions].reverse() : [];
 
   return (
-    <Sheet
+    <BottomSheet
       visible={sheetExercise !== null}
       onClose={close}
       sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
@@ -341,7 +324,7 @@ export function ExerciseSheet() {
               hitSlop={spacing.sm}
               accessibilityRole="button"
               accessibilityLabel="Close">
-              <Icon name="chevron-back" size={moderateScale(16)} tint={t.ink} />
+              <Icon name="chevron-back" size={moderateScale(16)} tint={color.textPrimary} />
             </PressableScale>
             <View style={styles.namePill}>
               <Text style={styles.nameText} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -506,13 +489,13 @@ export function ExerciseSheet() {
             </Text>
           )}
           </ScrollView>
-    </Sheet>
+    </BottomSheet>
   );
 }
 
-const useStyles = makeStyles((t) => ({
+const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: t.canvas,
+    backgroundColor: color.bg,
     paddingHorizontal: spacing.xl,
     // Cap the sheet so a long history scrolls instead of pushing the header off
     // the top of the screen; the body below shrinks and scrolls within it.
@@ -534,25 +517,25 @@ const useStyles = makeStyles((t) => ({
   metricChip: {
     paddingVertical: spacing.xs + 1,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.capsule,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: t.rule,
-    backgroundColor: t.surface,
+    borderColor: color.border,
+    backgroundColor: color.surface,
   },
   metricChipActive: {
-    backgroundColor: t.ink,
-    borderColor: t.ink,
+    backgroundColor: color.accent,
+    borderColor: color.accent,
   },
   metricChipPressed: {
-    backgroundColor: t.surfaceHigh,
+    backgroundColor: color.surfaceHigh,
   },
   metricChipText: {
     fontSize: moderateScale(12),
     fontWeight: '600',
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   metricChipTextActive: {
-    color: t.canvas,
+    color: color.bg,
   },
 
   // Weight-progression line chart.
@@ -565,14 +548,15 @@ const useStyles = makeStyles((t) => ({
     justifyContent: 'space-between',
   },
   chartTitle: {
-    fontSize: type.callout.fontSize,
+    fontSize: type.subhead.fontSize,
     fontWeight: '600',
-    color: t.ink,
+    color: color.textPrimary,
   },
   chartCurrent: {
-    fontFamily: mono.semibold,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(15),
-    color: t.ink,
+    fontWeight: '600',
+    color: color.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   chartPlot: {
@@ -584,9 +568,9 @@ const useStyles = makeStyles((t) => ({
     marginTop: spacing.sm,
   },
   chartDate: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(11),
-    color: t.inkFaint,
+    color: color.textMuted,
     fontVariant: ['tabular-nums'],
   },
   chartDateRight: {
@@ -596,13 +580,13 @@ const useStyles = makeStyles((t) => ({
     flex: 1,
     textAlign: 'center',
     fontSize: moderateScale(11),
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   chartEmpty: {
     marginTop: spacing.lg,
     fontSize: moderateScale(13),
     lineHeight: moderateScale(19),
-    color: t.inkFaint,
+    color: color.textMuted,
   },
 
   // Header
@@ -615,29 +599,29 @@ const useStyles = makeStyles((t) => ({
   chevron: {
     width: moderateScale(38),
     height: moderateScale(38),
-    borderRadius: radius.capsule,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: t.rule,
-    backgroundColor: t.surface,
+    borderColor: color.border,
+    backgroundColor: color.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   chevronPressed: {
-    backgroundColor: t.surfaceHigh,
+    backgroundColor: color.surfaceHigh,
   },
   namePill: {
     paddingVertical: moderateScale(9),
     paddingHorizontal: spacing.xl,
     borderWidth: 1,
-    borderColor: t.rule,
-    backgroundColor: t.surface,
-    borderRadius: radius.capsule,
+    borderColor: color.border,
+    backgroundColor: color.surface,
+    borderRadius: radius.pill,
     maxWidth: '70%',
   },
   nameText: {
-    ...type.callout,
+    ...type.subhead,
     fontWeight: '600',
-    color: t.ink,
+    color: color.textPrimary,
   },
   spacer: {
     width: moderateScale(38),
@@ -653,28 +637,28 @@ const useStyles = makeStyles((t) => ({
   chipSelected: {
     paddingVertical: spacing.sm,
     paddingHorizontal: moderateScale(14),
-    borderRadius: radius.capsule,
-    backgroundColor: t.ink,
+    borderRadius: radius.pill,
+    backgroundColor: color.accent,
   },
   chipSelectedText: {
     fontSize: type.caption.fontSize,
     fontWeight: '600',
-    color: t.canvas,
+    color: color.bg,
   },
   step: {
     marginLeft: 'auto',
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(12),
-    color: t.inkFaint,
+    color: color.textMuted,
     fontVariant: ['tabular-nums'],
   },
 
   // PR hero card
   heroCard: {
     marginTop: spacing.lg,
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.lg,
     padding: spacing.xl,
   },
@@ -687,12 +671,13 @@ const useStyles = makeStyles((t) => ({
     gap: spacing.sm,
   },
   prLabel: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(9),
+    fontWeight: '500',
     letterSpacing: 1,
-    color: t.ink,
+    color: color.textPrimary,
     borderWidth: 1,
-    borderColor: t.ink,
+    borderColor: color.textPrimary,
     borderRadius: 5,
     paddingHorizontal: 6,
     paddingVertical: 1,
@@ -700,7 +685,7 @@ const useStyles = makeStyles((t) => ({
   },
   heroCaption: {
     fontSize: type.caption.fontSize,
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   heroFigureRow: {
     flexDirection: 'row',
@@ -709,23 +694,23 @@ const useStyles = makeStyles((t) => ({
     marginTop: spacing.sm,
   },
   heroFigure: {
-    ...type.dataXL,
-    fontFamily: mono.medium,
-    color: t.ink,
+    ...type.statNumber,
+    fontFamily: fonts.mono,
+    color: color.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   heroE1rm: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(14),
-    color: t.inkMuted,
+    color: color.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   // History table card
   tableCard: {
     marginTop: spacing.lg,
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.xs / 2,
@@ -743,7 +728,7 @@ const useStyles = makeStyles((t) => ({
   },
   rowRule: {
     borderBottomWidth: 1,
-    borderBottomColor: t.rule,
+    borderBottomColor: color.tableRule,
   },
   rowLeft: {
     flexShrink: 1,
@@ -754,55 +739,55 @@ const useStyles = makeStyles((t) => ({
     gap: spacing.sm,
   },
   rowDate: {
-    ...type.callout,
+    ...type.subhead,
     fontWeight: '600',
-    color: t.ink,
+    color: color.textPrimary,
   },
   rowSub: {
     marginTop: 3,
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(11),
-    color: t.inkFaint,
+    color: color.textMuted,
     fontVariant: ['tabular-nums'],
   },
   rowValue: {
     ...type.caption,
-    fontFamily: mono.medium,
-    color: t.inkMuted,
+    fontFamily: fonts.mono,
+    color: color.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   rowValuePr: {
     fontWeight: '600',
-    color: t.ink,
+    color: color.textPrimary,
   },
 
   // Alias card + footer
   aliasCard: {
     marginTop: spacing.lg,
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md + 2,
     paddingVertical: spacing.md,
   },
   aliasText: {
     fontSize: type.caption.fontSize,
-    color: t.ink,
+    color: color.textPrimary,
   },
   aliasWords: {
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   footer: {
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
     fontSize: moderateScale(12),
     lineHeight: moderateScale(19),
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   empty: {
-    ...type.callout,
-    color: t.inkFaint,
+    ...type.subhead,
+    color: color.textMuted,
     paddingVertical: spacing.xxl,
   },
-}));
+});

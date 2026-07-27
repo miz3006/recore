@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { searchExercises } from '@/lib/db/exercises';
@@ -7,19 +7,19 @@ import { tap } from '@/lib/haptics';
 import { type ParsedSet } from '@/lib/parse/types';
 import { getSmallestPlateKg } from '@/lib/prefs';
 import {
+  color,
   CONTROL_HEIGHT,
-  makeStyles,
+  fonts,
+  ink,
   MAX_FONT_SCALE,
   moderateScale,
-  mono,
   radius,
   spacing,
   type,
-  useTheme,
 } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
-import { Sheet } from './sheet';
+import { BottomSheet } from './bottom-sheet';
 
 /**
  * "Fix reading" (wireframe 10): fix what the parser got wrong,
@@ -87,8 +87,6 @@ function setOf(d: SetDraft): ParsedSet {
 }
 
 export function FixSheet() {
-  const styles = useStyles();
-  const t = useTheme();
   const insets = useSafeAreaInsets();
   const userId = useSession((s) => s.userId);
   const fixTarget = useSession((s) => s.fixTarget);
@@ -158,7 +156,7 @@ export function FixSheet() {
   const canSave = exercise.trim().length > 0;
 
   return (
-    <Sheet
+    <BottomSheet
       visible={fixTarget !== null}
       onClose={close}
       sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
@@ -190,10 +188,10 @@ export function FixSheet() {
                 value={exercise}
                 onChangeText={setExercise}
                 placeholder="Exercise name"
-                placeholderTextColor={t.inkFaint}
-                selectionColor={t.ink}
-                cursorColor={t.ink}
-                keyboardAppearance="light"
+                placeholderTextColor={color.textMuted}
+                selectionColor={color.accent}
+                cursorColor={color.accent}
+                keyboardAppearance="dark"
                 autoCapitalize="words"
                 autoCorrect={false}
                 allowFontScaling
@@ -231,10 +229,10 @@ export function FixSheet() {
                       value={d.reps}
                       onChangeText={(t) => patchDraft(i, { reps: t })}
                       placeholder="reps"
-                      placeholderTextColor={t.inkFaint}
+                      placeholderTextColor={color.textMuted}
                       keyboardType="number-pad"
-                      keyboardAppearance="light"
-                      selectionColor={t.ink}
+                      keyboardAppearance="dark"
+                      selectionColor={color.accent}
                       maxFontSizeMultiplier={MAX_FONT_SCALE}
                     />
                     <Text style={styles.times} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -252,10 +250,10 @@ export function FixSheet() {
                       value={d.weight}
                       onChangeText={(t) => patchDraft(i, { weight: t })}
                       placeholder="kg"
-                      placeholderTextColor={t.inkFaint}
+                      placeholderTextColor={color.textMuted}
                       keyboardType="decimal-pad"
-                      keyboardAppearance="light"
-                      selectionColor={t.ink}
+                      keyboardAppearance="dark"
+                      selectionColor={color.accent}
                       maxFontSizeMultiplier={MAX_FONT_SCALE}
                     />
                     <Pressable
@@ -270,10 +268,10 @@ export function FixSheet() {
                       value={d.rir}
                       onChangeText={(t) => patchDraft(i, { rir: t })}
                       placeholder="—"
-                      placeholderTextColor={t.inkFaint}
+                      placeholderTextColor={color.textMuted}
                       keyboardType="decimal-pad"
-                      keyboardAppearance="light"
-                      selectionColor={t.ink}
+                      keyboardAppearance="dark"
+                      selectionColor={color.accent}
                       maxFontSizeMultiplier={MAX_FONT_SCALE}
                     />
                     <Text style={styles.unit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -287,10 +285,10 @@ export function FixSheet() {
                       value={d.distance}
                       onChangeText={(t) => patchDraft(i, { distance: t })}
                       placeholder="distance"
-                      placeholderTextColor={t.inkFaint}
+                      placeholderTextColor={color.textMuted}
                       keyboardType="decimal-pad"
-                      keyboardAppearance="light"
-                      selectionColor={t.ink}
+                      keyboardAppearance="dark"
+                      selectionColor={color.accent}
                       maxFontSizeMultiplier={MAX_FONT_SCALE}
                     />
                     <Text style={styles.unit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -304,10 +302,10 @@ export function FixSheet() {
                       value={d.duration}
                       onChangeText={(t) => patchDraft(i, { duration: t })}
                       placeholder="duration"
-                      placeholderTextColor={t.inkFaint}
+                      placeholderTextColor={color.textMuted}
                       keyboardType="number-pad"
-                      keyboardAppearance="light"
-                      selectionColor={t.ink}
+                      keyboardAppearance="dark"
+                      selectionColor={color.accent}
                       maxFontSizeMultiplier={MAX_FONT_SCALE}
                     />
                     <Text style={styles.unit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -361,39 +359,39 @@ export function FixSheet() {
               Never changes your written words. Corrections stay private to you.
             </Text>
           </ScrollView>
-    </Sheet>
+    </BottomSheet>
   );
 }
 
-const useStyles = makeStyles((t) => ({
+const styles = StyleSheet.create({
   sheet: {
     paddingHorizontal: spacing.xl,
     maxHeight: '86%',
   },
   title: {
-    color: t.ink,
-    fontSize: type.title3.fontSize,
+    color: color.textPrimary,
+    fontSize: type.headline.fontSize,
     fontWeight: '700',
     marginTop: spacing.md,
   },
   quoteCard: {
     marginTop: spacing.sm + 2,
-    backgroundColor: t.canvas,
+    backgroundColor: color.bg,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 1,
   },
   quote: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(12.5),
     lineHeight: moderateScale(18),
-    color: t.inkMuted,
+    color: color.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   quoteLine: {
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   scroll: {
     flexGrow: 0,
@@ -403,21 +401,21 @@ const useStyles = makeStyles((t) => ({
     minHeight: moderateScale(48),
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: t.surfaceHigh,
+    backgroundColor: color.surfaceHigh,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md + 2,
     gap: spacing.md,
   },
   fieldLabel: {
     fontSize: type.caption.fontSize,
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   exerciseInput: {
     flex: 1,
     textAlign: 'right',
-    color: t.ink,
+    color: color.textPrimary,
     fontSize: moderateScale(14.5),
     fontWeight: '600',
     paddingVertical: spacing.sm,
@@ -430,22 +428,22 @@ const useStyles = makeStyles((t) => ({
   },
   suggestion: {
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 1,
   },
   suggestionText: {
     ...type.caption,
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   setRow: {
     minHeight: moderateScale(48),
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: t.surfaceHigh,
+    backgroundColor: color.surfaceHigh,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.sm + 2,
     marginTop: spacing.sm,
@@ -453,10 +451,10 @@ const useStyles = makeStyles((t) => ({
   },
   setKind: {
     width: moderateScale(52),
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(9.5),
     letterSpacing: 1,
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   fields: {
     flex: 1,
@@ -469,26 +467,26 @@ const useStyles = makeStyles((t) => ({
     minWidth: moderateScale(46),
     textAlign: 'center',
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.sm - 1,
     paddingHorizontal: spacing.xs + 1,
     paddingVertical: spacing.xs + 2,
-    color: t.ink,
-    fontFamily: mono.medium,
-    fontSize: type.callout.fontSize,
+    color: color.textPrimary,
+    fontFamily: fonts.mono,
+    fontSize: type.subhead.fontSize,
     fontVariant: ['tabular-nums'],
   },
   rirInput: {
     minWidth: moderateScale(36),
     textAlign: 'center',
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.sm - 1,
     paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xs + 2,
-    color: t.ink,
-    fontFamily: mono.medium,
-    fontSize: type.callout.fontSize,
+    color: color.textPrimary,
+    fontFamily: fonts.mono,
+    fontSize: type.subhead.fontSize,
     fontVariant: ['tabular-nums'],
   },
   wideInput: {
@@ -498,26 +496,26 @@ const useStyles = makeStyles((t) => ({
     width: moderateScale(30),
     height: moderateScale(34),
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.sm - 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepBtnPressed: {
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
   },
   stepGlyph: {
-    color: t.ink,
-    fontSize: type.title3.fontSize,
-    lineHeight: type.title3.lineHeight,
+    color: color.textPrimary,
+    fontSize: type.headline.fontSize,
+    lineHeight: type.headline.lineHeight,
   },
   times: {
-    color: t.inkFaint,
-    fontSize: type.callout.fontSize,
+    color: color.textMuted,
+    fontSize: type.subhead.fontSize,
   },
   unit: {
     ...type.caption,
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   scopes: {
     marginTop: spacing.lg,
@@ -533,12 +531,12 @@ const useStyles = makeStyles((t) => ({
     height: moderateScale(20),
     borderRadius: moderateScale(10),
     borderWidth: 1.5,
-    borderColor: t.inkFaint,
+    borderColor: color.textMuted,
     marginTop: 1,
   },
   radioSelected: {
     borderWidth: moderateScale(6.5),
-    borderColor: t.ink,
+    borderColor: color.accent,
   },
   scopeBody: {
     flex: 1,
@@ -546,26 +544,26 @@ const useStyles = makeStyles((t) => ({
   scopeTitle: {
     fontSize: moderateScale(14.5),
     fontWeight: '600',
-    color: t.ink,
+    color: color.textPrimary,
   },
   scopeSub: {
     fontSize: type.caption.fontSize,
-    color: t.inkMuted,
+    color: color.textSecondary,
     marginTop: 1,
   },
   save: {
     marginTop: spacing.lg,
     height: CONTROL_HEIGHT,
     borderRadius: radius.md,
-    backgroundColor: t.ink,
+    backgroundColor: color.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   saveDisabled: {
-    opacity: 0.4, // the one disabled level in the app
+    opacity: ink.disabled,
   },
   saveText: {
-    color: t.canvas,
+    color: color.bg,
     fontSize: moderateScale(16),
     fontWeight: '600',
   },
@@ -574,13 +572,13 @@ const useStyles = makeStyles((t) => ({
     height: moderateScale(44),
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancelText: {
-    color: t.ink,
-    fontSize: type.callout.fontSize,
+    color: color.textPrimary,
+    fontSize: type.subhead.fontSize,
     fontWeight: '600',
   },
   footer: {
@@ -588,7 +586,7 @@ const useStyles = makeStyles((t) => ({
     marginBottom: spacing.sm,
     fontSize: moderateScale(11.5),
     lineHeight: moderateScale(16),
-    color: t.inkFaint,
+    color: color.textMuted,
     textAlign: 'center',
   },
-}));
+});

@@ -3,19 +3,14 @@ import { create } from 'zustand';
 import { shiftDayKey, todayKey, type DayKey } from '@/lib/db/dates';
 import { loadUndoneKeys, loadUndoneMap, saveUndone } from '@/lib/db/done-state';
 import { getMeta, setMeta } from '@/lib/db/index';
-import { computeWeekStreak, getWorkoutForDay, saveRawText } from '@/lib/db/workouts';
+import { computeStreak, getWorkoutForDay, saveRawText } from '@/lib/db/workouts';
 import { getPredictionForOpen, markPredictionAccepted } from '@/lib/db/predictions';
+import { computePlanStrip, type PlanStrip } from '@/lib/db/strip';
 import { getParseCache, reapplyDoneState } from '@/lib/parse/apply';
 import { parseWorkout, type ParseOutcome } from '@/lib/parse/client';
 import { applyCorrection, getFixTarget, type FixTarget } from '@/lib/parse/correct';
-import { buildSessionTotals, type SessionTotals } from '@/lib/parse/session';
-import {
-  validateParseResult,
-  type LineSignal,
-  type ParsedItem,
-  type ParsedSet,
-} from '@/lib/parse/types';
-import { getWeeklyTarget } from '@/lib/prefs';
+import { buildReceipt, type ReceiptData } from '@/lib/parse/receipt';
+import { validateParseResult, type LineSignal, type ParsedSet } from '@/lib/parse/types';
 import { scheduleSync, setParseListener } from '@/lib/sync/index';
 
 /**
@@ -61,9 +56,7 @@ interface SessionState {
    * Detected once per workout (≥4 exercises parsed from a note that was empty
    * moments before) and remembered in the local meta KV. */
   receiptMode: boolean;
-  receipt: SessionTotals | null;
-  /** The parsed items behind the cards — §8.3 renders per set, not per line. */
-  parsedItems: ParsedItem[];
+  receipt: ReceiptData | null;
   /** The ONE line the AI may say under the receipt (next-session reason). */
   receiptReason: string | null;
   /** Canonical name of the exercise whose bottom sheet is open, or null. */
@@ -82,6 +75,9 @@ interface SessionState {
   streak: number;
   ghost: GhostData | null;
   ghostDismissed: boolean;
+  /** Today's declared day-template resolved to movements + engine loads (the
+   * read-only plan-in-view strip). Recomputed on open and after each parse. */
+  planStrip: PlanStrip | null;
 
   hydrate: (userId: string) => void;
   reset: () => void;
@@ -162,8 +158,7 @@ function loadDay(userId: string, day: DayKey) {
   let snapshot: string | null = null;
   let volume = 0;
   let lineExercises: Record<number, string> = {};
-  let receipt: SessionTotals | null = null;
-  let items: ParsedItem[] = [];
+  let receipt: ReceiptData | null = null;
 
   if (workout) {
     const cache = getParseCache(workout.id);
@@ -173,8 +168,7 @@ function loadDay(userId: string, day: DayKey) {
         snapshot = cache.raw_snapshot;
         const result = validateParseResult(JSON.parse(cache.result_json));
         // Totals + comparisons exclude anything the user marked NOT DONE.
-        receipt = result ? buildSessionTotals(result, signals, loadUndoneKeys(workout.id)) : null;
-        items = result ? result.items : [];
+        receipt = result ? buildReceipt(result, signals, loadUndoneKeys(workout.id)) : null;
         volume = receipt ? receipt.volume : 0;
         if (result) {
           for (const item of result.items) {
@@ -186,7 +180,6 @@ function loadDay(userId: string, day: DayKey) {
         snapshot = null;
         lineExercises = {};
         receipt = null;
-        items = [];
       }
     }
   }
@@ -203,7 +196,6 @@ function loadDay(userId: string, day: DayKey) {
     lineExercises,
     receiptMode,
     receipt,
-    parsedItems: items,
     // The one AI line under the ledger — today only, silence otherwise.
     receiptReason: receipt ? reasonForReceipt(userId, day) : null,
   };
@@ -222,7 +214,6 @@ export const useSession = create<SessionState>((set, get) => ({
   lineExercises: {},
   receiptMode: false,
   receipt: null,
-  parsedItems: [],
   receiptReason: null,
   sheetExercise: null,
   sheetSession: null,
@@ -233,6 +224,7 @@ export const useSession = create<SessionState>((set, get) => ({
   streak: 0,
   ghost: null,
   ghostDismissed: false,
+  planStrip: null,
 
   hydrate: (userId) => {
     dumpStartedAt = null;
@@ -242,11 +234,12 @@ export const useSession = create<SessionState>((set, get) => ({
       userId,
       selectedDay: today,
       ...loadDay(userId, today),
-      streak: computeWeekStreak(userId, today, getWeeklyTarget()),
+      streak: computeStreak(userId, today),
       ghost: prediction
         ? { id: prediction.id, ghostText: prediction.ghost_text, reason: prediction.reason }
         : null,
       ghostDismissed: false,
+      planStrip: computePlanStrip(userId, today),
     });
   },
 
@@ -267,7 +260,6 @@ export const useSession = create<SessionState>((set, get) => ({
       lineExercises: {},
       receiptMode: false,
       receipt: null,
-      parsedItems: [],
       receiptReason: null,
       sheetExercise: null,
       sheetSession: null,
@@ -277,7 +269,8 @@ export const useSession = create<SessionState>((set, get) => ({
       streak: 0,
       ghost: null,
       ghostDismissed: false,
-        });
+      planStrip: null,
+    });
   },
 
   selectDay: (day) => {
@@ -286,7 +279,7 @@ export const useSession = create<SessionState>((set, get) => ({
     if (parseTimer) clearTimeout(parseTimer);
     clearParseRetry();
     dumpStartedAt = null;
-    set({ selectedDay: day, ...loadDay(userId, day) });
+    set({ selectedDay: day, ...loadDay(userId, day), planStrip: computePlanStrip(userId, day) });
   },
 
   setNote: (text) => {
@@ -299,7 +292,7 @@ export const useSession = create<SessionState>((set, get) => ({
 
     // 1. Optimistic local-first write: raw_text hits SQLite in this tick.
     const workoutId = saveRawText(userId, selectedDay, text);
-    set({ note: text, workoutId, streak: computeWeekStreak(userId, todayKey(), getWeeklyTarget()) });
+    set({ note: text, workoutId, streak: computeStreak(userId, todayKey()) });
 
     // 2. Fire the background parse after the typing pause; push in background.
     // A fresh keystroke supersedes any failure-retry chain in flight.
@@ -440,8 +433,8 @@ function applyParseOutcome(userId: string, outcome: ParseOutcome) {
     lineExercises: outcome.lineExercises,
     receiptMode,
     receipt: outcome.receipt,
-    parsedItems: outcome.items,
     receiptReason: outcome.receipt ? reasonForReceipt(userId, state.selectedDay) : null,
+    planStrip: computePlanStrip(userId, state.selectedDay),
   });
 }
 
@@ -511,3 +504,9 @@ export const useGhostVisible = () =>
       s.ghost !== null,
   );
 
+/**
+ * The plan-in-view strip shows today's declared day as a read-only reference
+ * (pre-plan, Surface 1). Hidden during a receipt-mode dump, like the ghost;
+ * `planStrip` is already null on any day but today.
+ */
+export const usePlanStrip = () => useSession((s) => (s.receiptMode ? null : s.planStrip));

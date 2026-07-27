@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
@@ -17,18 +17,7 @@ import { getStatsSummary } from '@/lib/db/stats';
 import { tap } from '@/lib/haptics';
 import { groupThousands } from '@/lib/parse/estimate';
 import { fmtNumber } from '@/lib/parse/summarize';
-import {
-  hairline,
-  makeStyles,
-  MAX_FONT_SCALE,
-  moderateScale,
-  mono,
-  radius,
-  spacing,
-  type,
-  useTheme,
-  space,
-} from '@/lib/theme';
+import { color, fonts, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 import { labelForDay, useSession } from '@/state/session-store';
 
 /**
@@ -79,8 +68,6 @@ interface WeekSession {
 }
 
 export default function Stats() {
-  const styles = useStyles();
-  const t = useTheme();
   const router = useRouter();
   const userId = useSession((s) => s.userId);
   const openSessionSheet = useSession((s) => s.openSessionSheet);
@@ -253,7 +240,7 @@ export default function Stats() {
                 accessibilityLabel="Previous week"
                 style={[styles.chevBtn, !view.canGoBack && styles.chevDisabled]}
                 pressedStyle={styles.pressed}>
-                <Icon name="chevron-back" size={moderateScale(16)} tint={t.ink} />
+                <Icon name="chevron-back" size={moderateScale(16)} tint={color.textPrimary} />
               </PressableScale>
               <View style={styles.paginatorCenter}>
                 <Text style={styles.weekLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -275,7 +262,7 @@ export default function Stats() {
                 accessibilityLabel="Next week"
                 style={[styles.chevBtn, !view.canGoForward && styles.chevDisabled]}
                 pressedStyle={styles.pressed}>
-                <Icon name="chevron-forward" size={moderateScale(16)} tint={t.ink} />
+                <Icon name="chevron-forward" size={moderateScale(16)} tint={color.textPrimary} />
               </PressableScale>
             </View>
 
@@ -436,14 +423,14 @@ export default function Stats() {
 
 const CHEV = moderateScale(34);
 
-const useStyles = makeStyles((t) => ({
+const styles = StyleSheet.create({
   scroll: {
     flex: 1,
     marginHorizontal: -spacing.xxl, // StubScreen pads the body; the scroll owns it
   },
   content: {
     paddingHorizontal: spacing.xxl,
-    paddingBottom: space[8],
+    paddingBottom: spacing.huge,
     gap: spacing.lg,
   },
 
@@ -453,27 +440,27 @@ const useStyles = makeStyles((t) => ({
   },
   segment: {
     flexDirection: 'row',
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
-    borderRadius: radius.capsule,
+    borderColor: color.border,
+    borderRadius: radius.pill,
     padding: moderateScale(3),
   },
   segItem: {
     paddingVertical: spacing.sm - 1,
     paddingHorizontal: spacing.xl,
-    borderRadius: radius.capsule,
+    borderRadius: radius.pill,
   },
   segItemActive: {
-    backgroundColor: t.ink,
+    backgroundColor: color.accent,
   },
   segText: {
-    ...type.callout,
+    ...type.subhead,
     fontWeight: '600',
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   segTextActive: {
-    color: t.canvas,
+    color: color.bg,
   },
 
   // --- week paginator ---------------------------------------------------------
@@ -486,10 +473,10 @@ const useStyles = makeStyles((t) => ({
   chevBtn: {
     width: CHEV,
     height: CHEV,
-    borderRadius: radius.capsule,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: t.rule,
-    backgroundColor: t.surface,
+    borderColor: color.border,
+    backgroundColor: color.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -501,24 +488,24 @@ const useStyles = makeStyles((t) => ({
     minWidth: moderateScale(140),
   },
   weekLabel: {
-    ...type.title3,
-    color: t.ink,
+    ...type.headline,
+    color: color.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   weekSub: {
     ...type.caption,
     marginTop: 2,
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
 
   // --- cards ------------------------------------------------------------------
   card: {
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.divider,
     borderRadius: radius.lg,
     padding: spacing.xl,
-    ...t.shadow.card,
+    ...shadow.card,
   },
   cardHead: {
     flexDirection: 'row',
@@ -526,9 +513,9 @@ const useStyles = makeStyles((t) => ({
     alignItems: 'baseline',
   },
   cardTotal: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: type.caption.fontSize,
-    color: t.inkMuted,
+    color: color.textSecondary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -547,13 +534,13 @@ const useStyles = makeStyles((t) => ({
   },
   barRecorded: {
     width: '100%',
-    backgroundColor: t.ink,
+    backgroundColor: color.accent,
     borderRadius: 5,
   },
   barRest: {
     width: '100%',
     height: 2,
-    backgroundColor: t.rule,
+    backgroundColor: color.border,
     borderRadius: 1,
   },
   dayRow: {
@@ -565,10 +552,10 @@ const useStyles = makeStyles((t) => ({
     flex: 1,
     textAlign: 'center',
     fontSize: moderateScale(12),
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   dayRecorded: {
-    color: t.inkMuted,
+    color: color.textSecondary,
     fontWeight: '600',
   },
   legend: {
@@ -587,28 +574,28 @@ const useStyles = makeStyles((t) => ({
     width: moderateScale(10),
     height: moderateScale(10),
     borderRadius: 3,
-    backgroundColor: t.ink,
+    backgroundColor: color.accent,
   },
   legendText: {
     fontSize: moderateScale(12),
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
 
   insight: {
     ...type.caption,
-    color: t.inkMuted,
+    color: color.textSecondary,
     fontVariant: ['tabular-nums'],
     marginTop: -spacing.sm,
   },
 
   // --- session / record list --------------------------------------------------
   listCard: {
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.divider,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.xl,
-    ...t.shadow.card,
+    ...shadow.card,
   },
   sessionRow: {
     flexDirection: 'row',
@@ -618,9 +605,8 @@ const useStyles = makeStyles((t) => ({
     paddingVertical: spacing.md + 1,
   },
   rowDivider: {
-    // A row rule, not a container edge — hairline at `border` (see Divider).
-    borderBottomWidth: hairline,
-    borderBottomColor: t.rule,
+    borderBottomWidth: 1,
+    borderBottomColor: color.tableRule,
   },
   rowText: {
     flex: 1,
@@ -631,77 +617,78 @@ const useStyles = makeStyles((t) => ({
     gap: spacing.sm,
   },
   rowTitle: {
-    ...type.callout,
+    ...type.subhead,
     flexShrink: 1,
     fontWeight: '600',
-    color: t.ink,
+    color: color.textPrimary,
   },
   rowSub: {
     ...type.caption,
     marginTop: 3,
-    color: t.inkMuted,
+    color: color.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   rowValue: {
     ...type.caption,
-    fontFamily: mono.medium,
-    color: t.inkMuted,
+    fontFamily: fonts.mono,
+    color: color.textSecondary,
     fontVariant: ['tabular-nums'],
     textAlign: 'right',
   },
   prChip: {
     borderWidth: 1,
-    borderColor: t.ink,
+    borderColor: color.textPrimary,
     borderRadius: 4,
     paddingHorizontal: 5,
     paddingVertical: 1,
   },
   prChipText: {
-    fontFamily: mono.bold,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(11),
+    fontWeight: '700',
     letterSpacing: 0.5,
-    color: t.ink,
+    color: color.textPrimary,
   },
 
   emptyWeek: {
-    ...type.callout,
-    color: t.inkFaint,
+    ...type.subhead,
+    color: color.textMuted,
     paddingVertical: spacing.xl,
   },
 
   proRow: {
     paddingVertical: spacing.md + 1,
     borderTopWidth: 1,
-    borderTopColor: t.rule,
+    borderTopColor: color.tableRule,
   },
   proLabel: {
     ...type.caption,
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
 
   // --- empty state ------------------------------------------------------------
   pressed: {
-    backgroundColor: t.surfaceHigh,
+    backgroundColor: color.surfaceHigh,
   },
   emptyCard: {
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.md,
     padding: spacing.lg,
     gap: spacing.md,
   },
   emptyTitle: {
-    ...type.title3,
+    ...type.headline,
     fontWeight: '600',
-    color: t.ink,
+    color: color.textPrimary,
   },
   emptyBody: {
-    ...type.callout,
-    color: t.inkMuted,
+    ...type.subhead,
+    color: color.textSecondary,
   },
   emptyActions: {
     flexDirection: 'row',
     marginTop: spacing.xs,
   },
-}));
+});

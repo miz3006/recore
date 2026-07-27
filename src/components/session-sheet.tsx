@@ -1,23 +1,18 @@
 import { useMemo } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getAllTimePRs, getWorkoutDetail, type WorkoutSet } from '@/lib/db/insights';
+import {
+  getAllTimePRs,
+  getWorkoutDetail,
+  type WorkoutSet,
+} from '@/lib/db/insights';
 import { groupThousands } from '@/lib/parse/estimate';
 import { fmtNumber } from '@/lib/parse/summarize';
-import {
-  hairline,
-  makeStyles,
-  MAX_FONT_SCALE,
-  moderateScale,
-  mono,
-  radius,
-  spacing,
-  type,
-} from '@/lib/theme';
+import { color, fonts, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 import { labelForDay, useSession } from '@/state/session-store';
 
-import { Sheet } from './sheet';
+import { BottomSheet } from './bottom-sheet';
 
 /**
  * SessionSheet (progress spec §3.7) — the forensic floor of the drill-down.
@@ -58,7 +53,6 @@ function setValue(s: WorkoutSet): string {
 }
 
 export function SessionSheet() {
-  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const userId = useSession((s) => s.userId);
   const sheetSession = useSession((s) => s.sheetSession);
@@ -87,7 +81,7 @@ export function SessionSheet() {
   const exerciseCount = detail?.exercises.length ?? 0;
 
   return (
-    <Sheet
+    <BottomSheet
       visible={sheetSession !== null}
       onClose={close}
       sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
@@ -179,13 +173,13 @@ export function SessionSheet() {
           Nothing recorded for this session.
         </Text>
       )}
-    </Sheet>
+    </BottomSheet>
   );
 }
 
-const useStyles = makeStyles((t) => ({
+const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: t.canvas,
+    backgroundColor: color.bg,
     paddingHorizontal: spacing.xl,
     maxHeight: '90%',
   },
@@ -198,21 +192,21 @@ const useStyles = makeStyles((t) => ({
     paddingVertical: moderateScale(9),
     paddingHorizontal: spacing.xl,
     borderWidth: 1,
-    borderColor: t.rule,
-    backgroundColor: t.surface,
-    borderRadius: radius.capsule,
+    borderColor: color.border,
+    backgroundColor: color.surface,
+    borderRadius: radius.pill,
     maxWidth: '80%',
   },
   nameText: {
-    fontSize: type.callout.fontSize,
+    fontSize: type.subhead.fontSize,
     fontWeight: '600',
-    color: t.ink,
+    color: color.textPrimary,
   },
   heroLine: {
     marginTop: spacing.lg,
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(13),
-    color: t.inkMuted,
+    color: color.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   scroll: {
@@ -227,9 +221,8 @@ const useStyles = makeStyles((t) => ({
     paddingVertical: spacing.md,
   },
   exDivider: {
-    // A row rule, not a container edge — hairline at `border` (see Divider).
-    borderTopWidth: hairline,
-    borderTopColor: t.rule,
+    borderTopWidth: 1,
+    borderTopColor: color.tableRule,
   },
   exHead: {
     flexDirection: 'row',
@@ -239,17 +232,18 @@ const useStyles = makeStyles((t) => ({
   },
   exName: {
     flexShrink: 1,
-    fontSize: type.callout.fontSize,
+    fontSize: type.subhead.fontSize,
     fontWeight: '600',
-    color: t.ink,
+    color: color.textPrimary,
   },
   groupTag: {
-    fontFamily: mono.bold,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(9),
+    fontWeight: '700',
     letterSpacing: 0.6,
-    color: t.inkFaint,
+    color: color.textMuted,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: 5,
     paddingHorizontal: 5,
     paddingVertical: 1,
@@ -272,18 +266,19 @@ const useStyles = makeStyles((t) => ({
   },
   setLabel: {
     fontSize: moderateScale(13),
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   setLabelMuted: {
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   prLabel: {
-    fontFamily: mono.bold,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(10),
+    fontWeight: '700',
     letterSpacing: 0.5,
-    color: t.ink,
+    color: color.textPrimary,
     borderWidth: 1,
-    borderColor: t.ink,
+    borderColor: color.accent,
     borderRadius: 5,
     paddingHorizontal: 5,
     paddingVertical: 0,
@@ -292,27 +287,27 @@ const useStyles = makeStyles((t) => ({
   setValue: {
     flexShrink: 1,
     textAlign: 'right',
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(13),
-    color: t.ink,
+    color: color.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   setValueMuted: {
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   setMeta: {
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   footer: {
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
     fontSize: moderateScale(12),
     lineHeight: moderateScale(19),
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   empty: {
-    ...type.callout,
-    color: t.inkFaint,
+    ...type.subhead,
+    color: color.textMuted,
     paddingVertical: spacing.xxl,
   },
-}));
+});

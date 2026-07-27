@@ -9,14 +9,8 @@ import { supabase } from '@/lib/supabase';
 
 import { reanchorLines } from './anchor';
 import { applyParseResult, getParseCache } from './apply';
-import { buildSessionTotals, type SessionTotals } from './session';
-import {
-  CLIENT_PARSE_VERSION,
-  MAX_RAW_TEXT_CHARS,
-  validateParseResult,
-  type LineSignal,
-  type ParsedItem,
-} from './types';
+import { buildReceipt, type ReceiptData } from './receipt';
+import { CLIENT_PARSE_VERSION, MAX_RAW_TEXT_CHARS, validateParseResult, type LineSignal } from './types';
 
 /**
  * Background parse (CLAUDE.md §6). The raw line is already saved locally when
@@ -34,14 +28,7 @@ export interface ParseOutcome {
   /** line index → canonical exercise name; drives the tap-to-open sheet. */
   lineExercises: Record<number, string>;
   /** Session summary for receipt mode (CLAUDE.md §9). */
-  receipt: SessionTotals | null;
-  /**
-   * The parsed items themselves. The receipt flattens each item's sets into one
-   * display string, which is all v2's gutter ever needed; §8.3's card renders
-   * per-set — a dropset chain, a warm-up row, a tapped rep — and cannot be
-   * reconstructed from that string. So the structure travels too.
-   */
-  items: ParsedItem[];
+  receipt: ReceiptData | null;
 }
 
 function lineExercisesOf(result: { items: { line: number; exercise: string }[] }): Record<number, string> {
@@ -68,15 +55,7 @@ export async function parseWorkout(userId: string, workoutId: string): Promise<P
         [nowIso(), workoutId],
       );
     });
-    return {
-      workoutId,
-      signals: [],
-      volume: 0,
-      rawSnapshot: rawText,
-      lineExercises: {},
-      receipt: null,
-      items: [],
-    };
+    return { workoutId, signals: [], volume: 0, rawSnapshot: rawText, lineExercises: {}, receipt: null };
   }
 
   // Already parsed this exact text WITH THE CURRENT PROMPT? Serve the cache (and
@@ -91,7 +70,7 @@ export async function parseWorkout(userId: string, workoutId: string): Promise<P
       if (result && result.parse_version >= CLIENT_PARSE_VERSION) {
         const signals = JSON.parse(cached.signals_json) as LineSignal[];
         getDb().runSync('UPDATE workouts SET needs_parse = 0 WHERE id = ?', [workoutId]);
-        const receipt = buildSessionTotals(result, signals, loadUndoneKeys(workoutId));
+        const receipt = buildReceipt(result, signals, loadUndoneKeys(workoutId));
         return {
           workoutId,
           signals,
@@ -99,7 +78,6 @@ export async function parseWorkout(userId: string, workoutId: string): Promise<P
           rawSnapshot: rawText,
           lineExercises: lineExercisesOf(result),
           receipt,
-          items: result.items,
         };
       }
     } catch {
@@ -156,8 +134,7 @@ export async function parseWorkout(userId: string, workoutId: string): Promise<P
       volume,
       rawSnapshot: capped,
       lineExercises: lineExercisesOf(result),
-      receipt: buildSessionTotals(result, signals, loadUndoneKeys(workoutId)),
-      items: result.items,
+      receipt: buildReceipt(result, signals, loadUndoneKeys(workoutId)),
     };
   } catch {
     devLog('parse unreachable (offline?), will retry on sync');

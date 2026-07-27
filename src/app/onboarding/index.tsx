@@ -1,8 +1,9 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
   Easing,
+  useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withRepeat,
@@ -11,9 +12,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { FadeSlideIn, ProgressBar, ReadingArc, Stagger } from '@/components/motion';
 import { AppButton, Eyebrow, Rating, Testimonial } from '@/components/primitives';
+import { FadeSlideIn, ProgressBar, Stagger } from '@/components/motion';
 import { tap, tapMedium } from '@/lib/haptics';
+import { SPRING } from '@/lib/motion';
 import {
   getFirstAction,
   getGoal,
@@ -38,17 +40,7 @@ import {
   type ObTracker,
   type WeightUnit,
 } from '@/lib/prefs';
-import {
-  makeStyles,
-  MAX_FONT_SCALE,
-  moderateScale,
-  mono,
-  radius,
-  spacing,
-  spring,
-  type,
-  useTheme,
-} from '@/lib/theme';
+import { color, fonts, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 /**
@@ -105,7 +97,6 @@ function snapToLadder(ladder: readonly number[], value: number): number {
 }
 
 export default function Onboarding() {
-  const styles = useStyles();
   const router = useRouter();
   const userId = useSession((s) => s.userId);
   const hydrate = useSession((s) => s.hydrate);
@@ -129,14 +120,7 @@ export default function Onboarding() {
   });
   const [action, setActionState] = useState<FirstAction | null>(() => getFirstAction());
 
-  // Which way the funnel is travelling. A step that always rises into place
-  // makes Back feel like another Continue: if something left downward, the eye
-  // expects it to come back from below. Reversing the entrance is the whole
-  // difference between "I moved back" and "I moved on again".
-  const direction = useRef<1 | -1>(1);
-
   const goTo = (n: number) => {
-    direction.current = n < step ? -1 : 1;
     setStepState(n);
     setObStep(n);
   };
@@ -202,7 +186,7 @@ export default function Onboarding() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
-        <FadeSlideIn key={step} distance={14 * direction.current}>
+        <FadeSlideIn key={step} distance={14}>
           {step === 0 ? (
             <StepWelcome />
           ) : step === 1 ? (
@@ -351,7 +335,6 @@ function Chrome({
   onBack: () => void;
   onSkip: () => void;
 }) {
-  const styles = useStyles();
   return (
     <View style={styles.chrome}>
       <View style={styles.chromeSide}>
@@ -387,7 +370,6 @@ function Chrome({
 
 /** 0 — the promise, stated with the ledger's own specimen settling in. */
 function StepWelcome() {
-  const styles = useStyles();
   return (
     <View>
       <Eyebrow tone="secondary" style={styles.kicker}>
@@ -433,7 +415,6 @@ function StepWelcome() {
 }
 
 function SpecimenRow({ tag, text, quiet }: { tag: string; text: React.ReactNode; quiet?: boolean }) {
-  const styles = useStyles();
   return (
     <View style={styles.specimenRow}>
       <Tag label={tag} fixed />
@@ -446,8 +427,6 @@ function SpecimenRow({ tag, text, quiet }: { tag: string; text: React.ReactNode;
 
 /** 1 — the name. Optional, one tap to skip. Personalizes every screen after. */
 function StepName({ name, onChange, onSubmit }: { name: string; onChange: (t: string) => void; onSubmit: () => void }) {
-  const styles = useStyles();
-  const t = useTheme();
   return (
     <StepFrame
       eyebrow="Step 01"
@@ -463,9 +442,9 @@ function StepName({ name, onChange, onSubmit }: { name: string; onChange: (t: st
         autoCorrect={false}
         returnKeyType="next"
         placeholder="Your name"
-        placeholderTextColor={t.inkFaint}
-        selectionColor={t.ink}
-        cursorColor={t.ink}
+        placeholderTextColor={color.textMuted}
+        selectionColor={color.accent}
+        cursorColor={color.accent}
         keyboardAppearance="light"
         maxLength={24}
         maxFontSizeMultiplier={MAX_FONT_SCALE}
@@ -506,7 +485,6 @@ function StepTracker({ tracker, onPick }: { tracker: ObTracker | null; onPick: (
 
 /** 4 — writing language. Two measured languages, verbatim for the rest. */
 function StepLanguage({ language, onPick }: { language: ObLanguage; onPick: (l: ObLanguage) => void }) {
-  const styles = useStyles();
   return (
     <StepFrame
       eyebrow="Step 04"
@@ -536,8 +514,6 @@ function StepUnits({
   onStep: (dir: 1 | -1) => void;
   onCustom: (value: number) => void;
 }) {
-  const styles = useStyles();
-  const t = useTheme();
   const [customOpen, setCustomOpen] = useState(false);
   const [customText, setCustomText] = useState('');
 
@@ -597,7 +573,7 @@ function StepUnits({
             keyboardType="decimal-pad"
             autoFocus
             placeholder={`in ${unit}`}
-            placeholderTextColor={t.inkFaint}
+            placeholderTextColor={color.textMuted}
             onSubmitEditing={commitCustom}
             onBlur={commitCustom}
             maxFontSizeMultiplier={MAX_FONT_SCALE}
@@ -620,7 +596,6 @@ function StepUnits({
 
 /** 5 — the app, doing its one job: reading a note into a ledger, live. */
 function StepHowItWorks() {
-  const styles = useStyles();
   return (
     <StepFrame
       eyebrow="How it works"
@@ -657,7 +632,6 @@ function StepAnalyzing({
   unit: WeightUnit;
   onDone: () => void;
 }) {
-  const styles = useStyles();
   const reduce = useReducedMotion();
   const who = name.trim();
 
@@ -768,7 +742,6 @@ function StepReady({
   fromSetup: boolean;
   onPick: (a: FirstAction) => void;
 }) {
-  const styles = useStyles();
   const who = name.trim();
   const goalChip = goal === 'both' ? 'hybrid / hyrox' : goal === 'muscle' ? 'hypertrophy' : 'strength';
   const trackerChip =
@@ -841,7 +814,6 @@ function StepFrame({
   sub?: string;
   children: React.ReactNode;
 }) {
-  const styles = useStyles();
   return (
     <View>
       <Eyebrow tone="secondary" style={styles.kicker}>
@@ -866,7 +838,6 @@ function StepFrame({
 
 /** Record-contract tag: mono, bordered, never celebratory. */
 function Tag({ label, fixed }: { label: string; fixed?: boolean }) {
-  const styles = useStyles();
   return (
     <View style={[styles.tag, fixed && styles.tagFixed]}>
       <Text style={styles.tagText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -878,15 +849,13 @@ function Tag({ label, fixed }: { label: string; fixed?: boolean }) {
 
 /** A radio whose inner dot springs in on selection. */
 function Radio({ selected }: { selected: boolean }) {
-  const styles = useStyles();
   const reduce = useReducedMotion();
   const s = useSharedValue(selected ? 1 : 0);
   useEffect(() => {
-    s.value = reduce ? (selected ? 1 : 0) : withSpring(selected ? 1 : 0, spring.snap);
+    s.value = reduce ? (selected ? 1 : 0) : withSpring(selected ? 1 : 0, SPRING.snappy);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
-  // Pure pass-through — Reanimated 4 takes the shared value inline.
-  const dot = { transform: [{ scale: s }], opacity: s };
+  const dot = useAnimatedStyle(() => ({ transform: [{ scale: s.value }], opacity: s.value }));
   return (
     <View style={[styles.radio, selected && styles.radioOn]}>
       <Animated.View style={[styles.radioDot, dot]} />
@@ -908,7 +877,6 @@ function OptionRow({
   selected: boolean;
   onPress: () => void;
 }) {
-  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -947,7 +915,6 @@ function ChoiceCard({
   selected: boolean;
   onPress: () => void;
 }) {
-  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -972,7 +939,6 @@ function ChoiceCard({
 
 /** A checked bullet point (how-it-works list). */
 function Point({ text }: { text: string }) {
-  const styles = useStyles();
   return (
     <View style={styles.point}>
       <Text style={styles.pointMark} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -999,7 +965,6 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * "read", then settles into a clean parsed row with a check. Loops gently.
  * reduceMotion → everything shown settled at once. */
 function LedgerDemo() {
-  const styles = useStyles();
   const reduce = useReducedMotion();
   const [typed, setTyped] = useState<string[]>(['', '', '']);
   const [revealed, setRevealed] = useState<boolean[]>([false, false, false]);
@@ -1075,9 +1040,11 @@ function LedgerDemo() {
                     {typed[i]}
                     {activeLine === i ? <DemoCursor /> : null}
                   </Text>
-                  {/* The same arc the composer turns — the demo has to show the
-                      product, not an approximation of it. */}
-                  {thinking === i ? <ReadingArc tone="faint" /> : null}
+                  {thinking === i ? (
+                    <Text style={styles.demoReading} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                      reading…
+                    </Text>
+                  ) : null}
                 </View>
               </>
             )}
@@ -1089,7 +1056,6 @@ function LedgerDemo() {
 }
 
 function DemoCursor() {
-  const styles = useStyles();
   const reduce = useReducedMotion();
   const o = useSharedValue(1);
   useEffect(() => {
@@ -1097,13 +1063,14 @@ function DemoCursor() {
     o.value = withRepeat(withTiming(0.15, { duration: 520, easing: Easing.inOut(Easing.ease) }), -1, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return <Animated.Text style={[styles.cursor, { opacity: o }]}>│</Animated.Text>;
+  const style = useAnimatedStyle(() => ({ opacity: o.value }));
+  return <Animated.Text style={[styles.cursor, style]}>│</Animated.Text>;
 }
 
-const useStyles = makeStyles((t) => ({
+const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: t.canvas,
+    backgroundColor: color.bg,
     paddingHorizontal: spacing.xxl,
   },
 
@@ -1126,23 +1093,23 @@ const useStyles = makeStyles((t) => ({
     flex: 1,
   },
   wordmark: {
-    fontSize: type.title3.fontSize,
+    fontSize: type.headline.fontSize,
     fontWeight: '700',
     letterSpacing: -0.3,
-    color: t.ink,
+    color: color.textPrimary,
   },
   backLabel: {
     fontSize: moderateScale(15),
     fontWeight: '600',
-    color: t.ink,
+    color: color.textPrimary,
   },
   backChevron: {
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   skipLabel: {
     fontSize: moderateScale(14),
     fontWeight: '600',
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   pressedDim: {
     opacity: 0.5,
@@ -1162,22 +1129,22 @@ const useStyles = makeStyles((t) => ({
     marginBottom: spacing.sm,
   },
   hero: {
-    ...type.display,
-    color: t.ink,
+    ...type.displayLarge,
+    color: color.textPrimary,
     marginTop: spacing.xs,
   },
   heroSub: {
     ...type.body,
-    color: t.inkMuted,
+    color: color.textSecondary,
     marginTop: spacing.md,
   },
   stepTitle: {
-    ...type.title1,
-    color: t.ink,
+    ...type.title,
+    color: color.textPrimary,
   },
   stepSub: {
-    ...type.callout,
-    color: t.inkMuted,
+    ...type.subhead,
+    color: color.textSecondary,
     marginTop: spacing.sm,
   },
   stepBody: {
@@ -1185,8 +1152,8 @@ const useStyles = makeStyles((t) => ({
     gap: spacing.md,
   },
   note: {
-    ...type.caption,
-    color: t.inkFaint,
+    ...type.footnote,
+    color: color.textMuted,
     marginTop: spacing.sm,
   },
 
@@ -1194,12 +1161,12 @@ const useStyles = makeStyles((t) => ({
   nameInput: {
     height: moderateScale(56),
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.md,
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     paddingHorizontal: spacing.lg,
     ...type.title2,
-    color: t.ink,
+    color: color.textPrimary,
   },
 
   // analyzing step
@@ -1208,9 +1175,9 @@ const useStyles = makeStyles((t) => ({
     gap: spacing.sm,
   },
   analyzePercent: {
-    ...type.dataXL,
-    fontFamily: mono.medium,
-    color: t.ink,
+    ...type.heroNumber,
+    fontFamily: fonts.mono,
+    color: color.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   analyzeBar: {
@@ -1218,12 +1185,12 @@ const useStyles = makeStyles((t) => ({
   },
   analyzeCard: {
     marginTop: spacing.xl,
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.divider,
     borderRadius: radius.xxl,
     paddingHorizontal: spacing.lg,
-    ...t.shadow.card,
+    ...shadow.card,
   },
   analyzeRow: {
     flexDirection: 'row',
@@ -1234,12 +1201,12 @@ const useStyles = makeStyles((t) => ({
   },
   analyzeLabel: {
     flex: 1,
-    ...type.callout,
+    ...type.subhead,
     fontWeight: '500',
-    color: t.ink,
+    color: color.textPrimary,
   },
   analyzeLabelPending: {
-    color: t.inkFaint,
+    color: color.textMuted,
     fontWeight: '400',
   },
 
@@ -1252,14 +1219,14 @@ const useStyles = makeStyles((t) => ({
   // welcome specimen
   specimen: {
     marginTop: spacing.xxl,
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.divider,
     borderRadius: radius.xxl,
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.lg,
     gap: spacing.md,
-    ...t.shadow.raised,
+    ...shadow.raised,
   },
   specimenRow: {
     flexDirection: 'row',
@@ -1268,34 +1235,34 @@ const useStyles = makeStyles((t) => ({
   },
   specimenText: {
     flex: 1,
-    ...type.callout,
-    color: t.ink,
+    ...type.subhead,
+    color: color.textPrimary,
   },
   specimenTextQuiet: {
     flex: 1,
-    ...type.callout,
-    color: t.inkMuted,
+    ...type.subhead,
+    color: color.textSecondary,
   },
   specimenMono: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(13),
     fontVariant: ['tabular-nums'],
-    color: t.ink,
+    color: color.textPrimary,
   },
   specimenPlanned: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(13),
     fontVariant: ['tabular-nums'],
-    color: t.ember, // the only signal ink: an example planned value
+    color: color.signal, // the only signal ink: an example planned value
   },
   specimenFooter: {
     borderTopWidth: 1,
-    borderTopColor: t.rule,
+    borderTopColor: color.divider,
     paddingTop: spacing.md,
   },
   specimenFootText: {
-    ...type.caption,
-    color: t.inkMuted,
+    ...type.footnote,
+    color: color.textSecondary,
   },
 
   // radio cards
@@ -1303,61 +1270,61 @@ const useStyles = makeStyles((t) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
   },
   optionSelected: {
     borderWidth: 1.5,
-    borderColor: t.ink,
+    borderColor: color.accent,
   },
   pressedFill: {
-    backgroundColor: t.surfaceHigh,
+    backgroundColor: color.surfaceHigh,
   },
   radio: {
     width: moderateScale(22),
     height: moderateScale(22),
-    borderRadius: radius.capsule,
+    borderRadius: radius.pill,
     borderWidth: 1.5,
-    borderColor: t.inkFaint,
+    borderColor: color.textMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
   radioOn: {
-    borderColor: t.ink,
+    borderColor: color.accent,
   },
   radioDot: {
     width: moderateScale(11),
     height: moderateScale(11),
-    borderRadius: radius.capsule,
-    backgroundColor: t.ink,
+    borderRadius: radius.pill,
+    backgroundColor: color.accent,
   },
   optionBody: {
     flex: 1,
   },
   optionTitle: {
-    ...type.title3,
-    color: t.ink,
+    ...type.headline,
+    color: color.textPrimary,
   },
   optionSub: {
-    ...type.caption,
-    color: t.inkMuted,
+    ...type.footnote,
+    color: color.textSecondary,
     marginTop: 2,
   },
   optionMeta: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(10.5),
     fontVariant: ['tabular-nums'],
-    color: t.inkFaint,
+    color: color.textMuted,
   },
 
   // units
   segmentWrap: {
     flexDirection: 'row',
-    backgroundColor: t.surfaceHigh,
+    backgroundColor: color.surfaceHigh,
     borderRadius: radius.md,
     padding: 3,
   },
@@ -1369,21 +1336,21 @@ const useStyles = makeStyles((t) => ({
     borderRadius: radius.sm,
   },
   segmentSelected: {
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
   },
   segmentLabel: {
-    ...type.title3,
-    color: t.inkMuted,
+    ...type.headline,
+    color: color.textSecondary,
   },
   segmentLabelSelected: {
-    color: t.ink,
+    color: color.textPrimary,
   },
   incrementCard: {
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
@@ -1398,12 +1365,12 @@ const useStyles = makeStyles((t) => ({
     flexShrink: 1,
   },
   incrementTitle: {
-    ...type.title3,
-    color: t.ink,
+    ...type.headline,
+    color: color.textPrimary,
   },
   incrementSub: {
-    ...type.caption,
-    color: t.inkMuted,
+    ...type.footnote,
+    color: color.textSecondary,
     marginTop: 2,
   },
   stepper: {
@@ -1415,20 +1382,20 @@ const useStyles = makeStyles((t) => ({
     width: SECONDARY_H,
     height: SECONDARY_H,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepGlyph: {
     fontSize: moderateScale(19),
-    color: t.ink,
+    color: color.textPrimary,
   },
   stepValue: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(16),
     fontVariant: ['tabular-nums'],
-    color: t.ink,
+    color: color.textPrimary,
     minWidth: moderateScale(70),
     textAlign: 'center',
   },
@@ -1436,34 +1403,34 @@ const useStyles = makeStyles((t) => ({
     marginTop: spacing.md,
     height: SECONDARY_H,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
   customLabel: {
-    ...type.callout,
+    ...type.subhead,
     fontWeight: '600',
-    color: t.ink,
+    color: color.textPrimary,
   },
   customInput: {
     marginTop: spacing.md,
     height: SECONDARY_H,
     borderWidth: 1,
-    borderColor: t.ink,
+    borderColor: color.accent,
     borderRadius: radius.sm,
     textAlign: 'center',
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(16),
     fontVariant: ['tabular-nums'],
-    color: t.ink,
+    color: color.textPrimary,
   },
 
   // how it works
   demoCard: {
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.lg,
   },
@@ -1474,7 +1441,7 @@ const useStyles = makeStyles((t) => ({
   },
   demoRowRule: {
     borderTopWidth: 1,
-    borderTopColor: t.rule,
+    borderTopColor: color.divider,
   },
   demoLeft: {
     flexDirection: 'row',
@@ -1484,20 +1451,20 @@ const useStyles = makeStyles((t) => ({
   demoHollow: {
     width: moderateScale(22),
     height: moderateScale(22),
-    borderRadius: radius.capsule,
+    borderRadius: radius.pill,
     borderWidth: 1.5,
-    borderColor: t.inkFaint,
+    borderColor: color.textMuted,
   },
   demoCheck: {
     width: moderateScale(22),
     height: moderateScale(22),
-    borderRadius: radius.capsule,
-    backgroundColor: t.ink,
+    borderRadius: radius.pill,
+    backgroundColor: color.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   demoCheckMark: {
-    color: t.canvas,
+    color: color.bg,
     fontSize: moderateScale(12),
     fontWeight: '700',
   },
@@ -1511,7 +1478,12 @@ const useStyles = makeStyles((t) => ({
   demoRaw: {
     flexShrink: 1,
     fontSize: moderateScale(16),
-    color: t.ink,
+    color: color.textPrimary,
+  },
+  demoReading: {
+    fontFamily: fonts.mono,
+    fontSize: moderateScale(11),
+    color: color.textMuted,
   },
   demoResolved: {
     flex: 1,
@@ -1522,17 +1494,17 @@ const useStyles = makeStyles((t) => ({
   },
   demoName: {
     flexShrink: 1,
-    ...type.title3,
-    color: t.ink,
+    ...type.headline,
+    color: color.textPrimary,
   },
   demoValue: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(13),
-    color: t.inkMuted,
+    color: color.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   cursor: {
-    color: t.ink,
+    color: color.accent,
     fontWeight: '400',
   },
   pointList: {
@@ -1547,13 +1519,13 @@ const useStyles = makeStyles((t) => ({
   pointMark: {
     fontSize: moderateScale(13),
     fontWeight: '700',
-    color: t.ink,
+    color: color.textPrimary,
     marginTop: 1,
   },
   pointText: {
     flex: 1,
-    ...type.callout,
-    color: t.inkMuted,
+    ...type.subhead,
+    color: color.textSecondary,
   },
 
   // first move
@@ -1564,30 +1536,30 @@ const useStyles = makeStyles((t) => ({
   },
   chip: {
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: CHIP_RADIUS,
     paddingVertical: spacing.xs + 1,
     paddingHorizontal: spacing.sm + 2,
   },
   chipText: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(10.5),
     fontVariant: ['tabular-nums'],
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   choices: {
     gap: spacing.md,
   },
   choice: {
-    backgroundColor: t.surface,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: radius.lg,
     padding: spacing.lg,
   },
   choiceSelected: {
     borderWidth: 1.5,
-    borderColor: t.ink,
+    borderColor: color.accent,
   },
   choiceHeader: {
     flexDirection: 'row',
@@ -1596,19 +1568,19 @@ const useStyles = makeStyles((t) => ({
     gap: spacing.md,
   },
   choiceTitle: {
-    ...type.title3,
-    color: t.ink,
+    ...type.headline,
+    color: color.textPrimary,
     flexShrink: 1,
   },
   choiceSub: {
-    ...type.callout,
-    color: t.inkMuted,
+    ...type.subhead,
+    color: color.textSecondary,
     marginTop: spacing.xs,
   },
   choiceNote: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(10.5),
-    color: t.inkFaint,
+    color: color.textMuted,
     marginTop: spacing.sm,
   },
 
@@ -1616,7 +1588,7 @@ const useStyles = makeStyles((t) => ({
   tag: {
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: t.rule,
+    borderColor: color.border,
     borderRadius: TAG_RADIUS,
     paddingVertical: 2,
     paddingHorizontal: 5,
@@ -1626,10 +1598,11 @@ const useStyles = makeStyles((t) => ({
     alignItems: 'center',
   },
   tagText: {
-    fontFamily: mono.medium,
+    fontFamily: fonts.mono,
     fontSize: moderateScale(9),
+    fontWeight: '500',
     letterSpacing: 1.2,
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
 
   // footer
@@ -1639,9 +1612,9 @@ const useStyles = makeStyles((t) => ({
     gap: spacing.sm,
   },
   footCaption: {
-    ...type.caption,
-    color: t.inkFaint,
+    ...type.footnote,
+    color: color.textMuted,
     textAlign: 'center',
     marginTop: spacing.xs,
   },
-}));
+});

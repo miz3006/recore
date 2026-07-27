@@ -1,9 +1,9 @@
 import { useRouter } from 'expo-router';
-import { Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { tap } from '@/lib/haptics';
-import { makeStyles, useTheme, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { color, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 
 import { Icon } from './icon';
 import { PressableScale } from './motion';
@@ -22,8 +22,6 @@ export function StubScreen({
   note?: string;
   children?: React.ReactNode;
 }) {
-  const styles = useStyles();
-  const t = useTheme();
   const router = useRouter();
 
   return (
@@ -40,7 +38,7 @@ export function StubScreen({
           style={styles.back}
           accessibilityRole="button"
           accessibilityLabel="Back">
-          <Icon name="chevron-back" size={moderateScale(22)} tint={t.inkMuted} />
+          <Icon name="chevron-back" size={moderateScale(22)} tint={color.textSecondary} />
         </PressableScale>
         <Text style={styles.title} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           {title}
@@ -60,10 +58,10 @@ export function StubScreen({
   );
 }
 
-const useStyles = makeStyles((t) => ({
+const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: t.canvas,
+    backgroundColor: color.bg,
   },
   header: {
     flexDirection: 'row',
@@ -78,8 +76,8 @@ const useStyles = makeStyles((t) => ({
   title: {
     flex: 1,
     textAlign: 'center',
-    color: t.ink,
-    fontSize: type.title3.fontSize,
+    color: color.textPrimary,
+    fontSize: type.headline.fontSize,
     fontWeight: '600',
   },
   body: {
@@ -89,7 +87,7 @@ const useStyles = makeStyles((t) => ({
     gap: spacing.lg,
   },
   note: {
-    ...type.callout,
-    color: t.inkFaint,
+    ...type.subhead,
+    color: color.textMuted,
   },
-}));
+});

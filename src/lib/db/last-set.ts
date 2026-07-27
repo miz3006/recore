@@ -1,5 +1,5 @@
 import { echoTextOf, fmtNumber, setsLineText, topOfSets } from '@/lib/parse/summarize';
-import { namesMatch } from '@/lib/parse/names';
+import { namesMatch } from '@/lib/parse/receipt';
 
 import { findAliasOverride } from './alias-overrides';
 import { getExerciseById, type ExerciseRow } from './exercises';

@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PressableScale, Stagger } from '@/components/motion';
 import { dayKeyFor, todayKey, type DayKey } from '@/lib/db/dates';
 import { getLoggedDayKeys } from '@/lib/db/workouts';
 import { tap, tapMedium } from '@/lib/haptics';
-import { makeStyles, useTheme, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { color, HIT, ink, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
-import { Sheet } from './sheet';
+import { BottomSheet } from './bottom-sheet';
 import { Icon } from './icon';
 
 /**
@@ -57,8 +57,6 @@ function monthGrid(cursor: MonthCursor): (DayKey | null)[] {
 }
 
 export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const styles = useStyles();
-  const t = useTheme();
   const insets = useSafeAreaInsets();
   const userId = useSession((s) => s.userId);
   const selectedDay = useSession((s) => s.selectedDay);
@@ -110,13 +108,9 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
   };
 
   return (
-    <Sheet
+    <BottomSheet
       visible={visible}
       onClose={onClose}
-      // §5.3's detents. The calendar is a glance surface: a month grid at 0.6
-      // leaves the session visible underneath, and 0.95 is there for the day
-      // Dynamic Type or a six-row month needs the room.
-      detents={[0.6, 0.95]}
       sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.xl) }]}>
       <Stagger step={55} initialDelay={80} distance={12}>
           {/* Header: Today · ‹ Month Year › · Done */}
@@ -143,7 +137,7 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
                 pressedStyle={styles.pressedIcon}
                 accessibilityRole="button"
                 accessibilityLabel="Previous month">
-                <Icon name="chevron-back" size={moderateScale(16)} tint={t.inkMuted} />
+                <Icon name="chevron-back" size={moderateScale(16)} tint={color.textSecondary} />
               </PressableScale>
               <Text style={styles.monthTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 {MONTHS[cursor.month]} {cursor.year}
@@ -158,7 +152,7 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
                 pressedStyle={styles.pressedIcon}
                 accessibilityRole="button"
                 accessibilityLabel="Next month">
-                <Icon name="chevron-forward" size={moderateScale(16)} tint={t.inkMuted} />
+                <Icon name="chevron-forward" size={moderateScale(16)} tint={color.textSecondary} />
               </PressableScale>
             </View>
 
@@ -246,11 +240,11 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
             </View>
           </View>
       </Stagger>
-    </Sheet>
+    </BottomSheet>
   );
 }
 
-const useStyles = makeStyles((t) => ({
+const styles = StyleSheet.create({
   sheet: {
     paddingHorizontal: spacing.xl,
   },
@@ -267,14 +261,14 @@ const useStyles = makeStyles((t) => ({
     alignItems: 'flex-end',
   },
   todayLabel: {
-    ...type.callout,
+    ...type.subhead,
     fontWeight: '600',
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
   doneLabel: {
-    ...type.callout,
+    ...type.subhead,
     fontWeight: '600',
-    color: t.ink, // ink
+    color: color.accent, // ink
   },
   monthNav: {
     flex: 1,
@@ -284,12 +278,12 @@ const useStyles = makeStyles((t) => ({
     gap: spacing.md,
   },
   monthTitle: {
-    ...type.title3,
+    ...type.headline,
     fontWeight: '700',
-    color: t.ink,
+    color: color.textPrimary,
   },
   navDisabled: {
-    opacity: 0.4, // the one disabled level in the app
+    opacity: ink.disabled,
   },
   pressedIcon: {
     opacity: 0.5,
@@ -303,7 +297,7 @@ const useStyles = makeStyles((t) => ({
     ...type.caption,
     width: `${100 / 7}%`,
     textAlign: 'center',
-    color: t.inkFaint,
+    color: color.textMuted,
     fontWeight: '600',
   },
   grid: {
@@ -325,25 +319,25 @@ const useStyles = makeStyles((t) => ({
   },
   todayRing: {
     borderWidth: 2,
-    borderColor: t.ink, // ink ring
+    borderColor: color.accent, // ink ring
   },
   selectedFill: {
-    backgroundColor: t.ink, // ink fill for the day you're viewing
+    backgroundColor: color.accent, // ink fill for the day you're viewing
   },
   dayNum: {
     ...type.body,
     lineHeight: moderateScale(20),
-    color: t.ink,
+    color: color.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   todayNum: {
     fontWeight: '700',
   },
   futureNum: {
-    color: t.inkFaint,
+    color: color.textMuted,
   },
   selectedNum: {
-    color: t.canvas, // paper numeral on the ink fill
+    color: color.bg, // paper numeral on the ink fill
     fontWeight: '600',
   },
   dot: {
@@ -356,13 +350,13 @@ const useStyles = makeStyles((t) => ({
     marginTop: moderateScale(3),
   },
   dotRecorded: {
-    backgroundColor: t.ink, // ink — a recorded session
+    backgroundColor: color.accent, // ink — a recorded session
   },
   dotPlanned: {
-    backgroundColor: t.ember, // green — a plan offered
+    backgroundColor: color.signal, // green — a plan offered
   },
   dotOnFill: {
-    backgroundColor: t.canvas, // paper dot on the ink-filled selected day
+    backgroundColor: color.bg, // paper dot on the ink-filled selected day
   },
   legend: {
     flexDirection: 'row',
@@ -378,6 +372,6 @@ const useStyles = makeStyles((t) => ({
   },
   legendLabel: {
     ...type.caption,
-    color: t.inkMuted,
+    color: color.textSecondary,
   },
-}));
+});

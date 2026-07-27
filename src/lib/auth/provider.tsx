@@ -1,7 +1,6 @@
 import { type Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
-import { DEV_LOCAL_USER_ID, isDevBypassed } from '@/lib/auth/dev-bypass';
 import { ensureLocalUser } from '@/lib/db/index';
 import { startSync, stopSync } from '@/lib/sync/index';
 import { supabase } from '@/lib/supabase';
@@ -53,21 +52,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Wire the data layer to the signed-in user.
-  // With the dev bypass on there is no account, but the SQLite mirror is still
-  // scoped per user — so it gets a fixed local id. Sync stays off below: there
-  // is nowhere for those rows to belong.
-  const bypassed = isDevBypassed() && state.session === null;
-  const userId = state.session?.user.id ?? (bypassed ? DEV_LOCAL_USER_ID : null);
+  const userId = state.session?.user.id ?? null;
   useEffect(() => {
     if (userId) {
       ensureLocalUser(userId);
       hydrate(userId);
-      if (!bypassed) startSync(userId);
+      startSync(userId);
     } else {
       stopSync();
       reset();
     }
-  }, [userId, bypassed, hydrate, reset]);
+  }, [userId, hydrate, reset]);
 
   return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
 }

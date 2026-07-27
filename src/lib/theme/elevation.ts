@@ -1,66 +1,51 @@
 import { Platform, type ViewStyle } from 'react-native';
 
 /**
- * Elevation (CLAUDE.md §6.8). **Two shadows. That is the entire system.**
+ * Elevation — the "soft depth" redesign move (2026-07-23). The app stays
+ * strictly monochrome ink-on-warm-paper; the ONLY new expressive tool is a
+ * single, restrained shadow so the surfaces that matter (paywall plans,
+ * onboarding cards, the session receipt) lift off the page and read as premium
+ * without a drop of color. Everything small keeps its 1px hairline.
  *
- *   `card`   — session cards, tappable list rows, stat tiles.
- *   `raised` — paywall plan cards, the PR moment, sheets, the onboarding hero.
+ * The shadow is WARM and low-contrast — cast in the ink's own family (`#20221A`)
+ * at a whisper of opacity — so on `#F4F5EF` paper it looks like real diffused
+ * light, never a grey box. Two levels only:
+ *   `card`   — resting cards, list rows that want to float a little.
+ *   `raised` — the hero surfaces (selected plan, welcome specimen, receipt) and
+ *              the primary CTA; a longer, softer cast.
  *
- * Everything else is flat with a hairline: chips, tags, segmented controls,
- * table rows, anything inside a sheet scrim, anything under 44pt. "Calm core,
- * rich edges" — the reading surfaces stay flat and the interactive ones lift.
- *
- * **The shadow inverts with the theme, and it has to.** On warm paper a shadow
- * is diffused light and sits at 6% of the ink; on graphite there is no light to
- * diffuse, so the same shadow at the same opacity is literally invisible and the
- * cast has to be pure black at 35% to read as depth at all. A single set of
- * numbers cannot be right on both, which is why this is a function of the scheme
- * rather than a constant — and why the resolved pair rides on the theme object
- * (`t.shadow.card`) instead of being imported directly.
- *
- * Never coloured. A tinted shadow is the fastest way to make a monochrome app
- * look cheap, and §6.8 says both live in the ink family.
+ * Android has no soft-shadow control, so it falls back to `elevation` (a hard
+ * grey); we keep it minimal there. Spread as `...shadow.card` into a style.
  */
 
-/**
- * The cast. Warm near-black on paper (the ink's own family, so the shadow reads
- * warm rather than as a grey box); true black in the dark theme, because a
- * shadow must go darker than a `#0E1113` canvas and nothing in the palette does.
- */
-const CAST = { light: '#14181A', dark: '#000000' } as const;
+/** The ink-family shadow color — a warm near-black so the cast stays warm. */
+const SHADOW_INK = '#20221A';
 
-/** §6.8's two casts: `[y, blur, opacityLight, opacityDark]`. */
-const SPEC = {
-  card: { y: 2, blur: 8, opacity: { light: 0.06, dark: 0.35 }, android: 1 },
-  raised: { y: 10, blur: 28, opacity: { light: 0.1, dark: 0.5 }, android: 3 },
-} as const;
-
-export type ShadowToken = keyof typeof SPEC;
-
-export type Shadow = Pick<
+type Shadow = Pick<
   ViewStyle,
   'shadowColor' | 'shadowOffset' | 'shadowOpacity' | 'shadowRadius' | 'elevation'
 >;
 
-export type Elevation = Readonly<Record<ShadowToken, Shadow>>;
+const ios = (opacity: number, radius: number, y: number): Shadow => ({
+  shadowColor: SHADOW_INK,
+  shadowOffset: { width: 0, height: y },
+  shadowOpacity: opacity,
+  shadowRadius: radius,
+});
 
-function build(token: ShadowToken, scheme: 'light' | 'dark'): Shadow {
-  const spec = SPEC[token];
-  return (Platform.select({
-    ios: {
-      shadowColor: CAST[scheme],
-      shadowOffset: { width: 0, height: spec.y },
-      shadowOpacity: spec.opacity[scheme],
-      shadowRadius: spec.blur,
-    },
-    // Android has no soft-shadow control; `elevation` is a hard grey ramp, so we
-    // stay at the bottom of it rather than pretending to match iOS.
-    android: { elevation: spec.android, shadowColor: CAST[scheme] },
+export const shadow = {
+  /** Resting cards — a gentle 4pt lift. */
+  card: (Platform.select({
+    ios: ios(0.05, 12, 4),
+    android: { elevation: 1, shadowColor: SHADOW_INK },
     default: {},
-  }) ?? {}) as Shadow;
-}
+  }) ?? {}) as Shadow,
+  /** Hero surfaces + the primary CTA — a longer, softer 8pt cast. */
+  raised: (Platform.select({
+    ios: ios(0.08, 22, 8),
+    android: { elevation: 3, shadowColor: SHADOW_INK },
+    default: {},
+  }) ?? {}) as Shadow,
+} as const;
 
-/** The resolved pair for one scheme. Built twice, at module load, and frozen. */
-export function shadowsFor(scheme: 'light' | 'dark'): Elevation {
-  return { card: build('card', scheme), raised: build('raised', scheme) };
-}
+export type ShadowToken = keyof typeof shadow;

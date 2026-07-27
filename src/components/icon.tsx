@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { type ComponentProps } from 'react';
 
-import { useTheme } from '@/lib/theme';
+import { color } from '@/lib/theme';
 
 /** Semantic icon names used across the app. */
 export type IconName =
@@ -51,14 +51,10 @@ type IconProps = {
   tint?: string;
 };
 
-export function Icon({ name, size = 20, tint }: IconProps) {
-  const t = useTheme();
-  // Resolved here rather than as a default parameter: a default cannot call a
-  // hook, and the muted tone now depends on the active theme.
-  const resolved = tint ?? t.inkMuted;
+export function Icon({ name, size = 20, tint = color.textSecondary }: IconProps) {
   const glyph = MAP[name];
   if (glyph.set === 'mci') {
-    return <MaterialCommunityIcons name={glyph.name} size={size} color={resolved} />;
+    return <MaterialCommunityIcons name={glyph.name} size={size} color={tint} />;
   }
-  return <Ionicons name={glyph.name} size={size} color={resolved} />;
+  return <Ionicons name={glyph.name} size={size} color={tint} />;
 }

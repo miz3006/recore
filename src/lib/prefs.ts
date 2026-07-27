@@ -1,4 +1,5 @@
 import { getMeta, setMeta } from '@/lib/db/index';
+import type { ScheduleMode } from '@/lib/plan/resolve';
 
 /**
  * User preferences from onboarding (CLAUDE.md §10), stored in the local meta
@@ -31,9 +32,8 @@ const KEYS = {
   obLanguage: 'pref_ob_language',
   weightUnit: 'pref_weight_unit',
   firstAction: 'pref_first_action',
-  weeklyTarget: 'pref_weekly_target',
+  scheduleMode: 'pref_schedule_mode',
   finishedOnce: 'pref_finished_once',
-  composerDemoSeen: 'pref_composer_demo_seen',
   ghostHintSeen: 'pref_ghost_hint_seen',
 } as const;
 
@@ -152,6 +152,14 @@ export function getFirstAction(): FirstAction | null {
 
 // --- Weekly split (pre-plan) — the schedule model. Default ROTATION ("do the
 // --- next one when you train"); WEEKDAY pins days to the calendar (opt-in).
+export function setScheduleMode(mode: ScheduleMode) {
+  setMeta(KEYS.scheduleMode, mode);
+}
+
+export function getScheduleMode(): ScheduleMode {
+  return getMeta(KEYS.scheduleMode) === 'weekday' ? 'weekday' : 'rotation';
+}
+
 /** The bar the plate math loads against (checklist long-press). */
 export const DEFAULT_BAR_KG = 20;
 
@@ -185,33 +193,3 @@ export function markGhostHintSeen() {
 export function hasSeenGhostHint(): boolean {
   return getMeta(KEYS.ghostHintSeen) === '1';
 }
-
-/**
- * The self-writing composer demo (§8.9) — *"It runs exactly once per install."*
- * A demo that replays is a demo that is in the way; by the second session the
- * user knows what the app does.
- */
-export function markComposerDemoSeen() {
-  setMeta(KEYS.composerDemoSeen, '1');
-}
-
-export function hasSeenComposerDemo(): boolean {
-  return getMeta(KEYS.composerDemoSeen) === '1';
-}
-
-/**
- * Sessions in a normal week (CLAUDE.md §11.3) — the ONLY input to the streak
- * (§15.3, ratified as D3). It counts weeks in which the user met their own
- * target, never consecutive days: rest days are training, and a daily streak
- * punishes them. Default 3, the most common lifting frequency.
- */
-export function getWeeklyTarget(): number {
-  const raw = getMeta(KEYS.weeklyTarget);
-  const n = raw ? parseInt(raw, 10) : NaN;
-  return Number.isFinite(n) && n >= 1 && n <= 7 ? n : 3;
-}
-
-export function setWeeklyTarget(sessions: number): void {
-  setMeta(KEYS.weeklyTarget, String(Math.max(1, Math.min(7, Math.round(sessions)))));
-}
-
