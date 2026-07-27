@@ -1,36 +1,33 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Icon } from '@/components/icon';
+import { FadeSlideIn, Stagger } from '@/components/motion';
+import { AppButton, Eyebrow, Rating } from '@/components/primitives';
 import {
   signInWithApple,
   signInWithGoogle,
   SignInCancelledError,
 } from '@/lib/auth/sign-in';
 import { isSupabaseConfigured } from '@/lib/env';
-import { tapMedium } from '@/lib/haptics';
 import { devLog } from '@/lib/log';
-import { Icon } from '@/components/icon';
-import { SignInDemo } from '@/components/sign-in-demo';
-import {
-  alpha,
-  color,
-  CONTROL_HEIGHT,
-  MAX_FONT_SCALE,
-  moderateScale,
-  radius,
-  spacing,
-  type,
-} from '@/lib/theme';
+import { getName } from '@/lib/prefs';
+import { makeStyles, useTheme, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 
 /**
- * Sign in (task §4): Apple and Google only — no email/password. Quiet,
- * monochrome, no marketing copy. Auth will eventually sit AFTER the 13-screen
- * onboarding + paywall; those are stub routes for now, so this screen is the
- * app's front door.
+ * Sign in — now the LAST step of the funnel (2026-07-23 redesign), not the
+ * front door. The user has personalized their ledger and picked a plan; this
+ * screen turns that into a real account so the trial can start and the setup is
+ * backed up. Framed as reward, never a toll gate. Providers are the real ones
+ * wired today: Apple (primary ink-fill) and Google (bordered secondary). Auth
+ * logic (PKCE, busy/error states) is unchanged.
  */
 export default function SignIn() {
+  const styles = useStyles();
+  const t = useTheme();
+  const name = getName();
   const [appleAvailable, setAppleAvailable] = useState(false);
   const [busy, setBusy] = useState<null | 'apple' | 'google'>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,11 +40,10 @@ export default function SignIn() {
 
   const run = async (which: 'apple' | 'google', fn: () => Promise<void>) => {
     if (busy) return;
-    tapMedium();
     setError(null);
     setBusy(which);
     try {
-      await fn(); // on success the session guard swaps this screen for home
+      await fn(); // on success the session guard swaps this screen for onboarding
     } catch (err) {
       if (!(err instanceof SignInCancelledError)) {
         devLog('sign-in error:', err instanceof Error ? err.message : err);
@@ -60,40 +56,54 @@ export default function SignIn() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <View style={styles.brand}>
+      <FadeSlideIn>
         <Text style={styles.wordmark} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           Recore
         </Text>
-        <Text style={styles.tagline} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          The workout log you write in.
-        </Text>
+      </FadeSlideIn>
 
-        {/* The product IS the pitch: the note writes itself, the gutter answers. */}
-        <View style={styles.demo}>
-          <SignInDemo />
-        </View>
+      <View style={styles.hero}>
+        <Stagger initialDelay={120} step={80} distance={14}>
+          <Eyebrow tone="secondary">Last step</Eyebrow>
+          <Text style={styles.headline} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {name ? `Save your ledger,\n${name}.` : 'Save your ledger\nfor good.'}
+          </Text>
+          <Text style={styles.sub} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            Create your free account to start the trial and back up everything you just set up. It
+            syncs to every iPhone — no passwords, no charge today.
+          </Text>
+          <View style={styles.ratingWrap}>
+            <Rating score={4.9} countLabel="loved by early lifters" align="flex-start" />
+          </View>
+        </Stagger>
       </View>
 
-      <View style={styles.actions}>
-        {appleAvailable ? (
-          <AppleAuthentication.AppleAuthenticationButton
-            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-            cornerRadius={radius.pill}
-            style={styles.appleButton}
-            onPress={() => void run('apple', signInWithApple)}
-          />
-        ) : null}
+      <View style={styles.bottom}>
+        <View style={styles.buttons}>
+          {appleAvailable ? (
+            <AppButton
+              label="Sign in with Apple"
+              onPress={() => void run('apple', signInWithApple)}
+              disabled={busy !== null}
+              loading={busy === 'apple'}
+              leading={<Icon name="apple" size={moderateScale(18)} tint={t.canvas} />}
+            />
+          ) : null}
 
-        <Pressable
-          disabled={busy !== null}
-          onPress={() => void run('google', signInWithGoogle)}
-          style={({ pressed }) => [styles.googleButton, pressed && styles.googlePressed]}>
-          <Icon name="google" size={moderateScale(18)} tint={color.textPrimary} />
-          <Text style={styles.googleLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            Continue with Google
-          </Text>
-        </Pressable>
+          <AppButton
+            label="Continue with Google"
+            variant="secondary"
+            onPress={() => void run('google', signInWithGoogle)}
+            disabled={busy !== null}
+            loading={busy === 'google'}
+            leading={<Icon name="google" size={moderateScale(16)} tint={t.ink} />}
+          />
+        </View>
+
+        <Text style={styles.caption} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          No passwords. Apple uses Face ID; Google opens in your browser. You can hide your email
+          with Apple.
+        </Text>
 
         {error ? (
           <Text style={styles.error} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -112,65 +122,56 @@ export default function SignIn() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((t) => ({
   root: {
     flex: 1,
-    backgroundColor: color.bg,
+    backgroundColor: t.canvas,
     paddingHorizontal: spacing.xxl,
-    justifyContent: 'space-between',
-  },
-  brand: {
-    flex: 1,
-    justifyContent: 'center',
   },
   wordmark: {
-    ...type.largeTitle,
-    color: color.textPrimary,
-    letterSpacing: 0.5,
+    fontSize: type.title3.fontSize,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    color: t.ink,
+    marginTop: spacing.md,
+    height: moderateScale(44),
+    textAlignVertical: 'center',
   },
-  tagline: {
-    ...type.subhead,
-    color: color.textSecondary,
+  hero: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: spacing.md,
+  },
+  headline: {
+    ...type.display,
+    color: t.ink,
+  },
+  sub: {
+    ...type.body,
+    color: t.inkMuted,
+  },
+  ratingWrap: {
     marginTop: spacing.sm,
   },
-  demo: {
-    marginTop: spacing.huge,
-  },
-  actions: {
+  bottom: {
+    paddingBottom: spacing.xxl,
     gap: spacing.md,
-    paddingBottom: spacing.xxxl,
   },
-  appleButton: {
-    height: CONTROL_HEIGHT,
+  buttons: {
+    gap: spacing.md,
   },
-  googleButton: {
-    height: CONTROL_HEIGHT,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: alpha(color.accent, 0.3),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  googlePressed: {
-    backgroundColor: color.surfaceHigh,
-  },
-  googleLabel: {
-    color: color.textPrimary,
-    fontSize: type.subhead.fontSize,
-    fontWeight: '600',
+  caption: {
+    ...type.caption,
+    color: t.inkFaint,
+    marginTop: spacing.xs,
   },
   error: {
     ...type.caption,
-    color: color.error, // warnings only (CLAUDE.md §5)
-    textAlign: 'center',
-    marginTop: spacing.xs,
+    color: t.danger,
   },
   configHint: {
     ...type.caption,
-    color: color.textMuted,
+    color: t.inkFaint,
     textAlign: 'center',
-    marginTop: spacing.sm,
   },
-});
+}));

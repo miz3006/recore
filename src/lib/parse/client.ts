@@ -1,4 +1,4 @@
-import { parsedVolume } from '@/lib/db/history';
+import { loadUndoneKeys } from '@/lib/db/done-state';
 import { getDb, nowIso } from '@/lib/db/index';
 import { getWorkoutById } from '@/lib/db/workouts';
 import { isSupabaseConfigured } from '@/lib/env';
@@ -9,8 +9,14 @@ import { supabase } from '@/lib/supabase';
 
 import { reanchorLines } from './anchor';
 import { applyParseResult, getParseCache } from './apply';
-import { buildReceipt, type ReceiptData } from './receipt';
-import { MAX_RAW_TEXT_CHARS, validateParseResult, type LineSignal } from './types';
+import { buildSessionTotals, type SessionTotals } from './session';
+import {
+  CLIENT_PARSE_VERSION,
+  MAX_RAW_TEXT_CHARS,
+  validateParseResult,
+  type LineSignal,
+  type ParsedItem,
+} from './types';
 
 /**
  * Background parse (CLAUDE.md §6). The raw line is already saved locally when
@@ -28,7 +34,14 @@ export interface ParseOutcome {
   /** line index → canonical exercise name; drives the tap-to-open sheet. */
   lineExercises: Record<number, string>;
   /** Session summary for receipt mode (CLAUDE.md §9). */
-  receipt: ReceiptData | null;
+  receipt: SessionTotals | null;
+  /**
+   * The parsed items themselves. The receipt flattens each item's sets into one
+   * display string, which is all v2's gutter ever needed; §8.3's card renders
+   * per-set — a dropset chain, a warm-up row, a tapped rep — and cannot be
+   * reconstructed from that string. So the structure travels too.
+   */
+  items: ParsedItem[];
 }
 
 function lineExercisesOf(result: { items: { line: number; exercise: string }[] }): Record<number, string> {
@@ -55,25 +68,40 @@ export async function parseWorkout(userId: string, workoutId: string): Promise<P
         [nowIso(), workoutId],
       );
     });
-    return { workoutId, signals: [], volume: 0, rawSnapshot: rawText, lineExercises: {}, receipt: null };
+    return {
+      workoutId,
+      signals: [],
+      volume: 0,
+      rawSnapshot: rawText,
+      lineExercises: {},
+      receipt: null,
+      items: [],
+    };
   }
 
-  // Already parsed this exact text? Serve the cache (and settle the retry flag
-  // so the sync loop stops re-checking this workout).
+  // Already parsed this exact text WITH THE CURRENT PROMPT? Serve the cache (and
+  // settle the retry flag so the sync loop stops re-checking this workout). A
+  // cache produced by an OLDER PARSE_VERSION is ignored and re-parsed — the
+  // cache is keyed on raw_text only, so without this guard a freshly deployed
+  // prompt would never reach text the user had already typed.
   const cached = getParseCache(workoutId);
   if (cached && cached.raw_snapshot === rawText) {
     try {
       const result = validateParseResult(JSON.parse(cached.result_json));
-      const signals = JSON.parse(cached.signals_json) as LineSignal[];
-      getDb().runSync('UPDATE workouts SET needs_parse = 0 WHERE id = ?', [workoutId]);
-      return {
-        workoutId,
-        signals,
-        volume: result ? parsedVolume(result) : 0,
-        rawSnapshot: rawText,
-        lineExercises: result ? lineExercisesOf(result) : {},
-        receipt: result ? buildReceipt(result, signals) : null,
-      };
+      if (result && result.parse_version >= CLIENT_PARSE_VERSION) {
+        const signals = JSON.parse(cached.signals_json) as LineSignal[];
+        getDb().runSync('UPDATE workouts SET needs_parse = 0 WHERE id = ?', [workoutId]);
+        const receipt = buildSessionTotals(result, signals, loadUndoneKeys(workoutId));
+        return {
+          workoutId,
+          signals,
+          volume: receipt.volume,
+          rawSnapshot: rawText,
+          lineExercises: lineExercisesOf(result),
+          receipt,
+          items: result.items,
+        };
+      }
     } catch {
       // fall through to a fresh parse
     }
@@ -128,7 +156,8 @@ export async function parseWorkout(userId: string, workoutId: string): Promise<P
       volume,
       rawSnapshot: capped,
       lineExercises: lineExercisesOf(result),
-      receipt: buildReceipt(result, signals),
+      receipt: buildSessionTotals(result, signals, loadUndoneKeys(workoutId)),
+      items: result.items,
     };
   } catch {
     devLog('parse unreachable (offline?), will retry on sync');

@@ -1,11 +1,12 @@
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { tap } from '@/lib/haptics';
-import { color, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { makeStyles, useTheme, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 
 import { Icon } from './icon';
+import { PressableScale } from './motion';
 
 /**
  * Shared scaffold for stub routes (/stats, /onboarding, /paywall): a quiet
@@ -21,20 +22,26 @@ export function StubScreen({
   note?: string;
   children?: React.ReactNode;
 }) {
+  const styles = useStyles();
+  const t = useTheme();
   const router = useRouter();
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Pressable
+        <PressableScale
           onPress={() => {
             tap();
             router.back();
           }}
+          haptic="none"
+          activeScale={0.9}
           hitSlop={spacing.sm}
-          style={({ pressed }) => [styles.back, pressed && styles.pressed]}>
-          <Icon name="chevron-back" size={moderateScale(22)} tint={color.textSecondary} />
-        </Pressable>
+          style={styles.back}
+          accessibilityRole="button"
+          accessibilityLabel="Back">
+          <Icon name="chevron-back" size={moderateScale(22)} tint={t.inkMuted} />
+        </PressableScale>
         <Text style={styles.title} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           {title}
         </Text>
@@ -53,10 +60,10 @@ export function StubScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((t) => ({
   root: {
     flex: 1,
-    backgroundColor: color.bg,
+    backgroundColor: t.canvas,
   },
   header: {
     flexDirection: 'row',
@@ -68,14 +75,11 @@ const styles = StyleSheet.create({
     width: HIT,
     justifyContent: 'center',
   },
-  pressed: {
-    opacity: 0.5,
-  },
   title: {
     flex: 1,
     textAlign: 'center',
-    color: color.textPrimary,
-    fontSize: type.headline.fontSize,
+    color: t.ink,
+    fontSize: type.title3.fontSize,
     fontWeight: '600',
   },
   body: {
@@ -85,7 +89,7 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   note: {
-    ...type.subhead,
-    color: color.textMuted,
+    ...type.callout,
+    color: t.inkFaint,
   },
-});
+}));

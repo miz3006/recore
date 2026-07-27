@@ -140,3 +140,52 @@ async function createSessionFromUrl(url: string): Promise<void> {
 export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
 }
+
+/**
+ * Development sign-in (PLAN.md 0.7 dev entrance). `__DEV__` only.
+ *
+ * Signs into a fixed, disposable email account so a dev build can get past the
+ * paywall without a real Apple ID. What you land in is the REAL app: a genuine
+ * Supabase user scopes the local database, RLS applies, and the sync loop runs.
+ * A fake local session would skip all three and hide precisely the bugs a dev
+ * build exists to surface.
+ *
+ * Fixed credentials rather than an anonymous session on purpose. Anonymous
+ * sign-in mints a NEW user id every launch, and `ensureLocalUser` wipes the
+ * local database whenever the account changes — so yesterday's test data would
+ * vanish every time you opened the app. A stable id keeps it.
+ *
+ * The password is a constant in source, which is fine and deliberate: the
+ * account holds nothing, it exists only on the dev project, and `__DEV__`
+ * compiles this whole function out of release bundles. It is not a credential
+ * for anything a user owns.
+ *
+ * §14.4 still holds — this skips the SCREEN, never the entitlement.
+ */
+const DEV_EMAIL = 'dev@recore.local';
+const DEV_PASSWORD = 'recore-dev-2026';
+
+export async function signInForDevelopment(): Promise<void> {
+  if (!__DEV__) throw new Error('development sign-in is not available in this build');
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email: DEV_EMAIL,
+    password: DEV_PASSWORD,
+  });
+  if (!error) return;
+
+  // First run on a fresh project: the account does not exist yet, so make it.
+  // Supabase returns a session directly when email confirmation is off, which is
+  // the configuration this project uses.
+  const { data, error: signUpError } = await supabase.auth.signUp({
+    email: DEV_EMAIL,
+    password: DEV_PASSWORD,
+  });
+  if (signUpError) throw signUpError;
+  if (!data.session) {
+    throw new Error(
+      'Signed up, but no session came back — email confirmation is on for this project. ' +
+        'Turn it off in Authentication → Providers → Email, or confirm dev@recore.local once.',
+    );
+  }
+}

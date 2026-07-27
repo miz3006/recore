@@ -25,11 +25,24 @@ export function moderateScale(size: number, factor = 0.5): number {
 }
 
 /**
- * Upper bound on the OS Dynamic Type multiplier (~1.3). Text is allowed to grow
- * for accessibility, but clamped here so large sizes don't break the layout
- * (task §1). Pass as `maxFontSizeMultiplier` on every scalable Text.
+ * Upper bound on the OS Dynamic Type multiplier. Pass as `maxFontSizeMultiplier`
+ * on every scalable Text.
+ *
+ * **1.94 is `accessibilityLarge`, exactly.** CLAUDE.md §6.5 sets the ceiling by
+ * name — *"Dynamic Type is clamped to xSmall … accessibilityLarge. Above that,
+ * cards reflow to a vertical stack rather than shrinking"* — and §17 makes it a
+ * release gate. React Native's own table (`RCTAccessibilityManager`, the source
+ * of `PixelRatio.getFontScale()`) maps the iOS content-size categories to
+ * multipliers: Large 1.0, xL 1.12, xxL 1.23, xxxL 1.35, accessibilityMedium
+ * 1.64, **accessibilityLarge 1.94**, and on up to 3.12. So this constant is not
+ * a taste call — it is the named category, read off the platform's own numbers.
+ *
+ * v2 clamped at 1.3, which stops one notch above xxxLarge and never reaches an
+ * accessibility size at all: a user who had turned Dynamic Type up for a reason
+ * got a cap instead of larger text. Raising it is the whole point of the §17
+ * gate, and it is why §8.3's card has to reflow rather than shrink.
  */
-export const MAX_FONT_SCALE = 1.3;
+export const MAX_FONT_SCALE = 1.94;
 
 /**
  * The user's OS font scale, clamped to MAX_FONT_SCALE. RN scales a Text's

@@ -67,7 +67,7 @@ export function getAllTimePRs(userId: string, limit = 12): PrRecord[] {
        JOIN items i ON s.item_id = i.id
        JOIN workouts w ON i.workout_id = w.id
        JOIN exercises e ON e.id = i.exercise_id
-       WHERE w.user_id = ? AND s.kind NOT IN ('warmup', 'drop') AND s.weight_kg IS NOT NULL
+       WHERE w.user_id = ? AND s.kind NOT IN ('warmup', 'drop', 'skipped') AND s.weight_kg IS NOT NULL
      ) WHERE rn = 1
      ORDER BY weight_kg DESC LIMIT ?`,
     [userId, limit],
@@ -104,8 +104,8 @@ export function getRecentSessions(userId: string, limit = 10, beforeDay?: DayKey
   }>(
     `SELECT w.id, w.performed_at,
             COUNT(DISTINCT i.exercise_id) AS exercises,
-            COUNT(CASE WHEN s.kind <> 'warmup' THEN s.id END) AS sets,
-            SUM(CASE WHEN s.kind <> 'warmup' AND s.reps IS NOT NULL AND s.weight_kg IS NOT NULL
+            COUNT(CASE WHEN s.kind NOT IN ('warmup', 'skipped') THEN s.id END) AS sets,
+            SUM(CASE WHEN s.kind NOT IN ('warmup', 'skipped') AND s.reps IS NOT NULL AND s.weight_kg IS NOT NULL
                      THEN s.reps * s.weight_kg ELSE 0 END) AS volume
      FROM workouts w
      LEFT JOIN items i ON i.workout_id = w.id
@@ -138,6 +138,105 @@ export function getSessionExerciseNames(workoutId: string, limit = 3): string[] 
   return rows.map((r) => r.canonical);
 }
 
+export interface WorkoutSet {
+  position: number;
+  kind: string; // working | warmup | drop
+  reps: number | null;
+  weightKg: number | null;
+  distanceM: number | null;
+  durationS: number | null;
+  rir: number | null;
+  parentSetId: string | null;
+}
+
+export interface WorkoutExercise {
+  itemId: string;
+  canonical: string;
+  /** Shared across items = a superset/triset/circuit (CLAUDE.md §5). */
+  groupKey: string | null;
+  sets: WorkoutSet[];
+}
+
+export interface WorkoutDetail {
+  workoutId: string;
+  day: DayKey;
+  performedAt: string;
+  exercises: WorkoutExercise[];
+  /** Counted sets (warm-ups excluded, matching the training log). */
+  countedSets: number;
+  volume: number;
+}
+
+/**
+ * The forensic set-by-set record for one workout — the deepest honest layer we
+ * can draw from `sets` (CLAUDE.md §9 receipt/ledger, the SessionSheet in the
+ * progress spec). Ordered items (prose lines excluded by the exercise JOIN),
+ * each with its ordered sets verbatim. Warm-ups are kept but flagged, so the
+ * view can dim them and drop them from totals — the same rule the rest of the
+ * app's volume math follows. Pure synchronous reads, no network.
+ */
+export function getWorkoutDetail(workoutId: string): WorkoutDetail | null {
+  const db = getDb();
+  const w = db.getFirstSync<{ performed_at: string }>(
+    'SELECT performed_at FROM workouts WHERE id = ?',
+    [workoutId],
+  );
+  if (!w) return null;
+
+  const items = db.getAllSync<{ id: string; canonical: string; group_key: string | null }>(
+    `SELECT i.id, e.canonical AS canonical, i.group_key
+     FROM items i JOIN exercises e ON e.id = i.exercise_id
+     WHERE i.workout_id = ?
+     ORDER BY i.position`,
+    [workoutId],
+  );
+
+  let countedSets = 0;
+  let volume = 0;
+  const exercises: WorkoutExercise[] = items.map((it) => {
+    const rows = db.getAllSync<{
+      position: number;
+      kind: string;
+      reps: number | null;
+      weight_kg: number | null;
+      distance_m: number | null;
+      duration_s: number | null;
+      rir: number | null;
+      parent_set_id: string | null;
+    }>(
+      `SELECT position, kind, reps, weight_kg, distance_m, duration_s, rir, parent_set_id
+       FROM sets WHERE item_id = ? ORDER BY position`,
+      [it.id],
+    );
+    const sets: WorkoutSet[] = rows.map((s) => {
+      if (s.kind !== 'warmup' && s.kind !== 'skipped') {
+        countedSets += 1;
+        if (s.reps != null && s.weight_kg != null) volume += s.reps * s.weight_kg;
+      }
+      return {
+        position: s.position,
+        kind: s.kind,
+        reps: s.reps,
+        weightKg: s.weight_kg,
+        distanceM: s.distance_m,
+        durationS: s.duration_s,
+        rir: s.rir,
+        parentSetId: s.parent_set_id,
+      };
+    });
+    return { itemId: it.id, canonical: it.canonical, groupKey: it.group_key, sets };
+  });
+
+  return {
+    workoutId,
+    day: dayKeyFor(new Date(w.performed_at)),
+    performedAt: w.performed_at,
+    exercises,
+    countedSets,
+    volume: Math.round(volume),
+  };
+}
+
 export interface E1rmPoint {
   day: DayKey;
   e1rm: number;
@@ -155,7 +254,7 @@ export function getE1rmSeries(userId: string, canonical: string, limit = 24): E1
      JOIN workouts w ON i.workout_id = w.id
      JOIN exercises e ON e.id = i.exercise_id
      WHERE w.user_id = ? AND lower(e.canonical) = lower(?)
-       AND s.kind NOT IN ('warmup', 'drop')
+       AND s.kind NOT IN ('warmup', 'drop', 'skipped')
        AND s.reps IS NOT NULL AND s.reps <= 12 AND s.weight_kg IS NOT NULL
      GROUP BY w.id
      ORDER BY w.performed_at DESC LIMIT ?`,

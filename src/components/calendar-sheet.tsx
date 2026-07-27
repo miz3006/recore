@@ -1,33 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PressableScale, Stagger } from '@/components/motion';
 import { dayKeyFor, todayKey, type DayKey } from '@/lib/db/dates';
 import { getLoggedDayKeys } from '@/lib/db/workouts';
 import { tap, tapMedium } from '@/lib/haptics';
-import {
-  alpha,
-  color,
-  HIT,
-  MAX_FONT_SCALE,
-  moderateScale,
-  radius,
-  spacing,
-  type,
-} from '@/lib/theme';
+import { makeStyles, useTheme, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
+import { Sheet } from './sheet';
 import { Icon } from './icon';
-import { SheetGrabber } from './sheet-grabber';
 
 /**
- * The date pill's calendar sheet (CLAUDE.md §8): a native-style month grid to
- * switch days, in Recore's monochrome voice — the accent is white, so the
- * selected day is the ONLY filled element (white circle, black numeral), today
- * wears a hairline ring, and the data speaks: a small dot marks every day with
- * a logged workout. Future days are muted and untappable — you log what
- * happened. Tapping a day switches the note immediately; Done (or the
- * backdrop) closes.
+ * The date pill's calendar sheet (CLAUDE.md §8/§9, design frame 09) — a native
+ * month grid on warm paper to switch days. It carries the record contract into
+ * the picker: every past day that has a logged workout wears a small INK dot
+ * (RECORDED), and when a next-session plan is genuinely offered, today wears a
+ * GREEN dot (PLANNED — the one meaningful accent). Today is ringed in ink; the
+ * day you're viewing (if not today) fills with ink and a paper numeral. Future
+ * days sit muted and untappable — you log what happened. Tapping a day switches
+ * the note immediately; Done (or the backdrop) closes.
  */
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const; // Monday-first
 const MONTHS = [
@@ -35,8 +28,9 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ] as const;
 
-const CELL_HEIGHT = moderateScale(44);
-const DAY_CIRCLE = moderateScale(34);
+const CELL_HEIGHT = moderateScale(48);
+const DAY_CIRCLE = moderateScale(40);
+const DOT = moderateScale(4);
 
 interface MonthCursor {
   year: number;
@@ -63,6 +57,8 @@ function monthGrid(cursor: MonthCursor): (DayKey | null)[] {
 }
 
 export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const styles = useStyles();
+  const t = useTheme();
   const insets = useSafeAreaInsets();
   const userId = useSession((s) => s.userId);
   const selectedDay = useSession((s) => s.selectedDay);
@@ -114,44 +110,70 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.backdropWrap}>
-        <Pressable style={styles.backdrop} onPress={handleDone} />
-
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
-          <SheetGrabber />
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      // §5.3's detents. The calendar is a glance surface: a month grid at 0.6
+      // leaves the session visible underneath, and 0.95 is there for the day
+      // Dynamic Type or a six-row month needs the room.
+      detents={[0.6, 0.95]}
+      sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.xl) }]}>
+      <Stagger step={55} initialDelay={80} distance={12}>
           {/* Header: Today · ‹ Month Year › · Done */}
           <View style={styles.header}>
-            <Pressable onPress={handleToday} hitSlop={spacing.sm} style={styles.headerSide}>
+            <PressableScale
+              onPress={handleToday}
+              haptic="none"
+              hitSlop={spacing.sm}
+              style={styles.headerSide}
+              activeScale={0.94}
+              accessibilityRole="button"
+              accessibilityLabel="Jump to today">
               <Text style={styles.todayLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 Today
               </Text>
-            </Pressable>
+            </PressableScale>
 
             <View style={styles.monthNav}>
-              <Pressable
+              <PressableScale
                 onPress={() => shiftMonth(-1)}
+                haptic="none"
                 hitSlop={spacing.sm}
-                style={({ pressed }) => pressed && styles.pressedIcon}>
-                <Icon name="chevron-back" size={moderateScale(17)} tint={color.textSecondary} />
-              </Pressable>
+                activeScale={0.9}
+                pressedStyle={styles.pressedIcon}
+                accessibilityRole="button"
+                accessibilityLabel="Previous month">
+                <Icon name="chevron-back" size={moderateScale(16)} tint={t.inkMuted} />
+              </PressableScale>
               <Text style={styles.monthTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 {MONTHS[cursor.month]} {cursor.year}
               </Text>
-              <Pressable
+              <PressableScale
                 disabled={atCurrentMonth}
                 onPress={() => shiftMonth(1)}
+                haptic="none"
                 hitSlop={spacing.sm}
-                style={({ pressed }) => [atCurrentMonth && styles.navDisabled, pressed && styles.pressedIcon]}>
-                <Icon name="chevron-forward" size={moderateScale(17)} tint={color.textSecondary} />
-              </Pressable>
+                activeScale={0.9}
+                style={atCurrentMonth ? styles.navDisabled : undefined}
+                pressedStyle={styles.pressedIcon}
+                accessibilityRole="button"
+                accessibilityLabel="Next month">
+                <Icon name="chevron-forward" size={moderateScale(16)} tint={t.inkMuted} />
+              </PressableScale>
             </View>
 
-            <Pressable onPress={handleDone} hitSlop={spacing.sm} style={[styles.headerSide, styles.headerRight]}>
+            <PressableScale
+              onPress={handleDone}
+              haptic="none"
+              hitSlop={spacing.sm}
+              style={[styles.headerSide, styles.headerRight]}
+              activeScale={0.94}
+              accessibilityRole="button"
+              accessibilityLabel="Done">
               <Text style={styles.doneLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 Done
               </Text>
-            </Pressable>
+            </PressableScale>
           </View>
 
           {/* Weekday letters */}
@@ -172,61 +194,65 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
               const isToday = day === today;
               const isFuture = day > today;
               const isLogged = loggedDays.has(day);
+              const filled = isSelected && !isToday;
+
+              const dotStyle = isLogged
+                ? filled
+                  ? styles.dotOnFill
+                  : styles.dotRecorded
+                : null;
 
               return (
-                <Pressable
+                <PressableScale
                   key={i}
                   style={styles.cell}
                   disabled={isFuture}
-                  onPress={() => handleDay(day)}>
+                  haptic="none"
+                  activeScale={0.9}
+                  onPress={() => handleDay(day)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected, disabled: isFuture }}>
                   <View
                     style={[
                       styles.dayCircle,
-                      isToday && !isSelected && styles.todayRing,
-                      isSelected && styles.selectedFill,
+                      isToday && styles.todayRing,
+                      filled && styles.selectedFill,
                     ]}>
                     <Text
                       style={[
                         styles.dayNum,
                         isFuture && styles.futureNum,
-                        isSelected && styles.selectedNum,
+                        isToday && styles.todayNum,
+                        filled && styles.selectedNum,
                       ]}
                       maxFontSizeMultiplier={MAX_FONT_SCALE}>
                       {parseInt(day.slice(8), 10)}
                     </Text>
-                    {/* Training-day dot — the calendar carries the data. */}
-                    <View
-                      style={[
-                        styles.dot,
-                        isLogged && (isSelected ? styles.dotOnSelected : styles.dotVisible),
-                      ]}
-                    />
+                    {/* The calendar carries the data: ink = recorded. */}
+                    <View style={[styles.dot, styles.gridDot, dotStyle]} />
                   </View>
-                </Pressable>
+                </PressableScale>
               );
             })}
           </View>
-        </View>
-      </View>
-    </Modal>
+
+          {/* Legend: what the dots mean */}
+          <View style={styles.legend}>
+            <View style={styles.legendItem}>
+              <View style={[styles.dot, styles.dotRecorded]} />
+              <Text style={styles.legendLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                Recorded session
+              </Text>
+            </View>
+          </View>
+      </Stagger>
+    </Sheet>
   );
 }
 
-const styles = StyleSheet.create({
-  backdropWrap: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: alpha('#000000', 0.6),
-  },
+const useStyles = makeStyles((t) => ({
   sheet: {
-    backgroundColor: color.surface,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.xl,
   },
   header: {
     flexDirection: 'row',
@@ -241,14 +267,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   todayLabel: {
-    color: color.textSecondary,
-    fontSize: type.subhead.fontSize,
-    fontWeight: '500',
+    ...type.callout,
+    fontWeight: '600',
+    color: t.inkMuted,
   },
   doneLabel: {
-    color: color.textPrimary,
-    fontSize: type.subhead.fontSize,
+    ...type.callout,
     fontWeight: '600',
+    color: t.ink, // ink
   },
   monthNav: {
     flex: 1,
@@ -258,27 +284,27 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   monthTitle: {
-    color: color.textPrimary,
-    fontSize: type.headline.fontSize,
-    fontWeight: '600',
+    ...type.title3,
+    fontWeight: '700',
+    color: t.ink,
   },
   navDisabled: {
-    opacity: 0.3,
+    opacity: 0.4, // the one disabled level in the app
   },
   pressedIcon: {
     opacity: 0.5,
   },
   weekRow: {
     flexDirection: 'row',
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
     marginBottom: spacing.xs,
   },
   weekday: {
+    ...type.caption,
     width: `${100 / 7}%`,
     textAlign: 'center',
-    ...type.caption,
-    color: color.textMuted,
-    fontWeight: '500',
+    color: t.inkFaint,
+    fontWeight: '600',
   },
   grid: {
     flexDirection: 'row',
@@ -298,36 +324,60 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   todayRing: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: alpha(color.accent, 0.6),
+    borderWidth: 2,
+    borderColor: t.ink, // ink ring
   },
   selectedFill: {
-    backgroundColor: color.accent, // white IS the accent
+    backgroundColor: t.ink, // ink fill for the day you're viewing
   },
   dayNum: {
-    color: color.textPrimary,
-    fontSize: type.subhead.fontSize,
-    fontWeight: '500',
+    ...type.body,
+    lineHeight: moderateScale(20),
+    color: t.ink,
     fontVariant: ['tabular-nums'],
   },
+  todayNum: {
+    fontWeight: '700',
+  },
   futureNum: {
-    color: color.textMuted,
+    color: t.inkFaint,
   },
   selectedNum: {
-    color: color.bg, // black numeral on the white fill
+    color: t.canvas, // paper numeral on the ink fill
     fontWeight: '600',
   },
   dot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    marginTop: 2,
+    width: DOT,
+    height: DOT,
+    borderRadius: DOT / 2,
     backgroundColor: 'transparent',
   },
-  dotVisible: {
-    backgroundColor: alpha(color.accent, 0.55),
+  gridDot: {
+    marginTop: moderateScale(3),
   },
-  dotOnSelected: {
-    backgroundColor: color.bg,
+  dotRecorded: {
+    backgroundColor: t.ink, // ink — a recorded session
   },
-});
+  dotPlanned: {
+    backgroundColor: t.ember, // green — a plan offered
+  },
+  dotOnFill: {
+    backgroundColor: t.canvas, // paper dot on the ink-filled selected day
+  },
+  legend: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.lg,
+    marginTop: spacing.md,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  legendLabel: {
+    ...type.caption,
+    color: t.inkMuted,
+  },
+}));

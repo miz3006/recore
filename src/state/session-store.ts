@@ -1,15 +1,21 @@
 import { create } from 'zustand';
 
 import { shiftDayKey, todayKey, type DayKey } from '@/lib/db/dates';
+import { loadUndoneKeys, loadUndoneMap, saveUndone } from '@/lib/db/done-state';
 import { getMeta, setMeta } from '@/lib/db/index';
-import { computeStreak, getWorkoutForDay, saveRawText } from '@/lib/db/workouts';
+import { computeWeekStreak, getWorkoutForDay, saveRawText } from '@/lib/db/workouts';
 import { getPredictionForOpen, markPredictionAccepted } from '@/lib/db/predictions';
-import { getParseCache } from '@/lib/parse/apply';
+import { getParseCache, reapplyDoneState } from '@/lib/parse/apply';
 import { parseWorkout, type ParseOutcome } from '@/lib/parse/client';
 import { applyCorrection, getFixTarget, type FixTarget } from '@/lib/parse/correct';
-import { parsedVolume } from '@/lib/db/history';
-import { buildReceipt, type ReceiptData } from '@/lib/parse/receipt';
-import { validateParseResult, type LineSignal, type ParsedSet } from '@/lib/parse/types';
+import { buildSessionTotals, type SessionTotals } from '@/lib/parse/session';
+import {
+  validateParseResult,
+  type LineSignal,
+  type ParsedItem,
+  type ParsedSet,
+} from '@/lib/parse/types';
+import { getWeeklyTarget } from '@/lib/prefs';
 import { scheduleSync, setParseListener } from '@/lib/sync/index';
 
 /**
@@ -37,6 +43,10 @@ interface SessionState {
   note: string;
   /** id of the day's workout row once it exists. */
   workoutId: string | null;
+  /** Composer checklist: exercise cards are DONE (filled check) by default; a
+   * key here marks one the user un-checked ("recorded but not done yet"). Keyed
+   * by exercise+sets so it survives reorder; persisted per workout in meta. */
+  undone: Record<string, true>;
   /** Gutter signals + the exact raw text they were computed from. */
   signals: LineSignal[];
   parsedSnapshot: string | null;
@@ -51,11 +61,20 @@ interface SessionState {
    * Detected once per workout (≥4 exercises parsed from a note that was empty
    * moments before) and remembered in the local meta KV. */
   receiptMode: boolean;
-  receipt: ReceiptData | null;
+  receipt: SessionTotals | null;
+  /** The parsed items behind the cards — §8.3 renders per set, not per line. */
+  parsedItems: ParsedItem[];
   /** The ONE line the AI may say under the receipt (next-session reason). */
   receiptReason: string | null;
   /** Canonical name of the exercise whose bottom sheet is open, or null. */
   sheetExercise: string | null;
+  /** Workout id whose set-by-set SessionSheet is open, or null. */
+  sheetSession: string | null;
+  /** The note line the sheet was opened from (a live card) — enables Edit /
+   * Delete of that entry. Null when opened without a line context. */
+  sheetLine: number | null;
+  /** A committed line the composer is editing inline (tap a card → Edit). */
+  editingLine: number | null;
   /** The parsed line being corrected (long-press on a gutter value), or null. */
   fixTarget: FixTarget | null;
   /** Bumped after every landed correction — read-side caches key on it. */
@@ -72,8 +91,19 @@ interface SessionState {
   /** Strong-style check-off: commit ONE prescribed line into the note. */
   checkGhostLine: (lineText: string) => void;
   dismissGhost: () => void;
-  openExerciseSheet: (canonical: string) => void;
+  openExerciseSheet: (canonical: string, line?: number | null) => void;
   closeExerciseSheet: () => void;
+  /** Open the forensic set-by-set sheet for one recorded workout. */
+  openSessionSheet: (workoutId: string) => void;
+  closeSessionSheet: () => void;
+  /** Toggle a composer card between DONE and "recorded, not done yet". The
+   * card never leaves the note — only its check state flips. */
+  toggleDone: (key: string) => void;
+  /** Remove a physical line from the note (delete an entry). */
+  deleteNoteLine: (line: number) => void;
+  /** Enter / leave inline edit of a committed line (tap a card → Edit). */
+  startEditLine: (line: number) => void;
+  stopEditLine: () => void;
   openFixSheet: (line: number) => void;
   closeFixSheet: () => void;
   submitFix: (exercise: string, sets: ParsedSet[]) => void;
@@ -132,7 +162,8 @@ function loadDay(userId: string, day: DayKey) {
   let snapshot: string | null = null;
   let volume = 0;
   let lineExercises: Record<number, string> = {};
-  let receipt: ReceiptData | null = null;
+  let receipt: SessionTotals | null = null;
+  let items: ParsedItem[] = [];
 
   if (workout) {
     const cache = getParseCache(workout.id);
@@ -141,8 +172,10 @@ function loadDay(userId: string, day: DayKey) {
         signals = JSON.parse(cache.signals_json) as LineSignal[];
         snapshot = cache.raw_snapshot;
         const result = validateParseResult(JSON.parse(cache.result_json));
-        volume = result ? parsedVolume(result) : 0;
-        receipt = result ? buildReceipt(result, signals) : null;
+        // Totals + comparisons exclude anything the user marked NOT DONE.
+        receipt = result ? buildSessionTotals(result, signals, loadUndoneKeys(workout.id)) : null;
+        items = result ? result.items : [];
+        volume = receipt ? receipt.volume : 0;
         if (result) {
           for (const item of result.items) {
             if (lineExercises[item.line] === undefined) lineExercises[item.line] = item.exercise;
@@ -153,6 +186,7 @@ function loadDay(userId: string, day: DayKey) {
         snapshot = null;
         lineExercises = {};
         receipt = null;
+        items = [];
       }
     }
   }
@@ -162,12 +196,14 @@ function loadDay(userId: string, day: DayKey) {
   return {
     note: workout?.raw_text ?? '',
     workoutId: workout?.id ?? null,
+    undone: loadUndoneMap(workout?.id ?? null),
     signals,
     parsedSnapshot: snapshot,
     parsedVolume: volume,
     lineExercises,
     receiptMode,
     receipt,
+    parsedItems: items,
     // The one AI line under the ledger — today only, silence otherwise.
     receiptReason: receipt ? reasonForReceipt(userId, day) : null,
   };
@@ -178,6 +214,7 @@ export const useSession = create<SessionState>((set, get) => ({
   selectedDay: todayKey(),
   note: '',
   workoutId: null,
+  undone: {},
   signals: [],
   parsedSnapshot: null,
   parsedVolume: 0,
@@ -185,8 +222,12 @@ export const useSession = create<SessionState>((set, get) => ({
   lineExercises: {},
   receiptMode: false,
   receipt: null,
+  parsedItems: [],
   receiptReason: null,
   sheetExercise: null,
+  sheetSession: null,
+  sheetLine: null,
+  editingLine: null,
   fixTarget: null,
   fixRevision: 0,
   streak: 0,
@@ -201,7 +242,7 @@ export const useSession = create<SessionState>((set, get) => ({
       userId,
       selectedDay: today,
       ...loadDay(userId, today),
-      streak: computeStreak(userId, today),
+      streak: computeWeekStreak(userId, today, getWeeklyTarget()),
       ghost: prediction
         ? { id: prediction.id, ghostText: prediction.ghost_text, reason: prediction.reason }
         : null,
@@ -218,6 +259,7 @@ export const useSession = create<SessionState>((set, get) => ({
       selectedDay: todayKey(),
       note: '',
       workoutId: null,
+      undone: {},
       signals: [],
       parsedSnapshot: null,
       parsedVolume: 0,
@@ -225,13 +267,17 @@ export const useSession = create<SessionState>((set, get) => ({
       lineExercises: {},
       receiptMode: false,
       receipt: null,
+      parsedItems: [],
       receiptReason: null,
       sheetExercise: null,
+      sheetSession: null,
+      sheetLine: null,
+      editingLine: null,
       fixTarget: null,
       streak: 0,
       ghost: null,
       ghostDismissed: false,
-    });
+        });
   },
 
   selectDay: (day) => {
@@ -253,7 +299,7 @@ export const useSession = create<SessionState>((set, get) => ({
 
     // 1. Optimistic local-first write: raw_text hits SQLite in this tick.
     const workoutId = saveRawText(userId, selectedDay, text);
-    set({ note: text, workoutId, streak: computeStreak(userId, todayKey()) });
+    set({ note: text, workoutId, streak: computeWeekStreak(userId, todayKey(), getWeeklyTarget()) });
 
     // 2. Fire the background parse after the typing pause; push in background.
     // A fresh keystroke supersedes any failure-retry chain in flight.
@@ -299,8 +345,42 @@ export const useSession = create<SessionState>((set, get) => ({
 
   dismissGhost: () => set({ ghostDismissed: true }),
 
-  openExerciseSheet: (canonical) => set({ sheetExercise: canonical }),
-  closeExerciseSheet: () => set({ sheetExercise: null }),
+  openExerciseSheet: (canonical, line = null) => set({ sheetExercise: canonical, sheetLine: line }),
+  closeExerciseSheet: () => set({ sheetExercise: null, sheetLine: null }),
+
+  openSessionSheet: (workoutId) => set({ sheetSession: workoutId }),
+  closeSessionSheet: () => set({ sheetSession: null }),
+
+  toggleDone: (key) => {
+    const { undone, workoutId, userId, selectedDay } = get();
+    const next = { ...undone };
+    if (next[key]) delete next[key];
+    else next[key] = true;
+
+    if (!workoutId || !userId) {
+      set({ undone: next });
+      return;
+    }
+    // Persist the checklist, re-project the structure (un-checked → 'skipped'
+    // sets, no signal) so the pill, this-week, /stats and PRs all agree, then
+    // re-read the day so the receipt/gutter reflect it immediately.
+    saveUndone(workoutId, Object.keys(next));
+    reapplyDoneState(userId, workoutId);
+    set({ ...loadDay(userId, selectedDay) });
+    scheduleSync();
+  },
+
+  deleteNoteLine: (line) => {
+    const { note } = get();
+    const lines = note.split('\n');
+    if (line < 0 || line >= lines.length) return;
+    lines.splice(line, 1);
+    set({ editingLine: null, sheetExercise: null, sheetLine: null });
+    get().setNote(lines.join('\n'));
+  },
+
+  startEditLine: (line) => set({ editingLine: line, sheetExercise: null, sheetLine: null }),
+  stopEditLine: () => set({ editingLine: null }),
 
   // --- parse correction (CLAUDE.md §6.2) --------------------------------------
 
@@ -360,6 +440,7 @@ function applyParseOutcome(userId: string, outcome: ParseOutcome) {
     lineExercises: outcome.lineExercises,
     receiptMode,
     receipt: outcome.receipt,
+    parsedItems: outcome.items,
     receiptReason: outcome.receipt ? reasonForReceipt(userId, state.selectedDay) : null,
   });
 }
@@ -429,3 +510,4 @@ export const useGhostVisible = () =>
       !s.receiptMode &&
       s.ghost !== null,
   );
+

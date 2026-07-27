@@ -1,5 +1,7 @@
 import {
+  doneKeyFor,
   echoTextOf,
+  setsLineText,
   topOfSets,
   parsedVolume,
   type SetSummary,
@@ -135,12 +137,16 @@ export function computeSignals(
   performedAtIso: string,
   result: ParseResult,
   exerciseIdByItem: Map<ParsedItem, string>,
+  /** Exercises the user marked NOT DONE — they get no comparison/PR signal
+   * (you can't set a record on work you didn't perform). */
+  undone: Set<string> = new Set(),
 ): LineSignal[] {
   const signals: LineSignal[] = [];
 
   for (const item of result.items) {
     const exerciseId = exerciseIdByItem.get(item);
     if (!exerciseId) continue;
+    if (undone.has(doneKeyFor(item.exercise, setsLineText(item.sets) ?? ''))) continue;
 
     const current = topOfSets(item.sets);
     const { prev, allTimeMaxWeight } = previousSessionTop(userId, exerciseId, performedAtIso);

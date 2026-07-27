@@ -34,7 +34,7 @@ export function getStatsSummary(userId: string): StatsSummary {
 
   const rows = db.getAllSync<{ performed_at: string; volume: number | null }>(
     `SELECT w.performed_at,
-            SUM(CASE WHEN s.kind <> 'warmup' AND s.reps IS NOT NULL AND s.weight_kg IS NOT NULL
+            SUM(CASE WHEN s.kind NOT IN ('warmup', 'skipped') AND s.reps IS NOT NULL AND s.weight_kg IS NOT NULL
                      THEN s.reps * s.weight_kg ELSE 0 END) AS volume
      FROM workouts w
      LEFT JOIN items i ON i.workout_id = w.id

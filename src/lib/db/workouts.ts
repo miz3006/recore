@@ -72,34 +72,61 @@ export function getLoggedDayKeys(userId: string): Set<DayKey> {
   return new Set(rows.map((r) => dayKeyFor(new Date(r.performed_at))));
 }
 
-/** Streak: consecutive local days with a non-empty note, ending today (or
- * yesterday, so the streak doesn't read as broken before today's session). */
-export function computeStreak(userId: string, today: DayKey): number {
+/**
+ * The streak (CLAUDE.md §15.3, D3) — **consecutive weeks in which the user met
+ * their own weekly target**, not consecutive days.
+ *
+ * This is a deliberate departure from every competitor and it is the whole
+ * point. A daily streak in a training app punishes rest days, and rest days are
+ * training: an app that makes a lifter feel guilty on their programmed off-day
+ * is working against the thing it claims to support. Worse, the moment they miss
+ * one the number resets and the mechanic becomes a reason to leave.
+ *
+ * Three sessions a week means three sessions. Tuesday/Thursday/Sunday scores
+ * exactly the same as Monday/Wednesday/Friday, and a week with four against a
+ * target of three is a met week, not a bonus.
+ *
+ * The CURRENT week is counted only once it has been met — a week still in
+ * progress can never break the streak, it just has not earned its point yet.
+ */
+export function computeWeekStreak(userId: string, today: DayKey, target: number): number {
   const rows = getDb().getAllSync<{ performed_at: string }>(
-    "SELECT performed_at FROM workouts WHERE user_id = ? AND trim(raw_text) <> '' ORDER BY performed_at DESC LIMIT 400",
+    "SELECT performed_at FROM workouts WHERE user_id = ? AND trim(raw_text) <> '' ORDER BY performed_at DESC LIMIT 800",
     [userId],
   );
-  const days = new Set(
-    rows.map((r) => {
-      const d = new Date(r.performed_at);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    }),
-  );
 
-  let cursor = today;
-  if (!days.has(cursor)) {
-    // No workout yet today — the streak counts back from yesterday.
-    const [y, m, d] = cursor.split('-').map(Number);
-    const prev = new Date(y!, m! - 1, d! - 1);
-    cursor = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-${String(prev.getDate()).padStart(2, '0')}`;
+  // Distinct trained days per ISO week, keyed by that week's Monday.
+  const perWeek = new Map<string, Set<DayKey>>();
+  for (const row of rows) {
+    const day = dayKeyFor(new Date(row.performed_at));
+    const monday = mondayKeyOf(day);
+    const days = perWeek.get(monday) ?? new Set<DayKey>();
+    days.add(day);
+    perWeek.set(monday, days);
   }
 
+  const met = (monday: string) => (perWeek.get(monday)?.size ?? 0) >= Math.max(1, target);
+
+  let cursor = mondayKeyOf(today);
   let streak = 0;
-  while (days.has(cursor)) {
+  // A week in progress is not a broken week; step back and start counting there.
+  if (!met(cursor)) cursor = shiftDays(cursor, -7);
+  while (met(cursor)) {
     streak += 1;
-    const [y, m, d] = cursor.split('-').map(Number);
-    const prev = new Date(y!, m! - 1, d! - 1);
-    cursor = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-${String(prev.getDate()).padStart(2, '0')}`;
+    cursor = shiftDays(cursor, -7);
   }
   return streak;
+}
+
+/** The Monday of a day's week. Local time, Monday-first (§15.3 counts weeks). */
+function mondayKeyOf(day: DayKey): DayKey {
+  const [y, m, d] = day.split('-').map(Number);
+  const date = new Date(y!, m! - 1, d!);
+  const offset = (date.getDay() + 6) % 7;
+  return dayKeyFor(new Date(y!, m! - 1, d! - offset));
+}
+
+function shiftDays(day: DayKey, delta: number): DayKey {
+  const [y, m, d] = day.split('-').map(Number);
+  return dayKeyFor(new Date(y!, m! - 1, d! + delta));
 }

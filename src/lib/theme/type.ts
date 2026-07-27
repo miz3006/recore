@@ -1,55 +1,114 @@
-import { Platform, type TextStyle } from 'react-native';
+import type { TextStyle } from 'react-native';
 
-import { moderateScale } from './scale';
+import { mono, sans } from './fonts';
+import { moderateScale, osFontScale } from './scale';
 
 /**
- * Typography (CLAUDE.md §4).
+ * THE LADDER (CLAUDE.md §6.5). Thirteen rungs, two faces, and nothing in
+ * between.
  *
- * Everything is SF Pro (the iOS system font) — on RN this means leaving
- * fontFamily undefined so the platform default is used. The ONE exception is a
- * clean monospace used ONLY for parsed set data in the right gutter (weights
- * align like a table) — never for headings or buttons.
+ * **Words are humanist, numbers are machine.** The nine text rungs are SF Pro;
+ * the four `data*` rungs are JetBrains Mono, tabular, and carry their own
+ * `fontFamily` — so there is no way to set a load in the wrong face by
+ * forgetting a prop. That division is not decoration: it is how §6.2's record
+ * contract stays legible at a glance.
  *
- * Sizes are NOT hardcoded per screen: every token runs through `moderateScale`
- * (task §1) so type is proportional from an iPhone SE to a Pro Max. Screens
- * derive from these tokens; they never set ad-hoc pixel sizes.
+ * Nothing here is hardcoded per screen. Every size runs through `moderateScale`
+ * so type stays proportional from an SE to a Pro Max, and a new size is added
+ * here or not at all (see [[recore-responsive-type]]).
+ *
+ * Two mechanics that are easy to skip and impossible to unsee afterwards:
+ *
+ * · **Line boxes grow with the glyph.** React Native scales `fontSize` by the
+ *   OS Dynamic Type multiplier but leaves `lineHeight` exactly where you put it,
+ *   so a fixed line height silently clamps text at large sizes — the glyphs grow
+ *   and then collide. Every rung multiplies its line height by the same clamped
+ *   scale the platform is applying to the size.
+ *
+ * · **Tracking is size-specific.** §6.5 states it in em, which is the only unit
+ *   that survives scaling; it is resolved to points against the rung's own
+ *   scaled size, so the display rung tightens hard (-0.02em) and `micro` opens
+ *   up (+0.06em) and both stay right at every device width.
+ */
+
+/** Resolve one rung: §6.5's `size / lineHeight` plus its tracking in em. */
+function rung(size: number, lineHeight: number, em = 0) {
+  const fontSize = moderateScale(size);
+  return {
+    fontSize,
+    lineHeight: Math.round(moderateScale(lineHeight) * osFontScale),
+    letterSpacing: Number((fontSize * em * osFontScale).toFixed(2)),
+  };
+}
+
+/**
+ * The faces, for the rare place that composes its own treatment (the composer's
+ * text input, a measuring mirror). Prefer a rung — it already carries the face.
  */
 export const fonts = {
-  /** SF Pro / system. Leave undefined so RN uses the platform default. */
-  sans: undefined as TextStyle['fontFamily'],
-  /** SF Mono on iOS, platform mono elsewhere. Parsed numbers only. */
-  mono: Platform.select({
-    ios: 'ui-monospace',
-    android: 'monospace',
-    default: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-  }),
+  /** SF Pro / system. Undefined is how RN spells "the platform default". */
+  sans,
+  /** JetBrains Mono at 500. The weight-specific families live in `./fonts`. */
+  mono: mono.medium,
 } as const;
 
 export const type = {
-  largeTitle: { fontSize: moderateScale(34), lineHeight: moderateScale(41), fontWeight: '700' },
-  title: { fontSize: moderateScale(28), lineHeight: moderateScale(34), fontWeight: '700' },
-  headline: { fontSize: moderateScale(17), lineHeight: moderateScale(22), fontWeight: '600' },
-  body: { fontSize: moderateScale(17), lineHeight: moderateScale(24), fontWeight: '400' },
-  subhead: { fontSize: moderateScale(15), lineHeight: moderateScale(20), fontWeight: '400' }, // secondary / grey
-  caption: { fontSize: moderateScale(13), lineHeight: moderateScale(18), fontWeight: '400' },
-  bigNumber: { fontSize: moderateScale(44), lineHeight: moderateScale(50), fontWeight: '700' }, // 175 cm, 70.0 kg
-  /** Stat-tile numerals (Progress hub, insight header). Always tabular-nums. */
-  statNumber: { fontSize: moderateScale(34), lineHeight: moderateScale(40), fontWeight: '700' },
-  /** The one hero numeral per screen (receipt total). Always tabular-nums. */
-  heroNumber: { fontSize: moderateScale(48), lineHeight: moderateScale(54), fontWeight: '700' },
+  // ————————————————————————————————————————————————— words (SF Pro)
+  /** Onboarding + paywall headlines only. Left-aligned and heavy, per §6.5. */
+  display: { ...rung(40, 44, -0.02), fontWeight: '700' },
+  title1: { ...rung(28, 34, -0.01), fontWeight: '700' },
+  title2: { ...rung(22, 28), fontWeight: '600' },
+  /** Card and sheet headers. */
+  title3: { ...rung(17, 22), fontWeight: '600' },
+  body: { ...rung(17, 24), fontWeight: '400' },
+  /** Body at the same metrics, carrying emphasis — never a second size. */
+  bodyEmph: { ...rung(17, 24), fontWeight: '600' },
+  callout: { ...rung(15, 20), fontWeight: '400' },
+  caption: { ...rung(13, 18), fontWeight: '500' },
+  /**
+   * The tag rung — `RECORDED`, `PR`, `WARM-UP`, section eyebrows. The only type
+   * in the app that is set in capitals, which is why it is also the only rung
+   * with positive tracking: capitals crowd at 11pt without it. Callers
+   * uppercase the string; the token cannot do it for them.
+   */
+  micro: { ...rung(11, 14, 0.06), fontWeight: '600', textTransform: 'uppercase' },
+
+  // ————————————————————————————————————— numbers (JetBrains Mono, tabular)
+  // No `fontWeight` on any of these on purpose: the weight IS the family
+  // (see `./fonts`), and asking a single-face family for a weight it does not
+  // own is how you get a smeared synthetic bold instead of the real cut.
+  /** One hero fact per screen, maximum. */
+  dataXL: { ...rung(34, 38), fontFamily: mono.bold, fontVariant: ['tabular-nums'] },
+  /** THE CARD VALUE — the number the whole composer exists to produce. */
+  dataL: { ...rung(22, 26), fontFamily: mono.semibold, fontVariant: ['tabular-nums'] },
+  /** Table cells, ledger rows. */
+  dataM: { ...rung(17, 22), fontFamily: mono.medium, fontVariant: ['tabular-nums'] },
+  /** Sublines and comparisons — the archival voice. */
+  dataS: { ...rung(13, 18), fontFamily: mono.medium, fontVariant: ['tabular-nums'] },
 } as const satisfies Record<string, TextStyle>;
 
 /**
- * The mono treatment for parsed set data in the right gutter. Tabular so weights
- * line up like a ledger. The note surface overrides fontSize/lineHeight to the
- * note's own so the gutter value shares its baseline (task §1).
+ * The section eyebrow — a mono small-caps label naming a block ("RECORD BOOK",
+ * "THIS WEEK"). `micro`'s metrics in the data face, opened further because a
+ * label that sits alone above a block needs to read as a rule, not a word.
  */
-export const monoText = {
-  fontFamily: fonts.mono,
-  fontSize: moderateScale(15),
-  fontWeight: '500',
-  letterSpacing: 0.2,
-  fontVariant: ['tabular-nums'],
+export const eyebrow = {
+  ...type.micro,
+  fontFamily: mono.semibold,
+  fontWeight: undefined,
+  letterSpacing: Number((type.micro.fontSize * 0.14).toFixed(2)),
+} as const satisfies TextStyle;
+
+/**
+ * The record-contract TAG — `RECORDED`, `PLANNED`, `PR`. Mono because §6.3 says
+ * so by name: *"a hairline capsule outlined in `ink` containing mono uppercase
+ * PR"*. It is a shape, not a colour, and it has to survive every theme, every
+ * colourblind profile, and every screenshot.
+ */
+export const tag = {
+  ...type.micro,
+  fontFamily: mono.semibold,
+  fontWeight: undefined,
 } as const satisfies TextStyle;
 
 export type TypeToken = keyof typeof type;

@@ -6,7 +6,7 @@
  * table, and `parse_cache` (the last parse result + gutter signals per
  * workout, kept so the gutter renders instantly after a cold start).
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const SCHEMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -87,6 +87,26 @@ CREATE TABLE IF NOT EXISTS predictions (
   UNIQUE (user_id, for_date)
 );
 
+-- Weekly split (pre-plan). One row = one day-template in the user's split
+-- ("Upper", "Push"…), AUTHORED AS FREE TEXT and parsed by the SAME parser as a
+-- note (raw_text is the source of truth, same as workouts). Undated & reusable
+-- — never a workout, so it lives in its own table. position = the rotation
+-- order; weekday_mask (NULL = rotation-only) pins the day to weekdays (bit i,
+-- 0=Mon … 6=Sun) when the user opts into weekday mode. LOCAL adds dirty.
+CREATE TABLE IF NOT EXISTS plan_days (
+  id            TEXT PRIMARY KEY NOT NULL,
+  user_id       TEXT NOT NULL,
+  position      INTEGER NOT NULL,
+  label         TEXT NOT NULL,
+  weekday_mask  INTEGER,
+  raw_text      TEXT NOT NULL DEFAULT '',
+  parse_version INTEGER,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL,
+  dirty         INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS plan_days_user_position_idx ON plan_days (user_id, position);
+
 -- Parser correction loop (CLAUDE.md §6.2): every user fix is training data —
 -- the raw line, what the parser said, what the user said it should be. Pushed
 -- to Supabase, never pulled. applyParseResult overlays these by exact line
@@ -134,3 +154,7 @@ export const MIGRATION_2_SQL = `
 ALTER TABLE predictions ADD COLUMN accepted_at TEXT;
 ALTER TABLE predictions ADD COLUMN outcome TEXT;
 `;
+
+/** v2 → v3: `plan_days` (weekly split) is a brand-new table, so it needs NO
+ * ALTER — migrate() runs SCHEMA_SQL for any current < SCHEMA_VERSION and its
+ * IF NOT EXISTS creates it on a fresh or upgrading install. */

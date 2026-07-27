@@ -1,70 +1,34 @@
 import { Redirect } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BottomToolbar } from '@/components/bottom-toolbar';
-import { ExerciseSheet } from '@/components/exercise-sheet';
-import { FixSheet } from '@/components/fix-sheet';
-import { InsightHeader } from '@/components/insight-header';
-import { NoteSurface } from '@/components/note-surface';
-import { TopBar } from '@/components/top-bar';
+import { useDevBypass } from '@/lib/auth/dev-bypass';
+import { useAuth } from '@/lib/auth/provider';
 import { isOnboardingDone } from '@/lib/prefs';
-import { color, spacing } from '@/lib/theme';
 
 /**
- * Home — the note surface (CLAUDE.md §8). A quiet near-black canvas: top bar,
- * a blank page you write your workout into, and a bottom toolbar that rides
- * above the keyboard. First run goes through onboarding (§10) exactly once.
+ * `/` is the funnel DISPATCHER and nothing else (CLAUDE.md §13.1, PLAN.md 0.7).
+ *
+ *   · onboarding not done          → /onboarding (start the funnel)
+ *   · onboarded, no session        → /paywall (finish it — sign-in is the
+ *                                     paywall's forward step)
+ *   · onboarded + session          → /today, inside the (tabs) group
+ *
+ * Because the account is deferred to the end of the funnel, this route is
+ * reachable signed-out; only the real app screens sit behind the auth guard in
+ * `_layout.tsx`.
+ *
+ * Home used to live here too. It moved to `(tabs)/today.tsx` in 0.6: a route
+ * group's `index` and this file both resolve to `/`, so keeping both would be a
+ * duplicate route — and `/today` is what §5.3's `recore://today` deep link wants
+ * to land on anyway.
  */
-export default function Home() {
-  const insets = useSafeAreaInsets();
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
-  const [onboarded] = useState(() => isOnboardingDone());
-
-  useEffect(() => {
-    const show = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hide = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const s = Keyboard.addListener(show, () => setKeyboardOpen(true));
-    const h = Keyboard.addListener(hide, () => setKeyboardOpen(false));
-    return () => {
-      s.remove();
-      h.remove();
-    };
-  }, []);
-
-  const bottomInset = keyboardOpen ? spacing.sm : Math.max(insets.bottom, spacing.md);
+export default function Dispatcher() {
+  const { session } = useAuth();
+  const bypassed = useDevBypass();
+  // Read fresh each render (cheap sync KV) — memoizing would strand the
+  // dispatcher on a stale value after onboarding completes or sign-in lands.
+  const onboarded = isOnboardingDone();
 
   if (!onboarded) return <Redirect href="/onboarding" />;
-
-  return (
-    <View style={styles.root}>
-      <SafeAreaView edges={['top']}>
-        <TopBar />
-      </SafeAreaView>
-
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {/* The landmark recedes while typing — mid-workout the note owns the
-            screen (CLAUDE.md §8). */}
-        <InsightHeader hidden={keyboardOpen} />
-        <NoteSurface />
-        <BottomToolbar bottomInset={bottomInset} />
-      </KeyboardAvoidingView>
-
-      <ExerciseSheet />
-      <FixSheet />
-    </View>
-  );
+  if (!session && !bypassed) return <Redirect href="/paywall" />;
+  return <Redirect href="/today" />;
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: color.bg,
-  },
-  flex: {
-    flex: 1,
-  },
-});

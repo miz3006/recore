@@ -99,5 +99,375 @@
     "name": "lbs unit conversion",
     "input": "bench 3x5 225 lbs",
     "expect": [{ "exercise": "Bench Press", "line": 0, "weight_kg": 102.1, "weight_tolerance": 0.5 }]
+  },
+  {
+    "name": "weighted calisthenics: bw+X added load, plain bw",
+    "input": "dips bw+20 3x8\npull ups bw 3x10",
+    "expect": [
+      { "exercise": "Dip", "line": 0, "sets": 3, "reps": 8, "weight_kg": 20 },
+      { "exercise": "Pull-up", "line": 1, "sets": 3, "reps": 10, "weight_kg": null }
+    ]
+  },
+  {
+    "name": "decimal comma weight (european)",
+    "input": "bench 82,5kg 3x5",
+    "expect": [{ "exercise": "Bench Press", "line": 0, "sets": 3, "reps": 5, "weight_kg": 82.5 }]
+  },
+  {
+    "name": "decimal comma distance km",
+    "input": "tek 2,5km",
+    "expect": [{ "exercise": "Run", "line": 0, "modality": "cardio", "distance_m": 2500 }]
+  },
+  {
+    "name": "slovenian full session",
+    "input": "danes počepi 3x5 100kg\nmrtvi dvig 140kg x5\nzgibi 3x8",
+    "expect": [
+      { "exercise": "Squat", "line": 0, "sets": 3, "reps": 5, "weight_kg": 100 },
+      { "exercise": "Deadlift", "line": 1, "sets": 1, "reps": 5, "weight_kg": 140 },
+      { "exercise": "Pull-up", "line": 2, "sets": 3, "reps": 8, "weight_kg": null }
+    ]
+  },
+  {
+    "name": "slovenian serije po phrasing",
+    "input": "bench 4 serije po 10 s 70kg",
+    "expect": [{ "exercise": "Bench Press", "line": 0, "sets": 4, "reps": 10, "weight_kg": 70 }]
+  },
+  {
+    "name": "slovenian effort words - komaj",
+    "input": "potisk s prsi 90kg 2x3, zadnjo sem komaj dvignil",
+    "expect": [{ "exercise": "Bench Press", "line": 0, "sets": 2, "min_rir": 0 }]
+  },
+  {
+    "name": "slovenian rir - v rezervi",
+    "input": "veslanje z drogom 60kg 3x10, še 2 v rezervi",
+    "expect": [{ "exercise": "Barbell Row", "line": 0, "sets": 3, "has_rir": 2 }]
+  },
+  {
+    "name": "slovenian do odpovedi",
+    "input": "biceps upogib 12kg do odpovedi, 15 ponovitev",
+    "expect": [{ "exercise": "Biceps Curl", "line": 0, "kinds": ["failure"], "reps": 15 }]
+  },
+  {
+    "name": "rep list slashes",
+    "input": "bench 80kg 8/7/6",
+    "expect": [
+      {
+        "exercise": "Bench Press",
+        "line": 0,
+        "sets": 3,
+        "reps_in_order": [8, 7, 6],
+        "weights_in_order": [80, 80, 80]
+      }
+    ]
+  },
+  {
+    "name": "rep list commas after weight",
+    "input": "curls 12kg 12,10,8",
+    "expect": [
+      { "exercise": "Biceps Curl", "line": 0, "sets": 3, "reps_in_order": [12, 10, 8], "weight_kg": 12 }
+    ]
+  },
+  {
+    "name": "per-set ascending weights",
+    "input": "squat 100x5 110x5 120x5",
+    "expect": [
+      { "exercise": "Squat", "line": 0, "sets": 3, "weights_in_order": [100, 110, 120] }
+    ],
+    "expect_item_count": 1
+  },
+  {
+    "name": "chained sets x reps blocks - bodyweight differing reps",
+    "input": "dips 2x16 1x15",
+    "expect": [
+      { "exercise": "Dip", "line": 0, "sets": 3, "reps_in_order": [16, 16, 15], "weight_kg": null }
+    ],
+    "expect_item_count": 1
+  },
+  {
+    "name": "chained sets x reps blocks - shared weight",
+    "input": "bench 2x8 1x6 100kg",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "sets": 3, "reps_in_order": [8, 8, 6], "weights_in_order": [100, 100, 100] }
+    ],
+    "expect_item_count": 1
+  },
+  {
+    "name": "repeated WkgxR pairs ascending - each set keeps its own weight",
+    "input": "chestfly 15kgx12 20kgx12 25kgx12",
+    "expect": [
+      {
+        "exercise": "Chest Fly",
+        "exercise_any": ["Cable Fly", "Cable Crossover", "Pec Fly", "Pec Deck"],
+        "line": 0,
+        "sets_total": 3,
+        "reps_in_order": [12, 12, 12],
+        "weights_in_order": [15, 20, 25]
+      }
+    ],
+    "expect_item_count": 1
+  },
+  {
+    "name": "pyramid WkgxR - weight AND reps both vary per set",
+    "input": "chestfly 15kgx12 20kgx10 25kgx8",
+    "expect": [
+      {
+        "exercise": "Chest Fly",
+        "exercise_any": ["Cable Fly", "Cable Crossover", "Pec Fly", "Pec Deck"],
+        "line": 0,
+        "sets_total": 3,
+        "reps_in_order": [12, 10, 8],
+        "weights_in_order": [15, 20, 25]
+      }
+    ],
+    "expect_item_count": 1
+  },
+  {
+    "name": "reverse pyramid - descending weight, ascending reps, per set",
+    "input": "bench 100x8 90x10 80x12",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "sets": 3, "reps_in_order": [8, 10, 12], "weights_in_order": [100, 90, 80] }
+    ],
+    "expect_item_count": 1
+  },
+  {
+    "name": "bodyweight order-independent - reps x sets (smaller number is sets)",
+    "input": "dips 15x2",
+    "expect": [
+      { "exercise": "Dip", "line": 0, "sets_total": 2, "reps_in_order": [15, 15], "weight_kg": null }
+    ],
+    "expect_item_count": 1
+  },
+  {
+    "name": "bodyweight order-independent chained - reps x sets blocks",
+    "input": "dips 15x2 16x1",
+    "expect": [
+      { "exercise": "Dip", "line": 0, "sets_total": 3, "reps_in_order": [15, 15, 16], "weight_kg": null }
+    ],
+    "expect_item_count": 1
+  },
+  {
+    "name": "pyramid WkgxR glued - weight AND reps both vary (squat real miss)",
+    "input": "squat 120kgx10 100kgx15 90kgx8",
+    "expect": [
+      { "exercise": "Squat", "line": 0, "sets_total": 3, "reps_in_order": [10, 15, 8], "weights_in_order": [120, 100, 90] }
+    ],
+    "expect_item_count": 1
+  },
+  {
+    "name": "order-free: reps BEFORE the kg weight",
+    "input": "bench 5 80kg",
+    "expect": [{ "exercise": "Bench Press", "line": 0, "sets_total": 1, "reps": 5, "weight_kg": 80 }],
+    "expect_item_count": 1
+  },
+  {
+    "name": "order-free: reps before weight (isolation)",
+    "input": "curls 12 15kg",
+    "expect": [{ "exercise": "Biceps Curl", "line": 0, "sets_total": 1, "reps": 12, "weight_kg": 15 }],
+    "expect_item_count": 1
+  },
+  {
+    "name": "order-free: slovenian rep word BEFORE the weight",
+    "input": "počep 5 ponovitev 100kg",
+    "expect": [{ "exercise": "Squat", "line": 0, "sets_total": 1, "reps": 5, "weight_kg": 100 }],
+    "expect_item_count": 1
+  },
+  {
+    "name": "order-free: weight then slovenian rep word",
+    "input": "potisk s prsi 90kg 8 ponovitev",
+    "expect": [{ "exercise": "Bench Press", "line": 0, "sets_total": 1, "reps": 8, "weight_kg": 90 }],
+    "expect_item_count": 1
+  },
+  {
+    "name": "ramp to top single",
+    "input": "dl 140x5, 160x3, 180x1",
+    "expect": [{ "exercise": "Deadlift", "line": 0, "sets_total": 3, "weight_kg": 180 }],
+    "expect_item_count": 1
+  },
+  {
+    "name": "no-space weight glued to reps",
+    "input": "leg press 100kgx5",
+    "expect": [{ "exercise": "Leg Press", "line": 0, "sets": 1, "reps": 5, "weight_kg": 100 }]
+  },
+  {
+    "name": "unicode multiplication sign",
+    "input": "bench 3×8 80 kg",
+    "expect": [{ "exercise": "Bench Press", "line": 0, "sets": 3, "reps": 8, "weight_kg": 80 }]
+  },
+  {
+    "name": "voice dictation english words",
+    "input": "bench press three sets of eight at eighty kilos",
+    "expect": [{ "exercise": "Bench Press", "line": 0, "sets": 3, "reps": 8, "weight_kg": 80 }]
+  },
+  {
+    "name": "voice dictation slovenian words",
+    "input": "potisk s prsmi osemdeset kil pet ponovitev tri serije",
+    "expect": [{ "exercise": "Bench Press", "line": 0, "sets": 3, "reps": 5, "weight_kg": 80 }]
+  },
+  {
+    "name": "date line is not a weight",
+    "input": "16.7.\nbench 3x8 80kg",
+    "expect": [{ "exercise": "Bench Press", "line": 1, "sets": 3, "weight_kg": 80 }],
+    "expect_item_count": 1
+  },
+  {
+    "name": "day header produces no item",
+    "input": "Push day\nbench 3x8 80kg\nohp 3x10 40kg",
+    "expect": [
+      { "exercise": "Bench Press", "line": 1, "sets": 3 },
+      { "exercise": "Overhead Press", "line": 2, "sets": 3 }
+    ],
+    "expect_item_count": 2
+  },
+  {
+    "name": "rest note is not a duration (en)",
+    "input": "squat 3x5 140kg, 2 min rest between sets",
+    "expect": [{ "exercise": "Squat", "line": 0, "sets": 3, "weight_kg": 140, "duration_s": null }]
+  },
+  {
+    "name": "rest note is not a duration (slo)",
+    "input": "bench 5x5 100kg, pavza 3 min",
+    "expect": [{ "exercise": "Bench Press", "line": 0, "sets": 5, "weight_kg": 100, "duration_s": null }]
+  },
+  {
+    "name": "A1/A2 pairing notation",
+    "input": "A1 bench 3x8 60kg\nA2 bb row 3x8 60kg",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "group_shared_with": "Barbell Row" },
+      { "exercise": "Barbell Row", "line": 1 }
+    ]
+  },
+  {
+    "name": "superset written inline on one line",
+    "input": "bench 80 3x8 ss bb row 60 3x8",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "sets": 3, "weight_kg": 80, "group_shared_with": "Barbell Row" },
+      { "exercise": "Barbell Row", "line": 0, "sets": 3, "weight_kg": 60 }
+    ]
+  },
+  {
+    "name": "rounds circuit multiplies sets and shares group",
+    "input": "3 rounds:\nkb swings 16kg x15\nburpees x10\nplank 30s",
+    "expect": [
+      { "exercise": "Kettlebell Swing", "line": 1, "sets": 3, "reps": 15, "weight_kg": 16, "group_shared_with": "Burpee" },
+      { "exercise": "Burpee", "line": 2, "sets": 3, "reps": 10, "group_shared_with": "Plank" },
+      { "exercise": "Plank", "line": 3, "sets_total": 3, "duration_s": 30 }
+    ]
+  },
+  {
+    "name": "interval repeats distance",
+    "input": "5x400m run",
+    "expect": [{ "exercise": "Run", "line": 0, "sets_total": 5, "distance_m": 400, "modality": "cardio" }]
+  },
+  {
+    "name": "row with distance and time",
+    "input": "row 2000m 7:45",
+    "expect": [
+      { "exercise": "Rowing", "exercise_any": ["Row", "Rowing Machine", "Row Erg"], "line": 0, "distance_m": 2000, "duration_s": 465 }
+    ]
+  },
+  {
+    "name": "hyrox block",
+    "input": "ski erg 1000m\nsled push 4x50m\nwall balls 3x25 6kg",
+    "expect": [
+      { "exercise": "Ski Erg", "exercise_any": ["SkiErg"], "line": 0, "modality": "cardio", "distance_m": 1000 },
+      { "exercise": "Sled Push", "line": 1, "sets": 4, "distance_m": 50 },
+      { "exercise": "Wall Ball", "exercise_any": ["Wall Balls"], "line": 2, "sets": 3, "reps": 25, "weight_kg": 6 }
+    ]
+  },
+  {
+    "name": "farmer carry weight and distance",
+    "input": "farmers carry 2x40m 32kg",
+    "expect": [
+      { "exercise": "Farmer Carry", "exercise_any": ["Farmer's Carry", "Farmers Carry"], "line": 0, "modality": "carry", "sets": 2, "distance_m": 40, "weight_kg": 32 }
+    ]
+  },
+  {
+    "name": "empty bar slovenian then working",
+    "input": "bench prazna palica 2x10, potem 60kg 3x8",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "kinds_include": ["warmup", "working"], "weights_in_order": [20, 20, 60, 60, 60], "weight_kg": 60 }
+    ]
+  },
+  {
+    "name": "just the bar english",
+    "input": "squat just the bar x10, then 100kg 5x5",
+    "expect": [
+      { "exercise": "Squat", "line": 0, "kinds_include": ["warmup", "working"], "weight_kg": 100, "sets": 5 }
+    ]
+  },
+  {
+    "name": "per-hand dumbbell load stays as written",
+    "input": "db shoulder press 24kg each 3x10",
+    "expect": [
+      { "exercise": "Dumbbell Shoulder Press", "line": 0, "sets": 3, "reps": 10, "weight_kg": 24 }
+    ]
+  },
+  {
+    "name": "per-leg reps stay as written (slo)",
+    "input": "izpadni koraki 20kg 3x12 na nogo",
+    "expect": [{ "exercise": "Lunge", "line": 0, "sets": 3, "reps": 12, "weight_kg": 20 }]
+  },
+  {
+    "name": "5k with finishing time",
+    "input": "easy 5k 28:30",
+    "expect": [{ "exercise": "Run", "line": 0, "modality": "cardio", "distance_m": 5000, "duration_s": 1710 }]
+  },
+  {
+    "name": "bike minutes (slo)",
+    "input": "kolo 30 min",
+    "expect": [
+      { "exercise": "Cycling", "exercise_any": ["Bike", "Stationary Bike"], "line": 0, "modality": "cardio", "duration_s": 1800 }
+    ]
+  },
+  {
+    "name": "rpe with decimal comma",
+    "input": "squat 5x3 150kg @8,5",
+    "expect": [{ "exercise": "Squat", "line": 0, "sets": 5, "reps": 3, "weight_kg": 150, "rir": 1.5 }]
+  },
+  {
+    "name": "rpe glued without at-sign",
+    "input": "deadlift 180 x3 RPE9",
+    "expect": [{ "exercise": "Deadlift", "line": 0, "sets": 1, "reps": 3, "weight_kg": 180, "rir": 1 }]
+  },
+  {
+    "name": "weighted plank",
+    "input": "plank +10kg 45s",
+    "expect": [{ "exercise": "Plank", "line": 0, "modality": "hold", "weight_kg": 10, "duration_s": 45 }]
+  },
+  {
+    "name": "unitless kettlebell weight is kg",
+    "input": "kb swing 24 x20",
+    "expect": [{ "exercise": "Kettlebell Swing", "line": 0, "sets": 1, "reps": 20, "weight_kg": 24 }]
+  },
+  {
+    "name": "machine stack number is kg",
+    "input": "lat pulldown 55 3x12",
+    "expect": [{ "exercise": "Lat Pulldown", "line": 0, "sets": 3, "reps": 12, "weight_kg": 55 }]
+  },
+  {
+    "name": "slovenian bodyweight staples",
+    "input": "sklece 4x15\ntrebušnjaki 3x20",
+    "expect": [
+      { "exercise": "Push-up", "line": 0, "sets": 4, "reps": 15, "weight_kg": null },
+      { "exercise": "Sit-up", "exercise_any": ["Crunch"], "line": 1, "sets": 3, "reps": 20, "weight_kg": null }
+    ]
+  },
+  {
+    "name": "slovenian hip thrust",
+    "input": "dvig bokov 100kg 3x12",
+    "expect": [{ "exercise": "Hip Thrust", "line": 0, "sets": 3, "reps": 12, "weight_kg": 100 }]
+  },
+  {
+    "name": "drop set with explicit reps",
+    "input": "curls 15kg x12 drop 10kg x8",
+    "expect": [
+      { "exercise": "Biceps Curl", "line": 0, "kinds": ["working", "drop"], "reps_in_order": [12, 8], "weights_in_order": [15, 10] }
+    ]
+  },
+  {
+    "name": "same exercise twice stays two items",
+    "input": "squat 100kg x5\nsquat 105kg x3",
+    "expect": [{ "exercise": "Squat", "line": 0, "weight_kg": 100 }],
+    "expect_item_count": 2
   }
 ]

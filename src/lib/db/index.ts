@@ -75,7 +75,7 @@ export function ensureLocalUser(userId: string) {
   const database = getDb();
   database.withTransactionSync(() => {
     database.execSync(
-      'DELETE FROM parse_cache; DELETE FROM corrections; DELETE FROM alias_overrides; DELETE FROM sets; DELETE FROM items; DELETE FROM workouts; DELETE FROM predictions; DELETE FROM exercises; DELETE FROM meta;',
+      'DELETE FROM parse_cache; DELETE FROM corrections; DELETE FROM alias_overrides; DELETE FROM sets; DELETE FROM items; DELETE FROM workouts; DELETE FROM predictions; DELETE FROM plan_days; DELETE FROM exercises; DELETE FROM meta;',
     );
   });
   setMeta('user_id', userId);

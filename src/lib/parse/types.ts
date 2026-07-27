@@ -39,6 +39,16 @@ export interface ParseResult {
 /** Client-side cap mirrored from the edge function. */
 export const MAX_RAW_TEXT_CHARS = 4000;
 
+/**
+ * The client's expectation of the edge function's PARSE_VERSION. Bump this IN
+ * LOCKSTEP with PARSE_VERSION in supabase/functions/parse-workout/prompt.ts
+ * every time the prompt/schema changes. The local `parse_cache` is keyed on
+ * raw_text ONLY (not version), so without this a note the user already typed
+ * would keep serving its OLD cached parse after a deploy — the new prompt would
+ * be invisible. A cache produced by an older version is re-parsed, not served.
+ */
+export const CLIENT_PARSE_VERSION = 5;
+
 const SET_KIND_SET = new Set<string>(SET_KINDS);
 const MODALITY_SET = new Set<string>(MODALITIES);
 

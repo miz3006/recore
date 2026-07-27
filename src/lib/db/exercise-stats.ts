@@ -2,8 +2,9 @@ import { dayKeyFor, type DayKey } from './dates';
 import { getDb } from './index';
 
 /**
- * History for the exercise bottom sheet (CLAUDE.md §8): last 5 sessions, a
- * volume/weight series for the mini chart, and an estimated 1RM (Epley over
+ * History for the exercise bottom sheet (CLAUDE.md §8): last 10 sessions, a
+ * weight-per-session series for the progression chart, and an estimated 1RM
+ * (Epley over
  * the best counted set — warm-ups and drops excluded, sane rep cap so a 20-rep
  * burnout doesn't fake a max).
  */
@@ -18,7 +19,7 @@ export interface ExerciseSession {
 
 export interface ExerciseStats {
   canonical: string;
-  sessions: ExerciseSession[]; // oldest → newest, up to 5
+  sessions: ExerciseSession[]; // oldest → newest, up to 10
   e1rm: number | null;
 }
 
@@ -37,7 +38,7 @@ export function getExerciseStats(userId: string, canonical: string): ExerciseSta
     `SELECT DISTINCT w.id, w.performed_at FROM workouts w
      JOIN items i ON i.workout_id = w.id
      WHERE w.user_id = ? AND i.exercise_id IN (${idList})
-     ORDER BY w.performed_at DESC LIMIT 5`,
+     ORDER BY w.performed_at DESC LIMIT 10`,
     [userId, ...ids],
   );
   if (workouts.length === 0) return null;
@@ -50,7 +51,9 @@ export function getExerciseStats(userId: string, canonical: string): ExerciseSta
          WHERE i.workout_id = ? AND i.exercise_id IN (${idList})`,
         [w.id, ...ids],
       );
-      const counted = sets.filter((s) => s.kind !== 'warmup' && s.kind !== 'drop');
+      const counted = sets.filter(
+        (s) => s.kind !== 'warmup' && s.kind !== 'drop' && s.kind !== 'skipped',
+      );
       let topWeight: number | null = null;
       let topReps: number | null = null;
       let volume = 0;
@@ -84,7 +87,7 @@ export function getExerciseStats(userId: string, canonical: string): ExerciseSta
      JOIN items i ON s.item_id = i.id
      JOIN workouts w ON i.workout_id = w.id
      WHERE w.user_id = ? AND i.exercise_id IN (${idList})
-       AND s.kind NOT IN ('warmup','drop') AND s.reps IS NOT NULL AND s.reps <= 12
+       AND s.kind NOT IN ('warmup','drop','skipped') AND s.reps IS NOT NULL AND s.reps <= 12
        AND s.weight_kg IS NOT NULL`,
     [userId, ...ids],
   );
