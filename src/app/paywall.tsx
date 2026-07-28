@@ -6,6 +6,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
 import { AppButton, Badge, Eyebrow, Rating, Testimonial } from '@/components/primitives';
+import { setDevBypass } from '@/lib/auth/dev-bypass';
 import { useAuth } from '@/lib/auth/provider';
 import { tap } from '@/lib/haptics';
 import { getName } from '@/lib/prefs';
@@ -129,6 +130,21 @@ export default function Paywall() {
     router.push('/sign-in');
   };
 
+  /**
+   * Development entrance. Skips the hard paywall with NO account, so the app
+   * can be worked on without signing in every launch. Sign-in still exists and
+   * still works — this only removes the gate, and `dev-bypass.ts` gives the
+   * local database a fixed id so Home has something behind it.
+   *
+   * Not a purchase stub and not an entitlement: it skips the SCREEN, never the
+   * account. `__DEV__` compiles the whole path out of release bundles.
+   */
+  const handleDevSkip = () => {
+    tap();
+    setDevBypass(true);
+    router.replace('/');
+  };
+
   const ctaLabel = plan === 'annual' ? 'Start 7-day free trial' : 'Continue with Monthly';
 
   return (
@@ -142,11 +158,25 @@ export default function Paywall() {
           accessibilityLabel="Close">
           <CloseGlyph />
         </PressableScale>
-        <Pressable onPress={handleRestore} hitSlop={spacing.sm} style={({ pressed }) => pressed && styles.quietPressed}>
-          <Text style={styles.restore} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            Restore purchases
-          </Text>
-        </Pressable>
+        <View style={styles.topRight}>
+          {__DEV__ ? (
+            <PressableScale
+              onPress={handleDevSkip}
+              hitSlop={spacing.sm}
+              style={styles.devChip}
+              accessibilityRole="button"
+              accessibilityLabel="Developer: skip paywall">
+              <Text style={styles.devChipText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                DEV · SKIP
+              </Text>
+            </PressableScale>
+          ) : null}
+          <Pressable onPress={handleRestore} hitSlop={spacing.sm} style={({ pressed }) => pressed && styles.quietPressed}>
+            <Text style={styles.restore} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              Restore purchases
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -285,6 +315,26 @@ const styles = StyleSheet.create({
   },
   quietPressed: {
     opacity: 0.5,
+  },
+  topRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+  },
+  devChip: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm + 2,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: color.border,
+    backgroundColor: color.surfaceHigh,
+  },
+  devChipText: {
+    fontFamily: fonts.mono,
+    fontSize: moderateScale(11),
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    color: color.textSecondary,
   },
   restore: {
     ...type.subhead,

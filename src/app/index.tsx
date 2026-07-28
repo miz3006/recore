@@ -11,6 +11,7 @@ import { NoteSurface } from '@/components/note-surface';
 import { PlanStrip } from '@/components/plan-strip';
 import { SummaryPill } from '@/components/summary-pill';
 import { TopBar } from '@/components/top-bar';
+import { useDevBypass } from '@/lib/auth/dev-bypass';
 import { useAuth } from '@/lib/auth/provider';
 import { isOnboardingDone } from '@/lib/prefs';
 import { color, spacing } from '@/lib/theme';
@@ -33,6 +34,7 @@ import { color, spacing } from '@/lib/theme';
  */
 export default function Home() {
   const { session } = useAuth();
+  const bypassed = useDevBypass();
   const insets = useSafeAreaInsets();
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   // Read fresh each render (cheap sync KV) — memoizing would strand the
@@ -54,8 +56,9 @@ export default function Home() {
 
   if (!onboarded) return <Redirect href="/onboarding" />;
   // Onboarding is done but there's still no account → the paywall is the gate,
-  // and sign-in is its forward step. The app itself needs a Supabase user.
-  if (!session) return <Redirect href="/paywall" />;
+  // and sign-in is its forward step. The app itself needs a Supabase user —
+  // except under the dev bypass, which runs on a fixed local id (dev-bypass.ts).
+  if (!session && !bypassed) return <Redirect href="/paywall" />;
 
   return (
     <View style={styles.root}>

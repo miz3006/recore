@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { useDevBypass } from '@/lib/auth/dev-bypass';
 import { AuthProvider, useAuth } from '@/lib/auth/provider';
 import { color } from '@/lib/theme';
 
@@ -40,6 +41,9 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const { session, loading } = useAuth();
+  // Dev-only paywall skip: opens the app screens on a fixed local id, without
+  // an account. Compiled out of release builds (see lib/auth/dev-bypass.ts).
+  const bypassed = useDevBypass();
 
   useEffect(() => {
     if (!loading) void SplashScreen.hideAsync();
@@ -59,8 +63,8 @@ function RootNavigator() {
       <Stack.Screen name="onboarding/index" />
       <Stack.Screen name="paywall" />
 
-      {/* The real app — only once an account exists. */}
-      <Stack.Protected guard={session !== null}>
+      {/* The real app — only once an account exists (or the dev bypass is on). */}
+      <Stack.Protected guard={session !== null || bypassed}>
         <Stack.Screen name="stats" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="split" />

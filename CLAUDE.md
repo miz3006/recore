@@ -121,8 +121,6 @@ Quiet, precise, and on the user's side. We are the training partner who writes t
 never talks during the set.
 
 - Never cute. Never hype. Never an exclamation mark in the product UI.
-- **No emoji anywhere in the interface.** Ever. Not in the streak, not in a celebration, not
-  in a notification.
 - Never congratulate someone for opening the app. Congratulate them only for a number.
 - When we have nothing useful to say, we say nothing. Silence is a design element and we use
   it constantly.
