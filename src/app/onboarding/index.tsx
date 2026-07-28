@@ -12,7 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AppButton, Eyebrow, Rating, Testimonial } from '@/components/primitives';
+import { AppButton, Eyebrow } from '@/components/primitives';
 import { FadeSlideIn, ProgressBar, Stagger } from '@/components/motion';
 import { tap, tapMedium } from '@/lib/haptics';
 import { SPRING } from '@/lib/motion';
@@ -44,15 +44,14 @@ import { color, fonts, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, t
 import { useSession } from '@/state/session-store';
 
 /**
- * Onboarding — the CONVERSION funnel (2026-07-23 redesign). The account is
- * deferred to the very end, so a first-time signed-out user lands here and
- * invests before ever being asked to sign in — the structure every
- * top-converting fitness app uses (Centr, Calm, Cal AI). One decision per
- * screen, a thin progress spine, staggered reveals; the personalization builds
- * commitment, an "analyzing" beat builds anticipation, and a personalized
- * "your ledger is ready" reveal + social proof hands off to the paywall.
+ * Onboarding — the CONVERSION funnel (2026-07-23, visual pass 2026-07-28). The
+ * account is deferred to the very end, so a first-time signed-out user lands
+ * here and invests before ever being asked to sign in. One decision per screen,
+ * a thin progress spine, staggered reveals; the personalization builds
+ * commitment, an "analyzing" beat builds anticipation, and a "your ledger is
+ * ready" reveal hands off to the paywall.
  *
- *   0 welcome     — the promise + a settling specimen + the 77% hook.
+ *   0 welcome     — the promise + a settling specimen.
  *   1 name        — an optional first name that personalizes the rest.
  *   2 focus       — training goal (persists the EXISTING goal pref).
  *   3 tracker     — where training lives today (obTracker).
@@ -60,10 +59,20 @@ import { useSession } from '@/state/session-store';
  *   5 units       — display unit + smallest bar increment (smallest plate).
  *   6 how it works— the parser reads a note into a ledger, live. No inputs.
  *   7 analyzing   — "building your ledger" — reflects the answers, auto-advances.
- *   8 ready       — the personalized setup echo + social proof; → /paywall.
+ *   8 ready       — the setup echoed back as a ledger card; → /paywall.
+ *
+ * The five question steps carry a BOUNDED counter ("STEP 03 OF 05"): a flow
+ * whose end is visible completes better than one that could go on forever.
+ *
+ * The reveal carries no rating and no testimonial (CLAUDE.md §12.1 — there are
+ * no real reviews, and the slot stays empty rather than being refilled). What
+ * the user looks at instead is their own setup, written back in the record's own
+ * language: a muted label, their answer in mono ink, right-aligned (§5.2).
  *
  * The palette stays monochrome; the premium is carried by type + motion + the
- * one restrained shadow on the hero cards.
+ * one restrained shadow on the hero cards. The single drop of `signal` green in
+ * the whole funnel is the specimen's PLANNED value on step 0, which is what
+ * green means everywhere else in the app (§5.1).
  */
 const STEP_COUNT = 9;
 const LAST_STEP = STEP_COUNT - 1;
@@ -72,7 +81,6 @@ const ANALYZING_STEP = 7;
 
 const SECONDARY_H = moderateScale(44);
 const TAG_RADIUS = 4;
-const CHIP_RADIUS = 8;
 
 const LB_PER_KG = 2.2046226218;
 const INCREMENTS_KG = [0.5, 1, 1.25, 2.5, 5] as const;
@@ -429,7 +437,7 @@ function SpecimenRow({ tag, text, quiet }: { tag: string; text: React.ReactNode;
 function StepName({ name, onChange, onSubmit }: { name: string; onChange: (t: string) => void; onSubmit: () => void }) {
   return (
     <StepFrame
-      eyebrow="Step 01"
+      eyebrow="Step 01 of 05"
       title="First — what should we call you?"
       sub="So the app can address you by name. Totally optional — tap Skip to stay anonymous.">
       <TextInput
@@ -458,7 +466,7 @@ function StepFocus({ name, goal, onPick }: { name: string; goal: Goal; onPick: (
   const who = name.trim();
   return (
     <StepFrame
-      eyebrow="Step 02"
+      eyebrow="Step 02 of 05"
       title={who ? `What are you training for, ${who}?` : 'What are you training for?'}
       sub="This only tunes examples and wording. Recore never prescribes a program — you write your own.">
       <OptionRow title="Strength" subtitle="Heavy top sets, low reps" selected={goal === 'strength'} onPress={() => onPick('strength')} />
@@ -472,7 +480,7 @@ function StepFocus({ name, goal, onPick }: { name: string; goal: Goal; onPick: (
 function StepTracker({ tracker, onPick }: { tracker: ObTracker | null; onPick: (t: ObTracker) => void }) {
   return (
     <StepFrame
-      eyebrow="Step 03"
+      eyebrow="Step 03 of 05"
       title="Where does your training live now?"
       sub="This picks the most useful first step once you're in — nothing is imported yet.">
       <OptionRow title="Strong" meta="CSV import" selected={tracker === 'strong'} onPress={() => onPick('strong')} />
@@ -487,7 +495,7 @@ function StepTracker({ tracker, onPick }: { tracker: ObTracker | null; onPick: (
 function StepLanguage({ language, onPick }: { language: ObLanguage; onPick: (l: ObLanguage) => void }) {
   return (
     <StepFrame
-      eyebrow="Step 04"
+      eyebrow="Step 04 of 05"
       title="Which language do you write in?"
       sub="English and Slovenian are the languages Recore's reading is measured on today.">
       <OptionRow title="English" meta={'“bench 3x5 80”'} selected={language === 'en'} onPress={() => onPick('en')} />
@@ -526,7 +534,7 @@ function StepUnits({
 
   return (
     <StepFrame
-      eyebrow="Step 05"
+      eyebrow="Step 05 of 05"
       title="Units and smallest jump"
       sub="Gives future load suggestions a safe step. Started from your locale; change anytime in Settings.">
       <View style={styles.segmentWrap}>
@@ -718,9 +726,13 @@ function StepAnalyzing({
   );
 }
 
-/** 8 — the payoff. The setup echoed back as a ready ledger, social proof to
- * carry the hand-off, and the first paid action decided (remembered through
- * checkout). → the footer's "See plans & start trial" opens the paywall. */
+/** 8 — the payoff. The setup echoed back as a ledger card, and the first paid
+ * action decided (remembered through checkout). → the footer's "See plans &
+ * start trial" opens the paywall.
+ *
+ * No rating, no testimonial (§12.1): there are no real reviews, and an invented
+ * one is the same failure as a promise the code cannot keep. The slot is not
+ * refilled — the thing worth looking at here is the user's own setup. */
 function StepReady({
   name,
   goal,
@@ -743,35 +755,37 @@ function StepReady({
   onPick: (a: FirstAction) => void;
 }) {
   const who = name.trim();
-  const goalChip = goal === 'both' ? 'hybrid / hyrox' : goal === 'muscle' ? 'hypertrophy' : 'strength';
-  const trackerChip =
-    tracker === 'hevy' ? 'hevy' : tracker === 'strong' ? 'strong' : tracker === 'notes' ? 'notes' : 'fresh start';
-  const languageChip = language === 'both' ? 'en + slo' : language;
-  const unitChip = increment != null ? `${unit} · +${fmtNum(increment)}` : unit;
+  const setup: { label: string; value: string }[] = [
+    { label: 'Focus', value: goal === 'both' ? 'hybrid · hyrox' : goal === 'muscle' ? 'hypertrophy' : 'strength' },
+    {
+      label: 'Coming from',
+      value:
+        tracker === 'hevy' ? 'hevy' : tracker === 'strong' ? 'strong' : tracker === 'notes' ? 'notes' : 'a fresh start',
+    },
+    { label: 'Writing in', value: language === 'both' ? 'en + slo' : language },
+    increment != null
+      ? { label: 'Smallest jump', value: `${fmtNum(increment)} ${unit}` }
+      : { label: 'Units', value: unit },
+  ];
 
   const sourceName = tracker === 'hevy' ? 'Hevy' : tracker === 'strong' ? 'Strong' : 'Hevy/Strong';
   const importSub = `Years of sessions become the evidence behind your next ones. ≈ 2 min with ${
     fromSetup ? `a ${sourceName} CSV` : 'a CSV export'
   }.`;
-  const testimonial =
-    goal === 'both'
-      ? { quote: 'Types like notes, reads like a spreadsheet. Sled pushes and wall balls land in the log too.', who: 'Elena · Hyrox' }
-      : { quote: 'I stopped “managing an app” and just wrote my sets. First tracker I’ve kept past a month.', who: 'Marko · powerlifting' };
 
   return (
     <StepFrame eyebrow="You're set" title={who ? `Your ledger is ready, ${who}.` : 'Your ledger is ready.'}>
-      <View style={styles.chips}>
-        {[goalChip, trackerChip, languageChip, unitChip].map((c) => (
-          <View key={c} style={styles.chip}>
-            <Text style={styles.chipText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {c}
+      <View style={styles.setup}>
+        {setup.map((r, i) => (
+          <View key={r.label} style={[styles.setupRow, i > 0 && styles.setupRule]}>
+            <Text style={styles.setupLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {r.label}
+            </Text>
+            <Text style={styles.setupValue} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {r.value}
             </Text>
           </View>
         ))}
-      </View>
-
-      <View style={styles.readyProof}>
-        <Rating score={4.9} countLabel="loved by early lifters" align="flex-start" />
       </View>
 
       <View style={styles.choices}>
@@ -789,8 +803,6 @@ function StepReady({
           onPress={() => onPick('write')}
         />
       </View>
-
-      <Testimonial quote={testimonial.quote} who={testimonial.who} />
 
       <Text style={styles.note} maxFontSizeMultiplier={MAX_FONT_SCALE}>
         Starts right after your trial or purchase. Nothing unlocks before that, and this choice is
@@ -1076,7 +1088,7 @@ const styles = StyleSheet.create({
 
   // chrome
   chrome: {
-    height: SECONDARY_H,
+    minHeight: SECONDARY_H,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
@@ -1159,7 +1171,7 @@ const styles = StyleSheet.create({
 
   // name step
   nameInput: {
-    height: moderateScale(56),
+    minHeight: moderateScale(56),
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.md,
@@ -1210,10 +1222,40 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
 
-  // ready step
-  readyProof: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.xs,
+  // ready step — the setup written back in the record's own language (§5.2):
+  // a muted label, the user's own answer in mono ink, right-aligned, one
+  // hairline rule per row. It reads like the ledger they are about to keep.
+  setup: {
+    backgroundColor: color.surface,
+    borderWidth: 1,
+    borderColor: color.border,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    ...shadow.card,
+  },
+  setupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    minHeight: SECONDARY_H,
+    paddingVertical: spacing.sm,
+  },
+  setupRule: {
+    borderTopWidth: 1,
+    borderTopColor: color.tableRule,
+  },
+  setupLabel: {
+    ...type.subhead,
+    color: color.textSecondary,
+  },
+  setupValue: {
+    flexShrink: 1,
+    fontFamily: fonts.mono,
+    fontSize: moderateScale(13),
+    fontVariant: ['tabular-nums'],
+    color: color.textPrimary,
+    textAlign: 'right',
   },
 
   // welcome specimen
@@ -1265,7 +1307,9 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
 
-  // radio cards
+  // radio cards. Selection changes the border COLOUR and lifts the card — the
+  // width stays at 1 so nothing reflows by half a pixel when you pick, and the
+  // hairline law of §5.4 is kept.
   option: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1273,13 +1317,13 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.border,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
   },
   optionSelected: {
-    borderWidth: 1.5,
     borderColor: color.accent,
+    ...shadow.card,
   },
   pressedFill: {
     backgroundColor: color.surfaceHigh,
@@ -1330,7 +1374,7 @@ const styles = StyleSheet.create({
   },
   segment: {
     flex: 1,
-    height: SECONDARY_H,
+    minHeight: SECONDARY_H,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.sm,
@@ -1351,7 +1395,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.border,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
   },
@@ -1380,7 +1424,7 @@ const styles = StyleSheet.create({
   },
   stepBtn: {
     width: SECONDARY_H,
-    height: SECONDARY_H,
+    minHeight: SECONDARY_H,
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.sm,
@@ -1401,7 +1445,7 @@ const styles = StyleSheet.create({
   },
   customRow: {
     marginTop: spacing.md,
-    height: SECONDARY_H,
+    minHeight: SECONDARY_H,
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.sm,
@@ -1415,7 +1459,7 @@ const styles = StyleSheet.create({
   },
   customInput: {
     marginTop: spacing.md,
-    height: SECONDARY_H,
+    minHeight: SECONDARY_H,
     borderWidth: 1,
     borderColor: color.accent,
     borderRadius: radius.sm,
@@ -1529,24 +1573,6 @@ const styles = StyleSheet.create({
   },
 
   // first move
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: color.border,
-    borderRadius: CHIP_RADIUS,
-    paddingVertical: spacing.xs + 1,
-    paddingHorizontal: spacing.sm + 2,
-  },
-  chipText: {
-    fontFamily: fonts.mono,
-    fontSize: moderateScale(10.5),
-    fontVariant: ['tabular-nums'],
-    color: color.textSecondary,
-  },
   choices: {
     gap: spacing.md,
   },
@@ -1558,8 +1584,8 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   choiceSelected: {
-    borderWidth: 1.5,
     borderColor: color.accent,
+    ...shadow.card,
   },
   choiceHeader: {
     flexDirection: 'row',

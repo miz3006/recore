@@ -7,6 +7,7 @@ export {
   HIT,
   CONTROL_HEIGHT,
   ROUND_BUTTON,
+  TAB_BAR_CLEARANCE,
   type SpacingToken,
   type RadiusToken,
 } from './spacing';

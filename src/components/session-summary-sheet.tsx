@@ -44,7 +44,7 @@ export function SessionSummarySheet({ visible, onClose }: { visible: boolean; on
   const goStats = () => {
     tap();
     onClose();
-    router.push('/stats');
+    router.push('/progress');
   };
 
   return (

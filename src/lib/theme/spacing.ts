@@ -43,5 +43,18 @@ export const CONTROL_HEIGHT = moderateScale(50);
 /** Round toolbar-button diameter; scales down so four still fit on an SE. */
 export const ROUND_BUTTON = moderateScale(40);
 
+/**
+ * How much room the system tab bar needs at the bottom of a tab screen
+ * (CLAUDE.md §5.2).
+ *
+ * It has to be added by hand. `SafeAreaProvider` lives at the app root, so
+ * `useSafeAreaInsets()` reports the *window's* insets (the home indicator)
+ * rather than the tab content view's — the bar UIKit floats over the screen is
+ * invisible to it. Content scrolls *behind* the bar and that is the point (glass
+ * needs something to refract), but anything pinned to the bottom — the summary
+ * pill, Finish — must clear it or it cannot be pressed at all.
+ */
+export const TAB_BAR_CLEARANCE = 56;
+
 export type SpacingToken = keyof typeof spacing;
 export type RadiusToken = keyof typeof radius;

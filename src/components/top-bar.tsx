@@ -63,7 +63,7 @@ export function TopBar() {
         <PressableScale
           onPress={() => {
             tap();
-            router.push('/settings');
+            router.push('/you');
           }}
           haptic="none"
           hitSlop={spacing.sm}

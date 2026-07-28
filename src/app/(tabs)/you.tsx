@@ -45,13 +45,25 @@ import {
 } from '@/lib/prefs';
 import { SPRING } from '@/lib/motion';
 import { scheduleSync } from '@/lib/sync/index';
-import { color, fonts, hairline, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
+import {
+  color,
+  fonts,
+  hairline,
+  MAX_FONT_SCALE,
+  moderateScale,
+  radius,
+  shadow,
+  spacing,
+  TAB_BAR_CLEARANCE,
+  type,
+} from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 /**
- * /settings — a proper profile-and-settings screen (Mobbin-referenced: a clean
- * identity header over grouped rows, à la ChatGPT / Viator). NOT a bottom sheet:
- * it's a pushed screen with a back header, so there's no misleading grabber.
+ * You (CLAUDE.md §5.1 — "Change something."), the fourth tab: a proper
+ * profile-and-settings screen (Mobbin-referenced: a clean identity header over
+ * grouped rows, à la ChatGPT / Viator). NOT a bottom sheet, and no back chevron
+ * — it is a tab root, opened rarely, and §5.1 says that is fine.
  *
  * The training prefs (focus / language / plate / bar) read as calm value rows
  * that expand INLINE to a segmented editor on tap — the app has no detail
@@ -135,11 +147,6 @@ export default function Settings() {
     tap();
     LayoutAnimation.configureNext(LayoutAnimation.create(180, 'easeInEaseOut', 'opacity'));
     setExpanded((cur) => (cur === key ? null : key));
-  };
-
-  const handleClose = () => {
-    tap();
-    router.back();
   };
 
   const handleBar = (kg: number) => {
@@ -266,28 +273,22 @@ export default function Settings() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
-      {/* Back header — a pushed screen, so a chevron, not a fake grabber. */}
+      {/* A tab root, so no chevron: there is nothing to go back to, and the
+          title goes left-aligned per §6.5 rather than centred to balance one. */}
       <View style={styles.nav}>
-        <PressableScale
-          onPress={handleClose}
-          haptic="none"
-          activeScale={0.92}
-          hitSlop={spacing.sm}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          style={styles.backBtn}
-          pressedStyle={styles.backBtnPressed}>
-          <Icon name="chevron-back" size={moderateScale(16)} tint={color.textPrimary} />
-        </PressableScale>
-        <Text style={styles.navTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          Settings
+        <Text style={styles.navTitle} accessibilityRole="header" maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          You
         </Text>
-        <View style={styles.backBtn} />
       </View>
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxl }]}
+        contentContainerStyle={[
+          styles.content,
+          // Content scrolls *behind* the tab bar (§5.2 — glass needs something
+          // to refract), so the last row clears it with padding, not an inset.
+          { paddingBottom: insets.bottom + spacing.xxl + TAB_BAR_CLEARANCE },
+        ]}
         showsVerticalScrollIndicator={false}>
         <Stagger step={55} initialDelay={80}>
         {/* PROFILE HEADER — avatar + name + email (Mobbin identity block). */}
@@ -643,27 +644,12 @@ const styles = StyleSheet.create({
   nav: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
   },
-  backBtn: {
-    width: moderateScale(38),
-    height: moderateScale(38),
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: color.border,
-    backgroundColor: color.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backBtnPressed: {
-    backgroundColor: color.surfaceHigh,
-  },
   navTitle: {
-    ...type.headline,
-    fontWeight: '700',
+    ...type.title2,
     color: color.textPrimary,
   },
   scroll: {

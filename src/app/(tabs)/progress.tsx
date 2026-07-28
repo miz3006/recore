@@ -17,12 +17,22 @@ import { getStatsSummary } from '@/lib/db/stats';
 import { tap } from '@/lib/haptics';
 import { groupThousands } from '@/lib/parse/estimate';
 import { fmtNumber } from '@/lib/parse/summarize';
-import { color, fonts, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
+import {
+  color,
+  fonts,
+  MAX_FONT_SCALE,
+  moderateScale,
+  radius,
+  shadow,
+  spacing,
+  TAB_BAR_CLEARANCE,
+  type,
+} from '@/lib/theme';
 import { labelForDay, useSession } from '@/state/session-store';
 
 /**
- * /stats — the Progress hub, reshaped to design frame 07 "History — week in
- * review". A segmented control swaps between HISTORY (a paginated week: the
+ * Progress (CLAUDE.md §5.1 — "Am I actually improving?"), the third tab,
+ * reshaped to design frame 07 "History — week in review". A segmented control swaps between HISTORY (a paginated week: the
  * "Volume by day" 7-bar chart + the week's session list, with the offered plan
  * as the last, green PLANNED row) and LIFTS (the all-time record book). Every
  * number still comes from the data layer — this screen just says it out loud in
@@ -161,7 +171,7 @@ export default function Stats() {
     // The honest empty state: a dashed card, a plain explanation, a bordered
     // action — never an invented dashboard.
     return (
-      <StubScreen title="Progress">
+      <StubScreen title="Progress" back={false}>
         <FadeSlideIn>
           <View style={styles.emptyCard}>
             <Eyebrow>Progress</Eyebrow>
@@ -177,7 +187,7 @@ export default function Stats() {
                 label="Import from Hevy or Strong"
                 variant="secondary"
                 compact
-                onPress={() => router.push('/settings')}
+                onPress={() => router.push('/you')}
               />
             </View>
           </View>
@@ -190,7 +200,7 @@ export default function Stats() {
   const rowCount = view.sessions.length;
 
   return (
-    <StubScreen title="Progress">
+    <StubScreen title="Progress" back={false}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -430,7 +440,9 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.xxl,
-    paddingBottom: spacing.huge,
+    // Content scrolls *behind* the tab bar (§5.2 — glass needs something to
+    // refract), so the last row is padded clear of it rather than inset.
+    paddingBottom: spacing.huge + TAB_BAR_CLEARANCE,
     gap: spacing.lg,
   },
 

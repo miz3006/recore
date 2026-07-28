@@ -9,41 +9,53 @@ import { Icon } from './icon';
 import { PressableScale } from './motion';
 
 /**
- * Shared scaffold for stub routes (/stats, /onboarding, /paywall): a quiet
- * header with a back chevron and a muted one-liner. The real screens replace
- * the body later; the routes and navigation are already final.
+ * Shared scaffold for stub routes (/onboarding, /paywall) and for the tab roots
+ * that still wear a plain header: a quiet header and a muted one-liner.
+ *
+ * `back` is false on a tab root — a tab is not a push, so there is nothing to go
+ * back to, and a chevron that pops to nowhere is a lie about the navigation. In
+ * that shape the title also goes left-aligned, which is the §6.5 headline
+ * direction anyway; the centred title only exists to balance the chevron.
  */
 export function StubScreen({
   title,
   note,
+  back = true,
   children,
 }: {
   title: string;
   note?: string;
+  /** False on a tab root: no chevron, left-aligned title. */
+  back?: boolean;
   children?: React.ReactNode;
 }) {
   const router = useRouter();
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <PressableScale
-          onPress={() => {
-            tap();
-            router.back();
-          }}
-          haptic="none"
-          activeScale={0.9}
-          hitSlop={spacing.sm}
-          style={styles.back}
-          accessibilityRole="button"
-          accessibilityLabel="Back">
-          <Icon name="chevron-back" size={moderateScale(22)} tint={color.textSecondary} />
-        </PressableScale>
-        <Text style={styles.title} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+      <View style={[styles.header, back ? null : styles.headerRoot]}>
+        {back ? (
+          <PressableScale
+            onPress={() => {
+              tap();
+              router.back();
+            }}
+            haptic="none"
+            activeScale={0.9}
+            hitSlop={spacing.sm}
+            style={styles.back}
+            accessibilityRole="button"
+            accessibilityLabel="Back">
+            <Icon name="chevron-back" size={moderateScale(22)} tint={color.textSecondary} />
+          </PressableScale>
+        ) : null}
+        <Text
+          style={[styles.title, back ? null : styles.titleRoot]}
+          accessibilityRole="header"
+          maxFontSizeMultiplier={MAX_FONT_SCALE}>
           {title}
         </Text>
-        <View style={styles.back} />
+        {back ? <View style={styles.back} /> : null}
       </View>
 
       <View style={styles.body}>
@@ -66,8 +78,14 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: HIT,
+    // minHeight, never height: at accessibilityLarge a 22pt title is taller than
+    // the 44pt tap target and a fixed height would crop its own label.
+    minHeight: HIT,
     paddingHorizontal: spacing.lg,
+  },
+  headerRoot: {
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.sm,
   },
   back: {
     width: HIT,
@@ -79,6 +97,10 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
     fontSize: type.headline.fontSize,
     fontWeight: '600',
+  },
+  titleRoot: {
+    ...type.title2,
+    textAlign: 'left',
   },
   body: {
     flex: 1,

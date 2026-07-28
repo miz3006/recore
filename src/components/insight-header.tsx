@@ -51,7 +51,7 @@ export function InsightHeader({ hidden = false }: { hidden?: boolean }) {
       <Pressable
         onPress={() => {
           tap();
-          router.push('/stats');
+          router.push('/progress');
         }}
         hitSlop={spacing.xs}
         style={({ pressed }) => [styles.row, pressed && styles.pressed]}>

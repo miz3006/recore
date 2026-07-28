@@ -1,14 +1,12 @@
-# CLAUDE.md — Recore, as it actually is
+# CLAUDE2.md — Recore, as it actually is
 
-**Version 4 · 28 July 2026 · Supersedes `CLAUDE2.md` and `CLAUDE.md` v3.**
+**Written 28 July 2026 · A description of the code in this repository, not a plan for it.**
 
-This is a description of the code in this repository, not a plan for it. That distinction is
-the whole reason this document exists: **v3 described an app that was built once, on 27 July
-2026, and rejected by the owner the same evening and rolled back.** Everything below was read
-out of the working tree and can be checked against a file path.
-
-**Where this document and the code disagree, the code wins and this document is stale** — the
-opposite of the rule v3 used. See §0.3 for what to do about it.
+This document replaces `CLAUDE.md` v3. The difference matters: **v3 described an app that was
+built once and then rejected by the owner on 27 July 2026 and rolled back.** Everything below
+was read out of the working tree on 28 July 2026 and can be checked against a file path. Where
+this document and the code disagree, **the code wins and this document is stale** — the opposite
+of the rule v3 used.
 
 Read §0 and §1 before touching anything. Read the section for whatever you are about to change.
 
@@ -20,25 +18,19 @@ Read §0 and §1 before touching anything. Read the section for whatever you are
 does X", open the file and check. This project has a history of documents describing intentions
 as if they were code; that is what made v3 dangerous.
 
-**The four gates, before any change is called done:**
+**The three gates, before any change is called done:**
 
 ```bash
 npm run typecheck        # tsc --noEmit, strict
 npm test                 # node --test, 64 assertions across 7 files
 npm run lint             # expo lint (eslint 9 + eslint-config-expo)
 npx expo export --platform ios   # the bundle must build
-npm run eval             # the DEPLOYED prompt against 72 cases — needs a key, OWNER-RUN
 ```
 
 No simulator is available in an agent session. `expo export` is the substitute for running it:
 it catches route-tree breakage, bad imports, and anything Metro cannot resolve. It does not
 catch layout or motion problems — say so plainly instead of claiming a change was "verified on
 device".
-
-The fifth command is the one an agent cannot run: `npm run eval` reads a key from the local
-`.env`. An agent that touches `prompt.ts`, the response schema, or `PARSE_VERSION` must say
-plainly that the eval has not been run and that the change is **not done** until the owner runs
-it. Never describe a parser change as verified.
 
 **Never widen scope on your own.** The owner rejected an entire day of work on 27 July because
 a redesign went further than asked. If a request implies a change to the visual language, ask.
@@ -48,63 +40,6 @@ Slovenian, commit in Slovenian if the existing log is (it is).
 
 **Secrets.** The owner never pastes API keys into a chat. Ship commands that read from the local
 `.env`.
-
-### 0.1 Standing rulings — do not re-propose
-
-These were decided by the owner, not defaulted into. An agent that proposes any of them again is
-repeating 27 July. If you believe one is wrong, say so in one sentence and stop; do not build
-the alternative.
-
-| Ruling | Date | Where it lives |
-|---|---|---|
-| Light theme only, warm paper. No dark mode, no both-themes | 27 Jul | `src/lib/theme/color.ts`, `app.json` |
-| `signal` `#547C00` on PLANNED values only. No second hue, ever | 27 Jul | `color.ts`, §5.1 |
-| Platform mono. No bundled font | 27 Jul | `src/lib/theme/type.ts` |
-| Direct `color` / `type` imports. No theme hook, no `makeStyles` | 27 Jul | every component |
-| `note-surface.tsx` cards. No `ExerciseCard`, no `composer.tsx` rewrite | 27 Jul | §6 |
-| `BottomSheet`. Not a detented `Sheet` | 27 Jul | `src/components/` |
-| `split` + `plan-day` stay live. Their deletion was part of the rolled-back day | 27 Jul | §9 |
-| Seven-day trial. Not one month, not fourteen days | 27–28 Jul | `src/app/paywall.tsx` |
-| Nine onboarding steps. Not sixteen | 27 Jul | `src/app/onboarding/index.tsx` |
-| Dynamic Type clamped to 1.3 | v2 | `src/lib/theme/scale.ts` |
-| Free text is the primary input; touch is the repair path | standing | §20 |
-| Four tabs on `NativeTabs`, no tint set | 28 Jul | `src/app/(tabs)/_layout.tsx` |
-| Emoji allowed only in the narrow band of §5.7 | 28 Jul | onboarding only |
-
-The tab bar is the precedent for how a v3 section comes back: the owner asked for it
-explicitly, and it was rebuilt on the v2 visual system with nothing else attached. Any other v3
-section needs the same explicit ask.
-
-### 0.2 What you may change, and what needs a ruling
-
-**Change without asking**
-
-- A fix that restores an invariant this document already states.
-- A new eval case in `scripts/parse-eval-cases.json`.
-- A new query or module under `src/lib/db/`, `src/lib/parse/`, `src/lib/predict/` that adds no
-  surface.
-- Tests.
-- Copy that fixes an error without changing what a screen claims.
-- Anything listed in §18, when it is what was asked for.
-
-**Ask first**
-
-- Anything under `src/lib/theme/`.
-- Any new dependency, without exception. The stack in §3 is the stack.
-- Any new route or screen.
-- Deleting or renaming any file named in Appendix B.
-- A `PARSE_VERSION` bump — it requires the owner's eval run.
-- The funnel order in §11.
-- Anything that changes what the user sees on Today before they have typed.
-
-When you must ask: name the ruling or section your change would cross, propose the smallest
-in-bounds alternative, and stop. One paragraph, not a plan.
-
-### 0.3 When this document and the code disagree
-
-The code wins and this document is stale — **and you fix the document in the same change.** A
-stale line here has a longer fuse than a stale comment, because the next agent will act on it
-without opening the file. Leaving a known divergence in place is the failure that produced v3.
 
 ---
 
@@ -159,7 +94,7 @@ These are load-bearing. Breaking one is a bug even if nothing crashes.
 
 ## 2. Status — what is real and what is not
 
-Honest inventory, because a previous document was not.
+Honest inventory, because the last document was not.
 
 **Real, end to end:**
 - Local-first SQLite mirror of the Postgres schema, with migrations, per-account scoping and
@@ -185,7 +120,7 @@ Honest inventory, because a previous document was not.
   no route and no state that reaches it, waiting on entitlements.
 
 **Not built at all:**
-- Notifications of any kind — including the day-5 trial reminder the paywall promises (§12).
+- Notifications of any kind.
 - Live Activity / Dynamic Island for the rest timer (the timer itself is in-app only).
 - Delete-account, JSON export, per-exercise settings.
 - Anything the You screen answers with an "arrives with …" alert.
@@ -193,32 +128,6 @@ Honest inventory, because a previous document was not.
 **Dev-only:** `src/lib/auth/dev-bypass.ts` skips the paywall **screen** on a fixed local user id
 with sync off. It is `__DEV__`-gated end to end and compiles out of release bundles. It is not a
 purchase stub and must never become one.
-
-### 2.1 What this has to earn
-
-The app is nearly built, so scoping decisions are now revenue decisions and need a number to
-push against.
-
-| Quantity | Value |
-|---|---|
-| Annual price | $59.99 → $5.00 / month gross |
-| Store commission | 15% under the Apple Small Business Program — enrol before launch, it is not automatic |
-| Net per annual subscriber | ≈ $4.25 / month |
-| Active subscribers for €3,000 / month | ≈ 780 |
-| Active subscribers for €5,000 / month | ≈ 1,300 |
-| Installs to reach 780 paid in year one, at ~10% install-to-paid | ≈ 7,500, or ~600 / month |
-| Installs to hold 780 paid at 60% renewal | ≈ 3,000 / year, forever |
-
-Pre-launch, every conversion rate above is a hypothesis. The one that is not a hypothesis is the
-install count: six hundred a month is the requirement, and ASO plus a small Search Ads budget is
-not obviously enough. That question — keyword volume for the terms Recore would rank on, and
-what the one- and two-star reviews of the top three competitors complain about — is answerable
-today and is cheaper to answer than to build against.
-
-Instrument locally, in `meta`, never through a third-party SDK: onboarding step reached, paywall
-shown, trial started, sessions logged in the first seven days, repair rate, adherence shown and
-followed, and **whether the user imported**. Split every trial-window number by that last flag;
-it is the most informative split in the first six months.
 
 ---
 
@@ -434,28 +343,6 @@ Three, and only three: `tap()` (Light) on a tap, `tapMedium()` (Medium) on a com
 `success()` (notification Success) when the rest timer finishes. Never on scroll, never on
 keystroke, never on screen appear.
 
-### 5.7 Emoji — ruled 28 July 2026
-
-Emoji are allowed, in a narrow band, and the band is the whole rule.
-
-**Allowed**
-- **Onboarding** (`src/app/onboarding/index.tsx`) — at most one per option, and only where it
-  labels a choice the user is making: training focus, current tracker, writing language, units.
-  It is a bullet, not a decoration. The ready screen may carry one.
-- **Star glyphs** as the display treatment for a review, once the review is real (§12).
-
-**Forbidden — unchanged**
-- Today, Lifts, Progress, You. The entire logged surface. A record does not wink.
-- Any card, gutter reading, prescription, receipt, summary, PR label, chart or table.
-- Anywhere next to a number. A load never sits beside a picture.
-- Copy that would be motivational with or without it. An emoji does not rescue "Great job!" —
-  §15 still forbids the sentence.
-- Notifications, when they exist. The wordmark, the app icon, the share card.
-
-The rule of thumb, and the thing to apply when a case is not listed: **emoji are allowed where
-the user is still choosing, and never where the app is reporting.** Onboarding is a
-conversation. Everything after it is a record.
-
 ---
 
 ## 6. The composer — `src/components/note-surface.tsx`
@@ -627,21 +514,7 @@ token usage and estimated cost per 1000 notes. Node's native TS type-stripping, 
 **The rule:** any prompt or schema change bumps `PARSE_VERSION`, adds the failing line as a new
 case, and passes the eval before deploying. A change that fixes ten cases and breaks one is a
 failure until the one is fixed. The eval needs a key, so it is run by the owner locally, not by
-an agent (§0).
-
-### 7.7 When a parse looks wrong — where to look first
-
-The parser is the moat, so a misparse is the most expensive support question in the product.
-Check the code before the prompt; four of these six symptoms are not prompt bugs.
-
-| Symptom | Look here first |
-|---|---|
-| A multi-set line shows the wrong set count | `setsLineText` in `src/lib/parse/summarize.ts` — a display collapse produced exactly this once |
-| A card attached to the wrong line | `reanchorLines` in `src/lib/parse/anchor.ts` — the model's line index is a hint |
-| A saved fix stopped sticking | `overlayCorrections` — patches match on trimmed line text **and** the exercise the parser produced; if either drifted, the patch steps aside by design |
-| A freshly deployed prompt seems to have no effect | `parse_cache` — keyed on text **and** `parse_version`. `CLIENT_PARSE_VERSION` was probably not bumped |
-| A warm-up counted toward a total | the `skipped()` predicate — every SQL aggregate must repeat the exclusion list itself |
-| The summary pill and Progress disagree | `reapplyDoneState` — done state stores exceptions only, so a stale projection shows up as two different totals |
+an agent.
 
 ---
 
@@ -803,27 +676,9 @@ onboarding (9 steps) → paywall → sign-in → the app
 training focus · current tracker · writing language · units + smallest bar increment ·
 "how it works" (a live parse into a ledger) · an "analyzing" beat that reflects the answers ·
 a personalised ready screen. Every answer persists to the meta KV immediately and a relaunch
-resumes at `pref_ob_step`.
-
-### 11.1 The funnel's strongest asset — name it so a refactor cannot remove it
-
-The Hevy/Strong branch imports CSV **inline, inside onboarding**, and
-`recachePredictionFromLatest` makes the ghost on the next screen real. Follow the consequence:
-
-> **An importer reaches the paywall on a device that already holds their training history and a
-> real next-session prescription computed from their own numbers.**
-
-That is the strongest conversion asset in the product, and it is one clause of one paragraph.
-State it as a requirement: any refactor of `src/app/onboarding/index.tsx` must preserve
-import-before-paywall for the tracker branch, and must keep the ready screen's ghost **computed
-rather than illustrated**.
-
-It also matters for the seven-day trial. A target needs prior sets of the same exercise; a
-lifter training four times a week hits a given lift twice in seven days, so from a standing
-start the predictor shows one target, late, and never gets to be right in front of the user. An
-importer sees a real target on their first session and sees it confirmed on the second. **The
-import branch is what makes seven days sufficient**, which means it is load-bearing for the
-business, not a convenience feature.
+resumes at `pref_ob_step`. The Hevy/Strong branch imports CSV inline and
+`recachePredictionFromLatest` makes the ghost on the next screen **real** — their own next
+session, before they have logged anything here.
 
 ---
 
@@ -833,41 +688,20 @@ business, not a convenience feature.
 true per-month math) or **$8.99/month with no trial**. A transparent three-row trial timeline
 (Today → Day 5 reminder → Day 7 charge) with the real first-charge date computed live. Close ×
 and Restore are both visible without scrolling. **No colour on this screen** — the CTA is an ink
-fill; green belongs to training numbers, not to selling. No emoji on this screen either (§5.7):
-the paywall is the app reporting a price, not asking a question.
+fill; green belongs to training numbers, not to selling.
 
 The CTA hands off to sign-in, because the trial attaches to an account.
 
-### 12.1 Two things on this screen are currently untrue
+**The social proof on this screen is fabricated and must be removed or replaced before the App
+Store.** `<Rating score={4.9} countLabel="loved by early lifters" />` and a named testimonial
+("Marko · powerlifting") are hardcoded in both `paywall.tsx` and onboarding step 8, with nothing
+marking them as placeholders. There are no real reviews yet. Invented proof on a live paywall is
+dishonest, it is a review-rejection risk, and it contradicts §1's own voice rules. Until real
+reviews exist, the proof is the demo the user already watched.
 
-Both are the same class of problem — a claim the code does not keep — and both block a
-submission.
-
-**The fabricated social proof.** `<Rating score={4.9} countLabel="loved by early lifters" />`
-and a named testimonial ("Marko · powerlifting") are hardcoded in both `paywall.tsx` and
-onboarding step 8, with nothing marking them as placeholders. There are no real reviews. Delete
-both, and **do not refill the space** — no substitute badge, no download count, no "trusted by
-early lifters".
-
-The star row stays in the codebase as a component, ready for the moment there is something true
-to put in it: a score and count taken from App Store Connect, or a review quoted with the
-reviewer's handle and storefront. Stars are a display treatment, not a claim generator. Until
-then the slot renders nothing, and the proof on this screen is the one the user is already
-looking at — for an importer, their own next session in green, computed from history they
-brought with them ninety seconds ago.
-
-**The day-5 reminder.** The timeline promises an in-app reminder two days before the charge.
-Notifications do not exist (§18). This is worse than the fake rating in one respect: a user who
-relies on it gets charged unexpectedly, which is a refund, a chargeback and a one-star review in
-one move. Either build the reminder or remove the row from the timeline before submission.
-Keeping a promise the code cannot honour is the same failure as inventing a review.
-
-### 12.2 Billing
-
-**Not wired.** RevenueCat is not a dependency. Restore is a stub that says so. When it is wired:
-one entitlement, checked at session start and cached, **never mid-set and never on a write**; if
-entitlement cannot be verified, assume entitled and re-check later — a false positive costs one
-session of revenue, a false negative costs a customer.
+**Billing is not wired.** RevenueCat is not a dependency. Restore is a stub that says so. When
+it is wired: one entitlement, checked at session start and cached, **never mid-set and never on
+a write**; if entitlement cannot be verified, assume entitled and re-check later.
 
 ---
 
@@ -881,8 +715,7 @@ session of revenue, a false negative costs a customer.
   system sheet. Free forever, including on a lapsed subscription. JSON export is not built.
 - **Share** — `captureRef` on the receipt card or the weekly recap card → PNG → `expo-sharing`.
   A wordmark row is mounted only for the capture. Note that `Share.share({url})` is iOS-only,
-  which is why `expo-sharing` is used. The share card is the only organic acquisition surface
-  in the product; count exports as an acquisition number, not a vanity one.
+  which is why `expo-sharing` is used.
 - **Voice** — `expo-speech-recognition`, on-device, never a cloud transcription API. Interim
   results stream straight into the note, so dictated text goes through the same parser as typed
   text. The module only exists in a dev build; `requireOptionalNativeModule` probes for it so
@@ -899,79 +732,10 @@ session of revenue, a false negative costs a customer.
 - The palette is already colourblind-safe: one hue, and it always co-occurs with a planned
   value's context. PR is a shape. Deltas are words.
 - Rows that act are `accessibilityRole="button"` with a label that reads as a sentence.
-- An emoji used as an option bullet (§5.7) is `accessibilityElementsHidden` or absorbed into the
-  row's label. VoiceOver must never read a decorative glyph aloud as content.
 
 ---
 
-## 15. Words
-
-Copy is design material and gets the same care as a corner radius. This section survived the v3
-rollback in spirit but had never been written down, which is why the paywall drifted.
-
-- Sentence case everywhere. Never Title Case, never caps except the mono eyebrow.
-- Name things by what the user controls: "smallest plate", not "increment configuration".
-- A button says exactly what happens, and the same word appears afterwards: `Finish` produces
-  *recorded*, not *saved*.
-- Active voice, present tense, no filler.
-- Numbers are specific. "up 2.5 kg vs last" beats "you're improving".
-- Errors say what happened and what to do. They never apologise and they are never vague.
-- Empty screens invite an action; they never report a lack.
-- **Never say "AI."** The app reads, computes, prescribes. The mechanism is not the promise.
-- **Never claim credit for the training.** They lifted it; the app wrote it down.
-
-| Never | Instead |
-|---|---|
-| "Great job! You crushed it!" | "5 exercises · 19 sets · 12,480 kg" |
-| "Oops! Something went wrong." | "Not synced yet — everything is saved on this phone." |
-| "AI-powered workout suggestions" | "your next set, from your own numbers" |
-| "You haven't trained in 5 days!" | *nothing* |
-| "No data available" | "Two more sessions and there's something to show here." |
-| "Log your workout" | "Write your training" |
-| "Don't lose your streak!" | *nothing* |
-
-An emoji does not rescue any sentence in the left column. §5.7 permits the glyph; it does not
-permit the voice.
-
----
-
-## 16. Retention and renewal
-
-Retention here is evidence of progress, not gamification (§20). In descending order of power:
-
-1. **The prediction.** A reason to open the app on a training day that exists before the user
-   has done anything. If only one retention mechanism worked, this is the one.
-2. **The receipt and the share card.** Finishing feels like completing something rather than
-   abandoning a text field.
-3. **The adherence record.** Publishing the app's own hit rate is a claim no competitor makes.
-
-### 16.1 Renewal — not built, and the reason to name it now
-
-At $59.99 annual, year one is close to break-even after commission and any acquisition spend.
-**Year two is the business**, and nothing in this repository addresses month eleven. Two things
-belong before the first renewal date arrives, and both depend on notifications (§18):
-
-- **The annual record.** At month eleven, an honest year in review generated from local data:
-  sessions, total volume, heaviest lifts, largest e1RM movement, the month they trained most,
-  the month they missed. Monochrome, exportable, no grade and no congratulation. If the year was
-  bad it says so. It lands two weeks before the charge and it is the only artefact that argues
-  for the subscription using the user's own record.
-- **The renewal notice.** Seven days before renewal, one notification with the real date, the
-  real amount and a link to manage. This costs less revenue than the refunds, chargebacks and
-  one-star reviews it prevents — the same argument as §12.1's day-5 row.
-
-### 16.2 The streak — an open decision, not a gap
-
-The streak currently counts **consecutive days**. §20 says Recore is never a gamified app with
-daily goals, and a daily streak is a daily goal that punishes a programmed rest day. This is a
-contradiction inside this document, not an unfinished feature.
-
-Either the streak counts **weeks in which the user met a target they set**, or §20 loses that
-clause. Do not resolve it in code without a ruling.
-
----
-
-## 17. Definition of done
+## 15. Definition of done
 
 **Every change:** typecheck, tests, lint, and `expo export --platform ios` all pass. No colour
 literal, no font-size literal, no spacing literal outside `src/lib/theme/`. No `console.log` of
@@ -982,73 +746,34 @@ user text, ever (use `devLog`, which is `__DEV__`-gated).
 Dynamic Type ceiling without cropping a number. Works with Reduce Motion.
 
 **Every parser change:** `PARSE_VERSION` and `CLIENT_PARSE_VERSION` bumped together, new eval
-cases added, `npm run eval` passing with zero regressions — **run by the owner** (§0).
+cases added, `npm run eval` passing with zero regressions.
 
 **Every release:** an airplane-mode session start to finish on a real device; a cold install
 timed to "trial started".
 
 ---
 
-## 18. Known gaps, in blocking order
+## 16. Known gaps
 
-Written down so nobody rediscovers them as bugs. The ordering is the point: nothing in a lower
-tier is worth an hour before the tier above it is empty.
+Written down so nobody rediscovers them as bugs:
 
-**Tier 0 — blocks App Store submission**
-- Fabricated social proof in `paywall.tsx` and onboarding step 8 (§12.1).
-- The day-5 trial reminder the paywall promises and nothing sends (§12.1).
-
-These two are the only items on this list that are *wrong* rather than merely unfinished.
-
-**Tier 1 — blocks revenue**
-- Billing and entitlements. RevenueCat is not a dependency; nothing is charged.
-- Lapsed / read-only routing. `read-only-ledger.tsx` is finished and unreachable — it has no
-  route and no state that leads to it.
-
-**Tier 2 — blocks a complete first release**
-- The You screen's "arrives with …" alerts on Smallest plate, Default rest, Writing language,
-  the privacy page, exports, Terms, Privacy and Contact. An honest alert is still an unfinished
-  setting on a paid app, and settings that do nothing are a refund reason.
-- JSON export, delete-account.
-- Notifications of any kind — which also gates §16.1.
-
-**Tier 3 — known, deliberate, not blocking**
-- Live Activity / Dynamic Island for the rest timer.
-- `TopBar`'s settings avatar, which now duplicates the You tab.
-- Comparison sublines saying "vs last" rather than a date — the gutter signal carries none.
-- Hiding the tab bar while the keyboard is up: the installed `expo-router` exposes no API for
-  it, and the keyboard covers the bar anyway.
-- Android is undressed: no Android tab icons, no Android pass has been done.
-
-**Open decisions — need a ruling, not a commit**
-- The streak's unit (§16.2).
-- Import timing. This document's §11.1 and the 28 July ruling that import happens *after* the
-  paywall disagree. The code is the better answer. Withdraw the ruling or change the code, but
-  do not leave them disagreeing — §0.3 exists to prevent exactly this state.
+- **Fabricated social proof ships today** — a hardcoded 4.9 rating and invented named
+  testimonials in `paywall.tsx` and onboarding step 8 (§12). This is the one item on this list
+  that is not merely unfinished but actively wrong, and it blocks an App Store submission.
+- Billing, entitlements, and any lapsed/read-only routing.
+- Notifications; Live Activity for the rest timer.
+- The You screen's Smallest plate / Default rest / Writing language / privacy page / exports /
+  Terms / Privacy / Contact rows raise an honest "arrives with …" alert instead of pretending.
+- Delete-account and JSON export.
+- `TopBar` still carries a settings avatar that now duplicates the You tab.
+- §5.2 of the old document wanted the tab bar hidden while the keyboard is up on Today; the
+  installed `expo-router` exposes no API for it, and the keyboard covers the bar anyway.
+- Comparison sublines say "vs last", not "vs 14 Jul" — the gutter signal carries no date.
+- Android is undressed: the tab bar has no Android icons, and no Android pass has been done.
 
 ---
 
-## 19. The shortest path to the first charge
-
-Four items stand between this repository and a paying subscriber, and only one of them is a
-feature. Everything else in §18 waits behind them.
-
-1. **Delete the fabricated proof and fix the day-5 row.** Blocks submission. An afternoon.
-2. **Wire billing.** RevenueCat, one entitlement, cached at session start.
-3. **Route the lapsed state.** The surface exists; it needs an entitlement to reach it. Export
-   stays free and complete there, as §13 already promises.
-4. **Close the You screen's dead rows.** Build them or remove them.
-
-Then: an airplane-mode session start to finish on a device, a cold install timed to "trial
-started", and submit.
-
-Notifications, Live Activity, JSON export, delete-account and the Android pass all come after
-the first charge, not before it. The app that exists today is closer to revenue than the length
-of §18 makes it look, and this ordering is the whole reason to say so.
-
----
-
-## 20. What Recore will never be
+## 17. What Recore will never be
 
 Each of these has been considered and rejected, and each rejection is what makes room for the
 rest.
@@ -1056,24 +781,16 @@ rest.
 A social network (no feed, friends, leaderboards, challenges). A programme generator — we never
 tell someone what to train, only what to beat. An exercise library — your vocabulary is the
 library. A chat interface. A nutrition tracker. A gamified app (no XP, levels, badges, rings,
-daily goals — see §16.2). A free app. And never a form as the primary input: free text is the
-fast path, touch is the repair path. If the owner ever wants a picker-and-stepper flow as the
-main way in, that is a legitimate call — but it is a different product, and this document should
-be rewritten before it is built, not patched.
-
-And, on the commercial side, because a subscription product can fail these without failing any
-of the above:
-
-- Never harder to cancel than to subscribe. Manage is one tap and always visible.
-- Never gate, degrade or delay export. Not at expiry, not ever.
-- Never a countdown, a fabricated review, an invented user count, or a discount that expires.
-- Never a promise on the paywall that the code does not keep (§12.1).
+daily goals). A free app. And never a form as the primary input: free text is the fast path,
+touch is the repair path. If the owner ever wants a picker-and-stepper flow as the main way in,
+that is a legitimate call — but it is a different product, and this document should be rewritten
+before it is built, not patched.
 
 ---
 
-## Appendix A — what `CLAUDE.md` v3 contained, and why it was retired
+## Appendix A — what `CLAUDE.md` v3 contained, and why it is being retired
 
-Recorded here so deleting it was a decision, not a loss.
+Recorded here so deleting it is a decision, not a loss.
 
 **v3 (Version 3.0, 26 July 2026, ~2000 lines) described a redesign that was implemented on 27
 July across five sessions and then rejected wholesale by the owner the same evening.** The repo
@@ -1094,10 +811,9 @@ card, weekly review) · §16 three notifications · §17 accessibility · §18 d
 done · §24 what Recore will never be.
 
 **What survived the rollback and lives on in this document:** the thesis and the three engines
-(§1), the record contract (§5.2), the parser's rules and its flywheel (§7), the predictor's iron
-law and its trust rules (§8), the data invariants (§10), the security posture (§7.3), the
-definition of done (§17), the copy discipline (§15, finally written down), and the "never" list
-(§20).
+(§1 here), the record contract, the parser's rules and its flywheel, the predictor's iron law
+and its trust rules, the data invariants, the security posture, the definition of done, the
+copy discipline, and the "never" list.
 
 **What v3 asked for that this codebase deliberately does not have:**
 
@@ -1110,8 +826,8 @@ definition of done (§17), the copy discipline (§15, finally written down), and
 | A four-zone `ExerciseCard`, `composer.tsx` | `note-surface.tsx` cards | Same ruling |
 | `Sheet` with detents | `BottomSheet` | Same ruling |
 | The plan/split feature deleted | `split` + `plan-day` are live | The deletion was part of the rolled-back day |
-| A one-month trial | 7-day trial | Owner ruled against one month, and against 14 days |
-| Streak counted in weeks | Streak counts consecutive days | Not rebuilt — now an open decision, §16.2 |
+| A one-month trial | 7-day trial | Owner ruled against one month |
+| Streak counted in weeks | Streak counts consecutive days | Not rebuilt |
 | 16 onboarding screens | 9 | Not rebuilt |
 | Dynamic Type to `accessibilityLarge` (1.94) | Clamped to 1.3 | v2's `scale.ts` is what is live |
 | Notifications, Live Activity, RevenueCat | None of them | Never built |
@@ -1134,21 +850,3 @@ If you are new to this codebase, read these six in this order and you will under
 4. `src/components/note-surface.tsx` — the screen the product lives or dies on
 5. `src/lib/theme/color.ts` — the design law in 30 lines
 6. `supabase/functions/parse-workout/prompt.ts` — the moat
-
----
-
-## Appendix C — decision log
-
-Append a row here on the day a ruling is made, and update §0.1 in the same change. This appendix
-is the mechanism that keeps §0.1 from silently becoming another Appendix A.
-
-| Date | Decision |
-|---|---|
-| 20 Jul | Light theme shipped: warm paper `#F4F5EF`, ink `#171914`, green `#547C00` on PLANNED values only |
-| 22 Jul | The weekly split (`plan_days`) designed: authored as free text, read by the note parser |
-| 23 Jul | Funnel flipped to onboarding → paywall → sign-in; account creation becomes the trial's forward step |
-| 26 Jul | `CLAUDE.md` v3 written |
-| 27 Jul | v3 implemented across five sessions and **rejected wholesale**; repo restored to `0903ba9` |
-| 28 Jul | Four surfaces on a system `NativeTabs` bar rebuilt on the v2 visual system — the only v3 section re-adopted |
-| 28 Jul | Trial confirmed at seven days, against both the one-month and fourteen-day proposals |
-| 28 Jul | Emoji permitted in the narrow band of §5.7 — onboarding options and real-review stars only |

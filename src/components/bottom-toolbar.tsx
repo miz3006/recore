@@ -152,7 +152,7 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
         <Pressable
           onPress={() => {
             tap();
-            router.push('/stats');
+            router.push('/progress');
           }}
           hitSlop={spacing.xs}
           style={({ pressed }) => [styles.statusRow, pressed && styles.statusPressed]}>
