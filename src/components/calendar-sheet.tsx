@@ -3,7 +3,10 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PressableScale, Stagger } from '@/components/motion';
-import { dayKeyFor, todayKey, type DayKey } from '@/lib/db/dates';
+// The month layout is shared with You's history calendar — one definition of
+// "where does the month start", tested in `activity.test.ts`.
+import { cursorOf, monthGrid, type MonthCursor } from '@/lib/activity';
+import { todayKey, type DayKey } from '@/lib/db/dates';
 import { getLoggedDayKeys } from '@/lib/db/workouts';
 import { tap, tapMedium } from '@/lib/haptics';
 import { color, HIT, ink, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
@@ -15,9 +18,9 @@ import { Icon } from './icon';
 /**
  * The date pill's calendar sheet (CLAUDE.md §8/§9, design frame 09) — a native
  * month grid on warm paper to switch days. It carries the record contract into
- * the picker: every past day that has a logged workout wears a small INK dot
- * (RECORDED), and when a next-session plan is genuinely offered, today wears a
- * GREEN dot (PLANNED — the one meaningful accent). Today is ringed in ink; the
+ * the picker: every past day that has a logged workout wears a small BLUE dot
+ * (the trained mark, §5.1), and when a next-session plan is genuinely offered,
+ * today wears a GREEN dot (PLANNED). Today is ringed in ink; the
  * day you're viewing (if not today) fills with ink and a paper numeral. Future
  * days sit muted and untappable — you log what happened. Tapping a day switches
  * the note immediately; Done (or the backdrop) closes.
@@ -31,30 +34,6 @@ const MONTHS = [
 const CELL_HEIGHT = moderateScale(48);
 const DAY_CIRCLE = moderateScale(40);
 const DOT = moderateScale(4);
-
-interface MonthCursor {
-  year: number;
-  month: number; // 0-based
-}
-
-function cursorOf(day: DayKey): MonthCursor {
-  const [y, m] = day.split('-').map(Number);
-  return { year: y!, month: (m ?? 1) - 1 };
-}
-
-/** The month laid out Monday-first: leading nulls, then each day's key. */
-function monthGrid(cursor: MonthCursor): (DayKey | null)[] {
-  const first = new Date(cursor.year, cursor.month, 1);
-  const leading = (first.getDay() + 6) % 7; // 0 = Monday
-  const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
-
-  const cells: (DayKey | null)[] = Array.from({ length: leading }, () => null);
-  for (let d = 1; d <= daysInMonth; d++) {
-    cells.push(dayKeyFor(new Date(cursor.year, cursor.month, d)));
-  }
-  while (cells.length % 7 !== 0) cells.push(null);
-  return cells;
-}
 
 export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
@@ -222,7 +201,7 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
                       maxFontSizeMultiplier={MAX_FONT_SCALE}>
                       {parseInt(day.slice(8), 10)}
                     </Text>
-                    {/* The calendar carries the data: ink = recorded. */}
+                    {/* The calendar carries the data: blue = trained. */}
                     <View style={[styles.dot, styles.gridDot, dotStyle]} />
                   </View>
                 </PressableScale>
@@ -350,7 +329,7 @@ const styles = StyleSheet.create({
     marginTop: moderateScale(3),
   },
   dotRecorded: {
-    backgroundColor: color.accent, // ink — a recorded session
+    backgroundColor: color.trained, // blue — a day trained (§5.1)
   },
   dotPlanned: {
     backgroundColor: color.signal, // green — a plan offered

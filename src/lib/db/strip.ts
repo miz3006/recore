@@ -1,7 +1,8 @@
 import { typedNameOf } from '@/lib/parse/receipt';
 import { buildPlanRow, type PlanRow } from '@/lib/plan/prescribe';
-import { type PriorTop, type WorkingSet } from '@/lib/predict/engine';
-import { getSmallestPlateKg } from '@/lib/prefs';
+import { focusForGoal } from '@/lib/onboarding';
+import { defaultRepRangeFor, type PriorTop, type WorkingSet } from '@/lib/predict/engine';
+import { getGoal, getSmallestPlateKg } from '@/lib/prefs';
 
 import { todayKey, type DayKey } from './dates';
 import { findExerciseByName } from './exercises';
@@ -62,6 +63,10 @@ export function computePlanStrip(userId: string, day: DayKey): PlanStrip | null 
           lastDurationS: cardio.duration_s,
         },
         smallest,
+        // Same fallback the ghost gets (predict/data.ts) — the strip and the
+        // prediction must never disagree about one exercise, which is why both
+        // go through `focusForGoal` rather than reading the goal directly.
+        defaultRepRangeFor(focusForGoal(getGoal())),
       ),
     );
   }

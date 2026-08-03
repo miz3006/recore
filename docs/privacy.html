@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recore — Privacy Policy</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 48px 24px 96px;
+    background: #F4F5EF;
+    color: #171914;
+    font: 400 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 40rem; margin: 0 auto; }
+  h1 { font-size: 2rem; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 .25rem; }
+  .updated {
+    font: 600 .75rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .12em; text-transform: uppercase; color: #9AA093; margin: 0 0 2rem;
+  }
+  .intro { font-size: 1.0625rem; color: #171914; margin: 0 0 3rem; }
+  h2 {
+    font: 600 .75rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .12em; text-transform: uppercase; color: #687064;
+    margin: 3rem 0 .75rem;
+  }
+  p, li { color: #687064; margin: 0 0 .9rem; }
+  ul { margin: 0 0 .9rem; padding-left: 1.1rem; }
+  a { color: #171914; }
+  nav { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid #D4D7CC; }
+  nav a { display: inline-block; margin-right: 1.25rem; padding: .5rem 0; font-size: .9375rem; }
+  footer { margin-top: 3rem; font-size: .8125rem; color: #9AA093; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Recore · last updated 29 July 2026</p>
+  <p class="intro">Recore is a training log. It holds what you typed and the record built from it, and nothing else. There is no advertising, no tracking, and no analytics SDK in this app.</p>
+  <h2>What stays on your device</h2>
+<p>Everything, first. Your notes are written to a database on the phone in the same instant you type them, and the app is fully usable with no connection at all. Sync is a backup of your own data to your own account, never the place the app reads from.</p>
+<h2>What is stored in your account</h2>
+<p>When you sign in with Apple or Google, Recore creates an account and stores:</p>
+<ul><li>An account identifier, your email address, and your name if the provider gives it to us. Sign in with Apple can hide your email; that works fine here.</li><li>Your training content: the text of each note, the sessions, exercises and sets read out of it, the corrections you made, your saved shorthands, your prescriptions and your plan days.</li><li>Your check-in notes: the optional few words you write after a session about how it went. They are stored with that session, in whatever language you wrote them, exactly as typed.</li><li>Your setup answers: what you train for, how long you have trained, whether you train in a gym or for a sport, the days you usually train, your units, the movement you care about most, and — only if you chose to enter them — your bodyweight and height.</li></ul>
+<p>Bodyweight and height are optional, they are asked once with their purpose stated, and leaving them empty changes nothing else in the app. Recore never turns them into a calorie target, a body score, or any kind of health or medical judgement.</p>
+<p>A check-in note is your own record of how a session felt. Recore never reads it as training data, never turns it into a number, a chart or a score, and never treats it as a health, medical or nutritional assessment.</p>
+<p>That is the whole list. Every row is scoped to your account at the database level, so no other user can read it, and the same scoping is mirrored on the device — signing in as a different account wipes the local copy first.</p>
+<p>We do not collect your location, your contacts, your photos, your health records, or your device advertising identifier.</p>
+<h2>What leaves your device, and why</h2>
+<p>Three things, all only when you are online:</p>
+<ul><li>The text of a note, to read it into structure. It goes to Recore’s own server function, which forwards it to Anthropic, the language-model provider that returns the reading. The note is sent as data, it is never written to a log, it is never attached to an error report, and Recore does not use it to train anything.</li><li>A single already-computed sentence, when Recore rephrases the reason for a prescription in your language. The weight itself is always computed on your device by code, never chosen by a model.</li><li>Your Recore account identifier, to RevenueCat, so the app can ask whether your subscription is active. No note text, no training data and no name goes with it. This happens once when you sign in, and again only when you buy or restore.</li></ul>
+<p>Your account’s own rows also sync to your account when a connection is available. That is a copy of your data for you, not a disclosure to anyone.</p>
+<h2>Who processes data for us</h2>
+<ul><li>Supabase — hosts the database, the sign-in and the server functions.</li><li>Anthropic — processes note text to return the structured reading described above, and nothing else.</li><li>Apple — handles sign-in and every payment. Recore never sees your card.</li><li>RevenueCat — records which subscription you hold, so the app can tell whether it is active on any device you sign in on. It receives your Recore account identifier and the purchase details Apple returns. It never receives your notes, your training, your name or your email.</li></ul>
+<p>There is no fifth. We do not sell or share personal data, and we do not disclose it for advertising or cross-app tracking.</p>
+<h2>Usage counters</h2>
+<p>Recore keeps a handful of plain counters — how far you got in setup, whether you imported a history, how many readings you corrected, whether a prescription was followed. They live in the same local database as your training, they carry no identifier and no note text, and they are included in your export so you can read exactly what they say.</p>
+<p>They exist so the product can be improved from evidence instead of guesses. There is no third-party analytics SDK in this app, and no data is sent anywhere for that purpose.</p>
+<h2>Your data, your call</h2>
+<ul><li>Export — the full record, as CSV or as JSON with your original words, at any time, free forever, including after a subscription ends. The JSON also carries your setup answers, your body context and your check-in notes, so nothing Recore holds about you is left out of it.</li><li>Delete — You → Delete account removes your account and its rows, and wipes the local copy on the device, including your setup answers, body context and check-in notes. It is immediate, not a request.</li><li>Access and correction — the app itself is the access interface: every stored word is on screen and editable.</li></ul>
+<p>If you are in the EU or UK, these cover your rights of access, portability and erasure. For anything the app cannot do for you, write to support@recore.app.</p>
+<h2>How long it is kept</h2>
+<p>Until you delete it. Recore does not expire accounts or quietly prune old training, because a training log with a five-year history is the point.</p>
+<h2>Children</h2>
+<p>Recore is not directed at children and we do not knowingly create accounts for anyone under 16.</p>
+<h2>Changes and contact</h2>
+<p>If this policy changes in a way that affects what leaves your device, the app says so before the change takes effect. The date at the top tells you which version you are reading.</p>
+<p>Recore · support@recore.app</p>
+<p><a href="./parsing.html">How parsing works →</a></p>
+<p><a href="./terms.html">Terms of Use →</a></p>
+  <nav><a href="./terms.html">Terms of Use</a><a href="./parsing.html">How parsing works</a></nav>
+  <footer>These pages are generated from the app's own source, so they say exactly what the app says.</footer>
+</main>
+</body>
+</html>

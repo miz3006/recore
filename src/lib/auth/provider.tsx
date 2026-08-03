@@ -1,8 +1,9 @@
 import { type Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
-import { DEV_LOCAL_USER_ID, useDevBypass } from '@/lib/auth/dev-bypass';
+import { releaseEntitlement, resolveEntitlement } from '@/lib/billing/state';
 import { ensureLocalUser } from '@/lib/db/index';
+import { markFirstOpen } from '@/lib/funnel';
 import { startSync, stopSync } from '@/lib/sync/index';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/state/session-store';
@@ -53,22 +54,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Wire the data layer to the signed-in user.
-  // With the dev bypass on there is no account, but the SQLite mirror is still
-  // scoped per user — so it gets a fixed local id. Sync stays off below: there
-  // is nowhere for those rows to belong.
-  const devBypass = useDevBypass();
-  const bypassed = devBypass && state.session === null;
-  const userId = state.session?.user.id ?? (bypassed ? DEV_LOCAL_USER_ID : null);
+  const userId = state.session?.user.id ?? null;
   useEffect(() => {
     if (userId) {
       ensureLocalUser(userId);
       hydrate(userId);
-      if (!bypassed) startSync(userId);
+      // ONCE PER SESSION, here and nowhere else (product-direction §2). An
+      // entitlement check that runs mid-set or on a write would be a network
+      // call standing in front of a keystroke, which CLAUDE.md §2 invariant 1
+      // forbids outright. It also ATTACHES THE STORE TO THIS ACCOUNT (§2: the
+      // trial attaches to an account), which is why it takes the user id.
+      //
+      // Fire-and-forget on purpose: it resolves the cached decision
+      // synchronously inside, so nothing on screen waits for the network half.
+      void resolveEntitlement(userId);
+      markFirstOpen();
+      startSync(userId);
     } else {
       stopSync();
+      // Detach the store customer too — otherwise the next account signed in on
+      // this device inherits the previous one's entitlement.
+      void releaseEntitlement();
       reset();
     }
-  }, [userId, bypassed, hydrate, reset]);
+  }, [userId, hydrate, reset]);
 
   return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
 }

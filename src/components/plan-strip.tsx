@@ -1,22 +1,41 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeInDown, useReducedMotion } from 'react-native-reanimated';
+import { StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeInDown, ZoomIn, useReducedMotion } from 'react-native-reanimated';
 
 import { tap } from '@/lib/haptics';
 import { nameKey, typedNameOf } from '@/lib/parse/receipt';
-import { color, fonts, MAX_FONT_SCALE, moderateScale, radius, spacing } from '@/lib/theme';
+import {
+  color,
+  fonts,
+  hairline,
+  MAX_FONT_SCALE,
+  moderateScale,
+  radius,
+  shadow,
+  spacing,
+  type,
+} from '@/lib/theme';
 import { usePlanStrip, useSession } from '@/state/session-store';
 
 import { MonoTag } from './gutter-value';
+import { PressableScale } from './motion';
 
 /**
- * The plan-in-view strip (pre-plan, Surface 1 — wireframe frame 06_R3). Today's
- * declared day is shown as a READ-ONLY reference beside the note: the movement
- * name + the engine's progressed load in green (the app's only green — a future
- * prescription VALUE). A row dims to neutral the moment the parse recognises
- * that exercise in the note. It cannot insert, check off, or count anything —
- * "Planned into Actual" is the one boundary that never bends (design doctrine).
- * "Hide" collapses it to a single row; it's absent when there's no plan today.
+ * The plan-in-view strip (pre-plan, Surface 1). Today's declared day is shown
+ * as a READ-ONLY reference beside the note: the movement name + the engine's
+ * progressed load in green (the app's only green — a future prescription
+ * VALUE). A row settles to neutral — ring fills, value loses its green — the
+ * moment the parse recognises that exercise in the note. It cannot insert,
+ * check off, or count anything — "Planned into Actual" is the one boundary
+ * that never bends (design doctrine).
+ *
+ * Drawn in the shared card vocabulary (28 Jul — the same surface/divider/
+ * shadow.card language as Next's "What's next" card, which carries the same
+ * rows one tab over), with the composer's own leading check column so the
+ * strip and the ledger below it read as one system. The rings echo the
+ * ghost's: an empty ring is a row still owed, an ink fill is one the note
+ * already carries. "Hide" collapses it to a single row; it's absent when
+ * there's no plan today.
  */
 export function PlanStrip() {
   const strip = usePlanStrip();
@@ -52,18 +71,20 @@ export function PlanStrip() {
         <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           {strip.label} in view
         </Text>
-        <Pressable
+        <PressableScale
           onPress={() => {
             tap();
             setCollapsed((c) => !c);
           }}
+          haptic="none"
           hitSlop={spacing.sm}
+          activeScale={0.94}
           accessibilityRole="button"
           accessibilityLabel={collapsed ? 'Show plan' : 'Hide plan'}>
           <Text style={styles.hide} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {collapsed ? `${remaining} left` : 'Hide'}
           </Text>
-        </Pressable>
+        </PressableScale>
       </View>
 
       {collapsed ? null : (
@@ -71,27 +92,39 @@ export function PlanStrip() {
           <View style={styles.rows}>
             {strip.rows.map((r, i) => {
               const done = doneFlags[i];
-              const valText = done
-                ? r.value
-                  ? `${r.value} — logged`
-                  : 'logged'
-                : r.value ?? '';
               return (
-                <View key={i} style={styles.row}>
-                  <Text
-                    style={[styles.ex, done && styles.exDone]}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {r.name.toLowerCase()}
-                  </Text>
-                  {valText ? (
+                <View key={i}>
+                  {i > 0 ? <View style={styles.rowSep} /> : null}
+                  <View
+                    style={styles.row}
+                    accessible
+                    accessibilityLabel={`${r.name}${r.value ? `, ${r.value}` : ''}${done ? ', logged' : ''}`}>
+                    {done ? (
+                      <Animated.View
+                        entering={reduceMotion ? undefined : ZoomIn.duration(220)}
+                        style={[styles.ring, styles.ringDone]}>
+                        <Text style={styles.ringMark} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                          ✓
+                        </Text>
+                      </Animated.View>
+                    ) : (
+                      <View style={styles.ring} />
+                    )}
                     <Text
-                      style={[styles.val, done && styles.valDone]}
+                      style={[styles.ex, done && styles.exDone]}
                       numberOfLines={1}
                       maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                      {valText}
+                      {r.name}
                     </Text>
-                  ) : null}
+                    {r.value ? (
+                      <Text
+                        style={[styles.val, done && styles.valDone]}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                        {r.value}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
               );
             })}
@@ -105,29 +138,66 @@ export function PlanStrip() {
   );
 }
 
+/** The strip's ring — a size down from the ghost's tappable check, because
+ * this one only reports. */
+const RING = moderateScale(18);
+
 const styles = StyleSheet.create({
   card: {
     marginHorizontal: spacing.xl,
     marginBottom: spacing.md,
     backgroundColor: color.surface,
     borderWidth: 1,
-    borderColor: color.border,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md + 2,
+    borderColor: color.divider,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+    ...shadow.card,
   },
   top: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  name: { flex: 1, fontSize: moderateScale(12.5), color: color.textSecondary },
-  hide: { fontSize: moderateScale(12.5), fontWeight: '600', color: color.textSecondary },
+  name: { flex: 1, ...type.caption, color: color.textSecondary },
+  hide: { ...type.caption, fontWeight: '600', color: color.textSecondary },
 
-  rows: { marginTop: spacing.sm + 2, gap: moderateScale(5) },
-  row: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.md },
-  ex: { flexShrink: 1, fontFamily: fonts.mono, fontSize: moderateScale(11.5), color: color.textPrimary },
+  rows: { marginTop: spacing.sm },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: moderateScale(38),
+    paddingVertical: spacing.xs,
+  },
+  // Inset past the ring column, like the composer's rule past its check
+  // column (§6) — the marks stay one vertical run.
+  rowSep: {
+    height: hairline,
+    marginLeft: RING + spacing.md,
+    backgroundColor: color.divider,
+  },
+  ring: {
+    width: RING,
+    height: RING,
+    borderRadius: RING / 2,
+    borderWidth: 1.5,
+    borderColor: color.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringDone: {
+    backgroundColor: color.accent,
+    borderColor: color.accent,
+  },
+  ringMark: {
+    color: color.bg,
+    fontSize: type.footnote.fontSize,
+    fontWeight: '700',
+  },
+  ex: { flex: 1, ...type.subhead, color: color.textPrimary },
   exDone: { color: color.textMuted },
-  // THE ONLY GREEN: a future prescription value (record contract).
+  // THE ONLY GREEN: a future prescription value (record contract). A logged
+  // row's value is no longer a future number, so it hands back the ink.
   val: {
     fontFamily: fonts.mono,
-    fontSize: moderateScale(11.5),
+    fontSize: type.caption.fontSize,
     fontWeight: '500',
     fontVariant: ['tabular-nums'],
     color: color.signal,
@@ -135,12 +205,11 @@ const styles = StyleSheet.create({
   valDone: { color: color.textMuted, fontWeight: '400' },
 
   foot: {
-    marginTop: spacing.sm + 2,
+    marginTop: spacing.sm,
     paddingTop: spacing.sm,
-    borderTopWidth: 1,
+    borderTopWidth: hairline,
     borderTopColor: color.divider,
-    fontSize: moderateScale(10.5),
-    lineHeight: moderateScale(15),
+    ...type.footnote,
     color: color.textMuted,
   },
 });

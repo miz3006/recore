@@ -1,4 +1,4 @@
-export { color, alpha, ink, type ColorToken } from './color';
+export { color, alpha, glyph, ink, type ColorToken, type GlyphTone } from './color';
 export { shadow, type ShadowToken } from './elevation';
 export {
   spacing,

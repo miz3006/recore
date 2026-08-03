@@ -1,0 +1,310 @@
+import { getAdherenceRecord, getE1rmSeries, type AdherenceRecord } from './insights';
+import { computePlanStrip } from './strip';
+import { getLastSetHint } from './last-set';
+import { getPredictionForOpen } from './predictions';
+import { listLifts } from './lifts';
+import { roundToPlate } from '@/lib/predict/engine';
+import { getSmallestPlateKg } from '@/lib/prefs';
+
+import { dayRangeIso, shiftDayKey, todayKey } from './dates';
+import { getDb } from './index';
+
+/**
+ * The Next briefing (owner, 28 July 2026) — everything the app can honestly say
+ * about what happens next, assembled in one synchronous pass over the local
+ * mirror.
+ *
+ * WHY THIS EXISTS. §16 says the prediction is the single strongest retention
+ * mechanism in the product — "a reason to open the app on a training day that
+ * exists before the user has done anything" — and until now it had no door of
+ * its own. It was a thin strip on Today and a card under the composer. This
+ * gives it a surface.
+ *
+ * WHAT IT IS NOT, and the line is not negotiable: **no number here comes from a
+ * language model.** §1.1 invariant 3 — code computes, the model may only
+ * rephrase an already-computed sentence (§8.3, `explain-prediction`). Every
+ * figure below is a SQL read or the pure engine's arithmetic, so the same
+ * history produces the same briefing every time, in airplane mode, forever.
+ * That reproducibility is also what makes the adherence record at the bottom
+ * mean anything: you cannot measure "followed 7 of the last 9" against a plan
+ * that changes its mind.
+ *
+ * Everything is optional. A section with nothing true to say is absent, not
+ * empty (§1.1 invariant 6).
+ */
+
+/** How many recent lifts to examine for stalls and movement. Bounded on purpose:
+ * this runs on open, and a briefing that scans a five-year history is a hitch. */
+const SCAN_LIFTS = 10;
+/** A lift is "standing still" after this many sessions at the same top weight. */
+const STALL_SESSIONS = 3;
+/** The window a mover has to have moved within. */
+const MOVER_WEEKS = 8;
+const MOVER_MIN_KG = 2.5;
+
+export interface BriefLine {
+  name: string;
+  /** "82.5 kg × 5·5·5", or null when there is no history to progress from. */
+  value: string | null;
+  /** The engine's own reason, as a fragment. Null when there is none. */
+  why: string | null;
+  /** The record the prescription grew from — "3×8 80", the gutter echo's own
+   * voice (§20's framing: never what to do, only what to beat). On screen it
+   * reads as the FROM of a from → to pair, so the row shows its work. Silence
+   * when the name doesn't resolve or there is no history. */
+  last?: string | null;
+  /** The heaviest counted set ever recorded for this lift, or null. */
+  bestKg?: number | null;
+}
+
+export interface BriefStall {
+  canonical: string;
+  weight: number;
+  sessions: number;
+  /** What the engine will drop to if it stalls once more. Null without a plate. */
+  deloadTo: number | null;
+}
+
+export interface BriefMover {
+  canonical: string;
+  /** Estimated 1RM gained over the window, in kg. Always positive here. */
+  deltaKg: number;
+  weeks: number;
+}
+
+export interface Brief {
+  /** "Upper A" — the declared split day, when today has one. */
+  dayLabel: string | null;
+  /** True when `lines` came from the plan for TODAY rather than the next-session
+   * ghost — the two are phrased differently on screen. */
+  forToday: boolean;
+  lines: BriefLine[];
+  /** The ghost's one sentence, already phrased (and possibly already rewritten
+   * in the user's language by `explain-prediction`). */
+  headline: string | null;
+  stalls: BriefStall[];
+  movers: BriefMover[];
+  adherence: AdherenceRecord | null;
+  /** When one prescribed load exceeds that lift's all-time best: the stakes of
+   * the session, stated as arithmetic. One at most — the first in plan order —
+   * because two "heaviest ever" lines are a hype reel (§15). */
+  prReach: { name: string; weightKg: number } | null;
+  /** Sessions written in the last 7 local days — the paragraph's opening
+   * clause (product-direction §9: the brief answers "what training happened
+   * recently?" before anything else). A session is what the log calls one:
+   * a workout row with text in it. */
+  sessions7: number;
+  /** Sessions in the last 8 weeks — the provenance line's own number
+   * ("based on N sessions"), computed, never estimated. */
+  sessions8w: number;
+}
+
+interface TopRow {
+  canonical: string;
+  performed_at: string;
+  weight_kg: number | null;
+  reps: number | null;
+}
+
+/**
+ * The heaviest counted set of each session, per lift, newest first — the same
+ * shape the engine's deload rule reads. Warm-ups, drops and skipped sets are
+ * excluded here exactly as they are in every other aggregate (§1.1 invariant 5).
+ */
+function topSetsFor(userId: string, canonicals: string[], perLift: number): Map<string, TopRow[]> {
+  const out = new Map<string, TopRow[]>();
+  if (canonicals.length === 0) return out;
+
+  const placeholders = canonicals.map(() => '?').join(',');
+  const rows = getDb().getAllSync<TopRow>(
+    `SELECT lower(e.canonical) AS canonical, w.performed_at AS performed_at,
+            MAX(s.weight_kg) AS weight_kg, MAX(s.reps) AS reps
+     FROM sets s
+     JOIN items i ON s.item_id = i.id
+     JOIN exercises e ON i.exercise_id = e.id
+     JOIN workouts w ON i.workout_id = w.id
+     WHERE w.user_id = ?
+       AND lower(e.canonical) IN (${placeholders})
+       AND s.kind NOT IN ('warmup','drop','skipped')
+       AND s.weight_kg IS NOT NULL
+     GROUP BY lower(e.canonical), w.id
+     ORDER BY w.performed_at DESC`,
+    [userId, ...canonicals],
+  );
+
+  for (const r of rows) {
+    const list = out.get(r.canonical);
+    if (list) {
+      if (list.length < perLift) list.push(r);
+    } else {
+      out.set(r.canonical, [r]);
+    }
+  }
+  return out;
+}
+
+/**
+ * Lifts that have not moved: the same top weight for `STALL_SESSIONS` sessions
+ * running, with reps never improving across them.
+ *
+ * This is the engine's own deload condition read one session early, which is
+ * the honest thing to surface — it is not a new opinion about training, it is
+ * the app showing its work before it acts.
+ */
+function findStalls(tops: Map<string, TopRow[]>, display: Map<string, string>): BriefStall[] {
+  const plate = getSmallestPlateKg();
+  const out: BriefStall[] = [];
+
+  for (const [key, rows] of tops) {
+    if (rows.length < STALL_SESSIONS) continue;
+    const window = rows.slice(0, STALL_SESSIONS);
+    const weight = window[0]!.weight_kg;
+    if (weight == null || weight <= 0) continue;
+    if (!window.every((r) => r.weight_kg === weight)) continue;
+    // Reps must be flat or falling — a rising rep count IS progress at the same
+    // weight, and calling that a stall would be wrong about the sport.
+    const reps = window.map((r) => r.reps);
+    const improving = reps.some(
+      (r, i) => i > 0 && r != null && reps[i - 1] != null && reps[i - 1]! > r,
+    );
+    if (improving) continue;
+
+    out.push({
+      canonical: display.get(key) ?? key,
+      weight,
+      sessions: STALL_SESSIONS,
+      deloadTo: plate != null ? roundToPlate(weight * 0.9, plate) : null,
+    });
+  }
+  return out.sort((a, b) => b.weight - a.weight).slice(0, 3);
+}
+
+/** Lifts whose estimated 1RM has genuinely climbed inside the window. */
+function findMovers(userId: string, canonicals: string[]): BriefMover[] {
+  const cutoff = Date.now() - MOVER_WEEKS * 7 * 86_400_000;
+  const out: BriefMover[] = [];
+
+  for (const canonical of canonicals) {
+    const series = getE1rmSeries(userId, canonical, 24).filter(
+      (p) => Date.parse(p.day) >= cutoff || Number.isNaN(Date.parse(p.day)),
+    );
+    if (series.length < 2) continue;
+    const first = series[0]!;
+    const last = series[series.length - 1]!;
+    const delta = Math.round((last.e1rm - first.e1rm) * 10) / 10;
+    if (delta < MOVER_MIN_KG) continue;
+    out.push({ canonical, deltaKg: delta, weeks: MOVER_WEEKS });
+  }
+  return out.sort((a, b) => b.deltaKg - a.deltaKg).slice(0, 3);
+}
+
+export function buildBrief(userId: string): Brief {
+  const today = todayKey();
+
+  // WHAT'S NEXT. The declared split day for today wins when there is one — it
+  // is what the athlete said they would do. Otherwise the ghost, which is the
+  // progression of the session they are due for (§8.2).
+  const strip = computePlanStrip(userId, today);
+  const prediction = getPredictionForOpen(userId, today);
+
+  let lines: BriefLine[] = [];
+  /** Prescribed load per line, parallel to `lines` — for the heaviest-ever
+   * check only, never displayed. */
+  let prescribed: (number | null)[] = [];
+  let forToday = false;
+  if (strip && strip.rows.length > 0) {
+    forToday = true;
+    lines = strip.rows.map((r) => ({ name: r.name, value: r.value, why: r.why ?? null }));
+    // The engine's own number, carried through `PlanRow.weightKg` — the value
+    // string ("82.5 × 5·5·5") is display and is never parsed back.
+    prescribed = strip.rows.map((r) => r.weightKg ?? null);
+  } else if (prediction) {
+    // The ghost's lines are already the parseable prescription ("bench press
+    // 3×5  82.5 kg"). Split at the first digit rather than through
+    // `typedNameOf`, so the numbers survive verbatim — this is the text the
+    // composer would accept, and reformatting it here would let the briefing
+    // and the note disagree about one session.
+    lines = prediction.ghost_text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const m = /^([^\d]+?)\s+(.*)$/.exec(l);
+        return {
+          name: (m?.[1] ?? l).trim(),
+          value: (m?.[2] ?? '').trim() || null,
+          why: null,
+        };
+      });
+    // Ghost strength lines end in "… 82.5 kg" (`strengthLine` in
+    // predict/data.ts); bodyweight and cardio lines carry no kg and stay null.
+    prescribed = lines.map((l) => {
+      const m = l.value?.match(/(\d+(?:[.,]\d+)?)\s*kg\b/i);
+      return m ? parseFloat(m[1]!.replace(',', '.')) : null;
+    });
+  }
+
+  // The record behind each prescription (§20: only what to beat), and the one
+  // load that would out-lift the lift's all-time best. Both read the same
+  // counted sets every other aggregate reads; a name that doesn't resolve is
+  // silence, not a guess (`getLastSetHint`'s own rule).
+  let prReach: Brief['prReach'] = null;
+  lines = lines.map((line, i) => {
+    const hint = getLastSetHint(userId, line.name, null);
+    if (!hint) return line;
+    const best = bestWeightFor(userId, hint.canonical);
+    const target = prescribed[i] ?? null;
+    if (prReach == null && best != null && target != null && target > best) {
+      prReach = { name: hint.canonical, weightKg: target };
+    }
+    return { ...line, last: hint.echo, bestKg: best };
+  });
+
+  const lifts = listLifts(userId).slice(0, SCAN_LIFTS);
+  const keys = lifts.map((l) => l.key);
+  const display = new Map(lifts.map((l) => [l.key, l.canonical]));
+
+  const adherence = getAdherenceRecord(userId);
+
+  // The brief's own provenance: how much record it is standing on. Counted the
+  // way the log counts a session — a workout row with text — over local days,
+  // so "this week" means the athlete's week, not UTC's.
+  const [since7] = dayRangeIso(shiftDayKey(today, -6));
+  const [since8w] = dayRangeIso(shiftDayKey(today, -55));
+  const counts = getDb().getFirstSync<{ n7: number; n8w: number }>(
+    `SELECT COUNT(CASE WHEN performed_at >= ? THEN 1 END) AS n7, COUNT(*) AS n8w
+     FROM workouts WHERE user_id = ? AND performed_at >= ? AND trim(raw_text) <> ''`,
+    [since7, userId, since8w],
+  );
+
+  return {
+    dayLabel: strip?.label ?? null,
+    forToday,
+    lines,
+    headline: prediction?.reason ?? null,
+    stalls: findStalls(topSetsFor(userId, keys, STALL_SESSIONS), display),
+    movers: findMovers(
+      userId,
+      lifts.map((l) => l.canonical),
+    ),
+    adherence: adherence.settled > 0 ? adherence : null,
+    prReach,
+    sessions7: counts?.n7 ?? 0,
+    sessions8w: counts?.n8w ?? 0,
+  };
+}
+
+/** The heaviest counted set ever recorded for one lift, or null. */
+function bestWeightFor(userId: string, canonical: string): number | null {
+  const row = getDb().getFirstSync<{ best: number | null }>(
+    `SELECT MAX(s.weight_kg) AS best
+     FROM sets s
+     JOIN items i ON s.item_id = i.id
+     JOIN workouts w ON i.workout_id = w.id
+     JOIN exercises e ON e.id = i.exercise_id
+     WHERE w.user_id = ? AND lower(e.canonical) = lower(?)
+       AND s.kind NOT IN ('warmup','drop','skipped') AND s.weight_kg IS NOT NULL`,
+    [userId, canonical],
+  );
+  return row?.best ?? null;
+}

@@ -6,6 +6,7 @@ import { getMeta, setMeta } from '@/lib/db/index';
 import { computeStreak, getWorkoutForDay, saveRawText } from '@/lib/db/workouts';
 import { getPredictionForOpen, markPredictionAccepted } from '@/lib/db/predictions';
 import { computePlanStrip, type PlanStrip } from '@/lib/db/strip';
+import { setEffortOnLine, type Effort } from '@/lib/effort';
 import { getParseCache, reapplyDoneState } from '@/lib/parse/apply';
 import { parseWorkout, type ParseOutcome } from '@/lib/parse/client';
 import { applyCorrection, getFixTarget, type FixTarget } from '@/lib/parse/correct';
@@ -97,6 +98,20 @@ interface SessionState {
   toggleDone: (key: string) => void;
   /** Remove a physical line from the note (delete an entry). */
   deleteNoteLine: (line: number) => void;
+  /**
+   * Mark how hard one physical line was, as an RPE token in the user's own
+   * words (`src/lib/effort.ts`). Null clears it. It goes through `setNote`
+   * like any keystroke, so the parser reads it and the engine gets the RIR
+   * through the ONE path it already has — no overlay, nothing to re-apply.
+   */
+  setLineEffort: (line: number, effort: Effort | null) => void;
+  /**
+   * The post-finish CHECK-IN sheet — the reflection (§8.1) and the effort
+   * scale on one surface. Also reachable later, from the receipt.
+   */
+  checkInOpen: boolean;
+  openCheckIn: () => void;
+  closeCheckIn: () => void;
   /** Enter / leave inline edit of a committed line (tap a card → Edit). */
   startEditLine: (line: number) => void;
   stopEditLine: () => void;
@@ -371,6 +386,22 @@ export const useSession = create<SessionState>((set, get) => ({
     set({ editingLine: null, sheetExercise: null, sheetLine: null });
     get().setNote(lines.join('\n'));
   },
+
+  setLineEffort: (line, effort) => {
+    const { note } = get();
+    const lines = note.split('\n');
+    if (line < 0 || line >= lines.length) return;
+    const next = setEffortOnLine(lines[line]!, effort);
+    if (next === lines[line]) return;
+    lines[line] = next;
+    // Straight through setNote: SQLite in the same tick, then the debounced
+    // parse reads the marker like any other word the user typed.
+    get().setNote(lines.join('\n'));
+  },
+
+  checkInOpen: false,
+  openCheckIn: () => set({ checkInOpen: true }),
+  closeCheckIn: () => set({ checkInOpen: false }),
 
   startEditLine: (line) => set({ editingLine: line, sheetExercise: null, sheetLine: null }),
   stopEditLine: () => set({ editingLine: null }),

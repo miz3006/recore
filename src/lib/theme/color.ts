@@ -4,10 +4,23 @@
  *
  * THE RECORD CONTRACT still sets the palette, now on warm paper. Four data
  * states — Written / Interpreted / Recorded / Planned — live on a warm paper
- * canvas with a single meaningful accent: **green `#547C00` appears ONLY on
- * planned, future prescription values**. Never on chrome, deltas, PRs, charts,
- * or marketing. A PR is a neutral outlined label; comparisons are archival
- * mono in muted grey; warnings are amber words, never color alone.
+ * canvas with a small number of intentional accents (product-direction §4.2,
+ * v5.1): **green `#547C00` appears ONLY on planned, future prescription
+ * values, always with their label and reason**; **blue `#007AFF` is RECORE
+ * BLUE, the visible product accent** — selected onboarding choices,
+ * interactive focus, active controls, walkthrough emphasis, recorded-progress
+ * charts, and the day-trained marks it started as (it is an accent, never a
+ * reward colour); and **ember `#BF5B23` is an optional secondary comparison
+ * in a chart**, never the sole indicator of good or bad — today that is one
+ * lift's progression line and the wash under it in the lift sheet. Ember
+ * never touches a NUMBER — the readings beside the chart stay ink. A PR is a
+ * neutral outlined label; comparisons are archival mono in muted grey;
+ * warnings are amber words, never color alone; red is destructive actions and
+ * genuine errors only.
+ *
+ * (History: v2's "blue ONLY on day-trained marks" ruling, 28 Jul, was widened
+ * by v5.1 §4.2 — "Recore blue is a visible product accent, not a colour
+ * confined to a calendar".)
  *
  * Primary CTAs are ink-fill (`accent` #171914 on `bg`/`surface` text) —
  * restraint IS the brand. If a pixel isn't a future prescription, it doesn't
@@ -27,6 +40,8 @@ export const color = {
   accent: '#171914', // ink: primary CTA fill, emphasized borders — equals textPrimary
   accentPressed: '#2C2F27', // ink-fill button pressed — never an opacity flash
   signal: '#547C00', // PLANNED green: future prescription values ONLY
+  trained: '#007AFF', // RECORE BLUE (iOS systemBlue): the product accent (§4.2) — selected choices, active controls, walkthrough emphasis, recorded-progress charts, day-trained marks
+  trend: '#BF5B23', // TREND ember: the progression line of ONE lift + its wash, in the lift sheet ONLY
   textPrimary: '#171914', // what the USER typed; headings; ink
   textSecondary: '#687064', // supporting copy, gutter readings, tags, labels
   textMuted: '#9AA093', // dates, evidence lines, placeholders, disabled
@@ -39,6 +54,38 @@ export const color = {
 } as const;
 
 export type ColorToken = keyof typeof color;
+
+/**
+ * The settings-glyph palette — owner, 28 July. The **only** place in Recore
+ * where a hue means nothing at all, and the constraints are what make that
+ * safe:
+ *
+ * - **Chrome, never data.** These tint the leading glyph of a settings row on
+ *   You (§16.4) — wayfinding, so a long list is scanned by shape *and* colour
+ *   before it is read. A tinted glyph never sits next to a value, never marks
+ *   a state, and never carries a claim. The record stays two inks.
+ * - **One colour per glyph, everywhere.** The map lives with the glyphs
+ *   (`components/icon.tsx`), so `sparkle` is the same gold on every row it
+ *   appears on. A colour that means one thing here and another there is worse
+ *   than no colour.
+ * - **Green and blue are not in this set, and must never be added to it.**
+ *   `signal` is a planned value and `trained` is a day trained; a settings row
+ *   borrowing either would spend a meaning the app cannot get back. Red is
+ *   absent for the same reason — destructive rows already draw in `error`.
+ * - **Warm and darkened for paper.** The iOS system hues are tuned for pure
+ *   white and go garish on `#F4F5EF`. Every value here clears 3:1 against both
+ *   `surface` and `bg` (§14).
+ */
+export const glyph = {
+  indigo: '#5B57C2', // calendar, card — structure and billing
+  orange: '#C2661C', // target, upload — what you aim at, what comes in
+  teal: '#2E8B8F', // language, refresh, download — words and movement
+  gold: '#A9791B', // plate, sparkle, star — iron, Pro, and the review ask
+  slate: '#5C6B7A', // barbell, lock, document, sign-out, wrench — the plumbing
+  plum: '#7A4E8C', // table — the spreadsheet's own colour
+} as const;
+
+export type GlyphTone = keyof typeof glyph;
 
 /**
  * The opacity ladder — centralized so no component can silently drift.

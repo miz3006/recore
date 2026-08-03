@@ -103,6 +103,7 @@ interface LocalWorkout {
   user_id: string;
   performed_at: string;
   raw_text: string;
+  reflection: string | null;
   parse_version: number | null;
   created_at: string;
   updated_at: string;
@@ -122,6 +123,9 @@ async function pushWorkouts(userId: string) {
       user_id: w.user_id, // RLS enforces this equals auth.uid()
       performed_at: w.performed_at,
       raw_text: w.raw_text,
+      // The athlete's own note about the session (§8.1). It rides the workout
+      // row, so it gets this row's RLS and this row's cascade delete.
+      reflection: w.reflection,
       parse_version: w.parse_version,
       created_at: w.created_at,
       updated_at: w.updated_at,
@@ -312,7 +316,7 @@ async function pullRemote(userId: string) {
 
   const { data: workouts, error } = await supabase
     .from('workouts')
-    .select('id, user_id, performed_at, raw_text, parse_version, created_at, updated_at')
+    .select('id, user_id, performed_at, raw_text, reflection, parse_version, created_at, updated_at')
     .gt('updated_at', since)
     .order('updated_at', { ascending: true })
     .limit(100);
@@ -329,15 +333,25 @@ async function pullRemote(userId: string) {
     if (local?.dirty === 1) continue; // local edits win
 
     db.runSync(
-      `INSERT INTO workouts (id, user_id, performed_at, raw_text, parse_version, created_at, updated_at, dirty, structure_dirty, needs_parse)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
+      `INSERT INTO workouts (id, user_id, performed_at, raw_text, reflection, parse_version, created_at, updated_at, dirty, structure_dirty, needs_parse)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
        ON CONFLICT(id) DO UPDATE SET
          performed_at = excluded.performed_at,
          raw_text = excluded.raw_text,
+         reflection = excluded.reflection,
          parse_version = excluded.parse_version,
          updated_at = excluded.updated_at
        WHERE workouts.dirty = 0`,
-      [w.id, w.user_id, w.performed_at, w.raw_text, w.parse_version, w.created_at, w.updated_at],
+      [
+        w.id,
+        w.user_id,
+        w.performed_at,
+        w.raw_text,
+        w.reflection,
+        w.parse_version,
+        w.created_at,
+        w.updated_at,
+      ],
     );
     pulledIds.push(w.id);
   }

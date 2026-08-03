@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  defaultRepRangeFor,
   progressBodyweight,
   progressStrength,
   repRange,
@@ -27,6 +28,74 @@ test('repRange inferred from today, fallback 6-8', () => {
   assert.deepEqual(repRange([set(8, 100), set(8, 100)]), [6, 8]);
   assert.deepEqual(repRange([set(12, 20)]), [10, 12]);
   assert.deepEqual(repRange([set(null, 100)]), [6, 8]);
+});
+
+// --- E1: training focus is the FALLBACK range, never an override -------------
+
+test('focus picks the fallback: strength narrow and low, muscle wider and higher', () => {
+  assert.deepEqual(defaultRepRangeFor('strength'), [3, 5]);
+  assert.deepEqual(defaultRepRangeFor('muscle'), [8, 12]);
+  assert.deepEqual(defaultRepRangeFor('both'), [6, 8]);
+  assert.deepEqual(defaultRepRangeFor(null), [6, 8], 'unanswered focus is the classic middle');
+});
+
+test('the focus fallback only applies where there are no reps to infer from', () => {
+  assert.deepEqual(repRange([set(null, 100)], [3, 5]), [3, 5]);
+  assert.deepEqual(repRange([set(null, 100)], [8, 12]), [8, 12]);
+  // Real performance outranks a stated preference, every time.
+  assert.deepEqual(repRange([set(12, 20)], [3, 5]), [10, 12]);
+});
+
+test('E1: focus changes a prescription for a lift with no rep history', () => {
+  // Weight logged, reps never written down — the case the fallback exists for.
+  const noReps = [set(null, 100), set(null, 100)];
+  const strength = progressStrength({
+    todaySets: noReps,
+    priorTops: [],
+    incrementKg: 2.5,
+    defaultRepRange: defaultRepRangeFor('strength'),
+  });
+  const muscle = progressStrength({
+    todaySets: noReps,
+    priorTops: [],
+    incrementKg: 2.5,
+    defaultRepRange: defaultRepRangeFor('muscle'),
+  });
+  // With nothing to infer from, rule 3 applies: same weight, chase the TOP of
+  // the range. Which top that is, is exactly what focus now decides.
+  assert.equal(strength.reps, 5, 'strength chases the top of 3–5');
+  assert.equal(muscle.reps, 12, 'hypertrophy chases the top of 8–12');
+  assert.equal(strength.weightKg, muscle.weightKg, 'focus moves reps, never the load');
+});
+
+test('E1: an athlete WITH rep history is unaffected by focus', () => {
+  const worked = [set(8, 100), set(8, 100), set(8, 100)];
+  const asStrength = progressStrength({
+    todaySets: worked,
+    priorTops: [],
+    incrementKg: 2.5,
+    defaultRepRange: defaultRepRangeFor('strength'),
+  });
+  const asMuscle = progressStrength({
+    todaySets: worked,
+    priorTops: [],
+    incrementKg: 2.5,
+    defaultRepRange: defaultRepRangeFor('muscle'),
+  });
+  assert.deepEqual(asStrength, asMuscle, 'inference wins; the fallback never fires');
+});
+
+test('E1: omitting the fallback keeps the old behaviour exactly', () => {
+  const noReps = [set(null, 100)];
+  assert.deepEqual(
+    progressStrength({ todaySets: noReps, priorTops: [], incrementKg: 2.5 }),
+    progressStrength({
+      todaySets: noReps,
+      priorTops: [],
+      incrementKg: 2.5,
+      defaultRepRange: [6, 8],
+    }),
+  );
 });
 
 test('rule 1: top of range on ALL sets → add weight, drop to bottom', () => {

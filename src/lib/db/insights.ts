@@ -37,6 +37,22 @@ export function getAdherenceRecord(userId: string, window = 10): AdherenceRecord
   };
 }
 
+/**
+ * Below three settled outcomes a record is noise, not evidence (§8.3).
+ * Exported so the ghost card's trust line and anything else reading the
+ * predictor's reputation cannot drift to different thresholds.
+ */
+export const TRUST_MIN_SETTLED = 3;
+
+/**
+ * Has the predictor earned the right to be quoted? Enough settled ghosts to
+ * mean something, and a majority of them followed — we never sell against
+ * ourselves. Same rule the ghost card's "followed X of the last Y" line uses.
+ */
+export function predictorIsProven(record: AdherenceRecord): boolean {
+  return record.settled >= TRUST_MIN_SETTLED && record.followed * 2 >= record.settled;
+}
+
 export interface PrRecord {
   canonical: string;
   weightKg: number;
@@ -235,6 +251,37 @@ export function getWorkoutDetail(workoutId: string): WorkoutDetail | null {
     countedSets,
     volume: Math.round(volume),
   };
+}
+
+export interface ProfileTotals {
+  /** Counted sets across the whole record. */
+  sets: number;
+  /** Volume in kg. Warm-ups, drops and skipped sets excluded, as everywhere. */
+  volume: number;
+}
+
+/**
+ * The lifetime numbers behind the You screen's stat strip. Training days and
+ * the streak are NOT here on purpose — `getLoggedDayKeys` and `computeStreak`
+ * already own them, and a second definition of "a day you trained" is exactly
+ * how two surfaces start disagreeing (§7.7).
+ *
+ * The exclusion list is repeated inline rather than shared, like every other
+ * aggregate in this file: §1.1 invariant 5 is enforced by each query stating it,
+ * so a new one cannot silently inherit a wrong version of it.
+ */
+export function getProfileTotals(userId: string): ProfileTotals {
+  const row = getDb().getFirstSync<{ sets: number | null; volume: number | null }>(
+    `SELECT COUNT(s.id) AS sets,
+            SUM(CASE WHEN s.reps IS NOT NULL AND s.weight_kg IS NOT NULL
+                     THEN s.reps * s.weight_kg ELSE 0 END) AS volume
+     FROM sets s
+     JOIN items i ON i.id = s.item_id
+     JOIN workouts w ON w.id = i.workout_id
+     WHERE w.user_id = ? AND s.kind NOT IN ('warmup', 'drop', 'skipped')`,
+    [userId],
+  );
+  return { sets: row?.sets ?? 0, volume: Math.round(row?.volume ?? 0) };
 }
 
 export interface E1rmPoint {

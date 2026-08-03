@@ -46,7 +46,14 @@ export const type = {
   title: { fontSize: moderateScale(27), lineHeight: moderateScale(32), fontWeight: '700', letterSpacing: -0.6 },
   /** Step titles, section heads — one notch under `title`. */
   title2: { fontSize: moderateScale(22), lineHeight: moderateScale(27), fontWeight: '700', letterSpacing: -0.5 },
+  /** The illustrated-onboarding question — bold like every other title (owner,
+   * 29 Jul, after the Mobbin pass: Tonal/Strava/WHOOP all carry the question at
+   * full weight; a light question over art read as a caption, not an ask). */
+  question: { fontSize: moderateScale(28), lineHeight: moderateScale(33), fontWeight: '700', letterSpacing: -0.6 },
   headline: { fontSize: moderateScale(17), lineHeight: moderateScale(22), fontWeight: '600', letterSpacing: -0.3 },
+  /** The brief's opening sentence (product-direction §9) — one notch over
+   * body, so the paragraph leads like an article, not a form. */
+  lede: { fontSize: moderateScale(19), lineHeight: moderateScale(26), fontWeight: '600', letterSpacing: -0.4 },
   body: { fontSize: moderateScale(16), lineHeight: moderateScale(24), fontWeight: '400', letterSpacing: -0.2 },
   subhead: { fontSize: moderateScale(15), lineHeight: moderateScale(21), fontWeight: '400', letterSpacing: -0.1 }, // secondary / grey
   caption: { fontSize: moderateScale(13), lineHeight: moderateScale(18), fontWeight: '400' },

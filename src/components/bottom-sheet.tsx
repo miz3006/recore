@@ -37,6 +37,14 @@ import { alpha, color, moderateScale, radius } from '@/lib/theme';
  * selecting a day) animates just like a backdrop tap. Gestures inside a RN Modal
  * live in a detached native hierarchy, so a `GestureHandlerRootView` is nested
  * here rather than relying on the app-root one.
+ *
+ * `onClosed` is for the ONE case a sheet hands off to another sheet (You's
+ * record calendar → the session sheet, §16.4). Two sheets are two RN `Modal`s,
+ * and **UIKit refuses to present a second modal while the first is still on
+ * screen** — it does not throw, it simply never appears, which is the worst
+ * shape a bug can take. `onClose` says "the parent may now flip `visible`";
+ * `onClosed` says "the native modal is gone, it is safe to present another".
+ * Only the second one is a valid moment to open a sheet.
  */
 
 const SCREEN_H = Dimensions.get('window').height;
@@ -53,12 +61,15 @@ const DISMISS_VELOCITY = 900;
 export function BottomSheet({
   visible,
   onClose,
+  onClosed,
   children,
   sheetStyle,
   scrimOpacity = 0.3,
 }: {
   visible: boolean;
   onClose: () => void;
+  /** The native modal has actually gone. The only safe moment to open another. */
+  onClosed?: () => void;
   children: ReactNode;
   /** Parent-owned surface: background, horizontal padding, bottom inset, maxHeight. */
   sheetStyle?: StyleProp<ViewStyle>;
@@ -76,6 +87,11 @@ export function BottomSheet({
     openedRef.current = false;
     setMounted(false);
     if (notify) onClose();
+    // Unmounting the Modal only ASKS iOS to dismiss; the presentation slot is
+    // free one dismissal-completion later, and that is what `onDismiss` below
+    // reports. Android has neither the callback nor the restriction — a modal
+    // there is a view, not a presented controller — so the unmount is it.
+    if (Platform.OS !== 'ios') onClosed?.();
   };
 
   const animateOut = (notify: boolean) => {
@@ -141,7 +157,12 @@ export function BottomSheet({
   const sheetAnimStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
 
   return (
-    <Modal visible={mounted} transparent animationType="none" onRequestClose={() => animateOut(true)}>
+    <Modal
+      visible={mounted}
+      transparent
+      animationType="none"
+      onDismiss={Platform.OS === 'ios' ? onClosed : undefined}
+      onRequestClose={() => animateOut(true)}>
       <GestureHandlerRootView style={styles.root}>
         <Animated.View
           style={[styles.scrim, { backgroundColor: alpha(color.accent, scrimOpacity) }, scrimStyle]}

@@ -1,14 +1,36 @@
 import { getMeta, setMeta } from '@/lib/db/index';
+import { markObStepReached } from '@/lib/funnel';
+import {
+  isExperience,
+  isGoal,
+  isSessionFeel,
+  isTrainingStyle,
+  normalizeDayMask,
+  type Experience,
+  type Goal,
+  type SessionFeel,
+  type TrainingStyle,
+} from '@/lib/onboarding';
 import type { ScheduleMode } from '@/lib/plan/resolve';
 
 /**
- * User preferences from onboarding (CLAUDE.md §10), stored in the local meta
- * KV — scoped per account on this device (ensureLocalUser wipes meta on user
- * switch). Every answer must DO something real in the product: the goal
- * tailors copy, the log source picks the pitch, the smallest plate feeds
- * roundToPlate so a suggestion always lands on loads the gym can rack.
+ * User preferences from onboarding (product-direction §5), stored in the local
+ * meta KV — scoped per account on this device (ensureLocalUser wipes meta on
+ * user switch). Every answer must DO something real in the product: the goal
+ * tailors copy and the engine's fallback range, the training style decides
+ * which examples lead, the smallest plate feeds roundToPlate so a suggestion
+ * always lands on loads the gym can rack.
+ *
+ * EVERY KEY HERE IS `pref_*` ON PURPOSE. `export-json.ts` carries every
+ * `pref_%` row and `account/delete.ts` drops the whole `meta` table, so an
+ * answer added here is covered by §12's export and deletion guarantees for
+ * free — including the optional body context, which §12 names as personal data
+ * deserving exactly the same treatment as a workout.
+ *
+ * The ANSWER MODEL lives in `lib/onboarding.ts`, which is pure and tested. This
+ * file is storage only: it validates on the way out and never decides meaning.
  */
-export type Goal = 'strength' | 'muscle' | 'both';
+export type { Experience, Goal, SessionFeel, TrainingStyle };
 export type LogSource = 'none' | 'paper' | 'app';
 /** OB_03 — where the user's training history lives today. */
 export type ObTracker = 'strong' | 'hevy' | 'notes' | 'none';
@@ -35,6 +57,18 @@ const KEYS = {
   scheduleMode: 'pref_schedule_mode',
   finishedOnce: 'pref_finished_once',
   ghostHintSeen: 'pref_ghost_hint_seen',
+  primaryLift: 'pref_primary_lift',
+  liftsPinned: 'pref_lifts_pinned_done',
+  coachRingDone: 'pref_coach_ring_done',
+  tourDone: 'pref_tour_done',
+  // --- §5's new answers (step 2) ---
+  experience: 'pref_experience',
+  trainingStyle: 'pref_training_style',
+  sessionFeel: 'pref_session_feel',
+  usualDays: 'pref_usual_days',
+  bodyWeightKg: 'pref_body_weight_kg',
+  bodyHeightCm: 'pref_body_height_cm',
+  importOffered: 'pref_import_offered',
 } as const;
 
 export function isOnboardingDone(): boolean {
@@ -62,7 +96,92 @@ export function setGoal(goal: Goal) {
 
 export function getGoal(): Goal | null {
   const v = getMeta(KEYS.goal);
-  return v === 'strength' || v === 'muscle' || v === 'both' ? v : null;
+  return isGoal(v) ? v : null;
+}
+
+// --- §5's new answers. Each one changes something, named in its own comment. ---
+
+/** Screen 4 — changes how much a surface explains itself, never a number. */
+export function setExperience(value: Experience) {
+  setMeta(KEYS.experience, value);
+}
+
+export function getExperience(): Experience | null {
+  const v = getMeta(KEYS.experience);
+  return isExperience(v) ? v : null;
+}
+
+/** Screen 5 — the branch key for §5.1: gym content, sport language, or both. */
+export function setTrainingStyle(value: TrainingStyle) {
+  setMeta(KEYS.trainingStyle, value);
+}
+
+export function getTrainingStyle(): TrainingStyle | null {
+  const v = getMeta(KEYS.trainingStyle);
+  return isTrainingStyle(v) ? v : null;
+}
+
+/** Screen 10 — composer examples and vocabulary. Never a programme. */
+export function setSessionFeel(value: SessionFeel) {
+  setMeta(KEYS.sessionFeel, value);
+}
+
+export function getSessionFeel(): SessionFeel | null {
+  const v = getMeta(KEYS.sessionFeel);
+  return isSessionFeel(v) ? v : null;
+}
+
+/**
+ * Screen 8 — the usual training days, as a Monday-first 7-bit mask.
+ *
+ * An EXPECTATION, never a target (§11). Nothing counts a miss against it, and
+ * nothing may: "never turn a rest or missed day into a broken streak, warning,
+ * or guilt message."
+ */
+export function setUsualDays(mask: number) {
+  setMeta(KEYS.usualDays, String(normalizeDayMask(mask)));
+}
+
+export function getUsualDays(): number {
+  return normalizeDayMask(getMeta(KEYS.usualDays));
+}
+
+/**
+ * Screen 7 — optional body context, stored metric like every other load.
+ *
+ * Passing null CLEARS it, which is what makes the field genuinely optional:
+ * someone who filled it in during onboarding can empty it again from You and
+ * nothing else in the app changes (§5.1).
+ */
+export function setBodyWeightKg(kg: number | null) {
+  setMeta(KEYS.bodyWeightKg, kg == null ? null : String(kg));
+}
+
+export function getBodyWeightKg(): number | null {
+  const n = Number.parseFloat(getMeta(KEYS.bodyWeightKg) ?? '');
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function setBodyHeightCm(cm: number | null) {
+  setMeta(KEYS.bodyHeightCm, cm == null ? null : String(cm));
+}
+
+export function getBodyHeightCm(): number | null {
+  const n = Number.parseFloat(getMeta(KEYS.bodyHeightCm) ?? '');
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Has the post-trial import fast path been put in front of this person yet?
+ * One-shot: §2.1 says skipping is one tap and never punished, which means
+ * never asked twice either.
+ */
+export function markImportOffered() {
+  setMeta(KEYS.importOffered, '1');
+}
+
+export function hasImportBeenOffered(): boolean {
+  return getMeta(KEYS.importOffered) === '1';
 }
 
 export function setLogSource(source: LogSource) {
@@ -106,6 +225,9 @@ export function getRestSeconds(): number {
 /** Last onboarding step reached (0-based). Relaunch resumes here. */
 export function setObStep(step: number) {
   setMeta(KEYS.obStep, String(step));
+  // The high-water mark, recorded here rather than at the call sites so no
+  // future step can forget it (§2.1, PLAN D4 / E7).
+  markObStepReached(step);
 }
 
 export function getObStep(): number | null {
@@ -150,6 +272,45 @@ export function getFirstAction(): FirstAction | null {
   return v === 'import' || v === 'write' ? v : null;
 }
 
+// --- Block E ------------------------------------------------------------------
+
+/**
+ * The lift the athlete says they care about most (block E, step 8).
+ *
+ * Stored as the words they typed, never as an exercise id: onboarding runs
+ * before there is an account, so the local `exercises` table is empty and there
+ * is nothing to resolve against yet. It is resolved read-only, through the real
+ * `findExerciseByName`, at the two places it is used — and if it does not
+ * resolve, the app says nothing and moves on (§1.1 invariant 6). **Naming a
+ * movement never creates an exercise row**, here or in `/plan-day`.
+ */
+export function setPrimaryLift(name: string) {
+  setMeta(KEYS.primaryLift, name.trim().slice(0, 60));
+}
+
+export function getPrimaryLift(): string | null {
+  const v = getMeta(KEYS.primaryLift)?.trim();
+  return v ? v : null;
+}
+
+/**
+ * The primary lift sorts first in Lifts ON THE FIRST OPEN, and only then —
+ * after that, recency is the truth and pinning would be the app overruling the
+ * record. This is the one-shot flag that retires it.
+ */
+export function hasPinnedPrimaryLift(): boolean {
+  return getMeta(KEYS.liftsPinned) === '1';
+}
+
+export function markPrimaryLiftPinned() {
+  setMeta(KEYS.liftsPinned, '1');
+}
+
+// The install-source question was DELETED on 29 July 2026 (owner's ruling).
+// Its own comment admitted it was "the one question in the flow that changes
+// nothing the user will see", which is exactly the criterion §5 uses to remove
+// a screen. Attribution is not worth a screen of a stranger's attention.
+
 // --- Weekly split (pre-plan) — the schedule model. Default ROTATION ("do the
 // --- next one when you train"); WEEKDAY pins days to the calendar (opt-in).
 export function setScheduleMode(mode: ScheduleMode) {
@@ -192,4 +353,26 @@ export function markGhostHintSeen() {
 
 export function hasSeenGhostHint(): boolean {
   return getMeta(KEYS.ghostHintSeen) === '1';
+}
+
+/** Set the first time the user works a settled card — toggles its ring or
+ * long-presses into its history. Retires the first-session hint under the
+ * ledger AND fills step two of the FIRST SESSION card, so the two surfaces
+ * can never disagree. Earned by the real action, never by being shown. */
+export function markCoachRingDone() {
+  setMeta(KEYS.coachRingDone, '1');
+}
+
+export function hasCoachRingDone(): boolean {
+  return getMeta(KEYS.coachRingDone) === '1';
+}
+
+/** Set when the first-open spotlight tour is finished OR skipped — either way
+ * it was offered once and never returns (owner, 29 Jul). */
+export function markTourDone() {
+  setMeta(KEYS.tourDone, '1');
+}
+
+export function isTourDone(): boolean {
+  return getMeta(KEYS.tourDone) === '1';
 }

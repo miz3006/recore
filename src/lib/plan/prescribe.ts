@@ -6,6 +6,7 @@ import {
   progressStrength,
   type Prescription,
   type PriorTop,
+  type Reason,
   type WorkingSet,
 } from '../predict/engine.ts';
 
@@ -23,6 +24,47 @@ export interface PlanRow {
   /** The progressed prescription, e.g. "82.5 × 5·5·5", or null when there is no
    * history to progress from — never extrapolate from nothing (CLAUDE.md §7.3). */
   value: string | null;
+  /** The engine's own reason, as a short lowercase fragment — "you filled every
+   * set of 5 at 80". Null when there is nothing worth saying. Read by the Next
+   * briefing; the strip on Today ignores it and stays a bare reference. */
+  why?: string | null;
+  /** The prescribed load as a NUMBER, for callers that compare rather than
+   * display (Next's heaviest-ever check). Present only on the strength path —
+   * parsing it back out of `value` would re-introduce the display-collapse
+   * class of bug (§7.7). */
+  weightKg?: number | null;
+}
+
+/**
+ * The engine's reason as ONE short fragment, for a row in the Next briefing.
+ *
+ * Pure, and deliberately a FRAGMENT rather than a sentence: it sits under a
+ * prescription that already carries the numbers, so it only has to supply the
+ * because. `predict/data.ts` has a sibling of this (`sentenceFor`) that writes
+ * the one full sentence for the ghost — same facts, different length, and both
+ * are templates over `Reason`, never generated text.
+ *
+ * `hold` and `repeat` return null. §8.3's rule holds here: no reason, no line.
+ * Saying "same weight again" over and over is how an app teaches people to stop
+ * reading it.
+ */
+export function whyFor(reason: Reason): string | null {
+  switch (reason.code) {
+    case 'top_of_range':
+      return `you filled every set of ${reason.top} at ${fmt(reason.weight)}`;
+    case 'rir_surplus':
+      return `${fmt(reason.minRir)} left in reserve at ${fmt(reason.weight)}`;
+    case 'deload':
+      return `two sessions stuck at ${fmt(reason.from)}`;
+    case 'add_rep':
+      return reason.minRir != null && reason.weight > 0
+        ? `nothing much left at ${fmt(reason.weight)} last time`
+        : null;
+    case 'hold':
+      return `short of ${reason.bottom} reps last time`;
+    default:
+      return null;
+  }
 }
 
 export interface PlanRowInput {
@@ -57,7 +99,15 @@ function strengthValue(p: Prescription): string {
   return p.weightKg != null ? `${fmt(p.weightKg)} × ${scheme}` : scheme;
 }
 
-export function buildPlanRow(input: PlanRowInput, smallestPlateKg: number | null): PlanRow {
+export function buildPlanRow(
+  input: PlanRowInput,
+  smallestPlateKg: number | null,
+  /** The focus fallback (PLAN E1). Passed in for the same reason the plate is:
+   * this module is pure and tested outside React Native, so it reads no prefs.
+   * The strip and the ghost must be given the SAME value or the two surfaces
+   * would prescribe different reps for one exercise. */
+  defaultRepRange?: [number, number],
+): PlanRow {
   const { name, modality, todaySets, priorTops, incrementKg } = input;
   if (!todaySets || todaySets.length === 0) return { name, value: null };
 
@@ -70,12 +120,13 @@ export function buildPlanRow(input: PlanRowInput, smallestPlateKg: number | null
       priorTops,
       incrementKg,
       smallestPlateKg: smallestPlateKg ?? undefined,
+      defaultRepRange,
     });
-    return { name, value: strengthValue(p) };
+    return { name, value: strengthValue(p), why: whyFor(p.reason), weightKg: p.weightKg ?? null };
   }
   if (hasReps) {
     const p = progressBodyweight(todaySets);
-    return { name, value: `${p.sets}×${p.reps}` };
+    return { name, value: `${p.sets}×${p.reps}`, why: whyFor(p.reason) };
   }
   // Cardio / carries / holds: repeat the last prescription as-is.
   if (input.lastDistanceM != null) return { name, value: distanceValue(input.lastDistanceM) };

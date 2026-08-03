@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, useReducedMotion, ZoomIn } from 'react-native-reanimated';
 
-import { getAdherenceRecord } from '@/lib/db/insights';
+import { getAdherenceRecord, predictorIsProven } from '@/lib/db/insights';
 import { tap, tapMedium } from '@/lib/haptics';
 import { matchPlanIndex, nameKey, typedNameOf } from '@/lib/parse/receipt';
 import { plateLine } from '@/lib/plates';
@@ -28,8 +28,10 @@ import { MonoTag, repScheme } from './gutter-value';
  * majority followed) stay quiet mono — evidence, not promises.
  */
 const WEIGHT_TOKEN = /(\d+(?:\.\d+)?\s*kg)/i;
-const TRUST_MIN_SETTLED = 3;
 const CHECK_SIZE = moderateScale(24);
+
+/** How far a pressed row's highlight bleeds past its content (see `row`). */
+const PRESS_BLEED = spacing.sm;
 
 /** "bench press 3×5  82.5 kg" split into name / prescription value. */
 const PLAN_LINE_RE = /^(.+?)\s+(\d+)×(\d+)(?:\s+(\d+(?:\.\d+)?)\s*kg)?\s*$/;
@@ -77,8 +79,9 @@ export function GhostPrediction({
   const trust = useMemo(() => {
     if (!userId) return null;
     const record = getAdherenceRecord(userId);
-    if (record.settled < TRUST_MIN_SETTLED) return null;
-    if (record.followed * 2 < record.settled) return null; // don't sell against ourselves
+    // Enough settled ghosts to be evidence, and a majority followed — the rule
+    // lives in insights.ts so the review gate reads the same reputation.
+    if (!predictorIsProven(record)) return null;
     return `followed ${record.followed} of the last ${record.settled}`;
   }, [userId]);
 
@@ -173,51 +176,57 @@ export function GhostPrediction({
         const { name, value } = planParts(line);
         const plates = platesLine === i && !done ? platesFor(line) : null;
         return (
-          <Pressable
-            key={i}
-            disabled={done}
-            onPress={() => handleCheck(line)}
-            onLongPress={() => handlePlates(i)}
-            style={({ pressed }) => [styles.row, pressed && !done && styles.rowPressed]}>
-            <View style={styles.rowBody}>
-              <View style={styles.rowLine}>
-                <Text
-                  style={[styles.rowName, done && styles.rowDone]}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {capitalize(name)}
-                </Text>
-                {value ? (
+          // The rule between plan rows is a SIBLING, not a border on the row: a
+          // bordered row cannot take a corner radius without the hairline
+          // curving with it, and without a radius the pressed fill is a hard
+          // grey rectangle sitting inside the card.
+          <Fragment key={i}>
+            <View style={styles.rowSep} />
+            <Pressable
+              disabled={done}
+              onPress={() => handleCheck(line)}
+              onLongPress={() => handlePlates(i)}
+              style={({ pressed }) => [styles.row, pressed && !done && styles.rowPressed]}>
+              <View style={styles.rowBody}>
+                <View style={styles.rowLine}>
                   <Text
-                    style={[styles.rowValue, done && styles.rowValueDone]}
+                    style={[styles.rowName, done && styles.rowDone]}
                     numberOfLines={1}
                     maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {value}
+                    {capitalize(name)}
                   </Text>
+                  {value ? (
+                    <Text
+                      style={[styles.rowValue, done && styles.rowValueDone]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                      {value}
+                    </Text>
+                  ) : null}
+                </View>
+                {plates ? (
+                  <Animated.Text
+                    entering={reduceMotion ? undefined : FadeIn.duration(200)}
+                    style={styles.plates}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    {plates}
+                  </Animated.Text>
                 ) : null}
               </View>
-              {plates ? (
-                <Animated.Text
-                  entering={reduceMotion ? undefined : FadeIn.duration(200)}
-                  style={styles.plates}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {plates}
-                </Animated.Text>
-              ) : null}
-            </View>
-            {done ? (
-              <Animated.View
-                entering={reduceMotion ? undefined : ZoomIn.duration(220)}
-                style={[styles.check, styles.checkDone]}>
-                <Text style={styles.checkMark} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  ✓
-                </Text>
-              </Animated.View>
-            ) : (
-              <View style={styles.check} />
-            )}
-          </Pressable>
+              {done ? (
+                <Animated.View
+                  entering={reduceMotion ? undefined : ZoomIn.duration(220)}
+                  style={[styles.check, styles.checkDone]}>
+                  <Text style={styles.checkMark} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    ✓
+                  </Text>
+                </Animated.View>
+              ) : (
+                <View style={styles.check} />
+              )}
+            </Pressable>
+          </Fragment>
         );
       })}
 
@@ -297,8 +306,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     paddingVertical: spacing.sm + 1,
-    borderTopWidth: 1,
-    borderTopColor: color.divider,
+    // Rounded, and bleeding a little past the text, so checking a line lights
+    // the row up instead of dropping a hard-cornered grey slab under it.
+    marginHorizontal: -PRESS_BLEED,
+    paddingHorizontal: PRESS_BLEED,
+    borderRadius: radius.sm,
+  },
+  rowSep: {
+    height: 1,
+    backgroundColor: color.divider,
   },
   rowPressed: {
     backgroundColor: color.surfaceHigh,

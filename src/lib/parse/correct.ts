@@ -5,6 +5,7 @@ import {
   removeAliasFromUserExercises,
 } from '@/lib/db/exercises';
 import { setAliasOverride } from '@/lib/db/alias-overrides';
+import { bumpCorrections } from '@/lib/funnel';
 import { recachePrediction } from '@/lib/predict/cache';
 
 import { applyParseResult, getParseCache } from './apply';
@@ -96,6 +97,8 @@ export function applyCorrection(
 
   // 1. The training-data row — also what the overlay re-applies on re-parse.
   insertCorrection(userId, target.workoutId, target.lineText, before, after);
+  // The repair rate's numerator (§2.1, PLAN D4) — local counter, no SDK.
+  bumpCorrections();
 
   // 2. Alias learning: the typed shorthand now ALWAYS means the corrected
   //    exercise — as an override, so it works for global rows too, and the

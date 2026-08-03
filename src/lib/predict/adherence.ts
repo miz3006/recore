@@ -4,6 +4,7 @@ import {
   setPredictionOutcome,
   type PredictionOutcome,
 } from '@/lib/db/predictions';
+import { bumpAdherenceFollowed, bumpAdherenceShown } from '@/lib/funnel';
 
 /**
  * Adherence settlement (CLAUDE.md §7.2 Gap 3, §3): after today's session is
@@ -49,8 +50,14 @@ export function settlePredictionOutcome(
   const prediction = getPredictionForOpen(userId, today);
   if (!prediction) return;
 
-  setPredictionOutcome(
-    prediction.id,
-    outcomeOf(rawText, prediction.ghost_text, prediction.accepted_at !== null),
-  );
+  const outcome = outcomeOf(rawText, prediction.ghost_text, prediction.accepted_at !== null);
+  setPredictionOutcome(prediction.id, outcome);
+
+  // "Adherence shown vs followed" (§2.1, PLAN D4). Counted only the FIRST time
+  // this prediction settles — it re-settles on every parse of the day, and a
+  // re-settle is the same offer being re-read, not a second one.
+  if (prediction.outcome === null) {
+    bumpAdherenceShown();
+    if (outcome === 'followed') bumpAdherenceFollowed();
+  }
 }

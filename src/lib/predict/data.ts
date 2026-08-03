@@ -1,8 +1,10 @@
 import { getDb } from '@/lib/db/index';
 import { getWorkoutById } from '@/lib/db/workouts';
-import { getSmallestPlateKg } from '@/lib/prefs';
+import { focusForGoal } from '@/lib/onboarding';
+import { getGoal, getSmallestPlateKg } from '@/lib/prefs';
 
 import {
+  defaultRepRangeFor,
   progressBodyweight,
   progressStrength,
   type Prescription,
@@ -96,6 +98,17 @@ export function computeNextSession(userId: string, workoutId: string): Predictio
         incrementKg: item.increment_kg ?? 2.5,
         // The gym profile from onboarding: suggestions land on rackable loads.
         smallestPlateKg: getSmallestPlateKg() ?? undefined,
+        // The training focus from onboarding, as an engine DEFAULT. It only
+        // decides the range when this exercise has no reps to infer one from;
+        // performance always outranks a stated preference.
+        //
+        // `Goal` has FIVE values since 29 July (§5 screen 3) and the engine's
+        // `Focus` still has three, so `focusForGoal` is the one bridge between
+        // them (owner's ruling: a rep range for "general fitness" would be a
+        // number nobody has evidence for, and CLAUDE.md §2 rule 3 says code
+        // owns numbers). The mapping is total and unit-tested, so a new goal
+        // added without a focus fails a test rather than silently prescribing.
+        defaultRepRange: defaultRepRangeFor(focusForGoal(getGoal())),
       });
       lines.push(strengthLine(name, prescription));
       reasons.push({ canonical: item.canonical, prescription });

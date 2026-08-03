@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 
 import { groupThousands } from '@/lib/parse/estimate';
 import { alpha, color, ink, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
@@ -178,6 +178,118 @@ export function Sparkline({
       <Path d={d} stroke={alpha(color.accent, 0.45)} strokeWidth={1.5} fill="none" />
       <Circle cx={lastX} cy={lastY} r={3} fill={color.accent} />
     </Svg>
+  );
+}
+
+export interface StepPoint {
+  day: string;
+  value: number;
+}
+
+/**
+ * The step path itself — ONE definition, shared by the Progress tab's
+ * `StepChart` and the lift sheet's `ProgressionChart`. Two expressions of "how
+ * does a weight get from one session to the next" is exactly the divergence
+ * §7.7 keeps diagnosing, and the answer is not a matter of taste: the line runs
+ * horizontally at the old value until the session that changed it, then
+ * vertically. A diagonal would draw loads nobody lifted.
+ */
+export function stepPathD(
+  values: number[],
+  xOf: (i: number) => number,
+  yOf: (v: number) => number,
+): string {
+  if (values.length === 0) return '';
+  let d = `M ${xOf(0).toFixed(1)} ${yOf(values[0]!).toFixed(1)}`;
+  for (let i = 1; i < values.length; i++) {
+    d += ` L ${xOf(i).toFixed(1)} ${yOf(values[i - 1]!).toFixed(1)}`;
+    d += ` L ${xOf(i).toFixed(1)} ${yOf(values[i]!).toFixed(1)}`;
+  }
+  return d;
+}
+
+/**
+ * The progression chart on the Progress tab: a STEP line, not a curve.
+ *
+ * Strength moves in steps — a weight holds for however many sessions it holds,
+ * then jumps. A smooth line between two sessions invents the values in between,
+ * which is exactly the kind of quiet fiction the record contract exists to
+ * prevent. So the path runs horizontally at the old value until the session
+ * that changed it, then vertically.
+ *
+ * `best` is the all-time reference, drawn as ONE unlabeled neutral hairline and
+ * folded into the domain so it can never clip — the same treatment
+ * `ProgressionChart` gives it in the exercise sheet, and for the same reason:
+ * the outlined mono label owns the word "PR", a line does not get to say it.
+ * Never green (§5.1 — a record is not a prescription).
+ *
+ * `showPrevious` marks the second-to-last session with a hollow dot, so an
+ * opened card shows where the latest step came from.
+ */
+export function StepChart({
+  points,
+  best,
+  height = moderateScale(58),
+  showPrevious = false,
+}: {
+  points: StepPoint[];
+  best?: number | null;
+  height?: number;
+  showPrevious?: boolean;
+}) {
+  const [w, setW] = useState(0);
+  if (points.length < 2) return null;
+
+  const padX = moderateScale(4);
+  const padY = moderateScale(6);
+  const values = points.map((p) => p.value);
+  const domain = best != null ? [...values, best] : values;
+  const min = Math.min(...domain);
+  const max = Math.max(...domain);
+  const span = max - min;
+  const plotW = Math.max(1, w - padX * 2);
+  const plotH = Math.max(1, height - padY * 2);
+  const yOf = (v: number) => padY + (1 - (span > 0 ? (v - min) / span : 0.5)) * plotH;
+  const xOf = (i: number) => padX + (i / (points.length - 1)) * plotW;
+
+  // Step-after: hold the value, then jump. The horizontal run IS the record of
+  // "this weight stayed put for these sessions".
+  const d = stepPathD(values, xOf, yOf);
+
+  const lastX = xOf(points.length - 1);
+  const lastY = yOf(values[values.length - 1]!);
+  const prevIndex = points.length - 2;
+
+  return (
+    <View onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ height }}>
+      {w > 0 ? (
+        <Svg width={w} height={height}>
+          {best != null ? (
+            <Line
+              x1={padX}
+              y1={yOf(best)}
+              x2={w - padX}
+              y2={yOf(best)}
+              stroke={color.border}
+              strokeWidth={1}
+              strokeDasharray="3 4"
+            />
+          ) : null}
+          <Path d={d} fill="none" stroke={color.accent} strokeWidth={1.6} strokeLinejoin="miter" />
+          {showPrevious && prevIndex >= 0 ? (
+            <Circle
+              cx={xOf(prevIndex)}
+              cy={yOf(values[prevIndex]!)}
+              r={moderateScale(2.5)}
+              fill={color.bg}
+              stroke={color.accent}
+              strokeWidth={1.4}
+            />
+          ) : null}
+          <Circle cx={lastX} cy={lastY} r={moderateScale(3)} fill={color.accent} />
+        </Svg>
+      ) : null}
+    </View>
   );
 }
 

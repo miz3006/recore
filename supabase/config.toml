@@ -7,3 +7,13 @@ verify_jwt = true
 
 [functions.explain-prediction]
 verify_jwt = true
+
+[functions.explain-brief]
+verify_jwt = true
+
+# delete-account deletes the caller's auth.users row with the service-role key,
+# so the platform-level JWT check matters even more here than it does for the
+# parser: the id that gets deleted comes from the verified token and nowhere
+# else (PLAN D1).
+[functions.delete-account]
+verify_jwt = true

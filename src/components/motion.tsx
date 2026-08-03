@@ -130,6 +130,86 @@ export function FadeSlideIn({
   return <Animated.View style={[animatedStyle, style]}>{children}</Animated.View>;
 }
 
+/**
+ * The same reveal, on the X axis and with a direction — a step in a flow
+ * arriving from the side it came from.
+ *
+ * It exists because a wizard that always slides in from the same side tells the
+ * user nothing: going back looks exactly like going forward, so the motion is
+ * decoration. Forward enters from the right, Back enters from the left, and the
+ * screen suddenly reports where you are in the flow without a word of copy.
+ *
+ * Mount-only, so the caller keys it on the step. `distance` stays small — this
+ * is a shift, not a carousel; the neighbouring screen is not rendered and
+ * pretending otherwise would show empty paper.
+ */
+export function FadeSlideX({
+  children,
+  direction = 1,
+  distance = 22,
+  duration = DUR.base,
+  style,
+}: {
+  children: React.ReactNode;
+  /** 1 = arriving from the right (forward), -1 = from the left (back). */
+  direction?: 1 | -1;
+  distance?: number;
+  duration?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const reduce = useReducedMotion();
+  const p = useSharedValue(reduce ? 1 : 0);
+
+  useEffect(() => {
+    if (reduce) return;
+    p.value = withTiming(1, { duration, easing: EASE.emphasized });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: p.value,
+    transform: [{ translateX: (1 - p.value) * distance * direction }],
+  }));
+
+  return <Animated.View style={[animatedStyle, style]}>{children}</Animated.View>;
+}
+
+/**
+ * A gentle fade-through when content is replaced IN PLACE — the brief's
+ * composed paragraph upgrading to the model's phrasing when the rewrite lands.
+ * The new content dips to a third and rises over ~380 ms: one visible "the
+ * page just rewrote itself", which product-direction §4.3 allows as "a value
+ * updating once". Not a typewriter and not a shimmer — both would perform
+ * generation instead of showing a result, and fake loading is banned. First
+ * mount never animates (FadeSlideIn owns arrival), and under Reduce Motion the
+ * swap is instant.
+ */
+export function FadeSwap({
+  swapKey,
+  children,
+  style,
+}: {
+  /** Animates only when this changes between renders. */
+  swapKey: string;
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const reduce = useReducedMotion();
+  const opacity = useSharedValue(1);
+  const prev = useRef(swapKey);
+
+  useEffect(() => {
+    if (prev.current === swapKey) return;
+    prev.current = swapKey;
+    if (reduce) return;
+    opacity.value = 0.3;
+    opacity.value = withTiming(1, { duration: DUR.slow, easing: EASE.standard });
+  }, [swapKey, reduce, opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return <Animated.View style={[animatedStyle, style]}>{children}</Animated.View>;
+}
+
 /** Reveal each child in sequence — the same cadence as the rest of the app. */
 export function Stagger({
   children,

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "recore",
+    "name": "Recore",
     "slug": "recore",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,14 +8,13 @@
     "scheme": "recore",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.recore.app",
       "usesAppleSignIn": true
     },
     "android": {
       "package": "com.recore.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#F4F5EF",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -39,6 +38,7 @@
       "expo-sqlite",
       "expo-secure-store",
       "expo-apple-authentication",
+      "expo-notifications",
       [
         "expo-speech-recognition",
         {

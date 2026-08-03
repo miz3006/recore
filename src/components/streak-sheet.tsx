@@ -2,9 +2,10 @@ import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { shiftDayKey, todayKey, type DayKey } from '@/lib/db/dates';
+import { shiftDayKey, todayKey } from '@/lib/db/dates';
 import { mondayOf } from '@/lib/db/stats';
 import { getLoggedDayKeys } from '@/lib/db/workouts';
+import { longestStreak } from '@/lib/streak';
 import { color, fonts, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
@@ -15,27 +16,17 @@ import { Eyebrow } from './primitives';
 /**
  * StreakSheet (UX roadmap X2) — the bare streak number in the top bar was an
  * untappable figure; tapping it now opens a quiet consistency read: the current
- * day-streak, the best you've held, and this week's logged days as ink dots.
- * Consistency is the quietest motivator — surfaced with no flame, no badge, no
- * green, no "don't break it" guilt. Just the record, said out loud.
+ * run of training days, the best you've held, and this week's logged days as
+ * blue trained marks (§5.1). Consistency is the quietest motivator — surfaced
+ * with no flame, no badge, no green, no "don't break it" guilt. Just the
+ * record, said out loud.
+ *
+ * THE UNIT IS A SESSION, NOT A CALENDAR DAY (CLAUDE.md §16.2, ruled 28 July).
+ * Both numbers here come from `src/lib/streak.ts`, so the sheet and the top bar
+ * can never disagree, and the copy says "training days" because that is what is
+ * being counted — a rest day is not a miss.
  */
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;
-
-/** Longest run of consecutive logged days in the whole history. */
-function longestStreak(days: Set<DayKey>): number {
-  let best = 0;
-  for (const day of days) {
-    if (days.has(shiftDayKey(day, -1))) continue; // not a run start
-    let len = 1;
-    let cur = shiftDayKey(day, 1);
-    while (days.has(cur)) {
-      len += 1;
-      cur = shiftDayKey(cur, 1);
-    }
-    if (len > best) best = len;
-  }
-  return best;
-}
 
 export function StreakSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
@@ -51,10 +42,10 @@ export function StreakSheet({ visible, onClose }: { visible: boolean; onClose: (
       const dk = shiftDayKey(monday, i);
       return { letter, logged: days.has(dk), future: dk > today, today: dk === today };
     });
-    return { best: longestStreak(days), week };
+    return { best: longestStreak([...days]), week };
   }, [userId, visible]);
 
-  const unit = streak === 1 ? 'day' : 'days';
+  const unit = streak === 1 ? 'training day' : 'training days';
 
   return (
     <BottomSheet
@@ -76,15 +67,15 @@ export function StreakSheet({ visible, onClose }: { visible: boolean; onClose: (
           maxFontSizeMultiplier={MAX_FONT_SCALE}
         />
         <Text style={styles.heroUnit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {streak > 0 ? `${unit} in a row` : 'day streak'}
+          {streak > 0 ? `${unit} in a row` : 'training days'}
         </Text>
       </View>
       <Text style={styles.sub} maxFontSizeMultiplier={MAX_FONT_SCALE}>
         {streak > 0
           ? data && data.best > streak
-            ? `Best · ${data.best} days`
+            ? `Best · ${data.best}`
             : 'Your best yet.'
-          : 'Log today to start a streak.'}
+          : 'Write a session to start one.'}
       </Text>
 
       {data ? (
@@ -110,7 +101,8 @@ export function StreakSheet({ visible, onClose }: { visible: boolean; onClose: (
       ) : null}
 
       <Text style={styles.foot} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        A day counts the moment you write a line — rest days are part of training too.
+        A training day counts the moment you write a line. Rest days never break it — more than a
+        week between sessions does.
       </Text>
     </BottomSheet>
   );
@@ -178,7 +170,7 @@ const styles = StyleSheet.create({
     borderRadius: DOT / 2,
   },
   dotLogged: {
-    backgroundColor: color.accent, // ink — a recorded day
+    backgroundColor: color.trained, // blue — a day trained (§5.1)
   },
   dotRest: {
     backgroundColor: color.surfaceHigh, // recessed — a rest day, no judgment

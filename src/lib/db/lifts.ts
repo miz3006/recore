@@ -44,7 +44,13 @@ function parseAliases(json: string): string[] {
   }
 }
 
-export function listLifts(userId: string): LiftRow[] {
+/**
+ * @param pinName The primary lift from onboarding (block E, step 8), pinned to
+ *   the top **on the first open only**. After that recency is the truth and
+ *   pinning would be the app overruling the record. Matched on the canonical
+ *   name and on what the user actually typed for it, so "bp" finds the bench.
+ */
+export function listLifts(userId: string, pinName?: string | null): LiftRow[] {
   const db = getDb();
 
   // Every occurrence, newest first. Rows are one per exercise per session — a
@@ -132,5 +138,15 @@ export function listLifts(userId: string): LiftRow[] {
     }
   }
 
-  return lifts.map(({ lastWorkoutId: _lastWorkoutId, ...row }) => row);
+  const rows = lifts.map(({ lastWorkoutId: _lastWorkoutId, ...row }) => row);
+
+  const needle = pinName?.trim().toLowerCase();
+  if (!needle) return rows;
+  const i = rows.findIndex(
+    (r) => r.key === needle || r.aliases.some((a) => a.trim().toLowerCase() === needle),
+  );
+  // Not trained yet, or already first — nothing to move, and nothing is
+  // invented: a lift the user has never written down does not appear here.
+  if (i <= 0) return rows;
+  return [rows[i]!, ...rows.slice(0, i), ...rows.slice(i + 1)];
 }

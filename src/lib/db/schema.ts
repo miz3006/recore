@@ -6,7 +6,7 @@
  * table, and `parse_cache` (the last parse result + gutter signals per
  * workout, kept so the gutter renders instantly after a cold start).
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS workouts (
   user_id         TEXT NOT NULL,
   performed_at    TEXT NOT NULL,            -- UTC ISO; the DAY this workout belongs to
   raw_text        TEXT NOT NULL,            -- exactly what the user typed
+  reflection      TEXT,                     -- the athlete's own end-of-session note (§8.1)
   parse_version   INTEGER,
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL,
@@ -158,3 +159,22 @@ ALTER TABLE predictions ADD COLUMN outcome TEXT;
 /** v2 → v3: `plan_days` (weekly split) is a brand-new table, so it needs NO
  * ALTER — migrate() runs SCHEMA_SQL for any current < SCHEMA_VERSION and its
  * IF NOT EXISTS creates it on a fresh or upgrading install. */
+
+/**
+ * v3 → v4: the end-of-session reflection (§8.1).
+ *
+ * A COLUMN ON `workouts`, not a table of its own, and the shape is the argument:
+ * a reflection is one per finished session, so it is the workout's own field.
+ * It therefore inherits — with no new machinery and no way to forget one —
+ * the account scoping (`user_id` + the row's RLS policy), the sync path, the
+ * JSON export, and the delete-account wipe. §12 demands "the same account
+ * scoping, export, and deletion guarantees as workout records"; being an actual
+ * workout record is the cheapest way to keep that promise.
+ *
+ * It sits BESIDE `raw_text` rather than inside it. `raw_text` is the source of
+ * truth that the parser reads and re-reads; a reflection is prose about the
+ * session that no parser should ever see (§3, and `lib/reflection.ts`).
+ */
+export const MIGRATION_4_SQL = `
+ALTER TABLE workouts ADD COLUMN reflection TEXT;
+`;

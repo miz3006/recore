@@ -2,21 +2,24 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { StepChart } from '@/components/charts';
 import { Icon } from '@/components/icon';
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
 import { AppButton, Eyebrow } from '@/components/primitives';
-import { SessionSheet } from '@/components/session-sheet';
 import { StubScreen } from '@/components/stub-screen';
-import { shiftDayKey, type DayKey } from '@/lib/db/dates';
-import {
-  getAllTimePRs,
-  getRecentSessions,
-  getSessionExerciseNames,
-} from '@/lib/db/insights';
-import { getStatsSummary } from '@/lib/db/stats';
+import { shiftDayKey, todayKey, type DayKey } from '@/lib/db/dates';
+import { getWorkoutDetail, type WorkoutSet } from '@/lib/db/insights';
+import { getLiftSessions } from '@/lib/db/progression';
 import { tap } from '@/lib/haptics';
 import { groupThousands } from '@/lib/parse/estimate';
 import { fmtNumber } from '@/lib/parse/summarize';
+import {
+  buildProgression,
+  daysBetween,
+  describeDelta,
+  type LiftProgression,
+  type ProgressionMetric,
+} from '@/lib/progression';
 import {
   color,
   fonts,
@@ -31,59 +34,121 @@ import {
 import { labelForDay, useSession } from '@/state/session-store';
 
 /**
- * Progress (CLAUDE.md §5.1 — "Am I actually improving?"), the third tab,
- * reshaped to design frame 07 "History — week in review". A segmented control swaps between HISTORY (a paginated week: the
- * "Volume by day" 7-bar chart + the week's session list, with the offered plan
- * as the last, green PLANNED row) and LIFTS (the all-time record book). Every
- * number still comes from the data layer — this screen just says it out loud in
- * the record-contract voice: recorded work is ink, the ONE planned session is
- * the only green on the screen, and a PR is a neutral outlined label.
+ * Progress (CLAUDE.md §5.1 — "Am I actually improving?"), the third tab.
+ *
+ * The screen used to answer a different question than the one the tab bar asks:
+ * it drew ONE week of volume behind a paginator. Volume is how much work got
+ * done, not whether the lifter got stronger — it falls on a deload, which is
+ * correct training, and the old week-over-week line reported that fall as
+ * "Down 18%", the same scold §5.1 forbids a leading minus from making.
+ *
+ * So this is now **one card per lift**, and progression is measured per lift:
+ *
+ *   range (8W / 6M / 1Y)  →  metric (Est. 1RM / Heaviest / Volume)
+ *   →  one true sentence  →  a card per lift  →  the sets behind the latest point
+ *
+ * A card carries a STEP chart (strength holds, then jumps — a curve would
+ * invent the sessions in between), the latest value, and how far it moved as a
+ * WORD. Tapping one opens the set table of the session that made that last
+ * point: the trend and its evidence on the same surface, which is the pattern
+ * the reference sweep argued for hardest.
+ *
+ * What this screen deliberately does NOT do is say what to lift next. Green
+ * belongs to a prescription and a prescription belongs on Today; Progress is
+ * the archive. Both sheets it opens (`ExerciseSheet`, `SessionSheet`) are
+ * mounted once in `_layout.tsx`, so this file only dispatches.
  */
-const PR_ROWS = 8;
-/** How many recent parsed sessions to hold in memory for week pagination. */
-const SESSION_WINDOW = 200;
-const MIN_BAR_PCT = 8;
+
+/** Ranges, shortest first. The shortest is always offered; a longer one is
+ * dimmed until the record actually reaches back that far — a chart that runs
+ * out of history is a chart that lies about it. */
+const RANGES = [
+  { key: '8W', days: 56, ago: 'eight weeks ago' },
+  { key: '6M', days: 182, ago: 'six months ago' },
+  { key: '1Y', days: 365, ago: 'a year ago' },
+] as const;
+
+const METRICS: { key: ProgressionMetric; label: string }[] = [
+  { key: 'e1rm', label: 'Est. 1RM' },
+  { key: 'weight', label: 'Heaviest' },
+  { key: 'volume', label: 'Volume' },
+];
+
+const CHART_H = moderateScale(58);
+const CHART_H_OPEN = moderateScale(88);
+/** Beyond this the rep cap makes an Epley estimate dishonest (matches the
+ * parser-side rule in `getE1rmSeries`). */
+const E1RM_REP_CAP = 12;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-/** "Jul 13" from a DayKey — the week paginator's endpoint labels. */
+/**
+ * How far a pressed row's highlight bleeds past its content, toward the card's
+ * edge — and it is rounded (`radius.sm`) on the way out. A fill drawn on the
+ * row's own box is a hard-cornered grey rectangle floating inside the card's
+ * padding, which reads as a mis-drawn box rather than as the row lighting up.
+ * Content never moves: the margin is paid back as padding.
+ */
+const PRESS_BLEED = spacing.sm;
+
+/** "Jul 13" from a DayKey — a chart endpoint, never a full date. */
 function monthDay(day: DayKey): string {
   const [, m, d] = day.split('-').map(Number);
   return `${MONTHS[(m ?? 1) - 1]} ${d}`;
 }
 
-/** A session's title, derived from its logged exercises (no session names in
- * the data) — "Bench Press, Squat +2". Falls back to a neutral word. */
-function sessionTitle(workoutId: string, exercises: number): string {
-  const names = getSessionExerciseNames(workoutId, 2);
-  if (names.length === 0) return 'Session';
-  const extra = exercises - names.length;
-  return extra > 0 ? `${names.join(', ')} +${extra}` : names.join(', ');
+/** Volume runs to five figures and wants thousands grouping; a load wants its
+ * half-kilo. Both are kilograms, so the unit never changes. */
+function formatValue(v: number, metric: ProgressionMetric): string {
+  return metric === 'volume' ? groupThousands(Math.round(v)) : fmtNumber(v);
 }
 
-type BarKind = 'recorded' | 'rest';
-interface DayBar {
-  letter: string;
-  kind: BarKind;
-  pct: number;
-}
-interface WeekSession {
-  workoutId: string;
-  day: DayKey;
-  sets: number;
-  volume: number;
-  title: string;
-  isPr: boolean;
+/**
+ * The one sentence at the top. Specific, backward-looking, and never a claim
+ * about Recore or about the person (§15) — it counts lifts and says the number.
+ */
+function verdictLine(
+  improved: number,
+  counted: number,
+  metric: ProgressionMetric,
+  ago: string,
+): string {
+  const subject = counted === 1 ? 'lift is' : 'lifts are';
+  const moved = metric === 'volume' ? 'moving more weight' : 'heavier';
+  const head = improved === 0 ? `None of ${counted}` : `${improved} of ${counted}`;
+  return `${head} ${subject} ${moved} than ${ago}.`;
 }
 
-export default function Stats() {
+/** "26 sessions · longest gap 6 days" — decision 04: the whole week ledger,
+ * compressed into the one line that carries what it was for. */
+function spreadLine(sessions: number, gap: number | null): string {
+  const head = `${sessions} ${sessions === 1 ? 'session' : 'sessions'}`;
+  if (gap == null) return head;
+  return `${head} · longest gap ${gap} ${gap === 1 ? 'day' : 'days'}`;
+}
+
+function setText(s: WorkoutSet): string {
+  if (s.weightKg != null && s.reps != null) return `${fmtNumber(s.weightKg)} kg × ${s.reps}`;
+  if (s.weightKg != null) return `${fmtNumber(s.weightKg)} kg`;
+  if (s.reps != null) return `${s.reps} reps`;
+  return '—';
+}
+
+/** The estimate beside a set, when the set can honestly carry one. */
+function setEstimate(s: WorkoutSet): string {
+  if (s.weightKg == null || s.reps == null || s.reps > E1RM_REP_CAP) return '';
+  const e1rm = Math.round((s.weightKg * (1 + s.reps / 30)) / 0.5) * 0.5;
+  return `e1RM ${fmtNumber(e1rm)}`;
+}
+
+export default function Progress() {
   const router = useRouter();
   const userId = useSession((s) => s.userId);
+  const openExerciseSheet = useSession((s) => s.openExerciseSheet);
   const openSessionSheet = useSession((s) => s.openSessionSheet);
 
-  // Cheap synchronous SQLite reads — re-run on every focus so a round trip
-  // through /settings (CSV import) or a fresh parse lands here immediately.
+  // Cheap synchronous SQLite reads — re-run on every focus so a CSV import or a
+  // session finished on Today lands here without a relaunch.
   const [refresh, setRefresh] = useState(0);
   useFocusEffect(
     useCallback(() => {
@@ -91,85 +156,42 @@ export default function Stats() {
     }, []),
   );
 
-  const [tab, setTab] = useState<'history' | 'lifts'>('history');
-  /** Weeks stepped back from the current ISO week (0 = this week). */
-  const [weekBack, setWeekBack] = useState(0);
+  const [metric, setMetric] = useState<ProgressionMetric>('e1rm');
+  const [rangeIndex, setRangeIndex] = useState(0);
+  /** The key of the ONE open card. An accordion, so the screen stays short. */
+  const [openKey, setOpenKey] = useState<string | null>(null);
 
   /* eslint-disable react-hooks/exhaustive-deps */
-  const data = useMemo(() => (userId ? getStatsSummary(userId) : null), [userId, refresh]);
-  // A generous slice of the record book: the LIFTS tab shows the top PR_ROWS,
-  // the "Full record book" affordance keys off the overflow, and every PR day
-  // becomes a session's PR chip.
-  const prs = useMemo(() => (userId ? getAllTimePRs(userId, SESSION_WINDOW) : []), [userId, refresh]);
-  const sessions = useMemo(
-    () => (userId ? getRecentSessions(userId, SESSION_WINDOW) : []),
-    [userId, refresh],
-  );
-
-  // The week's view model: label, paginator bounds, the 7 day bars, the
-  // enriched session list, and the week-over-week delta. Recomputes when the
-  // data refreshes or the user steps to another week.
-  const view = useMemo(() => {
-    if (!data) return null;
-    const weeks = data.weeks;
-    const weekIndex = Math.max(0, Math.min(weeks.length - 1, weeks.length - 1 - weekBack));
-    const isCurrentWeek = weekBack === 0;
-    const monday = weeks[weekIndex]!.weekStart;
-    const sunday = shiftDayKey(monday, 6);
-
-    const prDays = new Set(prs.map((p) => p.day));
-    const inWeek = sessions
-      .filter((s) => s.day >= monday && s.day <= sunday)
-      .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
-
-    const volByDay = new Map<DayKey, number>();
-    for (const s of inWeek) volByDay.set(s.day, (volByDay.get(s.day) ?? 0) + s.volume);
-
-    const recordedVols = Array.from({ length: 7 }, (_, i) => volByDay.get(shiftDayKey(monday, i)) ?? 0);
-    const maxVol = Math.max(1, ...recordedVols);
-
-    const bars: DayBar[] = DAY_LETTERS.map((letter, i) => {
-      const dk = shiftDayKey(monday, i);
-      const vol = volByDay.get(dk) ?? 0;
-      if (vol > 0) {
-        return { letter, kind: 'recorded', pct: Math.max(MIN_BAR_PCT, Math.round((vol / maxVol) * 100)) };
-      }
-      return { letter, kind: 'rest', pct: 0 };
-    });
-
-    const weekSessions: WeekSession[] = inWeek.map((s) => ({
-      workoutId: s.workoutId,
-      day: s.day,
-      sets: s.sets,
-      volume: s.volume,
-      title: sessionTitle(s.workoutId, s.exercises),
-      isPr: prDays.has(s.day),
-    }));
-
-    const cur = weeks[weekIndex]!.volume;
-    const prevW = weekIndex > 0 ? weeks[weekIndex - 1]!.volume : 0;
-    const selectedWoW =
-      cur > 0 && prevW > 0 ? Math.round(((cur - prevW) / prevW) * 100) : null;
-
-    return {
-      weekLabel: `${monthDay(monday)} – ${monthDay(sunday)}`,
-      weekSub: weekBack === 0 ? 'This week' : weekBack === 1 ? 'Last week' : `${weekBack} weeks ago`,
-      canGoBack: weekBack < weeks.length - 1,
-      canGoForward: weekBack > 0,
-      isCurrentWeek,
-      weekTotal: cur,
-      bars,
-      sessions: weekSessions,
-      selectedWoW,
-    };
-  }, [data, sessions, prs, weekBack]);
+  // The whole aggregated history, once. Every metric and every range is derived
+  // from it in pure code, so switching a tab costs no query.
+  const rows = useMemo(() => (userId ? getLiftSessions(userId) : []), [userId, refresh]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
-  const hasAny = (data?.weeks.some((w) => w.volume > 0) ?? false) || prs.length > 0;
+  const today = todayKey();
+  const range = RANGES[rangeIndex]!;
+  const fromDay = shiftDayKey(today, -range.days);
+  // Rows arrive oldest-first, so the first row is where the record begins.
+  const historyDays = rows.length > 0 ? daysBetween(rows[0]!.day, today) : 0;
 
-  if (!hasAny || !view) {
-    // The honest empty state: a dashed card, a plain explanation, a bordered
-    // action — never an invented dashboard.
+  const view = useMemo(() => buildProgression(rows, metric, fromDay), [rows, metric, fromDay]);
+
+  // The open card's evidence: the counted sets of the session behind its latest
+  // point. Read only while a card is open, never for the whole list.
+  const evidence = useMemo(() => {
+    if (!openKey) return null;
+    const lift = view.lifts.find((l) => l.key === openKey);
+    if (!lift) return null;
+    const detail = getWorkoutDetail(lift.workoutId);
+    if (!detail) return null;
+    const sets = detail.exercises
+      .filter((e) => e.canonical.toLowerCase() === lift.key)
+      .flatMap((e) => e.sets)
+      .filter((s) => s.kind !== 'warmup' && s.kind !== 'drop' && s.kind !== 'skipped');
+    return { lift, sets };
+  }, [openKey, view]);
+
+  // §12.1: an empty state says what will fill it and never reports a lack.
+  if (rows.length === 0) {
     return (
       <StubScreen title="Progress" back={false}>
         <FadeSlideIn>
@@ -179,8 +201,8 @@ export default function Stats() {
               Your training, measured.
             </Text>
             <Text style={styles.emptyBody} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              Log one session — or import your history — and this screen fills with volume,
-              records, and what the predictor writes next.
+              Log one session — or import your history — and every lift you name gets a line
+              here showing where it started and where it is now.
             </Text>
             <View style={styles.emptyActions}>
               <AppButton
@@ -196,242 +218,275 @@ export default function Stats() {
     );
   }
 
-  const weeks = data!.weeks;
-  const rowCount = view.sessions.length;
-
   return (
     <StubScreen title="Progress" back={false}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
-        {/* Segmented control — History (ink pill) / Lifts. */}
-        <View style={styles.segmentRow}>
-          <View style={styles.segment}>
-            {(['history', 'lifts'] as const).map((t) => {
-              const active = tab === t;
+        {/* Range — the shortest is always live; a longer one waits for history. */}
+        <View style={styles.rangeRow}>
+          <View style={styles.seg}>
+            {RANGES.map((r, i) => {
+              const active = i === rangeIndex;
+              const reachable = i === 0 || historyDays >= r.days;
               return (
                 <PressableScale
-                  key={t}
+                  key={r.key}
                   haptic="none"
                   activeScale={0.96}
+                  disabled={!reachable}
                   onPress={() => {
                     tap();
-                    setTab(t);
+                    setRangeIndex(i);
+                    setOpenKey(null);
                   }}
                   accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
+                  accessibilityState={{ selected: active, disabled: !reachable }}
+                  accessibilityLabel={r.key === '8W' ? 'Eight weeks' : r.key === '6M' ? 'Six months' : 'One year'}
                   style={[styles.segItem, active && styles.segItemActive]}
                   pressedStyle={active ? undefined : styles.pressed}>
                   <Text
-                    style={[styles.segText, active && styles.segTextActive]}
+                    style={[
+                      styles.segText,
+                      active && styles.segTextActive,
+                      !reachable && styles.segTextOff,
+                    ]}
                     maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {t === 'history' ? 'History' : 'Lifts'}
+                    {r.key}
                   </Text>
                 </PressableScale>
               );
             })}
           </View>
+          <Text style={styles.since} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {`SINCE ${monthDay(fromDay).toUpperCase()}`}
+          </Text>
         </View>
 
-        {tab === 'history' ? (
-          <Stagger step={55} initialDelay={80}>
-            {/* Week paginator — back enabled, forward disabled on the current week. */}
-            <View style={styles.paginator}>
+        {/* Metric — switches what every card plots, at once. */}
+        <View style={styles.tabs}>
+          {METRICS.map((m) => {
+            const active = m.key === metric;
+            return (
               <PressableScale
+                key={m.key}
                 haptic="none"
-                activeScale={0.92}
-                disabled={!view.canGoBack}
+                activeScale={0.96}
                 onPress={() => {
                   tap();
-                  setWeekBack((w) => Math.min(weeks.length - 1, w + 1));
+                  setMetric(m.key);
+                  setOpenKey(null);
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Previous week"
-                style={[styles.chevBtn, !view.canGoBack && styles.chevDisabled]}
-                pressedStyle={styles.pressed}>
-                <Icon name="chevron-back" size={moderateScale(16)} tint={color.textPrimary} />
+                accessibilityState={{ selected: active }}
+                style={[styles.tab, active && styles.tabActive]}>
+                <Text
+                  style={[styles.tabText, active && styles.tabTextActive]}
+                  maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  {m.label}
+                </Text>
               </PressableScale>
-              <View style={styles.paginatorCenter}>
-                <Text style={styles.weekLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {view.weekLabel}
-                </Text>
-                <Text style={styles.weekSub} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {view.weekSub}
-                </Text>
-              </View>
-              <PressableScale
-                haptic="none"
-                activeScale={0.92}
-                disabled={!view.canGoForward}
-                onPress={() => {
-                  tap();
-                  setWeekBack((w) => Math.max(0, w - 1));
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Next week"
-                style={[styles.chevBtn, !view.canGoForward && styles.chevDisabled]}
-                pressedStyle={styles.pressed}>
-                <Icon name="chevron-forward" size={moderateScale(16)} tint={color.textPrimary} />
-              </PressableScale>
-            </View>
+            );
+          })}
+        </View>
 
-            {/* Volume by day. */}
-            <View style={styles.card}>
-              <View style={styles.cardHead}>
-                <Eyebrow>Volume by day</Eyebrow>
-                <Text style={styles.cardTotal} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {groupThousands(view.weekTotal)} kg
-                </Text>
-              </View>
-              <View style={styles.chartRow}>
-                {view.bars.map((b, i) => (
-                  <View key={i} style={styles.barCol}>
-                    {b.kind === 'recorded' ? (
-                      <View style={[styles.barRecorded, { height: `${b.pct}%` }]} />
-                    ) : (
-                      <View style={styles.barRest} />
-                    )}
-                  </View>
-                ))}
-              </View>
-              <View style={styles.dayRow}>
-                {view.bars.map((b, i) => (
-                  <Text
-                    key={i}
-                    style={[styles.dayLetter, b.kind === 'recorded' && styles.dayRecorded]}
-                    maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {b.letter}
-                  </Text>
-                ))}
-              </View>
-              <View style={styles.legend}>
-                <View style={styles.legendItem}>
-                  <View style={styles.swatchRecorded} />
-                  <Text style={styles.legendText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    Recorded
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* One quiet archival insight — the week-over-week delta (never green). */}
-            {view.selectedWoW != null ? (
-              <Text style={styles.insight} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {view.selectedWoW >= 0
-                  ? `Up ${view.selectedWoW}% on the previous week.`
-                  : `Down ${Math.abs(view.selectedWoW)}% on the previous week.`}
-              </Text>
-            ) : null}
-
-            {/* The week's session list. Recorded rows are ink; the offered plan
-                is the last row, in green, with a PLANNED chip. */}
-            <View style={styles.listCard}>
-              {rowCount === 0 ? (
-                <Text style={styles.emptyWeek} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  No sessions recorded this week.
-                </Text>
-              ) : (
-                <>
-                  {view.sessions.map((s, i) => {
-                    const isLast = i === view.sessions.length - 1;
-                    return (
-                      <PressableScale
-                        key={s.workoutId}
-                        haptic="none"
-                        activeScale={0.98}
-                        onPress={() => {
-                          tap();
-                          openSessionSheet(s.workoutId);
-                        }}
-                        accessibilityRole="button"
-                        style={[styles.sessionRow, !isLast && styles.rowDivider]}
-                        pressedStyle={styles.pressed}>
-                        <View style={styles.rowText}>
-                          <View style={styles.titleLine}>
-                            <Text
-                              style={styles.rowTitle}
-                              numberOfLines={1}
-                              maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                              {s.title}
-                            </Text>
-                            {s.isPr ? (
-                              <View style={styles.prChip}>
-                                <Text style={styles.prChipText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                                  PR
-                                </Text>
-                              </View>
-                            ) : null}
-                          </View>
-                          <Text style={styles.rowSub} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                            {labelForDay(s.day)} · {s.sets} {s.sets === 1 ? 'set' : 'sets'}
-                          </Text>
-                        </View>
-                        <Text style={styles.rowValue} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                          {s.volume > 0 ? `${groupThousands(s.volume)} kg` : '—'}
-                        </Text>
-                      </PressableScale>
-                    );
-                  })}
-                </>
-              )}
-            </View>
-          </Stagger>
+        {view.counted === 0 ? (
+          <FadeSlideIn>
+            <Text style={styles.thin} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              Two more sessions of the same lift and there&apos;s a trend to show here.
+            </Text>
+          </FadeSlideIn>
         ) : (
-          /* LIFTS — the all-time record book, heaviest first. */
-          <View style={styles.listCard}>
-            <Stagger step={45} initialDelay={60}>
-              {prs.slice(0, PR_ROWS).map((pr, i, arr) => {
-                // Last row drops its divider; when the Pro affordance follows, its
-                // own top border is the separating rule (no doubled hairline).
-                const isLast = i === arr.length - 1;
-                return (
-                  <View key={pr.canonical} style={[styles.sessionRow, !isLast && styles.rowDivider]}>
-                    <View style={styles.rowText}>
-                      <Text
-                        style={styles.rowTitle}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                        {pr.canonical}
-                      </Text>
-                      <Text style={styles.rowSub} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                        {labelForDay(pr.day)}
-                      </Text>
-                    </View>
-                    <Text style={styles.rowValue} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                      {fmtNumber(pr.weightKg)}
-                      {pr.reps != null ? ` × ${pr.reps}` : ''} kg
-                    </Text>
-                  </View>
-                );
-              })}
-              {prs.length > PR_ROWS ? (
-                <PressableScale
-                  haptic="none"
-                  activeScale={0.98}
-                  onPress={() => {
-                    tap();
-                    router.push('/paywall');
-                  }}
-                  accessibilityRole="button"
-                  style={styles.proRow}
-                  pressedStyle={styles.pressed}>
-                  <Text style={styles.proLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    Full record book · Recore Pro
-                  </Text>
-                </PressableScale>
-              ) : null}
-            </Stagger>
-          </View>
+          <Stagger step={55} initialDelay={60}>
+            {/* The verdict — one sentence, one supporting line, no chart. */}
+            <View style={styles.verdict}>
+              <Text style={styles.verdictLine} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {verdictLine(view.improved, view.counted, metric, range.ago)}
+              </Text>
+              <Text style={styles.verdictSub} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {spreadLine(view.sessions, view.longestGapDays)}
+              </Text>
+            </View>
+
+            {view.lifts.map((lift) => (
+              <LiftCard
+                key={lift.key}
+                lift={lift}
+                metric={metric}
+                open={openKey === lift.key}
+                sets={evidence && evidence.lift.key === lift.key ? evidence.sets : []}
+                onToggle={() => {
+                  tap();
+                  setOpenKey((k) => (k === lift.key ? null : lift.key));
+                }}
+                onOpenSession={() => {
+                  tap();
+                  openSessionSheet(lift.workoutId);
+                }}
+                onOpenHistory={() => {
+                  tap();
+                  openExerciseSheet(lift.canonical);
+                }}
+              />
+            ))}
+          </Stagger>
         )}
 
+        <PressableScale
+          haptic="none"
+          activeScale={0.98}
+          onPress={() => {
+            tap();
+            router.push('/lifts');
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="All lifts"
+          style={styles.allLiftsRow}
+          pressedStyle={styles.pressed}>
+          <Text style={styles.allLiftsLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            All lifts
+          </Text>
+          <Icon name="chevron-forward" size={moderateScale(14)} tint={color.textMuted} />
+        </PressableScale>
       </ScrollView>
-      <SessionSheet />
     </StubScreen>
   );
 }
 
-const CHEV = moderateScale(34);
+function LiftCard({
+  lift,
+  metric,
+  open,
+  sets,
+  onToggle,
+  onOpenSession,
+  onOpenHistory,
+}: {
+  lift: LiftProgression;
+  metric: ProgressionMetric;
+  open: boolean;
+  sets: WorkoutSet[];
+  onToggle: () => void;
+  onOpenSession: () => void;
+  onOpenHistory: () => void;
+}) {
+  const startDay = lift.points[0]!.day;
+  const delta = describeDelta(lift.delta, 'kg', monthDay(startDay), (n) =>
+    formatValue(n, metric),
+  );
+  const value = formatValue(lift.latest, metric);
+
+  return (
+    <View style={styles.card}>
+      <PressableScale
+        haptic="none"
+        activeScale={0.99}
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={`${lift.canonical}, ${value} kilograms, ${delta}, ${lift.sessions} sessions`}
+        style={styles.summary}>
+        <View style={styles.cardTop}>
+          <View style={styles.cardName}>
+            <View style={styles.nameLine}>
+              <Text style={styles.liftName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {lift.canonical}
+              </Text>
+              {lift.isBest ? (
+                <View style={styles.prChip}>
+                  <Text style={styles.prChipText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    PR
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.liftMeta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {`${lift.sessions} sessions · last ${labelForDay(lift.lastDay)}`}
+            </Text>
+          </View>
+          <View style={styles.heroBox}>
+            <Text style={styles.hero} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {value}
+              <Text style={styles.heroUnit}> kg</Text>
+            </Text>
+            <Text style={styles.heroDelta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {delta}
+            </Text>
+          </View>
+        </View>
+
+        <StepChart
+          points={lift.points}
+          best={lift.best}
+          height={open ? CHART_H_OPEN : CHART_H}
+          showPrevious={open}
+        />
+
+        <View style={styles.ends}>
+          <Text style={styles.endLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {monthDay(startDay)}
+          </Text>
+          <Text style={styles.endLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {monthDay(lift.lastDay)}
+          </Text>
+        </View>
+      </PressableScale>
+
+      {open ? (
+        <FadeSlideIn>
+          <View style={styles.cardRule} />
+          <PressableScale
+            haptic="none"
+            activeScale={0.99}
+            onPress={onOpenSession}
+            accessibilityRole="button"
+            accessibilityLabel={`Open the full session from ${labelForDay(lift.lastDay)}`}
+            style={styles.evHead}
+            pressedStyle={styles.pressed}>
+            <Eyebrow>{`${monthDay(lift.lastDay)} · what made it`}</Eyebrow>
+            <Icon name="chevron-forward" size={moderateScale(13)} tint={color.textMuted} />
+          </PressableScale>
+
+          {sets.length === 0 ? (
+            <Text style={styles.thin} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              That session&apos;s sets are still syncing.
+            </Text>
+          ) : (
+            sets.map((s, i) => (
+              <View key={`${s.position}-${i}`} style={styles.setRow}>
+                <Text style={styles.setIndex} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  {`Set ${i + 1}`}
+                </Text>
+                <Text style={styles.setValue} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  {setText(s)}
+                </Text>
+                <Text style={styles.setEstimate} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  {setEstimate(s)}
+                </Text>
+              </View>
+            ))
+          )}
+
+          <View style={styles.cardRule} />
+          <PressableScale
+            haptic="none"
+            activeScale={0.99}
+            onPress={onOpenHistory}
+            accessibilityRole="button"
+            accessibilityLabel={`Full history for ${lift.canonical}`}
+            style={styles.opener}
+            pressedStyle={styles.pressed}>
+            <Text style={styles.openerLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              Full history
+            </Text>
+            <Icon name="chevron-forward" size={moderateScale(13)} tint={color.textMuted} />
+          </PressableScale>
+        </FadeSlideIn>
+      ) : null}
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   scroll: {
@@ -446,11 +501,14 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
 
-  // --- segmented control ------------------------------------------------------
-  segmentRow: {
+  // --- range + metric chrome --------------------------------------------------
+  rangeRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
   },
-  segment: {
+  seg: {
     flexDirection: 'row',
     backgroundColor: color.surface,
     borderWidth: 1,
@@ -459,194 +517,112 @@ const styles = StyleSheet.create({
     padding: moderateScale(3),
   },
   segItem: {
-    paddingVertical: spacing.sm - 1,
-    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm - 2,
+    paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
   },
   segItemActive: {
     backgroundColor: color.accent,
   },
   segText: {
-    ...type.subhead,
+    fontFamily: fonts.mono,
+    fontSize: type.footnote.fontSize,
     fontWeight: '600',
     color: color.textSecondary,
   },
   segTextActive: {
     color: color.bg,
   },
-
-  // --- week paginator ---------------------------------------------------------
-  paginator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xl,
+  segTextOff: {
+    color: color.textMuted,
+    opacity: 0.5,
   },
-  chevBtn: {
-    width: CHEV,
-    height: CHEV,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: color.border,
-    backgroundColor: color.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chevDisabled: {
-    opacity: 0.4,
-  },
-  paginatorCenter: {
-    alignItems: 'center',
-    minWidth: moderateScale(140),
-  },
-  weekLabel: {
-    ...type.headline,
-    color: color.textPrimary,
+  since: {
+    fontFamily: fonts.mono,
+    fontSize: moderateScale(10),
+    letterSpacing: 1.2,
+    color: color.textMuted,
     fontVariant: ['tabular-nums'],
   },
-  weekSub: {
-    ...type.caption,
-    marginTop: 2,
-    color: color.textSecondary,
+
+  tabs: {
+    flexDirection: 'row',
+    gap: spacing.xl,
+    borderBottomWidth: 1,
+    borderBottomColor: color.tableRule,
+  },
+  tab: {
+    paddingBottom: spacing.sm,
+    // minHeight, never height: the label has to grow at the Dynamic Type
+    // ceiling rather than be cropped by its own tab (§5.3).
+    minHeight: moderateScale(30),
+  },
+  tabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: color.accent,
+  },
+  tabText: {
+    ...type.subhead,
+    color: color.textMuted,
+    fontWeight: '500',
+  },
+  tabTextActive: {
+    color: color.textPrimary,
+    fontWeight: '600',
   },
 
-  // --- cards ------------------------------------------------------------------
+  // --- the verdict ------------------------------------------------------------
+  verdict: {
+    gap: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  verdictLine: {
+    ...type.headline,
+    fontWeight: '500',
+    color: color.textPrimary,
+  },
+  verdictSub: {
+    fontFamily: fonts.mono,
+    fontSize: type.footnote.fontSize,
+    color: color.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // --- lift card --------------------------------------------------------------
   card: {
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.divider,
     borderRadius: radius.lg,
-    padding: spacing.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
     ...shadow.card,
   },
-  cardHead: {
+  summary: {
+    gap: spacing.sm,
+  },
+  cardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
-  },
-  cardTotal: {
-    fontFamily: fonts.mono,
-    fontSize: type.caption.fontSize,
-    color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
-
-  // --- volume-by-day chart ----------------------------------------------------
-  chartRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.md,
-    height: moderateScale(120),
-    marginTop: spacing.lg,
-  },
-  barCol: {
-    flex: 1,
-    height: '100%',
-    justifyContent: 'flex-end',
-  },
-  barRecorded: {
-    width: '100%',
-    backgroundColor: color.accent,
-    borderRadius: 5,
-  },
-  barRest: {
-    width: '100%',
-    height: 2,
-    backgroundColor: color.border,
-    borderRadius: 1,
-  },
-  dayRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.sm,
-  },
-  dayLetter: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: moderateScale(12),
-    color: color.textMuted,
-  },
-  dayRecorded: {
-    color: color.textSecondary,
-    fontWeight: '600',
-  },
-  legend: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: spacing.lg,
-    marginTop: spacing.lg,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm - 1,
-  },
-  swatchRecorded: {
-    width: moderateScale(10),
-    height: moderateScale(10),
-    borderRadius: 3,
-    backgroundColor: color.accent,
-  },
-  legendText: {
-    fontSize: moderateScale(12),
-    color: color.textSecondary,
-  },
-
-  insight: {
-    ...type.caption,
-    color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
-    marginTop: -spacing.sm,
-  },
-
-  // --- session / record list --------------------------------------------------
-  listCard: {
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.divider,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.xl,
-    ...shadow.card,
-  },
-  sessionRow: {
-    flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
     gap: spacing.md,
-    paddingVertical: spacing.md + 1,
   },
-  rowDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: color.tableRule,
+  cardName: {
+    flexShrink: 1,
   },
-  rowText: {
-    flex: 1,
-  },
-  titleLine: {
+  nameLine: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
-  rowTitle: {
+  liftName: {
     ...type.subhead,
     flexShrink: 1,
     fontWeight: '600',
     color: color.textPrimary,
   },
-  rowSub: {
-    ...type.caption,
-    marginTop: 3,
-    color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
-  rowValue: {
-    ...type.caption,
-    fontFamily: fonts.mono,
-    color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
-    textAlign: 'right',
-  },
+  // A PR is a SHAPE, never a colour (§5.1) — an outlined mono label, so it
+  // survives colourblindness and never competes with the green on Today.
   prChip: {
     borderWidth: 1,
     borderColor: color.textPrimary,
@@ -661,24 +637,119 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: color.textPrimary,
   },
-
-  emptyWeek: {
-    ...type.subhead,
+  liftMeta: {
+    fontFamily: fonts.mono,
+    fontSize: moderateScale(10.5),
+    marginTop: 3,
     color: color.textMuted,
-    paddingVertical: spacing.xl,
+    fontVariant: ['tabular-nums'],
+  },
+  heroBox: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+  },
+  hero: {
+    fontFamily: fonts.mono,
+    fontSize: type.title2.fontSize,
+    color: color.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  heroUnit: {
+    fontSize: type.caption.fontSize,
+    color: color.textSecondary,
+  },
+  heroDelta: {
+    ...type.footnote,
+    marginTop: spacing.xs,
+    color: color.textMuted,
+  },
+  ends: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  endLabel: {
+    fontFamily: fonts.mono,
+    fontSize: moderateScale(10),
+    color: color.textMuted,
+    fontVariant: ['tabular-nums'],
   },
 
-  proRow: {
-    paddingVertical: spacing.md + 1,
-    borderTopWidth: 1,
-    borderTopColor: color.tableRule,
+  // --- the evidence, inside an open card --------------------------------------
+  cardRule: {
+    height: 1,
+    backgroundColor: color.tableRule,
+    marginVertical: spacing.md,
   },
-  proLabel: {
+  evHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: moderateScale(28),
+    marginHorizontal: -PRESS_BLEED,
+    paddingHorizontal: PRESS_BLEED,
+    borderRadius: radius.sm,
+  },
+  setRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.md,
+    paddingVertical: spacing.sm - 2,
+    borderBottomWidth: 1,
+    borderBottomColor: color.tableRule,
+  },
+  setIndex: {
+    fontFamily: fonts.mono,
+    fontSize: type.footnote.fontSize,
+    color: color.textMuted,
+    width: moderateScale(42),
+    fontVariant: ['tabular-nums'],
+  },
+  setValue: {
+    fontFamily: fonts.mono,
+    fontSize: type.footnote.fontSize,
+    flex: 1,
+    color: color.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  setEstimate: {
+    fontFamily: fonts.mono,
+    fontSize: type.footnote.fontSize,
+    color: color.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+  opener: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: moderateScale(28),
+    marginHorizontal: -PRESS_BLEED,
+    paddingHorizontal: PRESS_BLEED,
+    borderRadius: radius.sm,
+  },
+  openerLabel: {
     ...type.caption,
     color: color.textSecondary,
   },
 
-  // --- empty state ------------------------------------------------------------
+  // --- tail + states ----------------------------------------------------------
+  allLiftsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: moderateScale(44),
+    marginHorizontal: -PRESS_BLEED,
+    paddingHorizontal: PRESS_BLEED + spacing.xs,
+    borderRadius: radius.sm,
+  },
+  allLiftsLabel: {
+    ...type.caption,
+    color: color.textSecondary,
+  },
+  thin: {
+    ...type.subhead,
+    color: color.textMuted,
+    paddingVertical: spacing.md,
+  },
   pressed: {
     backgroundColor: color.surfaceHigh,
   },

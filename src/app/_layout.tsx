@@ -6,7 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ExerciseSheet } from '@/components/exercise-sheet';
-import { useDevBypass } from '@/lib/auth/dev-bypass';
+import { SessionSheet } from '@/components/session-sheet';
 import { AuthProvider, useAuth } from '@/lib/auth/provider';
 import { color } from '@/lib/theme';
 
@@ -46,9 +46,6 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const { session, loading } = useAuth();
-  // Dev-only paywall skip: opens the app screens on a fixed local id, without
-  // an account. Compiled out of release builds (see lib/auth/dev-bypass.ts).
-  const bypassed = useDevBypass();
 
   useEffect(() => {
     if (!loading) void SplashScreen.hideAsync();
@@ -56,7 +53,10 @@ function RootNavigator() {
 
   if (loading) return null; // splash is still covering the window
 
-  const signedIn = session !== null || bypassed;
+  // The app needs a real account — even in development. The paywall's DEV·SKIP
+  // chip only jumps the purchase screen; it still lands on sign-in, because a
+  // no-account mode leaves the parser (JWT-gated, §7.3) permanently dead.
+  const signedIn = session !== null;
 
   return (
     <>
@@ -66,16 +66,30 @@ function RootNavigator() {
           contentStyle: { backgroundColor: color.bg },
           animation: 'default',
         }}>
-        {/* The dispatcher + the pre-account funnel — reachable signed-out. */}
+        {/* The dispatcher + the pre-account funnel — reachable signed-out.
+            `onboarding/[step]` is the illustrated flow (the fourteen-screen
+            predecessor was deleted 30 Jul, owner's yes). */}
         <Stack.Screen name="index" />
-        <Stack.Screen name="onboarding/index" />
+        <Stack.Screen name="onboarding/[step]" />
         <Stack.Screen name="paywall" />
+        {/* Terms / Privacy / How parsing works. OUTSIDE the guard on purpose:
+            the paywall links to them and App Review taps them there, before any
+            account exists (PLAN A3). */}
+        <Stack.Screen name="legal" />
 
-        {/* The real app — only once an account exists (or the dev bypass is on). */}
+        {/* The real app — only once an account exists. */}
         <Stack.Protected guard={signedIn}>
           <Stack.Screen name="(tabs)" />
+          {/* The tracker-import fast path (§2.1). Behind the guard because it
+              writes into the account's own ledger, and reached only from the
+              dispatcher, which decides who is offered it. */}
+          <Stack.Screen name="import-start" />
           <Stack.Screen name="split" />
           <Stack.Screen name="plan-day" />
+          {/* Lifts left the tab bar to make room for Next (§4). It kept its
+              whole screen — search and all — and became a push, reachable from
+              Next and from Progress. */}
+          <Stack.Screen name="lifts" />
         </Stack.Protected>
 
         {/* Sign-in is the LAST step of the funnel; gone once you're in. */}
@@ -88,6 +102,12 @@ function RootNavigator() {
           tab, and it is a full-screen RN Modal — so it is mounted exactly once,
           above the navigator. Two copies would stack two scrims. */}
       {signedIn ? <ExerciseSheet /> : null}
+
+      {/* The session detail is the same case, and it became one the moment You's
+          training calendar could open a day: Progress and You are both mounted
+          tabs, so a copy on each would have stacked two scrims exactly as the
+          Lift sheet used to. Same store key (`sheetSession`), one mount. */}
+      {signedIn ? <SessionSheet /> : null}
     </>
   );
 }

@@ -78,6 +78,32 @@ test('un-checked (not-done) exercises stay as rows but leave the totals (N2)', (
   assert.equal(receipt.volume, 8 * 80 + 8 * 80); // the squat's 100×5 is excluded
 });
 
+// The composer keys its check rings off the RENDERED ROW (`doneKeyFor(row.exercise,
+// row.setText)`); the totals, the projection and the PR signals key off the parsed
+// ITEM. Those two have to produce the same string or an un-check is cosmetic: the
+// ring goes off, and the set still counts everywhere. That is exactly what a second
+// local key definition in `note-surface.tsx` did — it separated the two with a
+// different character, silently, and nothing failed. Derive the key from the row
+// here, the way the composer does, so the two can never drift apart again.
+test('a key derived from the rendered row is the key the totals honour', () => {
+  const bench = item('Bench Press', 0, [
+    set({ reps: 8, weight_kg: 80 }),
+    set({ reps: 8, weight_kg: 80 }),
+  ]);
+  const squat = item('Squat', 1, [set({ reps: 5, weight_kg: 100 })]);
+  const result = resultOf(bench, squat);
+
+  const rendered = buildReceipt(result, []).rows;
+  const squatRow = rendered.find((r) => r.exercise === 'Squat')!;
+  // ...the composer's own expression, character for character.
+  const undone = new Set([doneKeyFor(squatRow.exercise, squatRow.setText)]);
+
+  const receipt = buildReceipt(result, [], undone);
+  assert.equal(receipt.rows.length, 2, 'the record keeps the line');
+  assert.equal(receipt.totalSets, 2, "the un-checked squat's set is not counted");
+  assert.equal(receipt.volume, 8 * 80 + 8 * 80, 'nor its tonnage');
+});
+
 test('faithful set text: rep list at one weight shows the real reps, not repeated', () => {
   const bench = item('Bench Press', 0, [
     set({ reps: 8, weight_kg: 80 }),

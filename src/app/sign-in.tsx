@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
 import { FadeSlideIn, Stagger } from '@/components/motion';
-import { AppButton, Eyebrow, Rating } from '@/components/primitives';
+import { AppButton, Eyebrow } from '@/components/primitives';
 import {
   signInWithApple,
   signInWithGoogle,
@@ -23,6 +23,12 @@ import { color, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme
  * backed up. Framed as reward, never a toll gate. Providers are the real ones
  * wired today: Apple (primary ink-fill) and Google (bordered secondary). Auth
  * logic (PKCE, busy/error states) is unchanged.
+ *
+ * A fabricated `<Rating score={4.9} countLabel="loved by early lifters" />` sat
+ * under the subline until 28 July. There are no real reviews (§12.1), so it was
+ * deleted here for the same reason it was deleted from the paywall and the
+ * onboarding ready screen — PLAN A1 named only those two, and this third call
+ * site was found by its own acceptance grep. The space is not refilled.
  */
 export default function SignIn() {
   const name = getName();
@@ -70,9 +76,6 @@ export default function SignIn() {
             Create your free account to start the trial and back up everything you just set up. It
             syncs to every iPhone — no passwords, no charge today.
           </Text>
-          <View style={styles.ratingWrap}>
-            <Rating score={4.9} countLabel="loved by early lifters" align="flex-start" />
-          </View>
         </Stagger>
       </View>
 
@@ -147,9 +150,6 @@ const styles = StyleSheet.create({
   sub: {
     ...type.body,
     color: color.textSecondary,
-  },
-  ratingWrap: {
-    marginTop: spacing.sm,
   },
   bottom: {
     paddingBottom: spacing.xxl,

@@ -12,7 +12,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { getWorkoutById } from '@/lib/db/workouts';
+import { getReflection, getWorkoutById } from '@/lib/db/workouts';
+import { readEffort } from '@/lib/effort';
 import { tap } from '@/lib/haptics';
 import { groupThousands } from '@/lib/parse/estimate';
 import { namesMatch, typedNameOf, type ReceiptData, type ReceiptRow } from '@/lib/parse/receipt';
@@ -37,6 +38,9 @@ import { MonoTag, PrLabel, readingText } from './gutter-value';
  * Rows settle top-to-bottom with the same quiet sweep the gutter uses. Tap a
  * row → exercise history. Long-press → fix the parse (§6.2).
  */
+/** How far a pressed row's highlight bleeds past its content (see `row`). */
+const PRESS_BLEED = spacing.sm;
+
 const STAGGER_MS = 45;
 const SETTLE_MS = 260;
 const SETTLE_SHIFT = 4;
@@ -157,12 +161,12 @@ function Row({
 
   return (
     <Animated.View style={animatedStyle}>
+      {/* The table rule is a SIBLING, not a border on the row: a bordered row
+          cannot take a corner radius without the hairline curving with it, and
+          without a radius the pressed fill is a hard grey rectangle. */}
+      {order === 0 ? null : <View style={styles.rowSep} />}
       <Pressable
-        style={({ pressed }) => [
-          styles.row,
-          order === 0 && styles.rowFirst,
-          pressed && styles.rowPressed,
-        ]}
+        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
         onPress={() => {
           tap();
           onExercise(row.exercise);
@@ -228,6 +232,7 @@ export function SessionReceipt({
 }) {
   const cardRef = useRef<View>(null);
   const workoutId = useSession((s) => s.workoutId);
+  const openCheckIn = useSession((s) => s.openCheckIn);
   // The share capture briefly renders the Recore mark inside the card — the
   // image carries the brand, the in-app card stays quiet.
   const [branding, setBranding] = useState(false);
@@ -251,6 +256,18 @@ export function SessionReceipt({
   if (data.rows.length === 0) return null;
 
   const exercises = new Set(data.rows.map((r) => r.exercise)).size;
+
+  // How many of the session's lines already carry an effort marker — read from
+  // the note itself, because that is where the marking lives (§3: the words are
+  // the record).
+  const effortMarked = new Set(
+    data.rows.filter((r) => readEffort(noteLines[r.line] ?? '') !== null).map((r) => r.line),
+  ).size;
+
+  // Whether this session already carries a written check-in (§8.1). Read from
+  // the workout's own column, not from the note — a reflection is prose about
+  // the session, never notation inside it.
+  const hasReflection = workoutId != null && getReflection(workoutId) != null;
 
   // "potisk s prsi" → "Machine Chest Press" is worth an echo beside the name;
   // a plain shorthand that reads as the same words stays unmarked.
@@ -363,13 +380,38 @@ export function SessionReceipt({
       ) : null}
 
       {!stale && !parsing && !branding ? (
-        <Pressable
-          onPress={() => void handleShare()}
-          style={({ pressed }) => [styles.shareBtn, pressed && styles.shareBtnPressed]}>
-          <Text style={styles.shareLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            Share card
-          </Text>
-        </Pressable>
+        <View style={styles.actions}>
+          {/* The second door to the check-in (§8.1). Finish opens it once; the
+              honest moment to answer is sometimes twenty minutes later, and
+              this is where the session ends on screen. The label reports the
+              state instead of nagging. */}
+          <Pressable
+            onPress={() => {
+              tap();
+              openCheckIn();
+            }}
+            style={({ pressed }) => [styles.shareBtn, pressed && styles.shareBtnPressed]}>
+            <Text style={styles.shareLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {/* The label reports what is already recorded rather than asking
+                  twice. Silence about a skipped check-in is the point — §12
+                  has no room for a surface that nags. */}
+              {hasReflection && effortMarked > 0
+                ? `Check-in · note, ${effortMarked} of ${data.rows.length}`
+                : hasReflection
+                  ? 'Check-in · note added'
+                  : effortMarked > 0
+                    ? `Check-in · ${effortMarked} of ${data.rows.length}`
+                    : 'Add a check-in'}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => void handleShare()}
+            style={({ pressed }) => [styles.shareBtn, pressed && styles.shareBtnPressed]}>
+            <Text style={styles.shareLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              Share card
+            </Text>
+          </Pressable>
+        </View>
       ) : null}
 
       {branding ? (
@@ -422,11 +464,15 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.md,
     paddingVertical: spacing.sm + 1,
-    borderTopWidth: 1,
-    borderTopColor: color.tableRule,
+    // Rounded and bled a little past the text, so pressing a receipt line
+    // lights it up rather than dropping a hard grey box on the ledger.
+    marginHorizontal: -PRESS_BLEED,
+    paddingHorizontal: PRESS_BLEED,
+    borderRadius: radius.sm,
   },
-  rowFirst: {
-    borderTopWidth: 0,
+  rowSep: {
+    height: 1,
+    backgroundColor: color.tableRule,
   },
   rowPressed: {
     backgroundColor: color.surfaceHigh,
@@ -525,9 +571,17 @@ const styles = StyleSheet.create({
     ...type.caption,
     color: color.textSecondary,
   },
+  // Two equal actions side by side: marking effort is not the lesser one — it
+  // is the only thing on this screen that changes what gets prescribed next.
+  actions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
   shareBtn: {
+    flex: 1,
     marginTop: spacing.md,
     height: HIT,
+    paddingHorizontal: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: color.border,

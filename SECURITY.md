@@ -85,13 +85,31 @@ configure by hand before shipping.
 ### Dependencies
 - All native packages were added with `npx expo install`
   (expo-apple-authentication, expo-secure-store, expo-crypto,
-  expo-auth-session), so versions match the SDK. No unmaintained packages.
+  expo-auth-session, react-native-purchases), so versions match the SDK. No
+  unmaintained packages.
+
+### Billing
+- Purchases go through StoreKit, via RevenueCat. Recore never sees a card
+  number, a receipt or a transaction id it could replay.
+- Only the **public** RevenueCat SDK key is in the bundle. It identifies the
+  app; it cannot read or modify subscriber data. The secret key is not used
+  anywhere in this repository.
+- The entitlement is enforced **on the client** for this pass: a lapsed account
+  loses the writing surface, not the record. `parse-workout` and
+  `explain-brief` are JWT-gated but not entitlement-gated — see "Known limits".
+- The entitlement decision is cached on the device and survives offline for the
+  period the store verified plus a seven-day grace (`src/lib/billing/entitlement.ts`).
+  That window is what keeps CLAUDE.md §2 invariant 1 true — a paying lifter in
+  a basement gym is never locked out of their own log.
 
 ## What YOU still need to configure
 
 1. **Create the Supabase project**, then:
-   - `supabase link --project-ref <ref>` and `supabase db push` (applies
-     `supabase/migrations/20260716000000_init.sql`).
+   - `supabase link --project-ref <ref>` and `supabase db push` (applies every
+     file in `supabase/migrations/`, including
+     `20260729000000_reflections.sql`, which adds the check-in column).
+   - **Re-run `supabase db push` after pulling this change** — the check-in
+     note is a new column on `workouts`, and without it sync push fails.
    - Run `supabase/tests/rls-verification.sql` in the SQL editor and confirm
      the PASS notices.
 2. **Set the AI key as a function secret** (never in the app, never in git):
@@ -121,6 +139,35 @@ configure by hand before shipping.
    history or chat; consider Supabase's leaked-password protection settings
    (n/a here — no passwords) and enable MFA for your Supabase dashboard
    account itself.
+8. **Billing (RevenueCat + App Store Connect).** Until this is done the paywall
+   shows no price and its CTA is disabled — an honest state, not a broken one.
+   - **App Store Connect → Subscriptions.** Create one subscription group with
+     two auto-renewable products. Their ids must match `PRODUCT_IDS` in
+     `src/lib/billing/pricing.ts` exactly:
+     `com.recore.app.pro.annual` and `com.recore.app.pro.monthly`.
+   - **Add the same introductory offer (7 days free) to BOTH products.**
+     product-direction §2 rules that either plan starts the same trial. The app
+     reads the trial length from the product, so a product configured without
+     one makes the paywall drop the trial promise instead of lying — but that is
+     a fallback, not the intended configuration.
+   - **Fill in Apple's paid-apps agreement, banking and tax.** Products stay
+     unavailable to the SDK until this is complete, which reads in the app as
+     "cannot reach the App Store".
+   - **RevenueCat.** Create the project, add the iOS app with the bundle id
+     `com.recore.app`, upload the App Store Connect shared secret / in-app
+     purchase key, then:
+     - create an **entitlement with the identifier `pro`** (matches
+       `ENTITLEMENT_ID`), and attach both products to it;
+     - create the **current offering** with an `annual` and a `monthly`
+       package — the app reads `offerings.current.annual` / `.monthly` by those
+       package types, not by product id.
+   - **Copy the public iOS SDK key** (`appl_…`) into `.env` as
+     `EXPO_PUBLIC_REVENUECAT_IOS_KEY`. The **secret** key (`sk_…`) is a server
+     credential and must never enter the app, `.env`, or git.
+   - **Build a dev client and test in the App Store sandbox** with a sandbox
+     Apple Account: buy, cancel, let it expire, and Restore on a second device.
+     Sandbox trials are compressed to minutes, which is why the trial clock
+     reads its instants from the store rather than deriving them.
 
 ## Known limits (deliberate for this pass)
 
@@ -131,3 +178,8 @@ configure by hand before shipping.
 - The prediction engine is a placeholder; its write path (predictions table,
   RLS, sync) is final so the real double-progression engine drops in without
   schema changes.
+- **The entitlement gate is client-side only** (owner's ruling, 29 July 2026).
+  A determined user could patch the bundle and keep writing after a lapse. The
+  data at risk is their own, the server endpoints are still rate-limited per
+  user, and moving the gate server-side needs a subscriptions table, RLS and a
+  RevenueCat webhook — a deliberate later step, not an oversight.

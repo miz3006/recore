@@ -9,8 +9,10 @@ import { Icon } from './icon';
 import { PressableScale } from './motion';
 
 /**
- * Shared scaffold for stub routes (/onboarding, /paywall) and for the tab roots
- * that still wear a plain header: a quiet header and a muted one-liner.
+ * Shared scaffold for Progress and Lifts — the two screens that wear a plain
+ * header: a quiet header and a muted one-liner. (It read "stub routes
+ * (/onboarding, /paywall)" until 29 July; both of those have owned their own
+ * chrome for a while. §0.3 — the code wins, and the line is fixed here.)
  *
  * `back` is false on a tab root — a tab is not a push, so there is nothing to go
  * back to, and a chevron that pops to nowhere is a lie about the navigation. In

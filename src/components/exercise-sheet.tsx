@@ -1,21 +1,35 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Line, Polyline } from 'react-native-svg';
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
 
 import { PressableScale, Stagger } from '@/components/motion';
 import { Eyebrow } from '@/components/primitives';
+import { getCachedBriefSummary, refineBriefSummary } from '@/lib/brief-explain';
 import { type DayKey } from '@/lib/db/dates';
 import { getExerciseStats, type ExerciseSession, type ExerciseStats } from '@/lib/db/exercise-stats';
 import { findExerciseByName } from '@/lib/db/exercises';
 import { getAllTimePRs, getE1rmSeries } from '@/lib/db/insights';
 import { tap } from '@/lib/haptics';
-import { color, fonts, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { liftProse, type LiftBrief } from '@/lib/lift-prose';
+import {
+  alpha,
+  color,
+  eyebrow,
+  fonts,
+  MAX_FONT_SCALE,
+  moderateScale,
+  radius,
+  spacing,
+  type,
+} from '@/lib/theme';
+import { groupThousands } from '@/lib/parse/estimate';
 import { fmtNumber } from '@/lib/parse/summarize';
 import { labelForDay, useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
-import { Icon } from './icon';
+import { stepPathD } from './charts';
+import { glyphTint, Icon, type IconName } from './icon';
 
 /**
  * Lift detail sheet (design frame 08 — "PR-first history"). Tap a gutter value
@@ -23,13 +37,24 @@ import { Icon } from './icon';
  * here?" — PR FIRST, then the settled session history.
  *
  * A chevron header + name pill, one selected chip for the exercise's real
- * modality, then a PR hero card (neutral outlined PR label, the best working
- * set as a big mono figure, e1RM beside it, a 6-bar e1RM sparkline). Below it
- * the history table: newest session first, each row a date (+ PR label the day
- * it was set) with an archival comparison subline and a right-aligned mono
- * "sets×reps · load". RECORDED work only — no lime (that belongs to planned
- * prescriptions), no chart theatre. The user's own words for the lift sit in a
- * quiet card; long-press for parse correction stays the row's job elsewhere.
+ * modality, then, top to bottom (owner, 29 July, against a reference screen):
+ *
+ *   1. **two stat tiles** — sessions ever, best estimated 1RM;
+ *   2. the **PR card** — neutral outlined label, the best working set as a big
+ *      mono figure;
+ *   3. the **PROGRESSION card** — metric chips over a STEP chart with its own
+ *      axis readings, and **the one place in the app that carries ember**
+ *      (§5.1, owner 29 Jul): the line and the wash under it;
+ *   4. the **history table** — newest session first, each row a date (+ PR label
+ *      the day it was set) with an archival comparison subline and a
+ *      right-aligned mono "sets×reps · load";
+ *   5. the **summary** — a composed paragraph over this lift's own loads
+ *      (`lift-prose.ts`), optionally rephrased by the model under §8.5's guard.
+ *
+ * RECORDED work only — no green (that belongs to planned prescriptions), no
+ * next weight (that lives on Today and Next), no chart theatre. The user's own
+ * words for the lift sit in a quiet card; long-press for parse correction stays
+ * the row's job elsewhere.
  */
 
 /** How many PR rows to scan when marking this exercise's all-time best. */
@@ -78,25 +103,42 @@ interface ChartPoint {
   value: number;
 }
 
+/** Left gutter reserved for the two axis readings. */
+const AXIS_W = moderateScale(30);
+
+/** The id the area gradient is referenced by. One chart is mounted at a time
+ * (the sheet is a single modal), so a constant id cannot collide. */
+const FILL_ID = 'liftTrendFill';
+
 /**
- * Progression line chart (Mobbin: Hevy's exercise chart + Tonal's dashed PR
+ * Progression chart (Mobbin: Hevy's exercise chart + Tonal's dashed PR
  * reference). Plots ONE chosen metric — heaviest weight, estimated 1RM, or top
- * reps — over the last sessions: ink line + dots, the latest session
- * emphasized, dates at the ends. A single UNLABELED dashed hairline marks the
- * all-time best (folded into the domain so it's always on-screen) — never
- * green, never a second "PR" caption; the outlined mono label owns that word.
- * All series are real data; under two points it says so instead of a flat line.
+ * reps — over the last sessions.
+ *
+ * **It is a STEP, not a curve**, for the same reason the Progress tab's
+ * `StepChart` is (§16.5, and they now share `stepPathD`): a weight holds for
+ * however many sessions it holds, then jumps, and a diagonal between two
+ * sessions draws loads nobody lifted.
+ *
+ * **Ember is the one hue here** (`color.trend`, owner 29 Jul): the step line
+ * and the wash fading out under it. The wash is the *shape of the record*, not
+ * a value — every number around it, including the current reading and the axis,
+ * stays ink or muted grey. A single UNLABELED dashed hairline marks the
+ * all-time best, folded into the domain so it is always on-screen — neutral,
+ * never a second "PR" caption; the outlined mono label owns that word.
+ *
+ * Axis readings are the domain's own ends, drawn at the exact y they sit at, so
+ * the numbers cannot drift from the line. All series are real data; under two
+ * points it says so instead of a flat line.
  */
 function ProgressionChart({
   points,
   prRef,
-  title,
   unit,
   footNote,
 }: {
   points: ChartPoint[];
   prRef: number | null;
-  title: string;
   unit: string;
   footNote: string;
 }) {
@@ -110,88 +152,169 @@ function ProgressionChart({
     );
   }
 
-  const H = moderateScale(140);
-  const padX = moderateScale(4);
-  const padT = moderateScale(16);
-  const padB = moderateScale(16);
+  const H = moderateScale(150);
+  const padR = moderateScale(2);
+  const padT = moderateScale(14);
+  const padB = moderateScale(12);
   const values = points.map((p) => p.value);
   // Fold the PR reference into the domain so its hairline never clips.
   const domain = prRef != null ? [...values, prRef] : values;
   const min = Math.min(...domain);
   const max = Math.max(...domain);
   const span = max - min;
-  const plotW = Math.max(1, w - padX * 2);
+  const plotW = Math.max(1, w - AXIS_W - padR);
   const plotH = H - padT - padB;
-  // inset 12% top & bottom so the line never glues to the frame
+  // inset 10% top & bottom so the line never glues to the frame
   const yOf = (v: number) =>
-    padT + plotH * 0.12 + (1 - (span > 0 ? (v - min) / span : 0.5)) * plotH * 0.76;
-  const xy = points.map((p, i) => ({ x: padX + (i / (points.length - 1)) * plotW, y: yOf(p.value) }));
-  const linePts = xy.map((q) => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(' ');
+    padT + plotH * 0.1 + (1 - (span > 0 ? (v - min) / span : 0.5)) * plotH * 0.8;
+  const xOf = (i: number) => AXIS_W + (i / (points.length - 1)) * plotW;
+  const lineD = stepPathD(values, xOf, yOf);
+  // The wash closes the step path down to the baseline — same path, so the fill
+  // can never disagree with the line it sits under.
+  const baseY = H - padB;
+  const areaD = `${lineD} L ${xOf(points.length - 1).toFixed(1)} ${baseY.toFixed(1)} L ${xOf(0).toFixed(
+    1,
+  )} ${baseY.toFixed(1)} Z`;
+
   const first = points[0]!;
+  const mid = points[Math.floor((points.length - 1) / 2)]!;
   const last = points[points.length - 1]!;
   const prY = prRef != null ? yOf(prRef) : null;
-  const fmtVal = (v: number) => (unit ? `${fmtNumber(v)} ${unit}` : `${v}`);
+  const halfLabel = moderateScale(7);
 
   return (
     <View style={styles.chartCard}>
-      <View style={styles.chartHead}>
-        <Text style={styles.chartTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {title}
-        </Text>
-        <Text style={styles.chartCurrent} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {fmtVal(last.value)}
-        </Text>
-      </View>
       <View style={styles.chartPlot} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
         {w > 0 ? (
-          <Svg width={w} height={H}>
-            {/* All-time-best reference — one unlabeled neutral hairline. */}
-            {prY != null ? (
-              <Line
-                x1={padX}
-                y1={prY}
-                x2={w - padX}
-                y2={prY}
-                stroke={color.border}
-                strokeWidth={1}
-                strokeDasharray="3 4"
-              />
-            ) : null}
-            <Polyline
-              points={linePts}
-              fill="none"
-              stroke={color.accent}
-              strokeWidth={2}
-              strokeLinejoin="round"
-              strokeLinecap="round"
-            />
-            {xy.map((q, i) => {
-              const latest = i === xy.length - 1;
-              return (
-                <Circle
-                  key={i}
-                  cx={q.x}
-                  cy={q.y}
-                  r={latest ? moderateScale(4) : moderateScale(2.5)}
-                  fill={latest ? color.accent : color.bg}
-                  stroke={color.accent}
-                  strokeWidth={1.5}
+          <>
+            <Svg width={w} height={H}>
+              <Defs>
+                <LinearGradient id={FILL_ID} x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={color.trend} stopOpacity={0.26} />
+                  <Stop offset="1" stopColor={color.trend} stopOpacity={0.02} />
+                </LinearGradient>
+              </Defs>
+              {/* All-time-best reference — one unlabeled neutral hairline. */}
+              {prY != null ? (
+                <Line
+                  x1={AXIS_W}
+                  y1={prY}
+                  x2={w - padR}
+                  y2={prY}
+                  stroke={color.border}
+                  strokeWidth={1}
+                  strokeDasharray="3 4"
                 />
-              );
-            })}
-          </Svg>
+              ) : null}
+              <Path d={areaD} fill={`url(#${FILL_ID})`} />
+              <Path
+                d={lineD}
+                fill="none"
+                stroke={color.trend}
+                strokeWidth={2}
+                strokeLinejoin="miter"
+                strokeLinecap="round"
+              />
+              <Circle
+                cx={xOf(points.length - 1)}
+                cy={yOf(last.value)}
+                r={moderateScale(3.5)}
+                fill={color.trend}
+                stroke={color.surface}
+                strokeWidth={1.5}
+              />
+            </Svg>
+            {/* Axis readings, pinned to the exact y of the domain's ends. Only
+                the top one when the record is flat — two labels on one line is
+                a chart arguing with itself. */}
+            <Text
+              style={[styles.axisValue, { top: yOf(max) - halfLabel }]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {fmtNumber(max)}
+            </Text>
+            {span > 0 ? (
+              <Text
+                style={[styles.axisValue, { top: yOf(min) - halfLabel }]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {fmtNumber(min)}
+              </Text>
+            ) : null}
+          </>
         ) : null}
       </View>
       <View style={styles.chartFoot}>
         <Text style={styles.chartDate} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           {labelForDay(first.day)}
         </Text>
-        <Text style={styles.chartMid} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {footNote}
-        </Text>
+        {points.length > 2 ? (
+          <Text style={styles.chartDateMid} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {labelForDay(mid.day)}
+          </Text>
+        ) : (
+          <View style={styles.chartDateMid} />
+        )}
         <Text style={[styles.chartDate, styles.chartDateRight]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           {labelForDay(last.day)}
         </Text>
+      </View>
+      <Text style={styles.chartNote} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {unit ? `${footNote} · ${unit}` : footNote}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * One reading in the sheet's opening ledger row (owner, 29 Jul — the centred
+ * two-tile version was rejected): a tinted glyph and its small mono label OVER
+ * a left-aligned figure, three of them split by hairlines. Same shape as You's
+ * record card, which is where the app already says "a big numeral over a small
+ * caption" is what warmth is made of here (§16.4).
+ *
+ * The glyph is CHROME — §5.1's `glyph` palette, keyed by the glyph in
+ * `icon.tsx`, so `plate` is the same gold it is on You. It is wayfinding and
+ * never a claim: it sits beside the LABEL, never on the value, and the figure
+ * itself stays ink. The label wraps rather than clipping at the Dynamic Type
+ * ceiling (§5.3).
+ */
+function Stat({
+  glyph,
+  label,
+  value,
+  unit,
+}: {
+  glyph: IconName;
+  label: string;
+  value: string;
+  unit?: string;
+}) {
+  return (
+    <View
+      style={styles.statTile}
+      accessible
+      accessibilityLabel={`${label}: ${value}${unit ? ` ${unit}` : ''}`}>
+      <View style={styles.statHead}>
+        <Icon name={glyph} size={moderateScale(13)} tint={glyphTint(glyph)} />
+        <Text style={styles.statLabel} numberOfLines={2}>
+          {label.toUpperCase()}
+        </Text>
+      </View>
+      <View style={styles.statFigureRow}>
+        <Text
+          style={styles.statFigure}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+          maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {value}
+        </Text>
+        {unit ? (
+          <Text style={styles.statUnit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {unit}
+          </Text>
+        ) : null}
       </View>
     </View>
   );
@@ -291,6 +414,55 @@ export function ExerciseSheet() {
       foot: `heaviest set · last ${points.length} sessions` };
   }, [stats, e1rmSeries, metric, pr]);
 
+  // The closing summary — COMPOSED from this lift's own loads (`lift-prose.ts`,
+  // pure and tested), never generated. Every number in it is already on the
+  // screen above; a model may only rephrase the finished paragraph (§8.5).
+  const brief: LiftBrief | null = useMemo(() => {
+    if (!stats || stats.sessions.length === 0) return null;
+    const window = stats.sessions;
+    const firstS = window[0]!;
+    const lastS = window[window.length - 1]!;
+    // How many of the most recent sessions topped out at the same weight.
+    let stall = 0;
+    if (lastS.topWeight != null) {
+      for (let i = window.length - 1; i >= 0; i--) {
+        if (window[i]!.topWeight !== lastS.topWeight) break;
+        stall++;
+      }
+    }
+    const firstLabel = stats.firstDay ? labelForDay(stats.firstDay) : null;
+    return {
+      canonical: stats.canonical,
+      sessionCount: stats.sessionCount,
+      // "since Today" is not a sentence about a record.
+      firstDayLabel: firstLabel === 'Today' || firstLabel === 'Yesterday' ? null : firstLabel,
+      windowSessions: window.length,
+      firstWeight: firstS.topWeight,
+      lastWeight: lastS.topWeight,
+      firstReps: firstS.topReps,
+      lastReps: lastS.topReps,
+      bestWeight: hero?.weight ?? null,
+      bestReps: hero?.reps ?? null,
+      bestDayLabel: hero ? labelForDay(hero.day) : null,
+      e1rmBest: stats.e1rm,
+      stallSessions: stall,
+    };
+  }, [stats, hero]);
+
+  const prose = brief ? liftProse(brief) : '';
+  // One cache slot per lift, so opening a second lift never evicts the first.
+  const scope = stats ? `lift_${stats.canonical.toLowerCase()}` : '';
+  const sessionCount = brief?.sessionCount ?? 0;
+  const [summary, setSummary] = useState<string | null>(null);
+  useEffect(() => {
+    // The composed paragraph is on screen already; the rewrite is an upgrade
+    // that arrives late or never (§1.1 inv. 2). Three sessions is the bar
+    // Progress sets for having a trend at all (§16.5) — under it there is
+    // nothing worth a call.
+    setSummary(prose ? getCachedBriefSummary(prose, scope) : null);
+    if (prose && sessionCount >= 3) refineBriefSummary(prose, setSummary, scope);
+  }, [prose, scope, sessionCount]);
+
   const close = () => {
     tap();
     closeExerciseSheet();
@@ -307,6 +479,12 @@ export function ExerciseSheet() {
   // Newest session first; the older session (for the comparison subline) is the
   // next one in this reversed order.
   const ordered = stats ? [...stats.sessions].reverse() : [];
+
+  // The plotted metric's latest value, read out beside the card's own label.
+  const chartCurrent =
+    chart && chart.points.length > 0
+      ? `${fmtNumber(chart.points[chart.points.length - 1]!.value)}${chart.unit ? ` ${chart.unit}` : ''}`
+      : null;
 
   return (
     <BottomSheet
@@ -357,7 +535,38 @@ export function ExerciseSheet() {
 
           {stats && hero ? (
             <Stagger step={55} initialDelay={80}>
-              {/* PR hero card — best working set first. */}
+              {/* The three readings the whole sheet is about: how much record
+                  there is, the strongest thing in it, and how much work is in
+                  it. All INK — the ember below draws the shape of the record,
+                  never its numbers. Tonnage gives way to reps on a bodyweight
+                  lift, where there is no weight to multiply. */}
+              <View style={styles.statsCard}>
+                <Stat
+                  glyph="calendar"
+                  label={stats.sessionCount === 1 ? 'Session' : 'Sessions'}
+                  value={String(stats.sessionCount)}
+                />
+                <View style={styles.statRule} />
+                <Stat
+                  glyph="plate"
+                  label="Best e1RM"
+                  value={stats.e1rm != null ? fmtNumber(stats.e1rm) : '—'}
+                  unit={stats.e1rm != null ? 'kg' : undefined}
+                />
+                <View style={styles.statRule} />
+                {stats.volumeTotal > 0 ? (
+                  <Stat
+                    glyph="barbell"
+                    label="Volume"
+                    value={groupThousands(stats.volumeTotal)}
+                    unit="kg"
+                  />
+                ) : (
+                  <Stat glyph="barbell" label="Total reps" value={groupThousands(stats.repsTotal)} />
+                )}
+              </View>
+
+              {/* PR card — best working set first. */}
               <View style={styles.heroCard}>
                 <Eyebrow tone="muted" style={styles.cardEyebrow}>
                   Personal record
@@ -378,56 +587,60 @@ export function ExerciseSheet() {
                         ? `× ${hero.reps}`
                         : '—'}
                   </Text>
-                  {stats.e1rm != null ? (
-                    <Text style={styles.heroE1rm} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                      e1RM {fmtNumber(stats.e1rm)}
-                    </Text>
-                  ) : null}
                 </View>
-
-                {chart ? (
-                  <>
-                    {/* Metric chips — swap the plotted series on a fixed axis
-                        (Hevy pattern). Only for weighted lifts; bodyweight
-                        lifts show top reps with no toggle. */}
-                    {chart.isWeighted ? (
-                      <View style={styles.metricChips}>
-                        {(['weight', 'e1rm', 'reps'] as const).map((mk) => {
-                          const active = chart.metric === mk;
-                          return (
-                            <PressableScale
-                              key={mk}
-                              onPress={() => {
-                                tap();
-                                setMetric(mk);
-                              }}
-                              haptic="none"
-                              activeScale={0.94}
-                              style={[styles.metricChip, active && styles.metricChipActive]}
-                              pressedStyle={!active ? styles.metricChipPressed : undefined}
-                              accessibilityRole="button"
-                              accessibilityState={{ selected: active }}
-                              accessibilityLabel={METRIC_CHIP_LABEL[mk]}>
-                              <Text
-                                style={[styles.metricChipText, active && styles.metricChipTextActive]}
-                                maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                                {METRIC_CHIP_LABEL[mk]}
-                              </Text>
-                            </PressableScale>
-                          );
-                        })}
-                      </View>
-                    ) : null}
-                    <ProgressionChart
-                      points={chart.points}
-                      prRef={chart.prRef}
-                      title={chart.title}
-                      unit={chart.unit}
-                      footNote={chart.foot}
-                    />
-                  </>
-                ) : null}
               </View>
+
+              {/* PROGRESSION — its own card, the way the reference reads it:
+                  what is plotted, its current value, the switch, the chart. */}
+              {chart ? (
+                <View style={styles.progressCard}>
+                  <View style={styles.chartHead}>
+                    <Eyebrow tone="muted">{chart.isWeighted ? 'Progression' : chart.title}</Eyebrow>
+                    {chartCurrent ? (
+                      <Text style={styles.chartCurrent} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                        {chartCurrent}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {/* Metric chips — swap the plotted series on a fixed axis
+                      (Hevy pattern). Only for weighted lifts; bodyweight lifts
+                      show top reps with no toggle. */}
+                  {chart.isWeighted ? (
+                    <View style={styles.metricChips}>
+                      {(['weight', 'e1rm', 'reps'] as const).map((mk) => {
+                        const active = chart.metric === mk;
+                        return (
+                          <PressableScale
+                            key={mk}
+                            onPress={() => {
+                              tap();
+                              setMetric(mk);
+                            }}
+                            haptic="none"
+                            activeScale={0.94}
+                            style={[styles.metricChip, active && styles.metricChipActive]}
+                            pressedStyle={!active ? styles.metricChipPressed : undefined}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: active }}
+                            accessibilityLabel={METRIC_CHIP_LABEL[mk]}>
+                            <Text
+                              style={[styles.metricChipText, active && styles.metricChipTextActive]}
+                              maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                              {METRIC_CHIP_LABEL[mk]}
+                            </Text>
+                          </PressableScale>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                  <ProgressionChart
+                    points={chart.points}
+                    prRef={chart.prRef}
+                    unit={chart.unit}
+                    footNote={chart.foot}
+                  />
+                </View>
+              ) : null}
 
               {/* History table — recorded sessions, newest first. */}
               <View style={styles.tableCard}>
@@ -469,6 +682,29 @@ export function ExerciseSheet() {
                 })}
               </View>
 
+              {/* The summary, at the bottom because it summarises everything
+                  above it. COMPOSED from this lift's own loads and rendered
+                  instantly; a validated rewrite swaps in if one ever lands
+                  (§8.5) — the foot says truthfully which one is on screen. */}
+              {prose ? (
+                <View style={styles.summaryCard}>
+                  {/* The one glyph on this card, and chrome like the stat row's
+                      (§5.1): it labels the card, never the sentences. */}
+                  <View style={styles.summaryHead}>
+                    <Icon name="sparkle" size={moderateScale(13)} tint={glyphTint('sparkle')} />
+                    <Eyebrow tone="muted">Summary</Eyebrow>
+                  </View>
+                  <Text style={styles.summaryText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    {summary ?? prose}
+                  </Text>
+                  <Text style={styles.summaryFoot} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    {summary
+                      ? 'Phrased from your own sets — every number is read from this record.'
+                      : 'Read from your own sets — same history, same summary, offline.'}
+                  </Text>
+                </View>
+              ) : null}
+
               {/* The user's own vocabulary — real aliases only. */}
               {aliases.length > 0 ? (
                 <View style={styles.aliasCard}>
@@ -508,11 +744,71 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
 
+  // The opening ledger row: three readings, hairline-split, label over figure.
+  statsCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginTop: spacing.lg,
+    backgroundColor: color.surface,
+    borderWidth: 1,
+    borderColor: color.border,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.lg,
+  },
+  statTile: {
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    gap: spacing.xs + 2,
+  },
+  statRule: {
+    width: 1,
+    backgroundColor: color.tableRule,
+  },
+  statHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 1,
+  },
+  statLabel: {
+    ...eyebrow,
+    flexShrink: 1,
+    color: color.textMuted,
+  },
+  statFigureRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 3,
+  },
+  statFigure: {
+    fontFamily: fonts.mono,
+    fontSize: moderateScale(22),
+    lineHeight: moderateScale(26),
+    fontWeight: '600',
+    letterSpacing: -0.4,
+    color: color.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  statUnit: {
+    fontFamily: fonts.mono,
+    fontSize: moderateScale(11),
+    color: color.textMuted,
+  },
+
+  // The progression card — label, current reading, metric switch, chart.
+  progressCard: {
+    marginTop: spacing.lg,
+    backgroundColor: color.surface,
+    borderWidth: 1,
+    borderColor: color.border,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+  },
+
   // Metric chips above the progression chart (Heaviest / Est. 1RM / Top Reps).
   metricChips: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
   },
   metricChip: {
     paddingVertical: spacing.xs + 1,
@@ -538,19 +834,15 @@ const styles = StyleSheet.create({
     color: color.bg,
   },
 
-  // Weight-progression line chart.
+  // Weight-progression step chart.
   chartCard: {
     marginTop: spacing.md,
   },
   chartHead: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  chartTitle: {
-    fontSize: type.subhead.fontSize,
-    fontWeight: '600',
-    color: color.textPrimary,
+    gap: spacing.sm,
   },
   chartCurrent: {
     fontFamily: fonts.mono,
@@ -562,10 +854,22 @@ const styles = StyleSheet.create({
   chartPlot: {
     marginTop: spacing.sm,
   },
+  /** Axis reading, pinned to the exact y of the value it names. */
+  axisValue: {
+    position: 'absolute',
+    left: 0,
+    width: AXIS_W - moderateScale(6),
+    textAlign: 'right',
+    fontFamily: fonts.mono,
+    fontSize: moderateScale(10),
+    color: color.textMuted,
+    fontVariant: ['tabular-nums'],
+  },
   chartFoot: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
+    paddingLeft: AXIS_W,
   },
   chartDate: {
     fontFamily: fonts.mono,
@@ -576,9 +880,16 @@ const styles = StyleSheet.create({
   chartDateRight: {
     textAlign: 'right',
   },
-  chartMid: {
+  chartDateMid: {
     flex: 1,
     textAlign: 'center',
+    fontFamily: fonts.mono,
+    fontSize: moderateScale(11),
+    color: color.textMuted,
+    fontVariant: ['tabular-nums'],
+  },
+  chartNote: {
+    marginTop: spacing.sm,
     fontSize: moderateScale(11),
     color: color.textMuted,
   },
@@ -699,12 +1010,6 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
     fontVariant: ['tabular-nums'],
   },
-  heroE1rm: {
-    fontFamily: fonts.mono,
-    fontSize: moderateScale(14),
-    color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
   // History table card
   tableCard: {
     marginTop: spacing.lg,
@@ -759,6 +1064,34 @@ const styles = StyleSheet.create({
   rowValuePr: {
     fontWeight: '600',
     color: color.textPrimary,
+  },
+
+  // The closing summary. A faint ember wash ties it to the chart it describes —
+  // chrome on a card, never on a value; the sentences themselves stay ink.
+  summaryHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 1,
+    marginBottom: spacing.md,
+  },
+  summaryCard: {
+    marginTop: spacing.lg,
+    backgroundColor: alpha(color.trend, 0.05),
+    borderWidth: 1,
+    borderColor: alpha(color.trend, 0.22),
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+  },
+  summaryText: {
+    ...type.subhead,
+    lineHeight: moderateScale(23),
+    color: color.textPrimary,
+  },
+  summaryFoot: {
+    marginTop: spacing.md,
+    fontSize: moderateScale(11),
+    lineHeight: moderateScale(16),
+    color: color.textMuted,
   },
 
   // Alias card + footer

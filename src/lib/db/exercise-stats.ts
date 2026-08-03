@@ -21,6 +21,16 @@ export interface ExerciseStats {
   canonical: string;
   sessions: ExerciseSession[]; // oldest → newest, up to 10
   e1rm: number | null;
+  /** Every session ever recorded for this lift. `sessions` is capped at 10, so
+   * the sheet's "24 sessions" reading cannot be derived from its length. */
+  sessionCount: number;
+  /** The first day this lift was ever recorded — the record's own start. */
+  firstDay: DayKey | null;
+  /** All-time counted tonnage for this lift (0 for bodyweight work, which has
+   * no weight to multiply — the sheet reads reps instead). */
+  volumeTotal: number;
+  /** All-time counted reps for this lift. */
+  repsTotal: number;
 }
 
 export function getExerciseStats(userId: string, canonical: string): ExerciseStats | null {
@@ -93,5 +103,39 @@ export function getExerciseStats(userId: string, canonical: string): ExerciseSta
   );
   const e1rm = e1rmRow?.e1rm != null ? Math.round(e1rmRow.e1rm / 0.5) * 0.5 : null;
 
-  return { canonical: exercises[0]!.canonical, sessions, e1rm };
+  // The whole record, not the charted window: the stat row says how many times
+  // this lift has ever been trained and how much work is in it, and the
+  // ten-session cap above would silently cap both readings.
+  //
+  // LEFT JOIN, so a session whose sets were all skipped still counts as a
+  // session while contributing no work — and the join carries §1.1 invariant
+  // 5's exclusion list itself, like every other aggregate in the app.
+  const totals = db.getFirstSync<{
+    n: number;
+    first_at: string | null;
+    volume: number | null;
+    reps: number | null;
+  }>(
+    `SELECT COUNT(DISTINCT w.id) AS n,
+            MIN(w.performed_at) AS first_at,
+            SUM(CASE WHEN s.reps IS NOT NULL AND s.weight_kg IS NOT NULL
+                     THEN s.reps * s.weight_kg END) AS volume,
+            SUM(s.reps) AS reps
+     FROM workouts w
+     JOIN items i ON i.workout_id = w.id
+     LEFT JOIN sets s ON s.item_id = i.id
+       AND s.kind NOT IN ('warmup','drop','skipped')
+     WHERE w.user_id = ? AND i.exercise_id IN (${idList})`,
+    [userId, ...ids],
+  );
+
+  return {
+    canonical: exercises[0]!.canonical,
+    sessions,
+    e1rm,
+    sessionCount: totals?.n ?? sessions.length,
+    firstDay: totals?.first_at ? dayKeyFor(new Date(totals.first_at)) : null,
+    volumeTotal: Math.round(totals?.volume ?? 0),
+    repsTotal: Math.round(totals?.reps ?? 0),
+  };
 }

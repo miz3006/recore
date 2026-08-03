@@ -12,7 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { type GutterSignal } from '@/lib/parse/types';
-import { color, fonts, MAX_FONT_SCALE, moderateScale } from '@/lib/theme';
+import { color, fonts, MAX_FONT_SCALE, moderateScale, spacing } from '@/lib/theme';
 
 import { NOTE_LINE_HEIGHT, READING_FONT_SIZE } from './note-metrics';
 
@@ -307,6 +307,73 @@ export function PendingDot({ delay }: { delay: number }) {
   return <Animated.View style={[styles.pendingDot, animatedStyle]} />;
 }
 
+/**
+ * THE SCAN — the working state of a line that has been committed but not yet
+ * read back, shown IN THE READING'S OWN SLOT at the right of the card, so the
+ * indicator is replaced in place by the answer it was waiting for. Nothing
+ * jumps: the eye is already where the result will appear.
+ *
+ * A quiet mono word plus a shuttle that sweeps a 3px track. The shuttle EASES
+ * rather than travelling linearly, BREATHES from 12 to 20pt at mid-travel, and
+ * fades toward each end — which is why it reads as something passing over the
+ * line rather than a slider being dragged. That is the whole trick, and it is
+ * the difference between "a spinner is on screen" and "my line is being read".
+ *
+ * No colour, no percentage, no spinner. A percentage would be a lie — the parse
+ * is one round trip and there is nothing to be 40% of — and §5.1 keeps green for
+ * prescriptions. Under Reduce Motion the shuttle holds still, centred and at
+ * full width: the movement goes, the "still working" information stays (§14).
+ */
+const SCAN_W = moderateScale(40);
+const SCAN_H = 3;
+const SHUTTLE_MIN = moderateScale(12);
+const SHUTTLE_MAX = moderateScale(20);
+const SCAN_MS = 1100;
+
+export function ParseIndicator({ label = 'reading' }: { label?: string }) {
+  const reduceMotion = useReducedMotion();
+  const t = useSharedValue(0);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      t.value = 0.5; // mid-travel: widest, brightest, motionless
+      return;
+    }
+    t.value = 0;
+    t.value = withRepeat(
+      withTiming(1, { duration: SCAN_MS, easing: Easing.inOut(Easing.cubic) }),
+      -1,
+      true, // sweep back rather than snapping to the start
+    );
+  }, [reduceMotion, t]);
+
+  const shuttle = useAnimatedStyle(() => {
+    // 0 at both ends, 1 in the middle — one curve driving width and ink, so the
+    // sweep thickens and darkens as it crosses and thins out as it leaves.
+    const breath = Math.sin(t.value * Math.PI);
+    const width = SHUTTLE_MIN + (SHUTTLE_MAX - SHUTTLE_MIN) * breath;
+    return {
+      width,
+      transform: [{ translateX: t.value * (SCAN_W - width) }],
+      opacity: 0.35 + 0.5 * breath,
+    };
+  });
+
+  return (
+    <View
+      style={styles.scan}
+      accessibilityRole="progressbar"
+      accessibilityLabel={`${label}, in progress`}>
+      <Text style={styles.scanLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {label}
+      </Text>
+      <View style={styles.scanTrack}>
+        <Animated.View style={[styles.scanShuttle, shuttle]} />
+      </View>
+    </View>
+  );
+}
+
 export function GutterPending({ rowHeight }: { rowHeight: number }) {
   return (
     <View style={[{ height: rowHeight }, styles.row]}>
@@ -352,6 +419,29 @@ const styles = StyleSheet.create({
     width: PENDING_DOT,
     height: PENDING_DOT,
     borderRadius: PENDING_DOT / 2,
+    backgroundColor: color.textSecondary,
+  },
+  scan: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  scanLabel: {
+    fontFamily: fonts.mono,
+    fontSize: moderateScale(10.5),
+    letterSpacing: 0.6,
+    color: color.textMuted,
+  },
+  scanTrack: {
+    width: SCAN_W,
+    height: SCAN_H,
+    borderRadius: SCAN_H / 2,
+    backgroundColor: color.surfaceHigh,
+    overflow: 'hidden',
+  },
+  scanShuttle: {
+    height: SCAN_H,
+    borderRadius: SCAN_H / 2,
     backgroundColor: color.textSecondary,
   },
   // No alignSelf: the tag centers in row headers and gets a row wrapper in

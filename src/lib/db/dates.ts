@@ -21,6 +21,19 @@ export function shiftDayKey(key: DayKey, days: number): DayKey {
   return dayKeyFor(new Date(y!, m! - 1, d! + days));
 }
 
+/**
+ * Whole days from `from` to `to` (negative if `to` is earlier). Computed in UTC
+ * on purpose: a local-time subtraction across a DST boundary is 23 or 25 hours
+ * and would round to the wrong day exactly twice a year.
+ */
+export function daysBetween(from: DayKey, to: DayKey): number {
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+  return Math.round(
+    (Date.UTC(ty!, tm! - 1, td!) - Date.UTC(fy!, fm! - 1, fd!)) / 86_400_000,
+  );
+}
+
 /** UTC ISO range covering the local day — for lexicographic ISO comparison. */
 export function dayRangeIso(key: DayKey): [string, string] {
   const [y, m, d] = key.split('-').map(Number);

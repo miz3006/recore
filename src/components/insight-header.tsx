@@ -6,7 +6,7 @@ import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import { getStatsSummary } from '@/lib/db/stats';
 import { tap } from '@/lib/haptics';
 import { groupThousands } from '@/lib/parse/estimate';
-import { color, fonts, MAX_FONT_SCALE, moderateScale, spacing } from '@/lib/theme';
+import { color, fonts, MAX_FONT_SCALE, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 import { BODY_PADDING_H } from './note-metrics';
@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
   },
   line: {
     fontFamily: fonts.mono,
-    fontSize: moderateScale(12),
+    fontSize: type.caption.fontSize,
     color: color.textSecondary,
     fontVariant: ['tabular-nums'],
   },

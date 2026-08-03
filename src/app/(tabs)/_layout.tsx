@@ -4,9 +4,16 @@ import { Icon, Label, NativeTabs } from 'expo-router/unstable-native-tabs';
  * The four surfaces (CLAUDE.md §5.1) on the system tab bar (§5.2).
  *
  *   Today     "What am I doing right now?"   — the default tab, 85% of use
- *   Lifts     "How is my bench going?"
+ *   Next      "What am I doing next?"        — the briefing (owner, 28 Jul)
  *   Progress  "Am I actually improving?"
  *   You       "Change something."
+ *
+ * `Next` took the `Lifts` tab's slot. §16 calls the prediction the single
+ * strongest retention mechanism in the product, and it had no door of its own;
+ * "how is my bench going" is a question asked occasionally, "what am I doing
+ * next" is asked every training day. **Lifts is not gone** — it moved to a
+ * pushed route (`/lifts`) reachable from Next and from Progress, which keeps
+ * the bar at four and keeps every tab answering exactly one question.
  *
  * `NativeTabs` renders a real `UITabBarController`, which on iOS 26 *is* the
  * floating Liquid Glass bar — true refraction, correct scroll-edge behaviour,
@@ -38,9 +45,9 @@ export default function TabLayout() {
         <Label>Today</Label>
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="lifts">
-        <Icon sf="list.bullet" />
-        <Label>Lifts</Label>
+      <NativeTabs.Trigger name="next">
+        <Icon sf="arrow.forward" />
+        <Label>Next</Label>
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="progress">

@@ -2,6 +2,7 @@ import { loadUndoneKeys } from '@/lib/db/done-state';
 import { getDb, nowIso } from '@/lib/db/index';
 import { getWorkoutById } from '@/lib/db/workouts';
 import { isSupabaseConfigured } from '@/lib/env';
+import { bumpParsedItems } from '@/lib/funnel';
 import { devLog } from '@/lib/log';
 import { settlePredictionOutcome } from '@/lib/predict/adherence';
 import { recachePrediction } from '@/lib/predict/cache';
@@ -117,6 +118,12 @@ export async function parseWorkout(userId: string, workoutId: string): Promise<P
     if (!fresh) return null;
 
     const { signals, volume } = applyParseResult(userId, workoutId, capped, result);
+
+    // The repair rate's denominator (§2.1, PLAN D4). Counted HERE and not
+    // inside applyParseResult, which also runs on a cache hit and on a
+    // correction rebuild — those are the same reading again, not new work by
+    // the parser, and counting them would quietly deflate the rate.
+    bumpParsedItems(result.items.length);
 
     // Settle what happened to the ghost that was on offer today (§7.2 Gap 3),
     // then compute + cache the NEXT session (CLAUDE.md §7) — reading on open
