@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   signal: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: READING_FONT_SIZE, // a step below the written ink (frame 06)
     lineHeight: NOTE_LINE_HEIGHT, // shares the note's baseline grid
     fontWeight: '500',
@@ -401,7 +401,7 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   hint: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: READING_FONT_SIZE,
     lineHeight: NOTE_LINE_HEIGHT,
     fontWeight: '400',
@@ -427,7 +427,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   scanLabel: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(10.5),
     letterSpacing: 0.6,
     color: color.textMuted,
@@ -454,7 +455,8 @@ const styles = StyleSheet.create({
     paddingVertical: TAG_PAD_V,
   },
   tagText: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(9),
     fontWeight: '500',
     letterSpacing: 1.2,
@@ -468,7 +470,8 @@ const styles = StyleSheet.create({
     paddingVertical: TAG_PAD_V,
   },
   prLabelText: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(9),
     fontWeight: '500',
     letterSpacing: 1,

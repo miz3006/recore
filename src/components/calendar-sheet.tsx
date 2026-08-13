@@ -7,9 +7,10 @@ import { PressableScale, Stagger } from '@/components/motion';
 // "where does the month start", tested in `activity.test.ts`.
 import { cursorOf, monthGrid, type MonthCursor } from '@/lib/activity';
 import { todayKey, type DayKey } from '@/lib/db/dates';
+import { computePlanStrip } from '@/lib/db/strip';
 import { getLoggedDayKeys } from '@/lib/db/workouts';
 import { tap, tapMedium } from '@/lib/haptics';
-import { color, HIT, ink, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { color, FIXED_FONT_SCALE, HIT, ink, lineFor, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
@@ -44,12 +45,20 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
   const today = todayKey();
   const [cursor, setCursor] = useState<MonthCursor>(() => cursorOf(selectedDay));
   const [loggedDays, setLoggedDays] = useState<Set<DayKey>>(new Set());
+  // Whether a split day is genuinely due today — the green PLANNED dot's one
+  // condition. Read on open, not from the store: the store's strip follows the
+  // selected day, and browsing yesterday must not blank today's dot.
+  const [plannedToday, setPlannedToday] = useState(false);
 
   // Fresh data every time the sheet opens; start on the selected day's month.
   useEffect(() => {
     if (visible) {
       setCursor(cursorOf(selectedDay));
-      if (userId) setLoggedDays(getLoggedDayKeys(userId));
+      if (userId) {
+        setLoggedDays(getLoggedDayKeys(userId));
+        const strip = computePlanStrip(userId, todayKey());
+        setPlannedToday(strip !== null && strip.rows.length > 0);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -152,7 +161,7 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
           {/* Weekday letters */}
           <View style={styles.weekRow}>
             {WEEKDAYS.map((w, i) => (
-              <Text key={i} style={styles.weekday} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              <Text key={i} style={styles.weekday} maxFontSizeMultiplier={FIXED_FONT_SCALE}>
                 {w}
               </Text>
             ))}
@@ -169,11 +178,18 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
               const isLogged = loggedDays.has(day);
               const filled = isSelected && !isToday;
 
+              // Trained beats planned: once today is logged, the blue mark is
+              // the truth and the prescription dot retires (§4.2 — green is a
+              // future prescription only).
+              const isPlanned = isToday && plannedToday && !isLogged;
+
               const dotStyle = isLogged
                 ? filled
                   ? styles.dotOnFill
                   : styles.dotRecorded
-                : null;
+                : isPlanned
+                  ? styles.dotPlanned
+                  : null;
 
               return (
                 <PressableScale
@@ -198,7 +214,7 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
                         isToday && styles.todayNum,
                         filled && styles.selectedNum,
                       ]}
-                      maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                      maxFontSizeMultiplier={FIXED_FONT_SCALE}>
                       {parseInt(day.slice(8), 10)}
                     </Text>
                     {/* The calendar carries the data: blue = trained. */}
@@ -209,7 +225,9 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
             })}
           </View>
 
-          {/* Legend: what the dots mean */}
+          {/* Legend: what the dots mean. Green never appears without its label
+              (§4.2), so the planned item is listed only while its dot can be
+              on the grid at all. */}
           <View style={styles.legend}>
             <View style={styles.legendItem}>
               <View style={[styles.dot, styles.dotRecorded]} />
@@ -217,6 +235,14 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
                 Recorded session
               </Text>
             </View>
+            {plannedToday && !loggedDays.has(today) ? (
+              <View style={styles.legendItem}>
+                <View style={[styles.dot, styles.dotPlanned]} />
+                <Text style={styles.legendLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  Planned today
+                </Text>
+              </View>
+            ) : null}
           </View>
       </Stagger>
     </BottomSheet>
@@ -230,7 +256,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: HIT,
+    minHeight: HIT,
   },
   headerSide: {
     width: moderateScale(64),
@@ -305,7 +331,7 @@ const styles = StyleSheet.create({
   },
   dayNum: {
     ...type.body,
-    lineHeight: moderateScale(20),
+    lineHeight: lineFor(20),
     color: color.textPrimary,
     fontVariant: ['tabular-nums'],
   },

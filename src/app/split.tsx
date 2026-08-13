@@ -21,6 +21,7 @@ import {
   CONTROL_HEIGHT,
   fonts,
   hairline,
+  lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
@@ -332,7 +333,8 @@ const styles = StyleSheet.create({
   segmentLabelSelected: { color: color.textPrimary },
 
   todayLine: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(11.5),
     color: color.textMuted,
     marginBottom: spacing.md,
@@ -355,9 +357,10 @@ const styles = StyleSheet.create({
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   cardLabel: { flex: 1, ...type.headline, color: color.textPrimary },
   cardMoves: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(11.5),
-    lineHeight: moderateScale(17),
+    lineHeight: lineFor(17),
     color: color.textSecondary,
   },
 
@@ -371,7 +374,8 @@ const styles = StyleSheet.create({
   },
   weekChip: {
     flex: 1,
-    height: moderateScale(34),
+    minHeight: moderateScale(34),
+    paddingVertical: spacing.sm,
     borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: color.border,
@@ -381,7 +385,8 @@ const styles = StyleSheet.create({
   },
   weekChipOn: { backgroundColor: color.accent, borderColor: color.accent },
   weekChipText: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(12),
     fontWeight: '600',
     color: color.textMuted,
@@ -389,7 +394,8 @@ const styles = StyleSheet.create({
   weekChipTextOn: { color: color.bg },
 
   addDay: {
-    height: CONTROL_HEIGHT,
+    minHeight: CONTROL_HEIGHT,
+    paddingVertical: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
     borderStyle: 'dashed',
@@ -409,9 +415,10 @@ const styles = StyleSheet.create({
 
   empty: { paddingTop: spacing.xl, paddingHorizontal: spacing.xs, gap: spacing.md },
   emptyTitle: { ...type.title2, color: color.textPrimary },
-  emptyBody: { ...type.subhead, lineHeight: moderateScale(21), color: color.textSecondary },
+  emptyBody: { ...type.subhead, lineHeight: lineFor(21), color: color.textSecondary },
   emptyBtn: {
-    height: CONTROL_HEIGHT,
+    minHeight: CONTROL_HEIGHT,
+    paddingVertical: spacing.sm,
     borderRadius: radius.md,
     backgroundColor: color.accent,
     alignItems: 'center',

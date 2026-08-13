@@ -36,6 +36,9 @@ export type AnswerKey =
   | 'bodyweight'
   /** Display unit; null = derive from the device locale (`lib/locale.ts`). */
   | 'weightUnit'
+  /** Commitment horizon ('2w' | '3m' | '1y' | 'forever') — context only; it
+   * personalises the flow's own copy and is never read as a target. */
+  | 'commitment'
   | 'notifications';
 
 export type Answers = Record<AnswerKey, string | null>;
@@ -52,6 +55,7 @@ export const EMPTY_ANSWERS: Answers = {
   restSeconds: null,
   bodyweight: null,
   weightUnit: null,
+  commitment: null,
   notifications: null,
 };
 
@@ -87,11 +91,14 @@ export const useOnboardingAnswers = create<OnboardingAnswersState>()(
       // v2: welcome step shifted numbering. v3: day mask + typed weight.
       // v4: the §5 alignment pass (30 Jul) — company/commitment deleted,
       // routine became sessionFeel, restTimer became restSeconds, name and
-      // primaryLift added. An old snapshot restarts the flow instead of
-      // mis-resuming with keys the steps no longer read.
-      version: 4,
+      // primaryLift added. v5: the 21-screen rebuild (11 Aug) — commitment
+      // returned with consumers (its affirm line, the building checklist) and
+      // the flow grew to twenty config screens, so old positions mis-resume.
+      // An old snapshot restarts the flow instead of mis-resuming with keys
+      // the steps no longer read.
+      version: 5,
       migrate: (persisted, version) =>
-        version < 4
+        version < 5
           ? { answers: EMPTY_ANSWERS, currentStep: 1 }
           : (persisted as { answers: Answers; currentStep: number }),
       storage: createJSONStorage(() => sqliteStorage),

@@ -53,6 +53,10 @@ type ParsedSet = {
   duration_s: number | null;
   rir: number | null;
   parent: number | null;
+  /** The athlete's own words about THIS set, lifted verbatim out of raw_text.
+   * A projection, rebuilt on every parse — never the hand-authored entry note
+   * on `workouts.entry_notes`, which no parser may write (see entry-note.ts). */
+  note: string | null;
 };
 
 type ParsedItem = {
@@ -66,6 +70,24 @@ type ParsedItem = {
 
 const SET_KINDS = new Set(['warmup', 'working', 'drop', 'myo', 'amrap', 'failure']);
 const MODALITIES = new Set(['strength', 'cardio', 'carry', 'hold']);
+
+/** RIR floor. Negative RIR is real — a set taken past failure has fewer than
+ * zero reps in reserve, and "at failure" (0) and "one forced rep" (−1) are
+ * different facts. The bound is a sanity rail against a malformed number, not a
+ * statement about training: nobody logs six forced reps. */
+const MIN_RIR = -5;
+const MAX_RIR = 10;
+
+/** The longest inline comment kept on one set. Mirrors MAX_ENTRY_NOTE_CHARS's
+ * reasoning at a smaller scale: a remark about one set, not a paragraph. */
+const MAX_SET_NOTE_CHARS = 200;
+
+/** Model output is untrusted text: trim, cap, and drop anything empty. */
+function clampText(v: unknown, max: number): string | null {
+  if (typeof v !== 'string') return null;
+  const trimmed = v.trim().slice(0, max).trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 function clampNumber(v: unknown, min: number, max: number, integer = false): number | null {
   if (typeof v !== 'number' || !Number.isFinite(v)) return null;
@@ -107,9 +129,10 @@ function validateResult(raw: unknown, lineCount: number): { items: ParsedItem[] 
         weight_kg: clampNumber(t.weight_kg, 0, 2000),
         distance_m: clampNumber(t.distance_m, 0, 1_000_000),
         duration_s: clampNumber(t.duration_s, 0, 86_400, true),
-        rir: clampNumber(t.rir, 0, 10),
+        rir: clampNumber(t.rir, MIN_RIR, MAX_RIR),
         // A set can only chain onto an EARLIER set in the same item.
         parent: t.parent === null || t.parent === undefined ? null : parent,
+        note: clampText(t.note, MAX_SET_NOTE_CHARS),
       });
     }
     if (sets.length === 0) continue;

@@ -1,7 +1,8 @@
 # Recore product direction
 
-**Version 5.1 · 29 July 2026 · Read together with CLAUDE.md, which holds the working rules,
-technical invariants, definition of done, and implementation order.**
+**Version 5.1 · 29 July 2026 · amended 4–6 August 2026 (see §14.3) · Read together with
+CLAUDE.md, which holds the working rules, technical invariants, definition of done, and
+implementation order.**
 
 The goal is not a generic AI fitness app. Recore should feel like a calm, personal record that
 gets more useful as a person trains. It knows the athlete's context, shows their evidence, and
@@ -287,6 +288,26 @@ The next brief may quote or accurately summarise a recent reflection when it hel
 low energy in the last two sessions." It must not infer a diagnosis or say a meal, supplement,
 injury, or sleep pattern caused the result.
 
+### 8.2 Session start: the day question
+
+On an empty Today, for an athlete with a declared split and at least one logged session, the
+plan strip grows into a session-start card that asks "What are you training?" It shows:
+
+- the split's days as choices, with the due day pre-answered by the deterministic schedule
+  resolution (rotation or weekday) — never by a model;
+- the answered day's movements with the engine's progressed loads, in the strip's own read-only
+  vocabulary;
+- one line of last-session fact (date, sets, tonnage), a door back to re-reading that day;
+- a Start training action.
+
+Answering with a different day pins that day-template as today's due day, and the strip, the
+calendar, and the Next brief all follow the same answer. The card is a suggestion layer, never
+a gate: writing into the page works exactly as before, Start only opens the composer and writes
+nothing into the note, and the card yields to the plain strip the moment composing starts or the
+day has text. Everything on it is read from the record or the schedule; no model output appears
+here — AI prose stays on Next, behind §9's guard. A blank account keeps the first-session
+tutorial instead.
+
 ---
 
 ## 9. Next: the personal training brief
@@ -366,15 +387,31 @@ The tab combines a compact overview with a card per relevant lift or training di
 - time ranges such as 8 weeks, 6 months, and 1 year;
 - metrics appropriate to the activity: estimated 1RM, heaviest load, volume, reps at a load, or
   sport/hybrid workload where enough real data exists;
-- a blue primary line or step chart with a soft contextual fill, readable axes, and neutral
+- a blue primary line chart with a soft contextual fill, readable axes, and neutral
   prior-best/reference marks;
+- a summary of how the whole range went — how many lifts moved up, how many held, how many fell,
+  training frequency, the longest gap, new bests, and the single biggest move named with its
+  number — every figure counted from stored sessions, never phrased as praise;
 - coloured but restrained hierarchy, with underlying session, sets, and date one tap away;
 - empty states that say what evidence is needed: "Two more sessions of squat and this trend
   becomes useful."
 
-Do not smooth a line between values never lifted. For strength data, use a step shape when a
-weight holds across sessions and changes only on a real session. Do not rank lifts by flattery,
-frame a deload as failure, or use a red/green chart to judge a person.
+**How a progression line is drawn** (owner, 6 August 2026 — replaces the earlier step-only
+rule). Every vertex is a real recorded session and is marked, and no point is invented between
+two of them. Consecutive sessions are joined by a continuous line: straight segments by default,
+and any curvature must stay inside the two values it connects. A curve that overshoots past a
+load never lifted is still banned, and so is any drawing that hides how far apart in time two
+sessions were. A step shape stays available where a weight being *held* is the point, but it is
+no longer required.
+
+**How lifts are ordered** (owner, 4 August 2026 — replaces "do not rank lifts by flattery").
+Lifts may be ranked by measured movement, and Recore's default is the biggest share gained, with
+recency and alphabetical always one tap away. The ranking must be measurement, never flattery:
+it ranks on the share moved rather than raw load so a heavy lift cannot own the top forever, a
+lift that fell keeps the place its own number earns it, and a "biggest gain" label appears only
+when the leading lift actually gained. Do not frame a deload as failure, or use a red/green chart
+to judge a person: direction is carried by words, and a lift that fell draws in the same colour
+as one that rose.
 
 The per-lift detail can use a richer blue/ember comparison where it genuinely distinguishes a
 current series from historical reference. Data labels and accessible text always carry meaning
@@ -490,3 +527,18 @@ manipulate someone into staying subscribed.
 | "Owner-run evaluation" named but undefined. | Versioned case set, one command, pass criteria, regression rule (§9.4). |
 | No re-engagement mechanism at all. | One optional, factual weekly recap notification (§12.1); nothing else recurring. |
 | Measurement listed events without targets. | Initial targets with consequences (§13.1). |
+
+### 14.3 Amendments to 5.1 (owner decisions, August 2026)
+
+The document stays at version 5.1; these are dated amendments to §8 and §10, written on the
+owner's instruction. Where they conflict with the text as first published, these rulings win.
+
+| 5.1 rule | Amended ruling | Date |
+|---|---|---|
+| "Do not rank lifts by flattery." | Lifts **are** ranked by measured movement, biggest share gained first by default, with recency and alphabetical one tap away. The anti-flattery constraints move onto the ranking itself: rank on share not raw load, a fallen lift keeps its earned place in the same colour, and a "biggest gain" label only when the leader gained (§10). | 4 Aug 2026 |
+| "Do not smooth a line between values never lifted. For strength data, use a step shape." | A progression line is continuous — straight segments between consecutive real sessions by default, curvature permitted only inside the two values it connects. Overshoot past a load never lifted stays banned; every vertex is a real, marked session. Step shape remains available, no longer required (§10). | 6 Aug 2026 |
+| Progress overview described only as "a factual overview of frequency, consistency, and lift movement". | The overview is a specified summary: up/hold/fall split, frequency, longest gap, new bests, and the biggest move named with its number — all counted from stored sessions (§10). | 4 Aug 2026 |
+| §8 described Today's empty state only as "the log"; the resting state proposed nothing. | An empty Today opens with the session-start question (§8.2): the due split day pre-answered deterministically, its movements and loads in view, one last-session fact line, and Start training. A suggestion layer over the page, never a gate, with no model output on it. | 6 Aug 2026 |
+| §4.2 named colour roles but set no contrast floor, and the muted ink measured 2.45:1 on the canvas. | **The ink ladder is a measured contract** (`theme/color.ts`): ink 16:1 for anything, `textSecondary` 4.7:1 — AA — for every number, comparison or label a person must READ, `textMuted` 3.3:1 for what the eye may skip (dates, placeholders, disabled, decoration). A value drawn in muted is a bug at the call site, not a reason to lighten the token. | 9 Aug 2026 |
+| §1.1 required Dynamic Type without saying how far; the app clamped every Text at 1.3×. | **The clamp is 1.5×.** 1.3 was where the layout broke, not a decision: line heights were hardcoded and could not grow with their glyphs (`lineFor` fixes that at the source). Text inside geometry that cannot grow — a day number in its circle, initials in an avatar, a ring's check — stops at `FIXED_FONT_SCALE` 1.2. Any new fixed `height:` around a label is a defect; use `minHeight`. | 9 Aug 2026 |
+| Nothing in §11 or §16 offered a display choice; text size was the OS setting or nothing. | You carries a **Display** section. Its first setting, "Set readings", prints each set as its own spelled-out line at accessibility size — for the person who wants their record readable without enlarging every app on their phone. It stores like every other pref (meta KV, so it exports and deletes with them) and changes the ledger on the tap. | 9 Aug 2026 |

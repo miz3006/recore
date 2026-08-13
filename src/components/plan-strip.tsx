@@ -6,6 +6,7 @@ import { tap } from '@/lib/haptics';
 import { nameKey, typedNameOf } from '@/lib/parse/receipt';
 import {
   color,
+  FIXED_FONT_SCALE,
   fonts,
   hairline,
   MAX_FONT_SCALE,
@@ -103,7 +104,7 @@ export function PlanStrip() {
                       <Animated.View
                         entering={reduceMotion ? undefined : ZoomIn.duration(220)}
                         style={[styles.ring, styles.ringDone]}>
-                        <Text style={styles.ringMark} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                        <Text style={styles.ringMark} maxFontSizeMultiplier={FIXED_FONT_SCALE}>
                           ✓
                         </Text>
                       </Animated.View>
@@ -196,7 +197,7 @@ const styles = StyleSheet.create({
   // THE ONLY GREEN: a future prescription value (record contract). A logged
   // row's value is no longer a future number, so it hands back the ink.
   val: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: type.caption.fontSize,
     fontWeight: '500',
     fontVariant: ['tabular-nums'],

@@ -45,7 +45,8 @@
           "microphonePermission": "Recore uses the microphone so you can dictate your workout.",
           "speechRecognitionPermission": "Recore transcribes your dictation on-device to log your workout."
         }
-      ]
+      ],
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,

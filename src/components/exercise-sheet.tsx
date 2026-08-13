@@ -17,6 +17,7 @@ import {
   color,
   eyebrow,
   fonts,
+  lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
@@ -28,7 +29,7 @@ import { fmtNumber } from '@/lib/parse/summarize';
 import { labelForDay, useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
-import { stepPathD } from './charts';
+import { seriesPathD } from './charts';
 import { glyphTint, Icon, type IconName } from './icon';
 
 /**
@@ -42,7 +43,7 @@ import { glyphTint, Icon, type IconName } from './icon';
  *   1. **two stat tiles** — sessions ever, best estimated 1RM;
  *   2. the **PR card** — neutral outlined label, the best working set as a big
  *      mono figure;
- *   3. the **PROGRESSION card** — metric chips over a STEP chart with its own
+ *   3. the **PROGRESSION card** — metric chips over a line chart with its own
  *      axis readings, and **the one place in the app that carries ember**
  *      (§5.1, owner 29 Jul): the line and the wash under it;
  *   4. the **history table** — newest session first, each row a date (+ PR label
@@ -115,10 +116,12 @@ const FILL_ID = 'liftTrendFill';
  * reference). Plots ONE chosen metric — heaviest weight, estimated 1RM, or top
  * reps — over the last sessions.
  *
- * **It is a STEP, not a curve**, for the same reason the Progress tab's
- * `StepChart` is (§16.5, and they now share `stepPathD`): a weight holds for
- * however many sessions it holds, then jumps, and a diagonal between two
- * sessions draws loads nobody lifted.
+ * **Straight segments between sessions, never a curve** — it follows the
+ * Progress tab's `TrendChart` through the shared `seriesPathD` (owner, 4 Aug
+ * 2026, flipped both from the older step shape at once: the same lift reading
+ * two different ways on two surfaces is the divergence §7.7 keeps diagnosing).
+ * A spline is still banned — it would bulge past loads nobody lifted, where a
+ * straight run at least ends on two real sessions.
  *
  * **Ember is the one hue here** (`color.trend`, owner 29 Jul): the step line
  * and the wash fading out under it. The wash is the *shape of the record*, not
@@ -168,7 +171,7 @@ function ProgressionChart({
   const yOf = (v: number) =>
     padT + plotH * 0.1 + (1 - (span > 0 ? (v - min) / span : 0.5)) * plotH * 0.8;
   const xOf = (i: number) => AXIS_W + (i / (points.length - 1)) * plotW;
-  const lineD = stepPathD(values, xOf, yOf);
+  const lineD = seriesPathD(values, xOf, yOf);
   // The wash closes the step path down to the baseline — same path, so the fill
   // can never disagree with the line it sits under.
   const baseY = H - padB;
@@ -652,8 +655,10 @@ export function ExerciseSheet() {
                     pr != null && s.topWeight != null && s.day === pr.day && s.topWeight === pr.weightKg;
                   const subline = sessionSubline(s, ordered[i + 1]);
                   const last = i === ordered.length - 1;
+                  const hasNotes = s.notes.length > 0;
                   return (
-                    <View key={s.day} style={[styles.row, !last && styles.rowRule]}>
+                    <View key={s.day} style={[!last && styles.rowRule]}>
+                    <View style={[styles.row, hasNotes && styles.rowTight]}>
                       <View style={styles.rowLeft}>
                         <View style={styles.rowDateLine}>
                           <Text style={styles.rowDate} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -677,6 +682,23 @@ export function ExerciseSheet() {
                         maxFontSizeMultiplier={MAX_FONT_SCALE}>
                         {sessionValue(s)}
                       </Text>
+                    </View>
+                    {/* What the athlete wrote on the line that day, quoted back
+                        verbatim and never summarised (§8.1's rule, one level
+                        down). Absent for sessions logged before PARSE_VERSION 6
+                        and for days nothing was written — both ordinary. */}
+                    {hasNotes ? (
+                      <View style={styles.noteBlock}>
+                        {s.notes.map((n, ni) => (
+                          <Text
+                            key={`${s.day}-${ni}`}
+                            style={styles.noteText}
+                            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                            “{n}”
+                          </Text>
+                        ))}
+                      </View>
+                    ) : null}
                     </View>
                   );
                 })}
@@ -780,16 +802,17 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   statFigure: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(22),
-    lineHeight: moderateScale(26),
+    lineHeight: lineFor(26),
     fontWeight: '600',
     letterSpacing: -0.4,
     color: color.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   statUnit: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(11),
     color: color.textMuted,
   },
@@ -845,7 +868,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   chartCurrent: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(15),
     fontWeight: '600',
     color: color.textPrimary,
@@ -860,7 +883,7 @@ const styles = StyleSheet.create({
     left: 0,
     width: AXIS_W - moderateScale(6),
     textAlign: 'right',
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(10),
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
@@ -872,7 +895,7 @@ const styles = StyleSheet.create({
     paddingLeft: AXIS_W,
   },
   chartDate: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(11),
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
@@ -883,7 +906,7 @@ const styles = StyleSheet.create({
   chartDateMid: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(11),
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
@@ -896,7 +919,7 @@ const styles = StyleSheet.create({
   chartEmpty: {
     marginTop: spacing.lg,
     fontSize: moderateScale(13),
-    lineHeight: moderateScale(19),
+    lineHeight: lineFor(19),
     color: color.textMuted,
   },
 
@@ -958,7 +981,7 @@ const styles = StyleSheet.create({
   },
   step: {
     marginLeft: 'auto',
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(12),
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
@@ -982,7 +1005,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   prLabel: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(9),
     fontWeight: '500',
     letterSpacing: 1,
@@ -1006,7 +1030,7 @@ const styles = StyleSheet.create({
   },
   heroFigure: {
     ...type.statNumber,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     color: color.textPrimary,
     fontVariant: ['tabular-nums'],
   },
@@ -1035,6 +1059,21 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: color.tableRule,
   },
+  /** The date/value line tightens up when quoted remarks follow it, so the row
+   * and its words read as one entry rather than two. */
+  rowTight: {
+    paddingBottom: spacing.xs,
+  },
+  noteBlock: {
+    paddingBottom: spacing.md,
+    gap: 2,
+  },
+  noteText: {
+    fontSize: moderateScale(12),
+    lineHeight: lineFor(17),
+    color: color.textMuted,
+    fontStyle: 'italic',
+  },
   rowLeft: {
     flexShrink: 1,
   },
@@ -1050,14 +1089,14 @@ const styles = StyleSheet.create({
   },
   rowSub: {
     marginTop: 3,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(11),
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
   },
   rowValue: {
     ...type.caption,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     color: color.textSecondary,
     fontVariant: ['tabular-nums'],
   },
@@ -1084,13 +1123,13 @@ const styles = StyleSheet.create({
   },
   summaryText: {
     ...type.subhead,
-    lineHeight: moderateScale(23),
+    lineHeight: lineFor(23),
     color: color.textPrimary,
   },
   summaryFoot: {
     marginTop: spacing.md,
     fontSize: moderateScale(11),
-    lineHeight: moderateScale(16),
+    lineHeight: lineFor(16),
     color: color.textMuted,
   },
 
@@ -1115,7 +1154,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
     fontSize: moderateScale(12),
-    lineHeight: moderateScale(19),
+    lineHeight: lineFor(19),
     color: color.textMuted,
   },
   empty: {

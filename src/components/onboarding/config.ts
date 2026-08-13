@@ -1,278 +1,398 @@
-import type { ImageSourcePropType } from 'react-native';
-
-import {
-  daysLabel,
-  formatBodyWeight,
-  normalizeDayMask,
-  parseBodyWeight,
-} from '@/lib/onboarding';
+import { dayCount, daysLabel, normalizeDayMask } from '@/lib/onboarding';
 import { defaultWeightUnit } from '@/lib/locale';
 import type { WeightUnit } from '@/lib/prefs';
 import type { AnswerKey, Answers } from '@/state/onboarding';
 
 /**
- * The illustrated onboarding flow — config-driven steps, one renderer
- * (`app/onboarding/[step].tsx`). No per-step screen components.
+ * THE onboarding flow — one ordered config array, one renderer
+ * (`app/onboarding/[step].tsx`). Reordering, adding or removing a screen is an
+ * edit to `STEPS` and nothing else: the progress bar derives its segment count
+ * from here, the store persists every answer, and the summary + paywall read
+ * those answers back.
  *
- * FIFTEEN entries: a welcome intro, thirteen steps, and a Ready echo. Aligned
- * with product-direction §5 on 30 Jul (owner's yes): company and commitment
- * were DELETED (no consumer — §5's removal criterion), routine became the
- * session-feel question (screen 10, feeds the composer), rest became a length
- * choice (feeds the toolbar timer), name and priority movement were added
- * (screens 2 and 9 — both have live consumers), and the flow now ends with the
- * §5 screen-14 echo instead of jumping straight to the paywall. Language and
- * display unit are DERIVED from the device locale (`lib/locale.ts`), not
- * asked. The notifications step records intent only — §5.1: no permission
- * prompt belongs in onboarding.
+ * This is the 21-screen rebuild (owner's spec, 11 Aug 2026). Twenty screens
+ * live in this config; the paywall is screen 21 and stays its own route —
+ * completion hands to the dispatcher, which routes a fresh user there. The
+ * progress bar excludes the welcome and the paywall by the owner's rule, which
+ * the `kind !== 'intro'` filter encodes.
+ *
+ * Illustrations are NOT referenced here: every screen renders
+ * `<IllustrationSlot slug={step.slug} />` and assets land in
+ * `illustrations.ts` by slug. The old full-bleed illustration fields are gone
+ * with the layout they served.
  *
  * This file lives in `components/onboarding/`, NOT in `app/onboarding/`,
  * because expo-router registers EVERY file under app/ as a route (only
- * `_layout` is special): an `_config.ts` there would become a phantom route.
- *
- * ASSET MAPPING (owner's spec, follow exactly — the filenames are not
- * self-explanatory):
- *  - `08-walking.png` (training days — farmer's carry + bar chart) and
- *    `10-walking.png` (the welcome — gym bag + timeline) are DIFFERENT
- *    illustrations despite the shared "walking" name.
- *  - `11-Notifications.png` has a capital N. The iOS simulator is
- *    case-insensitive; a real device is not. Keep the exact casing.
- *  - Two deliberate reuses, far apart: 11-Notifications (name + reminders)
- *    and 13-progression (lesson + Ready).
+ * `_layout` is special): a config file there would become a phantom route.
  */
 
 export type StepOption = {
   id: string;
   label: string;
-  emoji?: string;
 };
 
 export type Step = {
-  id: string;
+  /** Stable identifier; also the illustration-registry key. */
+  slug: string;
   /**
-   * 'intro' — the welcome hero (no rail, Get started CTA).
-   * 'question' — 2–4 radio options, answer advances.
+   * 'intro' — the welcome (no progress bar, no back, custom CTA).
+   * 'question' — 2–4 radio options; answering advances after a short beat.
    * 'text' — optional single-line answer + Continue (empty = skip).
-   * 'days' — the seven-circle day picker + Continue.
+   * 'explainer' — copy + illustration + Continue.
+   * 'days' — the seven-circle multi-select day picker + Continue.
    * 'weight' — typed bodyweight + kg/lb toggle + Continue.
-   * 'lesson' — copy only + Continue.
-   * 'ready' — the §5 screen-14 echo of meaningful answers + See plans.
+   * 'building' — the processing checklist; advances itself, no controls.
+   * 'summary' — answers echoed verbatim as bullets + Continue.
+   * 'proof' — the product-truth lines + Continue.
+   * 'timeline' — the trial timeline + Continue.
+   * 'founder' — the personal note + Continue (behind `FOUNDER_NOTE_ENABLED`).
    */
-  kind: 'intro' | 'question' | 'text' | 'lesson' | 'days' | 'weight' | 'ready';
-  /** Static asset, or a function of the answers (the experience variant). */
-  image: ImageSourcePropType | ((answers: Answers) => ImageSourcePropType);
-  /** Vertical anchor for the full-bleed cover crop. */
-  focus: 'top' | 'center';
-  title: string;
-  subtitle?: string;
+  kind:
+    | 'intro'
+    | 'question'
+    | 'text'
+    | 'explainer'
+    | 'days'
+    | 'weight'
+    | 'building'
+    | 'summary'
+    | 'proof'
+    | 'timeline'
+    | 'founder';
+  /** The question, top-aligned. A function when an answer personalises it. */
+  headline: string | ((answers: Answers) => string);
+  /** A quiet mono section label above the headline ("ABOUT YOU") — the
+   * archival eyebrow voice, giving the flow structure without a counter
+   * (Evernote's GET STARTED / NEARLY THERE pattern on Mobbin). */
+  eyebrow?: string;
+  /** One muted line under the headline. */
+  subtext?: string;
   /** 2–4 radio options; question steps only. */
   options?: StepOption[];
-  storeAs?: AnswerKey;
+  storeKey?: AnswerKey;
   /** Placeholder for 'text' steps. */
   placeholder?: string;
   /** Quick-pick chips under a 'text' field — tapping one answers and
    * advances; the field stays for anything not on the list. */
   suggestions?: string[];
+  /** question steps: option id → the line shown briefly under the options
+   * after that answer, before the flow advances. */
+  affirm?: Record<string, string>;
+  /** CTA label where a button advances (default 'Continue'). */
+  cta?: string;
 };
 
 /**
- * Both experience-level variants, exported so the gender step can prefetch
- * them before the answer exists (which variant the experience step shows is
- * decided by the gender answer).
+ * Shown after a commitment answer. Both long horizons get the same line, as
+ * they always have.
  *
- * VARIANT RULE (owner's spec — counter-intuitive, follow literally):
- *   'female' → 03-experience.png, 'male' → 03-experience_v2.png,
- *   anything else or skipped → 03-experience.png.
+ * The three-month line used to read "Three months is where most lifters see
+ * their first real PRs." That is an invented statistic about other people's
+ * training, which CLAUDE.md §2 rule 2 and §3 both forbid, and it was the kind
+ * of confident unsourced number that makes a flow read as machine-written.
+ * These say something about the person's own answer instead, or nothing much
+ * at all — which is what a person actually says here.
  */
-export const EXPERIENCE_IMAGES = {
-  base: require('../../../assets/onboarding/03-experience.png') as ImageSourcePropType,
-  v2: require('../../../assets/onboarding/03-experience_v2.png') as ImageSourcePropType,
-} as const;
+const COMMITMENT_AFFIRM: Record<string, string> = {
+  '2w': 'Fair enough. Start there.',
+  '3m': 'Long enough to stop guessing.',
+  '1y': 'Then the charts will have something to say.',
+  forever: 'Then the charts will have something to say.',
+};
 
-export const STEPS: readonly Step[] = [
+/**
+ * The founder note, added by the 12 Aug restyle — a personal screen between the
+ * product truths and the trial explanation. Flag it off and the flow is exactly
+ * the twenty screens it was; the progress bar, the resume position and the
+ * funnel's step count all follow the array, so nothing else has to change.
+ */
+export const FOUNDER_NOTE_ENABLED = true;
+
+const FOUNDER_STEP: Step = {
+  slug: 'founder-note',
+  eyebrow: 'FROM THE MAKER',
+  kind: 'founder',
+  headline: 'A note from Edis',
+  cta: 'Sounds good',
+};
+
+/**
+ * PLACEHOLDER COPY — the owner's own words go here before release.
+ *
+ * TODO(owner): replace these three paragraphs. They are written in the first
+ * person and signed with a real name, so shipping them as they stand would put
+ * invented words in a real person's mouth on a store-facing screen. They claim
+ * nothing about ratings, reviews or user numbers, and their replacement must
+ * not either (CLAUDE.md §3).
+ */
+export const FOUNDER_NOTE: readonly string[] = [
+  'I built this because I kept quitting other trackers. Logging a set took longer than doing the set.',
+  'So Recore is one text field. Write the session however you write it, and you get something you can still read a year from now.',
+  'It is early and I read everything that comes in. If it gets something wrong, tell me.',
+];
+
+/** Who signs the note. Kept beside the copy it belongs to. */
+export const FOUNDER_SIGNATURE = { name: 'Edis', role: 'Developer' } as const;
+
+const BASE_STEPS: readonly Step[] = [
   {
-    id: 'welcome',
+    slug: 'welcome',
     kind: 'intro',
-    image: require('../../../assets/onboarding/10-walking.png'),
-    focus: 'top',
-    title: 'Welcome to Recore',
-    subtitle:
-      'Thanks for downloading. Write your training in your own words — Recore reads it, tracks every set, and shows the progress you earn.',
+    headline: 'Every session, in your own words',
+    subtext: 'Type what you did the way you would say it. Recore does the filing.',
+    cta: 'Start',
   },
   {
-    id: 'name',
+    // The example is the exact shape `parse-eval-cases.json` covers ("rep list
+    // commas after weight"), so the screen shows a line the parser genuinely
+    // reads — a demo of a syntax that did not work would be the worst possible
+    // first impression.
+    slug: 'demo',
+    eyebrow: 'HOW IT WORKS',
+    kind: 'explainer',
+    headline: 'You type "bench 100kg 5,5,4"',
+    subtext:
+      'Recore reads three sets of Bench Press at 100 kg, and keeps the drop to four on the last one. There is no dropdown to open.',
+    cta: 'Got it',
+  },
+  {
+    slug: 'name',
+    eyebrow: 'ABOUT YOU',
     kind: 'text',
-    image: require('../../../assets/onboarding/11-Notifications.png'),
-    focus: 'top',
-    title: 'What should we call you?',
-    subtitle: 'Optional — it makes the record feel like yours.',
-    placeholder: 'Your first name',
-    storeAs: 'name',
+    headline: "What's your name?",
+    subtext: 'Skip it if you would rather not.',
+    placeholder: 'First name',
+    storeKey: 'name',
   },
   {
-    id: 'gender',
+    slug: 'gender',
+    eyebrow: 'ABOUT YOU',
     kind: 'question',
-    image: require('../../../assets/onboarding/01-spol.png'),
-    focus: 'top',
-    title: "What's your gender?",
-    subtitle: 'We tailor the wording and illustrations to you.',
+    headline: "What's your gender?",
+    subtext: 'Wording and drawings only.',
     options: [
       { id: 'female', label: 'Female' },
       { id: 'male', label: 'Male' },
       { id: 'other', label: 'Prefer not to say' },
     ],
-    storeAs: 'gender',
+    storeKey: 'gender',
   },
   {
-    id: 'goals',
+    slug: 'goal',
+    eyebrow: 'TRAINING',
     kind: 'question',
-    image: require('../../../assets/onboarding/02-cilji.png'),
-    focus: 'top',
-    title: "What's your main goal?",
+    headline: 'What are you training for?',
     options: [
       { id: 'strength', label: 'Get stronger' },
       { id: 'muscle', label: 'Build muscle' },
       { id: 'fitness', label: 'General fitness' },
       { id: 'both', label: 'Strength and muscle' },
     ],
-    storeAs: 'goal',
+    storeKey: 'goal',
   },
   {
-    id: 'experience',
+    slug: 'experience',
+    eyebrow: 'TRAINING',
     kind: 'question',
-    image: (answers) => (answers.gender === 'male' ? EXPERIENCE_IMAGES.v2 : EXPERIENCE_IMAGES.base),
-    focus: 'top',
-    title: 'How much lifting experience do you have?',
+    headline: 'How long have you been lifting?',
     options: [
-      { id: 'new', label: 'Just starting out' },
-      { id: 'building', label: 'I train on and off' },
-      { id: 'experienced', label: "I've trained for years" },
+      { id: 'new', label: 'Just started' },
+      { id: 'building', label: 'On and off' },
+      { id: 'experienced', label: 'A few years now' },
     ],
-    storeAs: 'experience',
+    storeKey: 'experience',
   },
   {
-    id: 'how-recore-works',
-    kind: 'lesson',
-    image: require('../../../assets/onboarding/12-explain-recore.png'),
-    focus: 'center',
-    title: 'Recore is your training record',
-    subtitle:
-      'Write your workout in your own words. Recore understands it, tracks the load, and shows your progress.',
-  },
-  {
-    id: 'tracker',
+    slug: 'tracker',
+    eyebrow: 'RIGHT NOW',
     kind: 'question',
-    image: require('../../../assets/onboarding/04-planning.png'),
-    focus: 'top',
-    title: 'Where do you track workouts today?',
+    headline: 'What are you using now?',
+    subtext: 'A Strong or Hevy export can come across after you sign in.',
     options: [
       { id: 'strong', label: 'Strong' },
       { id: 'hevy', label: 'Hevy' },
-      { id: 'notes', label: 'Notes or paper' },
-      { id: 'none', label: 'Nowhere' },
+      { id: 'notes', label: 'Notes app or paper' },
+      { id: 'none', label: 'Nothing yet' },
     ],
-    storeAs: 'tracker',
+    storeKey: 'tracker',
   },
   {
-    id: 'session-feel',
+    // This screen used to assert "Lifters who keep a record progress faster",
+    // which is a behavioural claim with nothing behind it (§2 rule 2). It now
+    // says something about memory, which is checkable by anyone reading it.
+    slug: 'why-tracking',
+    eyebrow: 'WHY',
+    kind: 'explainer',
+    headline: "You won't remember what you lifted",
+    subtext:
+      "Last Tuesday's top set is gone by Thursday. Written down, it is there when you need to beat it.",
+  },
+  {
+    slug: 'style',
+    eyebrow: 'TRAINING',
     kind: 'question',
-    image: require('../../../assets/onboarding/06-routine.png'),
-    focus: 'top',
-    title: 'How do you want training to feel?',
-    subtitle: 'It shapes the examples and vocabulary — never a locked programme.',
+    headline: 'How do you like to train?',
+    subtext: 'Sets the examples you see. You are never locked into a plan.',
     options: [
-      { id: 'structured', label: 'Structured — I follow a plan' },
-      { id: 'flexible', label: 'Flexible — I go by feel' },
-      { id: 'hybrid', label: 'A bit of both' },
+      { id: 'structured', label: 'To a plan' },
+      { id: 'flexible', label: 'By feel' },
+      { id: 'hybrid', label: 'Bit of both' },
     ],
-    storeAs: 'sessionFeel',
+    storeKey: 'sessionFeel',
   },
   {
-    id: 'training-days',
+    slug: 'days',
+    eyebrow: 'TRAINING',
     kind: 'days',
-    image: require('../../../assets/onboarding/08-walking.png'),
-    focus: 'top',
-    title: 'Which days do you usually train?',
-    subtitle: 'An expected rhythm, not an obligation.',
-    storeAs: 'trainingDays',
+    headline: 'Which days do you usually train?',
+    subtext: 'Roughly is fine. Nothing here counts a missed day.',
+    storeKey: 'trainingDays',
   },
   {
-    id: 'movement',
+    slug: 'key-lift',
+    eyebrow: 'TRAINING',
     kind: 'text',
-    image: require('../../../assets/onboarding/05-training-alone.png'),
-    focus: 'top',
-    title: 'Which lift matters most to you?',
-    subtitle: 'It leads your Lifts and your first examples. Optional.',
-    placeholder: 'Type your own…',
+    headline: 'Which lift do you care about most?',
+    subtext: 'It goes to the top of your Lifts, or skip this one.',
+    placeholder: 'Or type another',
     // Names the parser's canon resolves (`findExerciseByName`), so the pinned
     // lift connects to real history the moment it exists.
     suggestions: ['Squat', 'Bench press', 'Deadlift', 'Overhead press', 'Pull-ups', 'Row'],
-    storeAs: 'primaryLift',
+    storeKey: 'primaryLift',
   },
   {
-    id: 'rest-length',
+    slug: 'rest-timer',
+    eyebrow: 'DEFAULTS',
     kind: 'question',
-    image: require('../../../assets/onboarding/07-rest-time.png'),
-    focus: 'top',
-    title: 'How long do you rest between sets?',
-    subtitle: 'Sets the timer default — change it anytime.',
+    headline: 'How long do you rest between sets?',
+    subtext: 'Where the timer starts. Change it mid-session whenever.',
     options: [
-      { id: '60', label: 'About a minute' },
-      { id: '90', label: 'Around 90 seconds' },
+      { id: '60', label: 'A minute' },
+      { id: '90', label: '90 seconds' },
       { id: '120', label: 'Two minutes' },
       { id: '180', label: 'Three or more' },
     ],
-    storeAs: 'restSeconds',
+    storeKey: 'restSeconds',
   },
   {
-    id: 'why-progression',
-    kind: 'lesson',
-    image: require('../../../assets/onboarding/13-progression.png'),
-    focus: 'center',
-    title: 'Progress is gradual overload',
-    subtitle:
-      'Small, consistent steps — one more kilo, one more rep. Recore tracks them for you.',
-  },
-  {
-    id: 'bodyweight',
+    slug: 'bodyweight',
+    eyebrow: 'ABOUT YOU',
     kind: 'weight',
-    image: require('../../../assets/onboarding/09-weight.png'),
-    focus: 'top',
-    title: 'How much do you weigh?',
-    subtitle: 'Helps put your lifts in context. Leave it empty to skip.',
-    storeAs: 'bodyweight',
+    headline: 'How much do you weigh?',
+    // §5: optional, and it says what it is for. Never a calorie target, a body
+    // score or a health judgement — "and nothing else" is that promise.
+    subtext: 'For bodyweight-relative numbers, nothing else. Blank is fine.',
+    storeKey: 'bodyweight',
   },
   {
-    id: 'notifications',
+    // No unit in the headline: a lb user reading "one more kilo" would be
+    // reading someone else's app.
+    slug: 'overload',
+    eyebrow: 'WHY',
+    kind: 'explainer',
+    headline: (answers) =>
+      answers.goal === 'strength'
+        ? 'A little heavier than last time'
+        : answers.goal === 'muscle'
+          ? 'One more rep than last time'
+          : 'A little more than last time',
+    subtext:
+      'That is the whole trick. The hard part is remembering what last time was, and Recore has it on screen before you start.',
+    cta: 'Got it',
+  },
+  {
+    slug: 'commitment',
+    eyebrow: 'ONE MORE',
     kind: 'question',
-    image: require('../../../assets/onboarding/11-Notifications.png'),
-    focus: 'top',
-    title: 'Want a weekly recap of your training?',
-    subtitle: "We'll ask for permission once your first recap is ready — not before.",
+    headline: 'How long are you giving this?',
+    subtext: 'No wrong answer.',
     options: [
-      { id: 'yes', label: 'Yes, keep me posted' },
-      { id: 'no', label: 'No notifications' },
+      { id: '2w', label: 'Two weeks' },
+      { id: '3m', label: 'Three months' },
+      { id: '1y', label: 'A year' },
+      { id: 'forever', label: 'For good' },
     ],
-    storeAs: 'notifications',
+    affirm: COMMITMENT_AFFIRM,
+    storeKey: 'commitment',
   },
   {
-    id: 'ready',
-    kind: 'ready',
-    image: require('../../../assets/onboarding/13-progression.png'),
-    focus: 'center',
-    title: 'Ready for your record',
-    subtitle: 'Here is what your answers set up.',
+    // The two labels read as STATES, because the renderer shows one of them
+    // beside a switch rather than both as rows.
+    slug: 'notifications',
+    eyebrow: 'DEFAULTS',
+    kind: 'question',
+    headline: 'A recap once a week?',
+    // §5.1: no permission prompt belongs in onboarding, and this line is the
+    // promise that keeps it.
+    subtext: 'No permission prompt yet. That comes when there is a first recap to send.',
+    options: [
+      { id: 'yes', label: 'Yes, send it' },
+      { id: 'no', label: 'No, thanks' },
+    ],
+    storeKey: 'notifications',
+  },
+  {
+    slug: 'building',
+    eyebrow: 'SETTING UP',
+    kind: 'building',
+    headline: 'Setting your defaults',
+  },
+  {
+    slug: 'summary',
+    eyebrow: 'DONE',
+    kind: 'summary',
+    headline: (answers) => {
+      const name = answers.name?.trim();
+      return name ? `That's you set up, ${name}` : "That's you set up";
+    },
+    subtext: 'All of it is editable later, in You.',
+  },
+  {
+    // "Why lifters switch to Recore" implied other people were switching, with
+    // nothing behind it. The lines below are product truths and the headline
+    // now says only that (§3: no fabricated social proof, anywhere).
+    slug: 'social-proof',
+    eyebrow: 'WHY RECORE',
+    kind: 'proof',
+    headline: 'The short version',
+  },
+  {
+    slug: 'trial-timeline',
+    eyebrow: 'YOUR TRIAL',
+    kind: 'timeline',
+    headline: 'How the free trial works',
   },
 ] as const;
 
-/** The rail counts only the real steps — the intro is a doormat, not progress. */
-export const QUESTION_STEP_COUNT = STEPS.length - 1;
+/**
+ * THE flow. The founder note is spliced in after the product truths when its
+ * flag is on; everything downstream — the progress total, the resume position,
+ * the funnel's step count — derives from this array, so the flag is the only
+ * thing that has to be flipped.
+ */
+export const STEPS: readonly Step[] = BASE_STEPS.flatMap((step) =>
+  FOUNDER_NOTE_ENABLED && step.slug === 'social-proof' ? [step, FOUNDER_STEP] : [step],
+);
 
-/** Resolve a step's illustration against the current answers. */
-export function stepImageSource(step: Step, answers: Answers): ImageSourcePropType {
-  return typeof step.image === 'function' ? step.image(answers) : step.image;
+/**
+ * Segment count of the progress bar: one per onboarding screen, excluding the
+ * welcome and the paywall (the paywall is not in `STEPS`). Derived, never
+ * hardcoded — adding or removing a screen updates the bar by itself.
+ */
+export const PROGRESS_TOTAL = STEPS.filter((s) => s.kind !== 'intro').length;
+
+/** Segments filled while viewing `stepNumber` (1-based): every non-intro
+ * screen already left behind. The last config screen fills the bar. */
+export function progressFilled(stepNumber: number): number {
+  return STEPS.slice(0, stepNumber - 1).filter((s) => s.kind !== 'intro').length;
 }
 
-/** One resolution for the display unit — the weight step, the Ready echo and
+/** A step's headline, resolved against the current answers. */
+export function stepHeadline(step: Step, answers: Answers): string {
+  return typeof step.headline === 'function' ? step.headline(answers) : step.headline;
+}
+
+/** One resolution for the display unit — the weight step, the summary and
  * completion must never disagree about it. Unset derives from the locale. */
 export function resolveWeightUnit(answers: Answers): WeightUnit {
   return answers.weightUnit === 'lb' || answers.weightUnit === 'kg'
@@ -280,57 +400,111 @@ export function resolveWeightUnit(answers: Answers): WeightUnit {
     : defaultWeightUnit();
 }
 
-const GOAL_LINES: Record<string, string> = {
-  strength: 'Training for strength — your progress view leads with load and repeatable sets.',
-  muscle: 'Building muscle — your progress view leads with working sets and volume.',
-  fitness: 'Training for fitness — a balanced view of your whole record.',
-  both: 'Strength and muscle — both sides of your record in view.',
+/** The label the person actually tapped, for the verbatim summary rules. */
+function optionLabel(slug: string, id: string | null): string | null {
+  if (!id) return null;
+  const step = STEPS.find((s) => s.slug === slug);
+  return step?.options?.find((o) => o.id === id)?.label ?? null;
+}
+
+/** Rest option id → the clock the toolbar timer will actually show. */
+const REST_CLOCK: Record<string, string> = {
+  '60': '1:00',
+  '90': '1:30',
+  '120': '2:00',
+  '180': '3:00',
 };
 
-const REST_LINES: Record<string, string> = {
-  '60': 'Rest timer set to 1:00.',
-  '90': 'Rest timer set to 1:30.',
-  '120': 'Rest timer set to 2:00.',
-  '180': 'Rest timer set to 3:00.',
-};
+const TRACKER_NAMES: Record<string, string> = { strong: 'Strong', hevy: 'Hevy' };
 
 /**
- * The Ready echo (§5 screen 14): meaningful answers read back as one quiet
- * list, INSTANTLY — never behind an "analyzing" timer (§4.3 bans fake
- * loading; this repository already deleted one such screen as blocker B5).
- * Every line restates something the person actually chose; an unanswered
- * question earns silence, not a filler row.
+ * The building screen's checklist — every line is generated from an answer the
+ * person actually gave; an unanswered question earns silence, not a filler
+ * row. The fallback line covers the (theoretical) fully-skipped run so the
+ * screen never animates an empty list.
  */
-export function readyLines(answers: Answers): string[] {
+export function buildingLines(answers: Answers): string[] {
   const lines: string[] = [];
 
-  const goal = answers.goal ? GOAL_LINES[answers.goal] : undefined;
-  if (goal) lines.push(goal);
-
-  if (answers.experience === 'new') {
-    lines.push('Every reading explains itself the first time it appears.');
-  } else if (answers.experience === 'experienced') {
-    lines.push('Explanations stay out of your way.');
-  }
+  const goal = answers.goal;
+  if (goal === 'strength') lines.push('Training for strength');
+  else if (goal === 'muscle') lines.push('Training for muscle');
+  else if (goal === 'fitness') lines.push('Training for general fitness');
+  else if (goal === 'both') lines.push('Training for strength and muscle');
 
   const lift = answers.primaryLift?.trim();
-  if (lift) lines.push(`${lift[0]!.toUpperCase()}${lift.slice(1)} leads your Lifts from day one.`);
+  if (lift) lines.push(`${lift[0]!.toUpperCase()}${lift.slice(1)} pinned to the top`);
+
+  const rest = REST_CLOCK[answers.restSeconds ?? ''];
+  if (rest) lines.push(`Rest timer starts at ${rest}`);
 
   const mask = normalizeDayMask(answers.trainingDays);
-  if (mask > 0) lines.push(`Your rhythm: ${daysLabel(mask)}.`);
+  if (mask > 0) lines.push(`Week set to ${daysLabel(mask)}`);
 
-  const rest = answers.restSeconds ? REST_LINES[answers.restSeconds] : undefined;
-  if (rest) lines.push(rest);
+  const tracker = TRACKER_NAMES[answers.tracker ?? ''];
+  if (tracker) lines.push(`${tracker} import ready`);
 
-  const unit = resolveWeightUnit(answers);
-  const kg = parseBodyWeight(answers.bodyweight ?? '', unit);
-  const weight = formatBodyWeight(kg, unit);
-  if (weight) lines.push(`${weight} noted for context.`);
+  return lines.length > 0 ? lines : ['Defaults set'];
+}
 
-  if (answers.tracker === 'strong' || answers.tracker === 'hevy') {
-    const app = answers.tracker === 'strong' ? 'Strong' : 'Hevy';
-    lines.push(`Your ${app} history can come with you after sign-up.`);
+/**
+ * The summary bullets — built VERBATIM from stored answers. Every line
+ * contains the person's own answer; nothing generic, and an unanswered
+ * question earns silence.
+ */
+export function summaryLines(answers: Answers): string[] {
+  const lines: string[] = [];
+
+  const goal = optionLabel('goal', answers.goal);
+  if (goal) lines.push(`Goal: ${goal}.`);
+
+  const lift = answers.primaryLift?.trim();
+  if (lift) {
+    lines.push(`${lift[0]!.toUpperCase()}${lift.slice(1)} sits at the top of your Lifts.`);
   }
+
+  const rest = REST_CLOCK[answers.restSeconds ?? ''];
+  if (rest) lines.push(`Rest timer starts at ${rest}.`);
+
+  const mask = normalizeDayMask(answers.trainingDays);
+  if (mask > 0) {
+    const n = dayCount(mask);
+    lines.push(`A ${n}-day week: ${daysLabel(mask)}.`);
+  }
+
+  // "comes with you after sign-up" promised an automatic import. It is offered
+  // once, after sign-in, and it can be declined (`import-start.tsx`).
+  const tracker = TRACKER_NAMES[answers.tracker ?? ''];
+  if (tracker) lines.push(`Your ${tracker} history can come across once you sign in.`);
 
   return lines;
 }
+
+/**
+ * Product truths, not reviews — there are no real reviews yet and inventing
+ * one is an App Store violation and a CLAUDE.md §3 release blocker.
+ */
+// TODO: replace with real App Store reviews post-launch
+export const PROOF_LINES: readonly string[] = [
+  'One text field instead of a form.',
+  'Your own words are kept, not just the numbers pulled out of them.',
+  'Charts that answer one question: is this lift moving?',
+];
+
+/** The trial timeline nodes (owner's copy). The paywall itself keeps stating
+ * the store's own trial and price — this screen explains the shape of it.
+ * `glyph` picks the node mark (Brilliant / Centr's icon-node pattern on
+ * Mobbin): 'start' = solid ink disc with a paper check (it begins now),
+ * 'bell' = the reminder, 'card' = the charge. */
+export const TRIAL_TIMELINE: readonly {
+  title: string;
+  body: string;
+  glyph: 'start' | 'bell' | 'card';
+}[] = [
+  { title: 'Today', body: 'Everything is unlocked.', glyph: 'start' },
+  // "We remind you" read like an email. The reminder is a sheet on the first
+  // open inside the window (`trial-reminder-sheet.tsx`), which is what the
+  // paywall's own timeline says too — one mechanism, described one way.
+  { title: 'Day 5', body: 'Recore reminds you, in the app.', glyph: 'bell' },
+  { title: 'Day 7', body: 'Billing starts unless you cancel before then.', glyph: 'card' },
+];

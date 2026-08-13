@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ExerciseSheet } from '@/components/exercise-sheet';
 import { SessionSheet } from '@/components/session-sheet';
 import { AuthProvider, useAuth } from '@/lib/auth/provider';
-import { color } from '@/lib/theme';
+import { color, loadReadingFont } from '@/lib/theme';
 
 // Hold the splash until the persisted session is restored from the Keychain —
 // the user never sees a sign-in flash when they're already signed in.
@@ -46,10 +46,19 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const { session, loading } = useAuth();
+  // The reading face, registered before the splash lifts so no number can
+  // render in the fallback family and then reflow into the real one. A no-op
+  // until the OTFs are bundled (see theme/typography.ts), and it never blocks:
+  // the splash is released on the auth state, not on a font.
+  const [fontReady, setFontReady] = useState(false);
 
   useEffect(() => {
-    if (!loading) void SplashScreen.hideAsync();
-  }, [loading]);
+    void loadReadingFont().finally(() => setFontReady(true));
+  }, []);
+
+  useEffect(() => {
+    if (!loading && fontReady) void SplashScreen.hideAsync();
+  }, [loading, fontReady]);
 
   if (loading) return null; // splash is still covering the window
 
@@ -90,6 +99,12 @@ function RootNavigator() {
               whole screen — search and all — and became a push, reachable from
               Next and from Progress. */}
           <Stack.Screen name="lifts" />
+          {/* Two pushes off You (12 Aug): the shorthands the parser has been
+              taught, and the honest state of Apple Health. Both behind the
+              guard — one reads the account's own learned rules, the other
+              talks about its training. */}
+          <Stack.Screen name="aliases" />
+          <Stack.Screen name="health" />
         </Stack.Protected>
 
         {/* Sign-in is the LAST step of the funnel; gone once you're in. */}

@@ -43,6 +43,9 @@ const KEYS = {
   firstFinishedAt: `${P}first_workout_finished_at`,
   firstReflectionAt: `${P}first_reflection_at`,
   reflections: `${P}reflections`,
+  firstEntryNoteAt: `${P}first_entry_note_at`,
+  entryNotes: `${P}entry_notes`,
+  splitDaysSaved: `${P}split_days_saved`,
   parsedItems: `${P}parsed_items`,
   corrections: `${P}corrections`,
   adherenceShown: `${P}adherence_shown`,
@@ -50,6 +53,8 @@ const KEYS = {
   firstBriefViewedAt: `${P}first_brief_viewed_at`,
   briefModelShown: `${P}brief_model_shown`,
   briefComposedShown: `${P}brief_composed_shown`,
+  recapEnabled: `${P}recap_enabled`,
+  recapDisabled: `${P}recap_disabled`,
 } as const;
 
 // --- primitives --------------------------------------------------------------
@@ -205,6 +210,38 @@ export function markReflectionAdded() {
 }
 
 /**
+ * The same pair for a PER-ENTRY note (owner, 4 Aug), counted separately from a
+ * session reflection on purpose: they are different acts. "Wrote once about a
+ * whole session" and "keeps remarking on individual lifts" answer different
+ * questions about whether the brief's quoting is worth its surface.
+ *
+ * Not a §13 event yet — §13 lists "first reflection added" and this is its
+ * sibling. It is a local counter like every other one here; naming it in the
+ * product direction is the owner's call (CLAUDE.md §2 rule 8).
+ *
+ * No text, no length, no lift name — a counter, like everything else here.
+ */
+export function markEntryNoteAdded() {
+  stampOnce(KEYS.firstEntryNoteAt);
+  bump(KEYS.entryNotes);
+}
+
+/**
+ * A session turned into a split day from the summary sheet (owner, 13 Aug).
+ *
+ * The one number that says whether the capture path is worth its surface: a
+ * split authored from a real session is the difference between a rotation the
+ * app can progress and a blank editor nobody opened. A count, nothing else —
+ * no label, no movement names, no session id.
+ *
+ * Not a §13 event yet; naming it in the product direction is the owner's call
+ * (CLAUDE.md §2 rule 8), same as `markEntryNoteAdded` above.
+ */
+export function markSplitDaySaved() {
+  bump(KEYS.splitDaysSaved);
+}
+
+/**
  * The repair rate's two halves: how many structured items the parser produced,
  * and how many the user had to correct. The ratio is the parser's real quality
  * score — the eval measures the prompt, this measures the product.
@@ -227,6 +264,12 @@ export function bumpCorrections() {
 export function markBriefShown(kind: 'model' | 'composed') {
   stampOnce(KEYS.firstBriefViewedAt);
   bump(kind === 'model' ? KEYS.briefModelShown : KEYS.briefComposedShown);
+}
+
+/** §13: "weekly recap enabled … and disabled" — each explicit switch counts.
+ * Delivered/opened need notification-response listeners and stay unbuilt. */
+export function markRecapToggled(on: boolean) {
+  bump(on ? KEYS.recapEnabled : KEYS.recapDisabled);
 }
 
 /** Adherence: how often the app showed a prescription vs how often it was met. */
@@ -266,6 +309,10 @@ export interface FunnelSnapshot {
   first_workout_finished_at: string | null;
   first_reflection_at: string | null;
   reflections_added: number;
+  first_entry_note_at: string | null;
+  entry_notes_added: number;
+  /** Sessions turned into a split day from the summary sheet. */
+  split_days_saved: number;
   parsed_items: number;
   corrections: number;
   /** corrections / parsed items, or null before there is anything to divide. */
@@ -275,6 +322,8 @@ export interface FunnelSnapshot {
   first_brief_viewed_at: string | null;
   brief_model_shown: number;
   brief_composed_shown: number;
+  recap_enabled: number;
+  recap_disabled: number;
 }
 
 /** Everything at once — carried in the JSON export, so the record is the user's. */
@@ -305,6 +354,9 @@ export function getFunnelSnapshot(): FunnelSnapshot {
     first_workout_finished_at: readIso(KEYS.firstFinishedAt),
     first_reflection_at: readIso(KEYS.firstReflectionAt),
     reflections_added: readInt(KEYS.reflections),
+    first_entry_note_at: readIso(KEYS.firstEntryNoteAt),
+    entry_notes_added: readInt(KEYS.entryNotes),
+    split_days_saved: readInt(KEYS.splitDaysSaved),
     parsed_items: parsed,
     corrections,
     repair_rate: parsed > 0 ? Math.round((corrections / parsed) * 1000) / 1000 : null,
@@ -313,5 +365,7 @@ export function getFunnelSnapshot(): FunnelSnapshot {
     first_brief_viewed_at: readIso(KEYS.firstBriefViewedAt),
     brief_model_shown: readInt(KEYS.briefModelShown),
     brief_composed_shown: readInt(KEYS.briefComposedShown),
+    recap_enabled: readInt(KEYS.recapEnabled),
+    recap_disabled: readInt(KEYS.recapDisabled),
   };
 }

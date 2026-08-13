@@ -13,6 +13,7 @@ import {
   type ParsedItem,
 } from '@/lib/parse/types';
 
+import { dayKeyFor, type DayKey } from './dates';
 import { getDb } from './index';
 
 /**
@@ -37,11 +38,11 @@ function previousSessionTop(
   userId: string,
   exerciseId: string,
   beforeIso: string,
-): { prev: SetSummary | null; allTimeMaxWeight: number | null } {
+): { prev: SetSummary | null; prevDay: DayKey | null; allTimeMaxWeight: number | null } {
   const db = getDb();
 
-  const prevWorkout = db.getFirstSync<{ id: string }>(
-    `SELECT w.id FROM workouts w
+  const prevWorkout = db.getFirstSync<{ id: string; performed_at: string }>(
+    `SELECT w.id, w.performed_at FROM workouts w
      WHERE w.user_id = ? AND w.performed_at < ?
        AND EXISTS (SELECT 1 FROM items i JOIN sets s ON s.item_id = i.id
                    WHERE i.workout_id = w.id AND i.exercise_id = ? AND s.kind IN ${TOP_SET_KINDS})
@@ -57,7 +58,9 @@ function previousSessionTop(
     [userId, beforeIso, exerciseId],
   );
 
-  if (!prevWorkout) return { prev: null, allTimeMaxWeight: allTime?.max_w ?? null };
+  if (!prevWorkout) {
+    return { prev: null, prevDay: null, allTimeMaxWeight: allTime?.max_w ?? null };
+  }
 
   const sets = db.getAllSync<{
     kind: string;
@@ -72,7 +75,11 @@ function previousSessionTop(
     [prevWorkout.id, exerciseId],
   );
 
-  return { prev: topOfSets(sets), allTimeMaxWeight: allTime?.max_w ?? null };
+  return {
+    prev: topOfSets(sets),
+    prevDay: dayKeyFor(new Date(prevWorkout.performed_at)),
+    allTimeMaxWeight: allTime?.max_w ?? null,
+  };
 }
 
 const fmt = (n: number) => String(Math.round(n * 100) / 100);
@@ -129,6 +136,20 @@ function echoOf(current: SetSummary): GutterSignal | null {
 }
 
 /**
+ * Name the session a comparison is comparing AGAINST. Only the three
+ * comparison kinds carry it: a PR is measured against every session at once,
+ * and an echo compares nothing — attaching a date to either would invite the
+ * ledger to print a fact that isn't there.
+ */
+function withDay(signal: GutterSignal, day: DayKey | null): GutterSignal {
+  if (!day) return signal;
+  if (signal.kind === 'up' || signal.kind === 'down' || signal.kind === 'equal') {
+    return { ...signal, at: day };
+  }
+  return signal;
+}
+
+/**
  * Compute a gutter signal per parsed item, keyed to its line: a comparison
  * where history exists, the top-set echo where it doesn't.
  */
@@ -149,12 +170,12 @@ export function computeSignals(
     if (undone.has(doneKeyFor(item.exercise, setsLineText(item.sets) ?? ''))) continue;
 
     const current = topOfSets(item.sets);
-    const { prev, allTimeMaxWeight } = previousSessionTop(userId, exerciseId, performedAtIso);
+    const { prev, prevDay, allTimeMaxWeight } = previousSessionTop(userId, exerciseId, performedAtIso);
 
     const signal = prev
       ? (signalFor(current, prev, allTimeMaxWeight) ?? echoOf(current))
       : echoOf(current);
-    if (signal) signals.push({ line: item.line, signal });
+    if (signal) signals.push({ line: item.line, signal: withDay(signal, prevDay) });
   }
 
   return signals;

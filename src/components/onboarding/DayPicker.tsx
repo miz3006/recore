@@ -1,16 +1,20 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native';
+import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
 import { PressableScale } from '@/components/motion';
 import { DAY_LABELS, hasDay } from '@/lib/onboarding';
-import { alpha, color, ink, MAX_FONT_SCALE, moderateScale, radius, type } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, radius, type } from '@/lib/theme';
+
+import { BLUE, INK_CARD, SELECT_BORDER } from './tokens';
+import { useSelectFill } from './use-select-fill';
 
 /**
- * Seven day circles, Monday first, multi-select — the illustrated flow's
- * "which days do you train" control. Same bit-mask vocabulary as the calendar
- * and `plan/resolve.ts` (`hasDay`/`toggleDay`), same surface language as
- * OptionRow: paper at 60% with an ink hairline, selected = solid ink with a
- * paper label. An EXPECTATION, never a target (§11) — nothing here or
- * downstream counts a miss.
+ * Seven day circles, Monday first, multi-select — the "which days do you
+ * train" control. Same bit-mask vocabulary as the calendar and
+ * `plan/resolve.ts` (`hasDay`/`toggleDay`), same surface language as OptionRow
+ * after the 12 Aug restyle: a soft ink-3 % disc that takes a Recore blue edge
+ * and a blue label when it is chosen. An EXPECTATION, never a target (§11) —
+ * nothing here or downstream counts a miss.
  */
 export function DayPicker({
   mask,
@@ -21,27 +25,49 @@ export function DayPicker({
   onToggle: (day: number) => void;
 }) {
   return (
-    <View style={styles.row}>
-      {DAY_LABELS.map((label, day) => {
-        const selected = hasDay(mask, day);
-        return (
-          <PressableScale
-            key={label}
-            onPress={() => onToggle(day)}
-            activeScale={0.94}
-            accessibilityRole="checkbox"
-            accessibilityLabel={label}
-            accessibilityState={{ checked: selected }}
-            style={[styles.circle, selected && styles.circleSelected]}>
-            <Text
-              style={[styles.label, selected && styles.labelSelected]}
-              maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {label.slice(0, 2)}
-            </Text>
-          </PressableScale>
-        );
-      })}
-    </View>
+    <Animated.View style={styles.row}>
+      {DAY_LABELS.map((label, day) => (
+        <DayCircle
+          key={label}
+          label={label}
+          selected={hasDay(mask, day)}
+          onPress={() => onToggle(day)}
+        />
+      ))}
+    </Animated.View>
+  );
+}
+
+function DayCircle({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const p = useSelectFill(selected);
+
+  const circleStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(p.value, [0, 1], [INK_CARD, BLUE]),
+  }));
+  const labelStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(p.value, [0, 1], [color.textPrimary, BLUE]),
+  }));
+
+  return (
+    <PressableScale
+      onPress={onPress}
+      activeScale={0.94}
+      accessibilityRole="checkbox"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: selected }}
+      style={[styles.circle, circleStyle]}>
+      <Animated.Text style={[styles.label, labelStyle]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {label.slice(0, 2)}
+      </Animated.Text>
+    </PressableScale>
   );
 }
 
@@ -58,20 +84,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 0.5,
-    borderColor: alpha(color.accent, ink.grabber),
-    backgroundColor: alpha(color.bg, 0.6),
-  },
-  circleSelected: {
-    backgroundColor: color.accent,
-    borderColor: color.accent,
+    backgroundColor: INK_CARD,
+    borderWidth: SELECT_BORDER,
   },
   label: {
     ...type.caption,
     fontWeight: '600',
-    color: color.textPrimary,
-  },
-  labelSelected: {
-    color: color.bg,
   },
 });

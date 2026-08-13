@@ -22,6 +22,10 @@ export type IconName =
   | 'timer'
   | 'share'
   | 'plan'
+  // The ledger's per-entry note: outline while the entry has nothing written on
+  // it, filled once it carries the athlete's words. State, not decoration.
+  | 'note'
+  | 'note-on'
   // --- You: one leading glyph per settings row, so a long list is scannable
   // --- by shape before it is read (Granola / Cosmos / Zocdoc on Mobbin).
   | 'calendar'
@@ -31,6 +35,7 @@ export type IconName =
   | 'barbell'
   | 'sparkle'
   | 'card'
+  | 'bell'
   | 'refresh'
   | 'download'
   | 'table'
@@ -40,7 +45,10 @@ export type IconName =
   | 'star'
   | 'sign-out'
   | 'trash'
-  | 'wrench';
+  | 'wrench'
+  // The settled card's ⋯ (entry-actions-sheet) and its Edit row.
+  | 'ellipsis'
+  | 'pencil';
 
 type Glyph =
   | { set: 'ion'; name: ComponentProps<typeof Ionicons>['name'] }
@@ -69,6 +77,11 @@ const MAP: Record<IconName, Glyph> = {
   // The accessory bar's "write the next planned movement" button — a list, not
   // a plus: nothing is being created, a line that already exists is being taken.
   plan: { set: 'ion', name: 'list-outline' },
+  // A speech bubble, because the content is the athlete's own words about that
+  // entry — a pencil would read as "edit this line", which the card body
+  // already does.
+  note: { set: 'ion', name: 'chatbubble-outline' },
+  'note-on': { set: 'ion', name: 'chatbubble' },
 
   // You's row glyphs. All outline, all the same optical weight, and each with
   // its own colour (GLYPH_TINT below, owner 28 July) — wayfinding, so a long
@@ -80,6 +93,7 @@ const MAP: Record<IconName, Glyph> = {
   barbell: { set: 'ion', name: 'barbell-outline' },
   sparkle: { set: 'ion', name: 'sparkles-outline' },
   card: { set: 'ion', name: 'card-outline' },
+  bell: { set: 'ion', name: 'notifications-outline' },
   refresh: { set: 'ion', name: 'refresh-outline' },
   download: { set: 'ion', name: 'download-outline' },
   table: { set: 'ion', name: 'grid-outline' },
@@ -89,6 +103,8 @@ const MAP: Record<IconName, Glyph> = {
   star: { set: 'ion', name: 'star-outline' },
   'sign-out': { set: 'ion', name: 'log-out-outline' },
   trash: { set: 'ion', name: 'trash-outline' },
+  ellipsis: { set: 'ion', name: 'ellipsis-horizontal' },
+  pencil: { set: 'ion', name: 'pencil-outline' },
   wrench: { set: 'ion', name: 'construct-outline' },
 };
 
@@ -109,6 +125,7 @@ const MAP: Record<IconName, Glyph> = {
  * `color.error`, and a second red would be a second meaning for red.
  */
 const GLYPH_TINT: Partial<Record<IconName, string>> = {
+  bell: glyphColor.indigo,
   calendar: glyphColor.indigo,
   target: glyphColor.orange,
   language: glyphColor.teal,

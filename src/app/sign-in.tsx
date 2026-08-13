@@ -135,7 +135,9 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     color: color.textPrimary,
     marginTop: spacing.md,
-    height: moderateScale(44),
+    // A minimum, not a height: at a large text setting a fixed box crops the
+    // word inside it.
+    minHeight: moderateScale(44),
     textAlignVertical: 'center',
   },
   hero: {

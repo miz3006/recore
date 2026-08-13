@@ -1,15 +1,19 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
 import { PressableScale } from '@/components/motion';
-import { alpha, color, ink, MAX_FONT_SCALE, radius, spacing, type } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, radius, spacing, type } from '@/lib/theme';
+
+import { BLUE, INK_CARD, SELECT_BORDER } from './tokens';
+import { useSelectFill } from './use-select-fill';
 
 /**
- * Quick-pick pills under a text answer (the priority-movement step): the
- * best-known choices one tap away, the field above for everything else.
- * Tapping a chip answers-and-advances exactly like a radio option, so the
- * common case costs one touch and typing stays first-class. Same surface
- * language as OptionRow; the chip matching the field's current text reads
- * selected.
+ * Quick-pick pills under a text answer (the key-lift step): the best-known
+ * choices one tap away, the field above for everything else. Tapping a chip
+ * answers-and-advances exactly like a radio option, so the common case costs
+ * one touch and typing stays first-class. Same surface language as OptionRow
+ * after the 12 Aug restyle — a soft ink-3 % pill that takes a Recore blue edge
+ * and a blue label; the chip matching the field's current text reads selected.
  */
 export function SuggestionChips({
   suggestions,
@@ -24,26 +28,48 @@ export function SuggestionChips({
   const normalized = current.trim().toLowerCase();
   return (
     <View style={styles.wrap}>
-      {suggestions.map((s) => {
-        const selected = normalized === s.toLowerCase();
-        return (
-          <PressableScale
-            key={s}
-            onPress={() => onPick(s)}
-            activeScale={0.95}
-            accessibilityRole="button"
-            accessibilityLabel={s}
-            accessibilityState={{ selected }}
-            style={[styles.chip, selected && styles.chipSelected]}>
-            <Text
-              style={[styles.label, selected && styles.labelSelected]}
-              maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {s}
-            </Text>
-          </PressableScale>
-        );
-      })}
+      {suggestions.map((s) => (
+        <Chip
+          key={s}
+          label={s}
+          selected={normalized === s.toLowerCase()}
+          onPress={() => onPick(s)}
+        />
+      ))}
     </View>
+  );
+}
+
+function Chip({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const p = useSelectFill(selected);
+
+  const chipStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(p.value, [0, 1], [INK_CARD, BLUE]),
+  }));
+  const labelStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(p.value, [0, 1], [color.textPrimary, BLUE]),
+  }));
+
+  return (
+    <PressableScale
+      onPress={onPress}
+      activeScale={0.95}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      style={[styles.chip, chipStyle]}>
+      <Animated.Text style={[styles.label, labelStyle]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {label}
+      </Animated.Text>
+    </PressableScale>
   );
 }
 
@@ -54,23 +80,14 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   chip: {
-    borderWidth: 0.5,
-    borderColor: alpha(color.accent, ink.grabber),
+    backgroundColor: INK_CARD,
+    borderWidth: SELECT_BORDER,
     borderRadius: radius.pill,
-    backgroundColor: alpha(color.bg, 0.6),
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
-  },
-  chipSelected: {
-    backgroundColor: color.accent,
-    borderColor: color.accent,
   },
   label: {
     ...type.subhead,
     fontWeight: '500',
-    color: color.textPrimary,
-  },
-  labelSelected: {
-    color: color.bg,
   },
 });

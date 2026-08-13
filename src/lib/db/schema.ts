@@ -6,7 +6,7 @@
  * table, and `parse_cache` (the last parse result + gutter signals per
  * workout, kept so the gutter renders instantly after a cold start).
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS workouts (
   performed_at    TEXT NOT NULL,            -- UTC ISO; the DAY this workout belongs to
   raw_text        TEXT NOT NULL,            -- exactly what the user typed
   reflection      TEXT,                     -- the athlete's own end-of-session note (§8.1)
+  entry_notes     TEXT,                     -- JSON {exercise key: the athlete's note on that entry}
   parse_version   INTEGER,
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL,
@@ -177,4 +178,31 @@ ALTER TABLE predictions ADD COLUMN outcome TEXT;
  */
 export const MIGRATION_4_SQL = `
 ALTER TABLE workouts ADD COLUMN reflection TEXT;
+`;
+
+/**
+ * v4 → v5: the per-entry note (owner, 4 Aug 2026).
+ *
+ * ONE COLUMN HOLDING A SMALL JSON MAP, for the same reason the reflection is a
+ * column: a note belongs to a session's entry, so riding the workout row makes
+ * §12's promise — "the same account scoping, export, and deletion guarantees as
+ * workout records" — true by construction. RLS is row-level, the account
+ * cascade takes it, `buildExportJson` reads the row, `ensureLocalUser` wipes it.
+ *
+ * WHY NOT A ROW PER NOTE. A table would need its own RLS policy, its own push
+ * and pull, its own delete path and its own foreign key — four places to forget
+ * something — to store what is at most a handful of short strings per session.
+ * The map is read and written whole, so there is nothing to reconcile.
+ *
+ * WHY NOT ON `sets.note`. That column belongs to the PARSE (it is rebuilt from
+ * raw_text on every re-parse, `applyParseResult` deletes and re-inserts the
+ * rows). A note the athlete wrote must survive a re-parse; a projection cannot
+ * hold it.
+ *
+ * The keys are canonical exercise names, normalized by `entryNoteKey` — line
+ * indexes shift and set text changes when a number is corrected, so neither can
+ * identify an entry a day later.
+ */
+export const MIGRATION_5_SQL = `
+ALTER TABLE workouts ADD COLUMN entry_notes TEXT;
 `;

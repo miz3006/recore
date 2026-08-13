@@ -7,7 +7,7 @@ import { tap, tapMedium } from '@/lib/haptics';
 import { matchPlanIndex, nameKey, typedNameOf } from '@/lib/parse/receipt';
 import { plateLine } from '@/lib/plates';
 import { getBarWeightKg, getSmallestPlateKg, hasSeenGhostHint, markGhostHintSeen } from '@/lib/prefs';
-import { color, CONTROL_HEIGHT, fonts, HIT, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { color, CONTROL_HEIGHT, FIXED_FONT_SCALE, fonts, HIT, lineFor, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 import { MonoTag, repScheme } from './gutter-value';
@@ -218,7 +218,7 @@ export function GhostPrediction({
                 <Animated.View
                   entering={reduceMotion ? undefined : ZoomIn.duration(220)}
                   style={[styles.check, styles.checkDone]}>
-                  <Text style={styles.checkMark} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  <Text style={styles.checkMark} maxFontSizeMultiplier={FIXED_FONT_SCALE}>
                     ✓
                   </Text>
                 </Animated.View>
@@ -291,12 +291,13 @@ const styles = StyleSheet.create({
   },
   tagline: {
     flex: 1,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(10.5),
     color: color.textMuted,
   },
   headerMeta: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(10.5),
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
@@ -335,7 +336,7 @@ const styles = StyleSheet.create({
   },
   // THE ONLY LIME IN THE APP: a future prescription value (record contract).
   rowValue: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(13.5),
     fontWeight: '500',
     fontVariant: ['tabular-nums'],
@@ -349,7 +350,7 @@ const styles = StyleSheet.create({
     color: color.textMuted, // done rows recede — the note carries them now
   },
   plates: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(10.5),
     fontVariant: ['tabular-nums'],
     color: color.textMuted,
@@ -379,14 +380,15 @@ const styles = StyleSheet.create({
   },
   reason: {
     marginTop: spacing.md,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(10.5),
-    lineHeight: moderateScale(15),
+    lineHeight: lineFor(15),
     color: color.textMuted,
   },
   evidence: {
     marginTop: spacing.sm,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(10.5),
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
@@ -396,7 +398,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   acceptBtn: {
-    height: CONTROL_HEIGHT,
+    minHeight: CONTROL_HEIGHT,
+    paddingVertical: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.md,
@@ -411,7 +414,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   skipBtn: {
-    height: HIT,
+    minHeight: HIT,
+    paddingVertical: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.md,

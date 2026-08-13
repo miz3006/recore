@@ -2,11 +2,15 @@ import { create } from 'zustand';
 
 import { shiftDayKey, todayKey, type DayKey } from '@/lib/db/dates';
 import { loadUndoneKeys, loadUndoneMap, saveUndone } from '@/lib/db/done-state';
+import { getEntryNotes, setEntryNote } from '@/lib/db/entry-notes';
 import { getMeta, setMeta } from '@/lib/db/index';
-import { computeStreak, getWorkoutForDay, saveRawText } from '@/lib/db/workouts';
+import { setPlanDayChoice } from '@/lib/db/plan';
+import { computeStreak, countSessions, getWorkoutForDay, saveRawText } from '@/lib/db/workouts';
 import { getPredictionForOpen, markPredictionAccepted } from '@/lib/db/predictions';
 import { computePlanStrip, type PlanStrip } from '@/lib/db/strip';
 import { setEffortOnLine, type Effort } from '@/lib/effort';
+import { readEntryNote, type EntryNotes } from '@/lib/entry-note';
+import { markEntryNoteAdded } from '@/lib/funnel';
 import { getParseCache, reapplyDoneState } from '@/lib/parse/apply';
 import { parseWorkout, type ParseOutcome } from '@/lib/parse/client';
 import { applyCorrection, getFixTarget, type FixTarget } from '@/lib/parse/correct';
@@ -43,6 +47,15 @@ interface SessionState {
    * key here marks one the user un-checked ("recorded but not done yet"). Keyed
    * by exercise+sets so it survives reorder; persisted per workout in meta. */
   undone: Record<string, true>;
+  /**
+   * The athlete's own note on individual ENTRIES of this session, keyed by
+   * `entryNoteKey` (`lib/entry-note.ts`). Prose about one lift — never part of
+   * `raw_text`, never read by the parser, never an input to a number. Next
+   * quotes it back beside the lift it was written about.
+   */
+  entryNotes: EntryNotes;
+  /** The ledger entry whose note sheet is open, or null. */
+  noteTarget: { exercise: string; setText: string; line: number } | null;
   /** Gutter signals + the exact raw text they were computed from. */
   signals: LineSignal[];
   parsedSnapshot: string | null;
@@ -69,16 +82,33 @@ interface SessionState {
   sheetLine: number | null;
   /** A committed line the composer is editing inline (tap a card → Edit). */
   editingLine: number | null;
-  /** The parsed line being corrected (long-press on a gutter value), or null. */
+  /** The parsed line being corrected — opened from a card's alias echo or the
+   * inline editor's "fix reading" — or null. */
   fixTarget: FixTarget | null;
   /** Bumped after every landed correction — read-side caches key on it. */
   fixRevision: number;
   streak: number;
+  /** Sessions on the record, all time — the top bar's labelled figure. */
+  sessionCount: number;
+  /**
+   * Epoch ms of the last write to THIS day's note, or null on an empty day.
+   * Read from `workouts.updated_at`, so it survives a relaunch mid-session.
+   * With `sessionFinished` it answers one question (`lib/session-activity.ts`):
+   * is the athlete still in the gym?
+   */
+  lastActivityAt: number | null;
+  /** Finish was pressed on this day's session. Sticky per workout in the meta
+   * KV, like receipt mode — a settled session must re-open settled. */
+  sessionFinished: boolean;
   ghost: GhostData | null;
   ghostDismissed: boolean;
   /** Today's declared day-template resolved to movements + engine loads (the
    * read-only plan-in-view strip). Recomputed on open and after each parse. */
   planStrip: PlanStrip | null;
+  /** Answer the session-start question (§8.2): pin a day-template as TODAY's
+   * due day. Persisted day-keyed in the meta KV, read by resolveTodayPlanDay —
+   * so the strip, calendar, and Next brief all follow the answer. */
+  choosePlanDay: (planDayId: string) => void;
 
   hydrate: (userId: string) => void;
   reset: () => void;
@@ -98,6 +128,8 @@ interface SessionState {
   toggleDone: (key: string) => void;
   /** Remove a physical line from the note (delete an entry). */
   deleteNoteLine: (line: number) => void;
+  /** Rewrite one line's words from the correction sheet — see the action. */
+  replaceNoteLine: (line: number, text: string) => void;
   /**
    * Mark how hard one physical line was, as an RPE token in the user's own
    * words (`src/lib/effort.ts`). Null clears it. It goes through `setNote`
@@ -105,6 +137,15 @@ interface SessionState {
    * through the ONE path it already has — no overlay, nothing to re-apply.
    */
   setLineEffort: (line: number, effort: Effort | null) => void;
+  /**
+   * The per-entry note sheet (owner, 4 Aug): opened from the card's ⋯ sheet,
+   * it carries that entry's effort and the athlete's own words about it. Two
+   * different writes — see `saveEntryNote`.
+   */
+  openEntryNote: (target: { exercise: string; setText: string; line: number }) => void;
+  closeEntryNote: () => void;
+  /** Store (or clear) the note on one entry of the open session. */
+  saveEntryNote: (exercise: string, text: string | null) => void;
   /**
    * The post-finish CHECK-IN sheet — the reflection (§8.1) and the effort
    * scale on one surface. Also reachable later, from the receipt.
@@ -118,6 +159,13 @@ interface SessionState {
   openFixSheet: (line: number) => void;
   closeFixSheet: () => void;
   submitFix: (exercise: string, sets: ParsedSet[]) => void;
+  /** Drop the open fix target's READING (its parsed sets) while leaving the
+   * written line untouched — see the action for why that is one and the same
+   * correction path. */
+  removeReading: () => void;
+  /** Mark this session done: the pill stops reporting a live set and the
+   * reflection row appears. Writing another line re-opens it. */
+  finishSession: () => void;
 }
 
 const PARSE_DEBOUNCE_MS = 900;
@@ -145,6 +193,10 @@ const RECEIPT_MIN_EXERCISES = 4;
 const RECEIPT_DUMP_WINDOW_MS = 60_000;
 const receiptModeKey = (workoutId: string) => `receipt_mode:${workoutId}`;
 let dumpStartedAt: number | null = null;
+
+/** Finish, remembered per workout — the same sticky-meta shape receipt mode
+ * uses, so a session that was settled yesterday re-opens settled today. */
+const sessionDoneKey = (workoutId: string) => `session_done:${workoutId}`;
 
 /** The receipt's one AI line: the freshly cached next-session reason. Only on
  * today — a past day's receipt must not carry tomorrow's justification. */
@@ -200,11 +252,19 @@ function loadDay(userId: string, day: DayKey) {
   }
 
   const receiptMode = workout ? getMeta(receiptModeKey(workout.id)) === '1' : false;
+  const sessionFinished = workout ? getMeta(sessionDoneKey(workout.id)) === '1' : false;
+  // `updated_at` is written on every keystroke (saveRawText), so it is the
+  // honest answer to "when was this session last touched" without inventing a
+  // per-set timestamp the record doesn't have.
+  const touchedAt = workout ? Date.parse(workout.updated_at) : NaN;
 
   return {
     note: workout?.raw_text ?? '',
     workoutId: workout?.id ?? null,
+    sessionFinished,
+    lastActivityAt: Number.isFinite(touchedAt) ? touchedAt : null,
     undone: loadUndoneMap(workout?.id ?? null),
+    entryNotes: getEntryNotes(workout?.id ?? null),
     signals,
     parsedSnapshot: snapshot,
     parsedVolume: volume,
@@ -222,6 +282,8 @@ export const useSession = create<SessionState>((set, get) => ({
   note: '',
   workoutId: null,
   undone: {},
+  entryNotes: {},
+  noteTarget: null,
   signals: [],
   parsedSnapshot: null,
   parsedVolume: 0,
@@ -237,6 +299,9 @@ export const useSession = create<SessionState>((set, get) => ({
   fixTarget: null,
   fixRevision: 0,
   streak: 0,
+  sessionCount: 0,
+  lastActivityAt: null,
+  sessionFinished: false,
   ghost: null,
   ghostDismissed: false,
   planStrip: null,
@@ -250,6 +315,7 @@ export const useSession = create<SessionState>((set, get) => ({
       selectedDay: today,
       ...loadDay(userId, today),
       streak: computeStreak(userId, today),
+      sessionCount: countSessions(userId),
       ghost: prediction
         ? { id: prediction.id, ghostText: prediction.ghost_text, reason: prediction.reason }
         : null,
@@ -268,6 +334,8 @@ export const useSession = create<SessionState>((set, get) => ({
       note: '',
       workoutId: null,
       undone: {},
+      entryNotes: {},
+      noteTarget: null,
       signals: [],
       parsedSnapshot: null,
       parsedVolume: 0,
@@ -282,6 +350,9 @@ export const useSession = create<SessionState>((set, get) => ({
       editingLine: null,
       fixTarget: null,
       streak: 0,
+      sessionCount: 0,
+      lastActivityAt: null,
+      sessionFinished: false,
       ghost: null,
       ghostDismissed: false,
       planStrip: null,
@@ -294,7 +365,14 @@ export const useSession = create<SessionState>((set, get) => ({
     if (parseTimer) clearTimeout(parseTimer);
     clearParseRetry();
     dumpStartedAt = null;
-    set({ selectedDay: day, ...loadDay(userId, day), planStrip: computePlanStrip(userId, day) });
+    set({
+      selectedDay: day,
+      ...loadDay(userId, day),
+      // A note sheet belongs to the entry it was opened from; another day's
+      // ledger is not that entry.
+      noteTarget: null,
+      planStrip: computePlanStrip(userId, day),
+    });
   },
 
   setNote: (text) => {
@@ -307,7 +385,17 @@ export const useSession = create<SessionState>((set, get) => ({
 
     // 1. Optimistic local-first write: raw_text hits SQLite in this tick.
     const workoutId = saveRawText(userId, selectedDay, text);
-    set({ note: text, workoutId, streak: computeStreak(userId, todayKey()) });
+    set({
+      note: text,
+      workoutId,
+      streak: computeStreak(userId, todayKey()),
+      sessionCount: countSessions(userId),
+      // Writing IS the session being live again: the athlete logging another
+      // set after Finish has not finished, whatever they pressed earlier.
+      lastActivityAt: Date.now(),
+      sessionFinished: false,
+    });
+    if (prevNote !== text) setMeta(sessionDoneKey(workoutId), null);
 
     // 2. Fire the background parse after the typing pause; push in background.
     // A fresh keystroke supersedes any failure-retry chain in flight.
@@ -353,6 +441,13 @@ export const useSession = create<SessionState>((set, get) => ({
 
   dismissGhost: () => set({ ghostDismissed: true }),
 
+  choosePlanDay: (planDayId) => {
+    const { userId, selectedDay } = get();
+    if (!userId || selectedDay !== todayKey()) return;
+    setPlanDayChoice(userId, selectedDay, planDayId);
+    set({ planStrip: computePlanStrip(userId, selectedDay) });
+  },
+
   openExerciseSheet: (canonical, line = null) => set({ sheetExercise: canonical, sheetLine: line }),
   closeExerciseSheet: () => set({ sheetExercise: null, sheetLine: null }),
 
@@ -387,6 +482,31 @@ export const useSession = create<SessionState>((set, get) => ({
     get().setNote(lines.join('\n'));
   },
 
+  /**
+   * Replace one physical line's TEXT — "Edit my words instead", inside the
+   * correction sheet.
+   *
+   * This is the one repair that touches `raw_text`, and it is allowed to
+   * because it is the athlete rewriting their own words: the new text becomes
+   * the record, exactly as if they had typed it (§3). It goes out through
+   * `setNote` like any keystroke, so SQLite is written in the same tick and the
+   * debounced parse re-reads the line — no separate re-parse path, no way for
+   * the reading and the words to be updated by different code.
+   *
+   * A blank replacement is refused rather than silently emptying the line: the
+   * way to remove an entry is Delete, which says so.
+   */
+  replaceNoteLine: (line, text) => {
+    const { note } = get();
+    const lines = note.split('\n');
+    if (line < 0 || line >= lines.length) return;
+    const next = text.replace(/\n+/g, ' ').trim();
+    if (!next || next === lines[line]) return;
+    lines[line] = next;
+    set({ fixTarget: null });
+    get().setNote(lines.join('\n'));
+  },
+
   setLineEffort: (line, effort) => {
     const { note } = get();
     const lines = note.split('\n');
@@ -397,6 +517,28 @@ export const useSession = create<SessionState>((set, get) => ({
     // Straight through setNote: SQLite in the same tick, then the debounced
     // parse reads the marker like any other word the user typed.
     get().setNote(lines.join('\n'));
+  },
+
+  openEntryNote: (target) => set({ noteTarget: target }),
+  closeEntryNote: () => set({ noteTarget: null }),
+
+  /**
+   * Store one entry's note. It goes to its OWN column on the workout, never
+   * into `raw_text`: the parser must never see prose, and a re-parse must never
+   * be able to rewrite or drop words the athlete wrote (`lib/entry-note.ts`).
+   *
+   * Clearing is a real answer — an emptied field leaves no note behind — so the
+   * §13 counter is bumped only when a note appears where there was none.
+   */
+  saveEntryNote: (exercise, text) => {
+    const { workoutId, entryNotes } = get();
+    if (!workoutId) return;
+    const had = readEntryNote(entryNotes, exercise) !== null;
+    const next = setEntryNote(workoutId, exercise, text);
+    const has = readEntryNote(next, exercise) !== null;
+    if (has && !had) markEntryNoteAdded();
+    set({ entryNotes: next });
+    scheduleSync();
   },
 
   checkInOpen: false,
@@ -430,6 +572,32 @@ export const useSession = create<SessionState>((set, get) => ({
       ...(changed ? { ...loadDay(userId, selectedDay), fixRevision: get().fixRevision + 1 } : {}),
     });
     if (changed) scheduleSync();
+  },
+
+  /**
+   * Remove a READING the parser should never have made — the line that says
+   * "felt strong today, 10/10" and came back as an exercise called Felt.
+   *
+   * It is the ordinary correction with an empty set list, deliberately, because
+   * that is what makes it safe: `raw_text` is not touched (§3 — the words are
+   * the record), the correction row re-applies on every future re-parse so the
+   * ghost reading cannot come back, and every count that reads the projection
+   * simply stops seeing it. `validateParseResult` drops a set-less item when
+   * the cache is read back, and `buildReceipt` skips it either way, so the card
+   * gives way to the quiet "kept as a note · not counted" block the line
+   * deserved in the first place.
+   */
+  removeReading: () => {
+    const { fixTarget } = get();
+    if (!fixTarget) return;
+    get().submitFix(fixTarget.item.exercise, []);
+  },
+
+  finishSession: () => {
+    const { workoutId } = get();
+    if (!workoutId) return;
+    setMeta(sessionDoneKey(workoutId), '1');
+    set({ sessionFinished: true });
   },
 }));
 
@@ -519,6 +687,20 @@ setParseListener((outcome) => {
 
 /** The note text for the currently-selected day. */
 export const useCurrentNote = () => useSession((s) => s.note);
+
+/**
+ * Has this day produced a READING yet?
+ *
+ * The empty-canvas test (owner, 12 Aug 2026). Today's furniture — the weekly
+ * line, the session-start card, the resting pill — is hidden until there is
+ * something for it to describe, and all three ask here so they can never
+ * disagree about whether the page is blank. A note with words but no parsed
+ * exercise ("felt rough today") is deliberately NOT an entry: there is no
+ * reading to total, and "0 sets · 0 kg" under it would be the app reporting on
+ * something it did not understand.
+ */
+export const useHasEntries = () =>
+  useSession((s) => s.note.trim().length > 0 && (s.receipt?.rows.length ?? 0) > 0);
 
 /**
  * The planned-session checklist shows on today whenever a cached prediction

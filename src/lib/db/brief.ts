@@ -1,12 +1,17 @@
+import { entryNoteKey } from '@/lib/entry-note';
+
 import { getAdherenceRecord, getE1rmSeries, type AdherenceRecord } from './insights';
-import { computePlanStrip } from './strip';
+import { noteForLift, recentEntryNotes } from './entry-notes';
+import { computePlanStrip, planStripFor } from './strip';
+import type { PlanDayRow } from './plan';
 import { getLastSetHint } from './last-set';
 import { getPredictionForOpen } from './predictions';
 import { listLifts } from './lifts';
 import { roundToPlate } from '@/lib/predict/engine';
+import type { Move } from '@/lib/plan/prescribe';
 import { getSmallestPlateKg } from '@/lib/prefs';
 
-import { dayRangeIso, shiftDayKey, todayKey } from './dates';
+import { dayRangeIso, shiftDayKey, todayKey, type DayKey } from './dates';
 import { getDb } from './index';
 
 /**
@@ -44,10 +49,20 @@ const MOVER_MIN_KG = 2.5;
 
 export interface BriefLine {
   name: string;
+  /** The lift as the RECORD spells it, once the name resolved to history —
+   * the key the one-exercise-one-home rule dedupes on (`lib/next/sections.ts`).
+   * `name` is display text and may be a plan's or a ghost's spelling of the
+   * same lift, so it cannot do this job. Null when nothing resolved. */
+  canonical?: string | null;
   /** "82.5 kg × 5·5·5", or null when there is no history to progress from. */
   value: string | null;
   /** The engine's own reason, as a fragment. Null when there is none. */
   why: string | null;
+  /** WHICH LEVER MOVED — add weight, add a rep, hold, back off. The engine
+   * already decided it (`Reason.code`); this carries it to the screen so the
+   * row can lead with the decision instead of asking the reader to diff
+   * `last` against `value`. Absent on the ghost path, which stores only text. */
+  move?: Move | null;
   /** The record the prescription grew from — "3×8 80", the gutter echo's own
    * voice (§20's framing: never what to do, only what to beat). On screen it
    * reads as the FROM of a from → to pair, so the row shows its work. Silence
@@ -55,6 +70,29 @@ export interface BriefLine {
   last?: string | null;
   /** The heaviest counted set ever recorded for this lift, or null. */
   bestKg?: number | null;
+  /** The athlete's own last remark about this lift, quoted verbatim beside the
+   * prescription. Never an input to `value` — see `BriefNote`. */
+  note?: BriefNote | null;
+}
+
+/**
+ * One per-entry note, on its way to the screen.
+ *
+ * IT IS A QUOTE AND NOTHING ELSE. §8.1's line — "Next may quote a reflection
+ * without inferring causation" — is the whole permission: the words are the
+ * athlete's, they are shown beside the lift they were written about, and no
+ * number on this screen moved because of them. What DOES move a load is the
+ * effort marker on the same entry (`lib/effort.ts` → rir → the engine), which
+ * is a value chosen from a bounded scale rather than a sentence interpreted by
+ * anything.
+ */
+export interface BriefNote {
+  /** The lift as the record spells it. */
+  name: string;
+  /** The athlete's words, verbatim, never summarized. */
+  text: string;
+  /** The local day it was written about. */
+  day: DayKey;
 }
 
 export interface BriefStall {
@@ -70,6 +108,13 @@ export interface BriefMover {
   /** Estimated 1RM gained over the window, in kg. Always positive here. */
   deltaKg: number;
   weeks: number;
+  /** The latest estimated 1RM the delta is measured against. The display
+   * layer's sanity guard needs a denominator: a +64 kg gain is nonsense on a
+   * 100 kg e1RM and unremarkable on none at all (`lib/next/sections.ts`). */
+  currentE1rm: number;
+  /** The windowed e1RM values, oldest first — the sparkline's own data. Kept
+   * as bare numbers because that is all `Sparkline` reads. */
+  series: number[];
 }
 
 export interface Brief {
@@ -97,6 +142,10 @@ export interface Brief {
   /** Sessions in the last 8 weeks — the provenance line's own number
    * ("based on N sessions"), computed, never estimated. */
   sessions8w: number;
+  /** Recent per-entry notes that are NOT already quoted on a prescription row —
+   * the athlete's own words about lifts the coming session does not name.
+   * Nothing is ever said twice. */
+  notes: BriefNote[];
 }
 
 interface TopRow {
@@ -193,9 +242,81 @@ function findMovers(userId: string, canonicals: string[]): BriefMover[] {
     const last = series[series.length - 1]!;
     const delta = Math.round((last.e1rm - first.e1rm) * 10) / 10;
     if (delta < MOVER_MIN_KG) continue;
-    out.push({ canonical, deltaKg: delta, weeks: MOVER_WEEKS });
+    out.push({
+      canonical,
+      deltaKg: delta,
+      weeks: MOVER_WEEKS,
+      currentE1rm: last.e1rm,
+      series: series.map((p) => p.e1rm),
+    });
   }
   return out.sort((a, b) => b.deltaKg - a.deltaKg).slice(0, 3);
+}
+
+/**
+ * The record behind each prescription (§20: only what to beat), the lift's
+ * all-time best, the one load that would out-lift it, and the athlete's own
+ * remark about it.
+ *
+ * Split out of `buildBrief` on 13 Aug so the Next tab's split preview can
+ * enrich a NOT-due day's lines exactly the way the due day's are. One
+ * expression of "what does this row know about itself" — two would drift.
+ *
+ * All of it reads the same counted sets every other aggregate reads; a name
+ * that doesn't resolve is silence, not a guess (`getLastSetHint`'s own rule).
+ * The note is attached whether or not the name resolves to history: a remark
+ * about a lift is worth showing beside it even the first time it is prescribed
+ * from a plan. Quoting is ALL that happens to notes — no arithmetic anywhere
+ * reads them (§8.1: quote without inferring causation).
+ */
+function enrichLines(
+  userId: string,
+  lines: BriefLine[],
+  /** Prescribed load per line, parallel to `lines` — the heaviest-ever check
+   * only, never displayed. */
+  prescribed: (number | null)[],
+  recentNotes: ReturnType<typeof recentEntryNotes>,
+): { lines: BriefLine[]; prReach: Brief['prReach']; quoted: Set<string> } {
+  const quoted = new Set<string>();
+  let prReach: Brief['prReach'] = null;
+
+  const out = lines.map((line, i) => {
+    const hint = getLastSetHint(userId, line.name, null);
+    const found = noteForLift(recentNotes, hint?.canonical ?? line.name);
+    const note = found ? { name: found.exercise, text: found.note, day: found.day } : null;
+    if (note) quoted.add(entryNoteKey(note.name));
+
+    if (!hint) return note ? { ...line, note } : line;
+    const best = bestWeightFor(userId, hint.canonical);
+    const target = prescribed[i] ?? null;
+    if (prReach == null && best != null && target != null && target > best) {
+      prReach = { name: hint.canonical, weightKg: target };
+    }
+    return { ...line, canonical: hint.canonical, last: hint.echo, bestKg: best, note };
+  });
+
+  return { lines: out, prReach, quoted };
+}
+
+/**
+ * The prescription lines for ONE named split day — the Next tab's preview when
+ * the athlete taps a day they are not due for.
+ *
+ * Read-only in every sense: it resolves nothing, writes nothing, and does not
+ * touch which day is due. The numbers come from `planStripFor`, so a preview
+ * cannot state a load the real strip would not.
+ */
+export function planDayLines(userId: string, planDay: PlanDayRow): BriefLine[] {
+  const strip = planStripFor(userId, planDay);
+  if (!strip) return [];
+  const lines: BriefLine[] = strip.rows.map((r) => ({
+    name: r.name,
+    value: r.value,
+    why: r.why ?? null,
+    move: r.move ?? null,
+  }));
+  const prescribed = strip.rows.map((r) => r.weightKg ?? null);
+  return enrichLines(userId, lines, prescribed, recentEntryNotes(userId)).lines;
 }
 
 export function buildBrief(userId: string): Brief {
@@ -214,7 +335,12 @@ export function buildBrief(userId: string): Brief {
   let forToday = false;
   if (strip && strip.rows.length > 0) {
     forToday = true;
-    lines = strip.rows.map((r) => ({ name: r.name, value: r.value, why: r.why ?? null }));
+    lines = strip.rows.map((r) => ({
+      name: r.name,
+      value: r.value,
+      why: r.why ?? null,
+      move: r.move ?? null,
+    }));
     // The engine's own number, carried through `PlanRow.weightKg` — the value
     // string ("82.5 × 5·5·5") is display and is never parsed back.
     prescribed = strip.rows.map((r) => r.weightKg ?? null);
@@ -248,17 +374,14 @@ export function buildBrief(userId: string): Brief {
   // load that would out-lift the lift's all-time best. Both read the same
   // counted sets every other aggregate reads; a name that doesn't resolve is
   // silence, not a guess (`getLastSetHint`'s own rule).
-  let prReach: Brief['prReach'] = null;
-  lines = lines.map((line, i) => {
-    const hint = getLastSetHint(userId, line.name, null);
-    if (!hint) return line;
-    const best = bestWeightFor(userId, hint.canonical);
-    const target = prescribed[i] ?? null;
-    if (prReach == null && best != null && target != null && target > best) {
-      prReach = { name: hint.canonical, weightKg: target };
-    }
-    return { ...line, last: hint.echo, bestKg: best };
-  });
+  // The athlete's own recent remarks, read once. Quoting is all that happens to
+  // them: `BriefNote` carries the words to the screen and no arithmetic
+  // anywhere reads this array (§8.1 — quote without inferring causation).
+  const recentNotes = recentEntryNotes(userId);
+  const enriched = enrichLines(userId, lines, prescribed, recentNotes);
+  lines = enriched.lines;
+  const prReach = enriched.prReach;
+  const quoted = enriched.quoted;
 
   const lifts = listLifts(userId).slice(0, SCAN_LIFTS);
   const keys = lifts.map((l) => l.key);
@@ -291,6 +414,12 @@ export function buildBrief(userId: string): Brief {
     prReach,
     sessions7: counts?.n7 ?? 0,
     sessions8w: counts?.n8w ?? 0,
+    // Whatever the prescription rows did not already carry — capped, because a
+    // wall of quotes is a diary, and this screen is a briefing.
+    notes: recentNotes
+      .filter((n) => !quoted.has(entryNoteKey(n.exercise)))
+      .slice(0, 3)
+      .map((n) => ({ name: n.exercise, text: n.note, day: n.day })),
   };
 }
 

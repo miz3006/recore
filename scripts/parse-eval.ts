@@ -71,6 +71,12 @@ interface ExpectedItem {
   rir?: number;
   min_rir?: number;
   has_rir?: number;
+  /** Exact rir sequence across ALL sets, in order. The only assertion that
+   * catches one marker being copied onto every set of a rep list. */
+  rirs_in_order?: (number | null)[];
+  /** Exact inline-comment sequence across ALL sets, in order. Compared
+   * verbatim: the athlete's words, typos included, are the contract. */
+  notes_in_order?: (string | null)[];
   modality?: string;
   kinds?: string[];
   kinds_include?: string[];
@@ -91,6 +97,7 @@ interface ModelSet {
   distance_m: number | null;
   duration_s: number | null;
   rir: number | null;
+  note: string | null;
 }
 interface ModelItem {
   exercise: string;
@@ -290,6 +297,18 @@ function checkItem(items: ModelItem[], exp: ExpectedItem): string[] {
     const rirs = item.sets.map((s) => s.rir).filter((r): r is number => r != null);
     if (!rirs.length || Math.min(...rirs) !== exp.min_rir)
       errors.push(`min rir ${rirs.length ? Math.min(...rirs) : 'none'} ≠ ${exp.min_rir}`);
+  }
+  if (exp.rirs_in_order !== undefined) {
+    const got = item.sets.map((s) => s.rir);
+    if (JSON.stringify(got) !== JSON.stringify(exp.rirs_in_order))
+      errors.push(`rirs [${got}] ≠ [${exp.rirs_in_order}]`);
+  }
+  if (exp.notes_in_order !== undefined) {
+    const got = item.sets.map((s) => s.note ?? null);
+    if (JSON.stringify(got) !== JSON.stringify(exp.notes_in_order))
+      errors.push(
+        `notes ${JSON.stringify(got)} ≠ ${JSON.stringify(exp.notes_in_order)}`,
+      );
   }
   if (exp.kinds !== undefined) {
     const kinds = item.sets.map((s) => s.kind);

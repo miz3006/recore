@@ -106,7 +106,9 @@ export function reorderPlanDays(userId: string, orderedIds: string[]): void {
 
 /**
  * The day-template the athlete is due for today, or null (no split / rest day).
- * Rotation mode DERIVES its cursor from history — the plan day that best matches
+ * An explicit answer to the session-start question (§8.2) wins outright — the
+ * athlete declaring "legs today" outranks any schedule. Otherwise rotation
+ * mode DERIVES its cursor from history — the plan day that best matches
  * the last logged session — so "next" is the day after it, with no stored
  * pointer to drift and no Finish hook to miss. Mirrors predict/split.ts: the
  * rotation always ends at the latest session, so a missed day just slides.
@@ -114,6 +116,11 @@ export function reorderPlanDays(userId: string, orderedIds: string[]): void {
 export function resolveTodayPlanDay(userId: string, today: DayKey): PlanDayRow | null {
   const days = listPlanDays(userId);
   if (days.length === 0) return null;
+  const chosen = getPlanDayChoice(userId, today);
+  if (chosen) {
+    const day = days.find((d) => d.id === chosen);
+    if (day) return day; // a deleted day's stale choice falls through
+  }
   const mode = getScheduleMode();
   const lite: PlanDayLite[] = days.map((d) => ({
     id: d.id,
@@ -179,6 +186,24 @@ function planDayExerciseIds(userId: string, day: PlanDayRow): string[] {
 function dateForKey(key: DayKey): Date {
   const [y, m, d] = key.split('-').map(Number);
   return new Date(y!, m! - 1, d!);
+}
+
+// --- the session-start answer (§8.2) -----------------------------------------
+// "What are you training?" answered with a chip pins that day-template for the
+// calendar day, on this device, in the local meta KV. Day-keyed, so it expires
+// by itself at midnight; deliberately not synced — it is an answer given at the
+// gym, on the phone that is at the gym. Everything that asks "what's due
+// today" goes through resolveTodayPlanDay, so the strip, the calendar, and the
+// Next brief can never disagree with the athlete's own answer.
+
+const planChoiceKey = (userId: string, day: DayKey) => `plan_choice:${userId}:${day}`;
+
+export function getPlanDayChoice(userId: string, day: DayKey): string | null {
+  return getMeta(planChoiceKey(userId, day));
+}
+
+export function setPlanDayChoice(userId: string, day: DayKey, planDayId: string | null): void {
+  setMeta(planChoiceKey(userId, day), planDayId);
 }
 
 // --- sync (push/pull; mirrors db/predictions.ts) ------------------------------

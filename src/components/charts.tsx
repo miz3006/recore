@@ -1,17 +1,32 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
 import { groupThousands } from '@/lib/parse/estimate';
-import { alpha, color, ink, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import {
+  alpha,
+  color,
+  fonts,
+  ink,
+  lineFor,
+  MAX_FONT_SCALE,
+  moderateScale,
+  spacing,
+  type,
+} from '@/lib/theme';
 
 /**
- * Chart primitives — monochrome by contract (the record is archival, not
- * celebratory). History sits at low-alpha paper; the current week/point is
- * full `accent`. Lime belongs to PLANNED prescription values only and never
- * appears in a chart. No gridlines, no legends, no decoration — a bar, a
- * value, a hairline baseline. Everything is sized in moderateScale so charts
- * stay proportional across devices.
+ * Chart primitives.
+ *
+ * The bar charts here stay monochrome (they are ledger furniture — history at
+ * low-alpha paper, the current week at full `accent`). **`TrendChart` is
+ * coloured**: product-direction §10 asks recorded progression to draw as a blue
+ * line with a soft fill, and v5.1 §4.2 makes Recore blue the product accent, so
+ * a lift's own trend is the one place a hue earns its keep. Green still belongs
+ * to PLANNED prescription values only and never appears in a chart, and no
+ * chart ever uses red/green to judge a person — direction is carried by the
+ * words beside it. No gridlines, no legends, no decoration. Everything is sized
+ * in moderateScale so charts stay proportional across devices.
  */
 
 const BAR_RADIUS = 3;
@@ -157,10 +172,14 @@ export function Sparkline({
   values,
   width,
   height = moderateScale(44),
+  /** Ink by default. The Next tab's climbing tiles pass `color.trained`, which
+   * §4.2 permits: a line of recorded progress is exactly what blue is for. */
+  tint = color.accent,
 }: {
   values: number[];
   width: number;
   height?: number;
+  tint?: string;
 }) {
   if (values.length < 2 || width <= 0) return null;
   const min = Math.min(...values);
@@ -175,119 +194,221 @@ export function Sparkline({
 
   return (
     <Svg width={width} height={height}>
-      <Path d={d} stroke={alpha(color.accent, 0.45)} strokeWidth={1.5} fill="none" />
-      <Circle cx={lastX} cy={lastY} r={3} fill={color.accent} />
+      <Path d={d} stroke={alpha(tint, 0.45)} strokeWidth={1.5} fill="none" />
+      <Circle cx={lastX} cy={lastY} r={3} fill={tint} />
     </Svg>
   );
 }
 
-export interface StepPoint {
+export interface TrendPoint {
   day: string;
   value: number;
 }
 
+/** How a series gets from one session to the next. See `seriesPathD`. */
+export type SeriesShape = 'linear' | 'step';
+
 /**
- * The step path itself — ONE definition, shared by the Progress tab's
- * `StepChart` and the lift sheet's `ProgressionChart`. Two expressions of "how
- * does a weight get from one session to the next" is exactly the divergence
- * §7.7 keeps diagnosing, and the answer is not a matter of taste: the line runs
- * horizontally at the old value until the session that changed it, then
- * vertically. A diagonal would draw loads nobody lifted.
+ * The series path — ONE definition, shared by the Progress tab's `TrendChart`
+ * and the lift sheet's `ProgressionChart`. Two expressions of "how does a
+ * weight get from one session to the next" is exactly the divergence §7.7 keeps
+ * diagnosing, so the shape is a parameter here and never a second function.
+ *
+ * **`linear` is the default (owner, 4 Aug 2026):** straight segments between
+ * consecutive sessions, up and down. Every VERTEX is a real recorded session —
+ * the dots mark them — and the segment between two of them is a connector, the
+ * way every training app the owner compared against draws it.
+ *
+ * **`step` holds the old value until the session that changed it, then jumps.**
+ * It is the stricter reading of product-direction §10 ("do not smooth a line
+ * between values never lifted"), because a diagonal does imply loads on days
+ * nobody trained. It is kept, one prop away, so the ruling can be restored
+ * without rebuilding a chart.
  */
-export function stepPathD(
+export function seriesPathD(
   values: number[],
   xOf: (i: number) => number,
   yOf: (v: number) => number,
+  shape: SeriesShape = 'linear',
 ): string {
   if (values.length === 0) return '';
   let d = `M ${xOf(0).toFixed(1)} ${yOf(values[0]!).toFixed(1)}`;
   for (let i = 1; i < values.length; i++) {
-    d += ` L ${xOf(i).toFixed(1)} ${yOf(values[i - 1]!).toFixed(1)}`;
+    if (shape === 'step') d += ` L ${xOf(i).toFixed(1)} ${yOf(values[i - 1]!).toFixed(1)}`;
     d += ` L ${xOf(i).toFixed(1)} ${yOf(values[i]!).toFixed(1)}`;
   }
   return d;
 }
 
+/** Gradient ids have to be unique per mounted chart — a whole list of cards
+ * draws at once, and two `<Defs>` sharing an id is a coin toss over which wash
+ * every chart gets. A mount-time counter is enough and needs no React version
+ * assumptions. */
+let fillSeq = 0;
+
 /**
- * The progression chart on the Progress tab: a STEP line, not a curve.
+ * The progression chart on the Progress tab: straight segments between real
+ * sessions, up and down (owner, 4 Aug 2026 — "ne stopnice, lepo linearno z
+ * ravno linijo gor in dol"). Never a spline: a curve would overshoot past
+ * loads nobody lifted, and the vertices have to stay exactly on their sessions.
+ * Pass `shape="step"` to restore the held-then-jumped reading of §10.
  *
- * Strength moves in steps — a weight holds for however many sessions it holds,
- * then jumps. A smooth line between two sessions invents the values in between,
- * which is exactly the kind of quiet fiction the record contract exists to
- * prevent. So the path runs horizontally at the old value until the session
- * that changed it, then vertically.
+ * **Recore blue is the default hue** (product-direction §4.2/§10: "a blue
+ * primary line or step chart with a soft contextual fill"). The wash under the
+ * line is the SHAPE of the record, never a verdict on it: a lift that fell
+ * draws in exactly the same blue as one that rose, and the words beside the
+ * chart carry the direction. Ember stays reserved for the lift sheet's
+ * single-series comparison.
  *
  * `best` is the all-time reference, drawn as ONE unlabeled neutral hairline and
  * folded into the domain so it can never clip — the same treatment
  * `ProgressionChart` gives it in the exercise sheet, and for the same reason:
  * the outlined mono label owns the word "PR", a line does not get to say it.
- * Never green (§5.1 — a record is not a prescription).
  *
- * `showPrevious` marks the second-to-last session with a hollow dot, so an
- * opened card shows where the latest step came from.
+ * `dots` marks every session, so how OFTEN a lift was trained is visible in the
+ * same glance as where it went. `axis` prints the domain's own ends in a right
+ * gutter, pinned to the exact y they sit at, so a reading can never drift from
+ * the line it labels. `showPrevious` marks the second-to-last session with a
+ * hollow dot, so an opened card shows where the latest step came from.
  */
-export function StepChart({
+export function TrendChart({
   points,
   best,
   height = moderateScale(58),
   showPrevious = false,
+  tint = color.trained,
+  fill = true,
+  dots = false,
+  axis = false,
+  shape = 'linear',
+  format = (n) => String(Math.round(n)),
 }: {
-  points: StepPoint[];
+  points: TrendPoint[];
   best?: number | null;
   height?: number;
   showPrevious?: boolean;
+  /** `linear` (default) or the older `step`. */
+  shape?: SeriesShape;
+  /** Line + wash hue. Blue by default; the caller never needs to pass it. */
+  tint?: string;
+  /** The gradient wash between the line and the baseline. */
+  fill?: boolean;
+  /** A dot on every session, not only the last. */
+  dots?: boolean;
+  /** Min/max readings in a right gutter. */
+  axis?: boolean;
+  format?: (n: number) => string;
 }) {
   const [w, setW] = useState(0);
+  const [fillId] = useState(() => `stepFill${(fillSeq += 1)}`);
   if (points.length < 2) return null;
 
   const padX = moderateScale(4);
-  const padY = moderateScale(6);
+  const padY = moderateScale(8);
+  const gutter = axis ? moderateScale(34) : 0;
   const values = points.map((p) => p.value);
   const domain = best != null ? [...values, best] : values;
   const min = Math.min(...domain);
   const max = Math.max(...domain);
   const span = max - min;
-  const plotW = Math.max(1, w - padX * 2);
+  const plotW = Math.max(1, w - padX * 2 - gutter);
   const plotH = Math.max(1, height - padY * 2);
   const yOf = (v: number) => padY + (1 - (span > 0 ? (v - min) / span : 0.5)) * plotH;
   const xOf = (i: number) => padX + (i / (points.length - 1)) * plotW;
 
-  // Step-after: hold the value, then jump. The horizontal run IS the record of
-  // "this weight stayed put for these sessions".
-  const d = stepPathD(values, xOf, yOf);
+  const d = seriesPathD(values, xOf, yOf, shape);
+  // The wash closes that same path down to the floor, so the fill can never
+  // disagree with the line sitting on top of it.
+  const baseY = height;
+  const areaD = `${d} L ${xOf(points.length - 1).toFixed(1)} ${baseY} L ${xOf(0).toFixed(1)} ${baseY} Z`;
 
   const lastX = xOf(points.length - 1);
   const lastY = yOf(values[values.length - 1]!);
   const prevIndex = points.length - 2;
+  const labelHalf = moderateScale(7);
 
   return (
     <View onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ height }}>
       {w > 0 ? (
-        <Svg width={w} height={height}>
-          {best != null ? (
-            <Line
-              x1={padX}
-              y1={yOf(best)}
-              x2={w - padX}
-              y2={yOf(best)}
-              stroke={color.border}
-              strokeWidth={1}
-              strokeDasharray="3 4"
+        <>
+          <Svg width={w} height={height}>
+            <Defs>
+              <LinearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={tint} stopOpacity={0.22} />
+                <Stop offset="1" stopColor={tint} stopOpacity={0.01} />
+              </LinearGradient>
+            </Defs>
+            {best != null ? (
+              <Line
+                x1={padX}
+                y1={yOf(best)}
+                x2={w - padX - gutter}
+                y2={yOf(best)}
+                stroke={color.border}
+                strokeWidth={1}
+                strokeDasharray="3 4"
+              />
+            ) : null}
+            {fill ? <Path d={areaD} fill={`url(#${fillId})`} /> : null}
+            <Path
+              d={d}
+              fill="none"
+              stroke={tint}
+              strokeWidth={2}
+              // A linear series turns at every session, so its corners get
+              // rounded; a step's right angles are the point of it.
+              strokeLinejoin={shape === 'step' ? 'miter' : 'round'}
+              strokeLinecap="round"
             />
-          ) : null}
-          <Path d={d} fill="none" stroke={color.accent} strokeWidth={1.6} strokeLinejoin="miter" />
-          {showPrevious && prevIndex >= 0 ? (
+            {dots
+              ? points.slice(0, -1).map((p, i) => (
+                  <Circle
+                    key={`${p.day}-${i}`}
+                    cx={xOf(i)}
+                    cy={yOf(p.value)}
+                    r={moderateScale(1.8)}
+                    fill={alpha(tint, 0.45)}
+                  />
+                ))
+              : null}
+            {showPrevious && prevIndex >= 0 ? (
+              <Circle
+                cx={xOf(prevIndex)}
+                cy={yOf(values[prevIndex]!)}
+                r={moderateScale(3)}
+                fill={color.surface}
+                stroke={tint}
+                strokeWidth={1.6}
+              />
+            ) : null}
             <Circle
-              cx={xOf(prevIndex)}
-              cy={yOf(values[prevIndex]!)}
-              r={moderateScale(2.5)}
-              fill={color.bg}
-              stroke={color.accent}
-              strokeWidth={1.4}
+              cx={lastX}
+              cy={lastY}
+              r={moderateScale(3.5)}
+              fill={tint}
+              stroke={color.surface}
+              strokeWidth={1.5}
             />
+          </Svg>
+          {axis ? (
+            <>
+              <Text
+                style={[styles.gutterValue, { top: yOf(max) - labelHalf, width: gutter }]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {format(max)}
+              </Text>
+              {span > 0 ? (
+                <Text
+                  style={[styles.gutterValue, { top: yOf(min) - labelHalf, width: gutter }]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  {format(min)}
+                </Text>
+              ) : null}
+            </>
           ) : null}
-          <Circle cx={lastX} cy={lastY} r={moderateScale(3)} fill={color.accent} />
-        </Svg>
+        </>
       ) : null}
     </View>
   );
@@ -330,6 +451,18 @@ const styles = StyleSheet.create({
   },
   axisLabel: {
     fontSize: moderateScale(10),
+    color: color.textMuted,
+    fontVariant: ['tabular-nums'],
+  },
+  /** A `TrendChart` right-gutter reading — muted mono, never the line's hue, so
+   * a number stays a number (§4.2: ember/blue never touch a value). */
+  gutterValue: {
+    position: 'absolute',
+    right: 0,
+    textAlign: 'right',
+    fontFamily: fonts.reading,
+    fontSize: moderateScale(9.5),
+    lineHeight: lineFor(14),
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
   },

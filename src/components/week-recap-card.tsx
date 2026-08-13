@@ -10,6 +10,8 @@ import { getStatsSummary, mondayOf } from '@/lib/db/stats';
 import { todayKey } from '@/lib/db/dates';
 import { tap } from '@/lib/haptics';
 import { groupThousands } from '@/lib/parse/estimate';
+import { getRecapIntent, isRecapEnabled } from '@/lib/prefs';
+import { enableRecap } from '@/lib/recap';
 import { color, fonts, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
@@ -17,14 +19,18 @@ import { MonoTag, PrLabel } from './gutter-value';
 import { Icon } from './icon';
 
 /**
- * The weekly recap (research: the one push serious lifters tolerate; the
- * memory layer is what retains paying users), in the card vocabulary. No
- * notifications yet — the recap greets the FIRST empty open of a new week
- * instead: last week's tonnage, sessions, the week-over-week delta as an
- * archival muted figure (never lime — comparisons are history, not
- * celebration), and any all-time PRs set that week wearing the neutral
- * outlined label. One Share (dark PNG), one Done — then it's gone until next
- * Monday. Silence when last week didn't train.
+ * The weekly recap (§12.1), in the card vocabulary: it greets the FIRST empty
+ * open of a new week with last week's tonnage, sessions, the week-over-week
+ * delta as an archival muted figure (never a celebration colour), and any
+ * all-time PRs set that week wearing the neutral outlined label. One Share,
+ * one Done — then it's gone until next Monday. Silence when last week didn't
+ * train.
+ *
+ * It is also where the §12.1 notification is OFFERED, exactly as onboarding
+ * promised ("We'll ask for permission once your first recap is ready — not
+ * before"): a person who answered yes sees one quiet action here; tapping it
+ * asks the OS in context and turns the Sunday notice on. Everyone keeps full
+ * control in You → Weekly recap.
  */
 const seenKey = (weekStart: string) => `recap_seen:${weekStart}`;
 
@@ -35,6 +41,19 @@ export function WeekRecapCard() {
   const cardRef = useRef<View>(null);
   const [dismissed, setDismissed] = useState(false);
   const [branding, setBranding] = useState(false);
+  // The §12.1 notification offer: only for someone who said yes in onboarding
+  // and hasn't turned it on yet. A denial hides it for good — control stays
+  // in You, and this card never asks twice.
+  const [notifState, setNotifState] = useState<'offer' | 'on' | 'hidden'>(() =>
+    isRecapEnabled() ? 'hidden' : getRecapIntent() === 'yes' ? 'offer' : 'hidden',
+  );
+
+  const handleEnableNotif = async () => {
+    tap();
+    if (!userId) return;
+    const on = await enableRecap(userId);
+    setNotifState(on ? 'on' : 'hidden');
+  };
 
   const recap = useMemo(() => {
     if (!userId) return null;
@@ -149,13 +168,29 @@ export function WeekRecapCard() {
             Recore
           </Text>
         ) : (
-          <Pressable
-            onPress={dismiss}
-            style={({ pressed }) => [styles.done, pressed && styles.donePressed]}>
-            <Text style={styles.doneLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              Done
-            </Text>
-          </Pressable>
+          <>
+            {notifState === 'offer' ? (
+              <Pressable
+                onPress={() => void handleEnableNotif()}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.notifOffer, pressed && styles.donePressed]}>
+                <Text style={styles.notifOfferLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  Get this as a Sunday notification
+                </Text>
+              </Pressable>
+            ) : notifState === 'on' ? (
+              <Text style={styles.notifOn} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                Weekly notification is on — the time is yours to change in You.
+              </Text>
+            ) : null}
+            <Pressable
+              onPress={dismiss}
+              style={({ pressed }) => [styles.done, pressed && styles.donePressed]}>
+              <Text style={styles.doneLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                Done
+              </Text>
+            </Pressable>
+          </>
         )}
       </View>
     </Animated.View>
@@ -192,7 +227,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     marginTop: 2,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(10.5),
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
@@ -212,10 +247,29 @@ const styles = StyleSheet.create({
   },
   prLine: {
     flexShrink: 1,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: type.caption.fontSize,
     color: color.textSecondary,
     fontVariant: ['tabular-nums'],
+  },
+  notifOffer: {
+    marginTop: spacing.md,
+    alignSelf: 'flex-start',
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: color.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  notifOfferLabel: {
+    fontSize: type.caption.fontSize,
+    fontWeight: '600',
+    color: color.textPrimary,
+  },
+  notifOn: {
+    marginTop: spacing.md,
+    fontSize: type.caption.fontSize,
+    color: color.textMuted,
   },
   done: {
     marginTop: spacing.md,

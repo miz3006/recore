@@ -469,5 +469,149 @@
     "input": "squat 100kg x5\nsquat 105kg x3",
     "expect": [{ "exercise": "Squat", "line": 0, "weight_kg": 100 }],
     "expect_item_count": 2
+  },
+  {
+    "name": "owner: per-set rir incl. negative + per-set comments (Slovenian)",
+    "input": "Incline DB press 35 kg x 8 (rir 2)/ 9 (rir 0) / 8 (rir -1), prva serija ylo dobra, druga tehnika super, zadnjo serijo forma padla",
+    "expect": [
+      {
+        "exercise": "Incline Dumbbell Press",
+        "exercise_any": [
+          "Incline Dumbbell Bench Press",
+          "Incline Db Press"
+        ],
+        "line": 0,
+        "sets": 3,
+        "reps_in_order": [
+          8,
+          9,
+          8
+        ],
+        "weights_in_order": [
+          35,
+          35,
+          35
+        ],
+        "rirs_in_order": [
+          2,
+          0,
+          -1
+        ],
+        "notes_in_order": [
+          "prva serija ylo dobra",
+          "druga tehnika super",
+          "zadnjo serijo forma padla"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "each rep-list element keeps its own rir",
+    "input": "ohp 40kg 8 (rir 3)/ 7 (rir 1)/ 6 (rir 0)",
+    "expect": [
+      {
+        "exercise": "Overhead Press",
+        "line": 0,
+        "sets": 3,
+        "reps_in_order": [
+          8,
+          7,
+          6
+        ],
+        "rirs_in_order": [
+          3,
+          1,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "name": "negative rir survives — one forced rep past failure",
+    "input": "dips bw+20 8, ena čez odpoved",
+    "expect": [
+      {
+        "exercise": "Dip",
+        "line": 0,
+        "sets": 1,
+        "reps": 8,
+        "weight_kg": 20,
+        "rirs_in_order": [
+          -1
+        ]
+      }
+    ]
+  },
+  {
+    "name": "RPE 11 is one rep past failure",
+    "input": "biceps curl 15kg 10 @11",
+    "expect": [
+      {
+        "exercise": "Biceps Curl",
+        "line": 0,
+        "sets": 1,
+        "reps": 10,
+        "weight_kg": 15,
+        "rirs_in_order": [
+          -1
+        ]
+      }
+    ]
+  },
+  {
+    "name": "whole-exercise comment rides the first set only",
+    "input": "squat 5x5 100kg, koleno malo teži",
+    "expect": [
+      {
+        "exercise": "Squat",
+        "line": 0,
+        "sets": 5,
+        "notes_in_order": [
+          "koleno malo teži",
+          null,
+          null,
+          null,
+          null
+        ]
+      }
+    ]
+  },
+  {
+    "name": "an effort word is rir, not a comment",
+    "input": "bench 3x5 100kg, zadnja komaj",
+    "expect": [
+      {
+        "exercise": "Bench Press",
+        "line": 0,
+        "sets": 3,
+        "rirs_in_order": [
+          null,
+          null,
+          0
+        ],
+        "notes_in_order": [
+          null,
+          null,
+          null
+        ]
+      }
+    ]
+  },
+  {
+    "name": "a pure prose line still produces no item and no note",
+    "input": "utrujen sem danes\nbench 3x8 80kg, tehnika ok",
+    "expect": [
+      {
+        "exercise": "Bench Press",
+        "line": 1,
+        "sets": 3,
+        "notes_in_order": [
+          "tehnika ok",
+          null,
+          null
+        ]
+      }
+    ],
+    "expect_item_count": 1
   }
 ]

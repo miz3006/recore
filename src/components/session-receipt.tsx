@@ -23,6 +23,7 @@ import { color, fonts, HIT, MAX_FONT_SCALE, moderateScale, radius, spacing, type
 import { useSession } from '@/state/session-store';
 
 import { MonoTag, PrLabel, readingText } from './gutter-value';
+import { SetTable, worthTable } from './set-table';
 
 /**
  * The RECORDED receipt (design frames 08/09) — the settled ledger under the
@@ -117,6 +118,8 @@ function Row({
   const scale = useSharedValue(1);
 
   const isPr = row.signal?.kind === 'pr';
+  /** Sets worth a table get one; a lone plain set stays a single reading. */
+  const multi = worthTable(row.table);
   const signature = `${revision}:${row.exercise}:${row.setText}`;
 
   useEffect(() => {
@@ -175,27 +178,35 @@ function Row({
           tap();
           onFix(row.line);
         }}>
-        <View style={styles.nameCell}>
-          <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {row.exercise}
-            {typed ? <Text style={styles.alias}>{`  · “${typed}”`}</Text> : null}
-          </Text>
-          {isPr ? (
-            <Animated.View style={prStyle}>
-              <PrLabel />
-            </Animated.View>
-          ) : null}
-        </View>
-        <View style={styles.valueCell}>
-          <Text style={styles.value} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {readingText(row.setText, ' × ')}
-          </Text>
-          {comparison ? (
-            <Text style={styles.compare} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {comparison}
+        <View style={styles.rowHead}>
+          <View style={styles.nameCell}>
+            <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {row.exercise}
+              {typed ? <Text style={styles.alias}>{`  · “${typed}”`}</Text> : null}
             </Text>
-          ) : null}
+            {isPr ? (
+              <Animated.View style={prStyle}>
+                <PrLabel />
+              </Animated.View>
+            ) : null}
+          </View>
+          {/* With the table below, the right of the head belongs to the
+              comparison alone — the numbers have their own columns now. A
+              single-set row keeps the old shape: reading over comparison. */}
+          <View style={styles.valueCell}>
+            {multi ? null : (
+              <Text style={styles.value} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {readingText(row.setText, ' × ')}
+              </Text>
+            )}
+            {comparison ? (
+              <Text style={styles.compare} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {comparison}
+              </Text>
+            ) : null}
+          </View>
         </View>
+        {multi ? <SetTable table={row.table} /> : null}
       </Pressable>
     </Animated.View>
   );
@@ -446,7 +457,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   headerMeta: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(10.5),
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
@@ -459,10 +470,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     color: color.textMuted,
   },
+  // The row is a COLUMN now: a head (name · comparison) over the set table.
   row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
     paddingVertical: spacing.sm + 1,
     // Rounded and bled a little past the text, so pressing a receipt line
     // lights it up rather than dropping a hard grey box on the ledger.
@@ -476,6 +485,11 @@ const styles = StyleSheet.create({
   },
   rowPressed: {
     backgroundColor: color.surfaceHigh,
+  },
+  rowHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
   },
   nameCell: {
     flex: 1,
@@ -497,7 +511,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   value: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: type.caption.fontSize,
     fontWeight: '500',
     fontVariant: ['tabular-nums'],
@@ -505,7 +519,7 @@ const styles = StyleSheet.create({
   },
   compare: {
     marginTop: 2,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(10.5),
     fontVariant: ['tabular-nums'],
     color: color.textMuted,
@@ -522,7 +536,8 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   proseMeta: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(10.5),
     color: color.textMuted,
   },
@@ -545,7 +560,7 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.md,
   },
   statNum: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(22),
     fontWeight: '600',
     letterSpacing: -0.4,
@@ -580,7 +595,8 @@ const styles = StyleSheet.create({
   shareBtn: {
     flex: 1,
     marginTop: spacing.md,
-    height: HIT,
+    minHeight: HIT,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,

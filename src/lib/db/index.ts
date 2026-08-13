@@ -3,7 +3,13 @@ import { openDatabaseSync, type SQLiteDatabase } from 'expo-sqlite';
 
 import { devLog } from '@/lib/log';
 
-import { MIGRATION_2_SQL, MIGRATION_4_SQL, SCHEMA_SQL, SCHEMA_VERSION } from './schema';
+import {
+  MIGRATION_2_SQL,
+  MIGRATION_4_SQL,
+  MIGRATION_5_SQL,
+  SCHEMA_SQL,
+  SCHEMA_VERSION,
+} from './schema';
 
 /**
  * expo-sqlite is the on-device source of truth (CLAUDE.md §2). Everything here
@@ -31,6 +37,7 @@ function migrate(database: SQLiteDatabase) {
     // A fresh install (current === 0) gets the column from SCHEMA_SQL's CREATE;
     // only an existing `workouts` table needs the ALTER.
     if (current >= 1 && current < 4) database.execSync(MIGRATION_4_SQL);
+    if (current >= 1 && current < 5) database.execSync(MIGRATION_5_SQL);
     database.execSync(SCHEMA_SQL);
     database.execSync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
     devLog('sqlite migrated to schema', SCHEMA_VERSION);

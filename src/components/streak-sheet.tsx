@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
   },
   hero: {
     ...type.bigNumber,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     color: color.textPrimary,
     fontVariant: ['tabular-nums'],
   },
@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
   sub: {
     marginTop: spacing.xs,
     ...type.caption,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
   },
@@ -156,7 +156,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   dow: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(11),
     color: color.textMuted,
   },

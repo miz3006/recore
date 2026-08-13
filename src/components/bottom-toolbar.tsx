@@ -6,6 +6,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { markFirstWorkoutFinished } from '@/lib/funnel';
 import { success, tap, tapMedium } from '@/lib/haptics';
+import { refreshRecapNotification } from '@/lib/recap';
 import { estimateVolume, groupThousands } from '@/lib/parse/estimate';
 import { matchPlanIndex, nameKey, typedNameOf } from '@/lib/parse/receipt';
 import { formatDistanceTotal } from '@/lib/parse/summarize';
@@ -16,6 +17,7 @@ import {
   REST_OPTIONS_S,
   setRestSeconds,
 } from '@/lib/prefs';
+import { fmtClock, useRestTimer } from '@/lib/rest-timer';
 import { maybeAskForReview } from '@/lib/review';
 import { color, fonts, HIT, ink, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 import { startDictation, voiceAvailable, type DictationHandle } from '@/lib/voice';
@@ -86,6 +88,7 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
   const workoutId = useSession((s) => s.workoutId);
   const checkGhostLine = useSession((s) => s.checkGhostLine);
   const openCheckIn = useSession((s) => s.openCheckIn);
+  const finishSession = useSession((s) => s.finishSession);
   const total = parsedSnapshot === note ? parsedVolume : estimateVolume(note);
   // A run-only session totals in distance, not an empty count (kg still wins
   // when both exist — the mixed-session detail lives in the receipt).
@@ -223,6 +226,13 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
     // §13: "first workout finished". A local counter, impossible to backfill —
     // the first hundred installs happen once.
     markFirstWorkoutFinished();
+    // The session is settled: the resting pill stops reporting a live set and
+    // goes back to the day's totals, and the reflection row appears under the
+    // ledger. Writing another line re-opens it (session-store).
+    finishSession();
+    // A finished session changed this week's numbers — the pending §12.1 recap
+    // notice re-computes so Sunday's text stays true. No-op while it is off.
+    if (userId) void refreshRecapNotification(userId);
     Keyboard.dismiss();
     revealReceipt(!reduceMotion);
 
@@ -373,15 +383,17 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
 const TIMER_TICK_MS = 250;
 const GO_FLASH_MS = 1800;
 
-function fmtClock(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
+/**
+ * The chip still owns the timer: it ticks, it flashes, it fires the haptic.
+ * Only the CLOCK is shared (`lib/rest-timer.ts`), so the resting pill can
+ * report the same countdown instead of computing a second one.
+ */
 function RestTimer() {
-  const [endsAt, setEndsAt] = useState<number | null>(null);
-  const [remaining, setRemaining] = useState(0);
+  const endsAt = useRestTimer((s) => s.endsAt);
+  const remaining = useRestTimer((s) => s.remaining);
+  const startRest = useRestTimer((s) => s.start);
+  const stopRest = useRestTimer((s) => s.stop);
+  const tickRest = useRestTimer((s) => s.tick);
   const [preview, setPreview] = useState<number | null>(null); // freshly-set length
   const [go, setGo] = useState(false);
 
@@ -389,9 +401,9 @@ function RestTimer() {
     if (endsAt === null) return;
     const tick = () => {
       const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
-      setRemaining(left);
+      tickRest(left);
       if (left <= 0) {
-        setEndsAt(null);
+        stopRest();
         setGo(true);
         success();
         setTimeout(() => setGo(false), GO_FLASH_MS);
@@ -400,7 +412,7 @@ function RestTimer() {
     tick();
     const t = setInterval(tick, TIMER_TICK_MS);
     return () => clearInterval(t);
-  }, [endsAt]);
+  }, [endsAt, tickRest, stopRest]);
 
   useEffect(() => {
     if (preview === null) return;
@@ -412,10 +424,10 @@ function RestTimer() {
     tap();
     setGo(false);
     if (endsAt !== null) {
-      setEndsAt(null); // stopped early — no judgment
+      stopRest(); // stopped early — no judgment
       return;
     }
-    setEndsAt(Date.now() + getRestSeconds() * 1000);
+    startRest(getRestSeconds());
   };
 
   const handleLongPress = () => {
@@ -492,7 +504,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   statusText: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(11),
     fontVariant: ['tabular-nums'],
     color: color.textSecondary,
@@ -517,7 +529,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.accent,
   },
   roundText: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: type.caption.fontSize,
     fontWeight: '600',
     color: color.textSecondary,

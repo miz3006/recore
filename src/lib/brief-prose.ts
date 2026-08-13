@@ -3,6 +3,9 @@
 // streak.ts and the other pure modules. The Brief import is type-only, so the
 // db layer behind it never loads in a test.
 import type { Brief } from './db/brief.ts';
+// `dates.ts` is pure (zero imports), so the db layer behind its folder never
+// loads in a test — same reason the Brief import above is type-only.
+import { daysBetween, type DayKey } from './db/dates.ts';
 import { fmtNumber } from './parse/summarize.ts';
 
 /**
@@ -156,4 +159,23 @@ const MONTH_NAMES = [
  */
 export function briefDateline(d: Date): string {
   return `${DAY_NAMES[d.getDay()]}, ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
+}
+
+/**
+ * When a quoted note was written, said the way a person would: "yesterday",
+ * "4 days ago", "2 weeks ago".
+ *
+ * A quote needs its date or it reads as current — "shoulder tight" from six
+ * weeks ago is a different sentence from the same words yesterday. Rounded to
+ * weeks past the first one, because "23 days ago" is arithmetic nobody asked
+ * for. A day in the future (a clock change, an imported row) resolves to
+ * "today" rather than to nonsense.
+ */
+export function whenLabel(day: DayKey, today: DayKey): string {
+  const days = daysBetween(day, today);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days} days ago`;
+  const weeks = Math.round(days / 7);
+  return weeks <= 1 ? 'a week ago' : `${weeks} weeks ago`;
 }

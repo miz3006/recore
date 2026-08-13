@@ -7,7 +7,7 @@ import { getGoal, getSmallestPlateKg } from '@/lib/prefs';
 import { todayKey, type DayKey } from './dates';
 import { findExerciseByName } from './exercises';
 import { getDb } from './index';
-import { resolveTodayPlanDay } from './plan';
+import { resolveTodayPlanDay, type PlanDayRow } from './plan';
 
 /**
  * The plan-in-view strip's content (pre-plan, Surface 1): today's due
@@ -17,6 +17,9 @@ import { resolveTodayPlanDay } from './plan';
  * cadence as the ghost (hydrate + after a parse), NOT per keystroke.
  */
 export interface PlanStrip {
+  /** The plan_days row this strip was resolved from — the session-start card
+   * marks its chip as the selected answer (§8.2). */
+  dayId: string;
   /** The day-type name, e.g. "Upper". */
   label: string;
   rows: PlanRow[];
@@ -25,11 +28,32 @@ export interface PlanStrip {
 const MAX_MOVES = 20;
 const WORKING = "s.kind NOT IN ('warmup','drop','skipped')";
 
+/**
+ * Today's strip: resolve which day-template is due, then progress it. The plan
+ * is only ever "in view" today.
+ */
 export function computePlanStrip(userId: string, day: DayKey): PlanStrip | null {
-  if (day !== todayKey()) return null; // the plan is only ever "in view" today
+  if (day !== todayKey()) return null;
   const planDay = resolveTodayPlanDay(userId, day);
-  if (!planDay) return null;
+  return planDay ? planStripFor(userId, planDay) : null;
+}
 
+/**
+ * The same progression for ONE NAMED day-template, whichever it is and whether
+ * or not it is the one due (split out 13 Aug 2026).
+ *
+ * It exists so the Next tab can show a split day the athlete is NOT due for —
+ * tapping "Pull" while today reads as "Push" and seeing what that session's
+ * loads would be. That preview must speak the identical numbers the real strip
+ * would, so it goes through this function rather than a parallel one: two
+ * expressions of "what goes on the bar for this day" is exactly the divergence
+ * the repo keeps having to diagnose.
+ *
+ * Read-only. Resolving a day for a preview writes nothing and changes nothing
+ * about which day is due — `setPlanDayChoice` is the only thing that does that,
+ * and this function never calls it.
+ */
+export function planStripFor(userId: string, planDay: PlanDayRow): PlanStrip | null {
   const smallest = getSmallestPlateKg();
   const lines = planDay.raw_text
     .split('\n')
@@ -71,7 +95,7 @@ export function computePlanStrip(userId: string, day: DayKey): PlanStrip | null 
     );
   }
 
-  return rows.length > 0 ? { label: planDay.label, rows } : null;
+  return rows.length > 0 ? { dayId: planDay.id, label: planDay.label, rows } : null;
 }
 
 /** The most recent session that logged real (non-warmup/drop/skipped) work for

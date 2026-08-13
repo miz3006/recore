@@ -42,6 +42,25 @@ export function dayRangeIso(key: DayKey): [string, string] {
   return [start.toISOString(), end.toISOString()];
 }
 
+const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+const MONTHS_SHORT = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const;
+
+/**
+ * "Fri 8 Aug" — a day named the way a lifter names it when they think back to
+ * a session. The weekday is the half that does the work: "8 Aug" is a lookup,
+ * "Fri" is a memory. Used wherever a comparison points at a specific past
+ * session ("same as last · Fri 8 Aug") so "last" is never left to mean
+ * "sometime before now".
+ */
+export function shortDayLabel(key: DayKey): string {
+  const [y, m, d] = key.split('-').map(Number);
+  const date = new Date(y!, m! - 1, d!);
+  return `${WEEKDAYS_SHORT[date.getDay()]} ${d} ${MONTHS_SHORT[(m ?? 1) - 1]}`;
+}
+
 /** The stored performed_at instant for a day: local noon, expressed in UTC. */
 export function performedAtIso(key: DayKey): string {
   const [y, m, d] = key.split('-').map(Number);

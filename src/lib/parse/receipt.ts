@@ -14,6 +14,8 @@ import {
   parsedDistance,
   parsedVolume,
   setsLineText,
+  setTableOf,
+  type SetTable,
 } from './summarize.ts';
 
 export interface ReceiptRow {
@@ -25,6 +27,9 @@ export interface ReceiptRow {
    * "120·100·90 kg × 10·15·8", "16·16·15", "60 s" — every working set as typed,
    * never a collapsed top set. Ready to render as-is. */
   setText: string;
+  /** The SAME sets, one per row, for the mini table under the exercise name.
+   * `setText` stays the compact voice (previews, done keys, tight sheets). */
+  table: SetTable;
   /** Comparison vs the previous session (↑ = ↓ PR). Null = no history yet —
    * the signal column stays SILENT, not labeled. */
   signal: GutterSignal | null;
@@ -108,6 +113,39 @@ export function matchPlanIndex(name: string, planKeys: string[]): number | null 
   return found === -1 ? null : found;
 }
 
+/**
+ * The last set on the record right now — "Bench Press · 120 × 5".
+ *
+ * Today's resting pill uses it as the live context DURING a session, where the
+ * day's running total is the one number the athlete already knows and the set
+ * they just finished is the one they are still thinking about. It reads the
+ * bottom of the receipt (the last row's last COUNTED set) rather than tracking
+ * anything of its own: a warm-up or a set marked not-done is not what you just
+ * did, by the same rule that keeps them out of the totals.
+ *
+ * Null when there is nothing counted to report.
+ */
+export interface LastSet {
+  exercise: string;
+  /** "120 × 5", "5 km", "1:30" — ready to render, unit already attached. */
+  reading: string;
+}
+
+export function lastSetOf(receipt: ReceiptData): LastSet | null {
+  for (let i = receipt.rows.length - 1; i >= 0; i--) {
+    const row = receipt.rows[i]!;
+    const counted = row.table.rows.filter((r) => r.counted);
+    const set = counted[counted.length - 1];
+    if (!set) continue;
+
+    const load = set.load && set.load !== 'bw' ? `${set.load}${row.table.loadHead === 'KG' ? ' kg' : ''}` : '';
+    const reading = load && set.work ? `${load} × ${set.work}` : load || set.work;
+    if (!reading) continue;
+    return { exercise: row.exercise, reading };
+  }
+  return null;
+}
+
 export function buildReceipt(
   result: ParseResult,
   signals: LineSignal[],
@@ -136,6 +174,7 @@ export function buildReceipt(
       line: item.line,
       exercise: item.exercise,
       setText,
+      table: setTableOf(item.sets),
       signal: first ? (signalByLine.get(item.line) ?? null) : null,
     });
   }

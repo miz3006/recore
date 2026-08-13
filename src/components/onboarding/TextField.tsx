@@ -1,13 +1,18 @@
+import { useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 
-import { alpha, color, ink, MAX_FONT_SCALE, moderateScale, radius, spacing } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, spacing } from '@/lib/theme';
+
+import { BLUE, CARD_RADIUS, INK_CARD, SELECT_BORDER } from './tokens';
 
 /**
- * The single-line text answer of the illustrated flow (name, priority
- * movement). Same surface language as OptionRow — paper at 60% with an ink
- * hairline — and a sans face, because mono is reserved for numerals (the
- * design law's ledger voice). Both callers treat empty as a first-class
- * "skip": §5 keeps these questions optional.
+ * The single-line text answer of the flow (name, priority movement). A soft
+ * card in the same language as an option row — ink at 3 %, no visible edge —
+ * whose border becomes Recore blue while the field has focus, which is the
+ * "interactive focus" §4.2 names as a permitted use of the accent.
+ *
+ * Both callers treat empty as a first-class "skip": §5 keeps these questions
+ * optional.
  */
 export function TextField({
   value,
@@ -22,11 +27,14 @@ export function TextField({
   onSubmit?: () => void;
   accessibilityLabel: string;
 }) {
+  const [focused, setFocused] = useState(false);
   return (
-    <View style={styles.field}>
+    <View style={[styles.field, focused && styles.fieldFocused]}>
       <TextInput
         value={value}
         onChangeText={onChangeText}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         onSubmitEditing={onSubmit}
         placeholder={placeholder}
         placeholderTextColor={color.textMuted}
@@ -44,11 +52,14 @@ export function TextField({
 
 const styles = StyleSheet.create({
   field: {
-    borderWidth: 0.5,
-    borderColor: alpha(color.accent, ink.grabber),
-    borderRadius: radius.md,
-    backgroundColor: alpha(color.bg, 0.6),
+    backgroundColor: INK_CARD,
+    borderWidth: SELECT_BORDER,
+    borderColor: INK_CARD,
+    borderRadius: CARD_RADIUS,
     paddingHorizontal: spacing.xl,
+  },
+  fieldFocused: {
+    borderColor: BLUE,
   },
   input: {
     fontSize: moderateScale(17),

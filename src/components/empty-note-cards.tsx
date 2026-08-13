@@ -2,14 +2,18 @@ import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { FadeSlideIn, PressableScale } from '@/components/motion';
+import { todayKey } from '@/lib/db/dates';
 import { getRecentSessions, getSessionExerciseNames } from '@/lib/db/insights';
+import { hasSplit } from '@/lib/db/plan';
 import { tap } from '@/lib/haptics';
 import { groupThousands } from '@/lib/parse/estimate';
 import { getObLanguage, getPrimaryLift, getWeightUnit, hasCoachRingDone } from '@/lib/prefs';
 import {
   color,
+  FIXED_FONT_SCALE,
   fonts,
   HIT,
+  lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
@@ -51,6 +55,11 @@ export function EmptyDayCards() {
   if (!last) {
     return <FirstSessionCard />;
   }
+
+  // On an empty TODAY with a split, the session-start card (§8.2) already
+  // carries the last-session line up top — a second peek here would say the
+  // same thing twice on one screen.
+  if (selectedDay === todayKey() && hasSplit(userId)) return null;
 
   return (
     <FadeSlideIn duration={260}>
@@ -169,14 +178,14 @@ function FirstSessionCard() {
 
         <View style={styles.stepRule} />
 
-        {/* Step 2 — earned in the ledger: toggle a ring or long-press a name.
+        {/* Step 2 — earned in the ledger: toggle a ring or open a history.
             Its ring fills from the same one-shot flag the live hint retires
             on, so the card and the hint can never disagree. */}
         <View style={styles.step}>
           <View style={styles.ringCol} accessibilityElementsHidden>
             {ringDone ? (
               <View style={styles.ringDone}>
-                <Text style={styles.ringCheck} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                <Text style={styles.ringCheck} maxFontSizeMultiplier={FIXED_FONT_SCALE}>
                   ✓
                 </Text>
               </View>
@@ -192,7 +201,7 @@ function FirstSessionCard() {
             </Text>
             <Text style={styles.stepCaptionMuted} maxFontSizeMultiplier={MAX_FONT_SCALE}>
               Each line settles into a card, its reading on the right. Tap the ring if you skipped
-              a lift · long-press a name for its history.
+              a lift · the ⋯ opens its history.
             </Text>
           </View>
         </View>
@@ -248,7 +257,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     ...type.caption,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
   },
@@ -258,7 +267,7 @@ const styles = StyleSheet.create({
   },
   numbers: {
     ...type.caption,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontWeight: '500',
     fontVariant: ['tabular-nums'],
     color: color.textSecondary,
@@ -301,7 +310,7 @@ const styles = StyleSheet.create({
     color: color.bg,
     fontSize: moderateScale(12),
     fontWeight: '700',
-    lineHeight: moderateScale(14),
+    lineHeight: lineFor(14),
   },
   stepBody: {
     flex: 1,
@@ -347,7 +356,7 @@ const styles = StyleSheet.create({
   },
   sampleText: {
     flexShrink: 1,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(14),
     color: color.textPrimary,
     fontVariant: ['tabular-nums'],

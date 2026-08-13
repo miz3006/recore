@@ -15,7 +15,7 @@ import { tap } from '@/lib/haptics';
 import { pickAndImportCsv } from '@/lib/import/pick';
 import { rowCountBucket } from '@/lib/onboarding';
 import { getObTracker, markImportOffered } from '@/lib/prefs';
-import { color, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { color, lineFor, MAX_FONT_SCALE, radius, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 /**
@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
   body: {
     marginTop: spacing.md,
     ...type.subhead,
-    lineHeight: moderateScale(23),
+    lineHeight: lineFor(23),
     color: color.textSecondary,
   },
   steps: {
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
   stepText: {
     flex: 1,
     ...type.footnote,
-    lineHeight: moderateScale(19),
+    lineHeight: lineFor(19),
     color: color.textSecondary,
   },
   bottom: {
@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
   message: {
     marginBottom: spacing.sm,
     ...type.footnote,
-    lineHeight: moderateScale(18),
+    lineHeight: lineFor(18),
     color: color.textSecondary,
     textAlign: 'center',
   },

@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   line: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: type.caption.fontSize,
     color: color.textSecondary,
     fontVariant: ['tabular-nums'],

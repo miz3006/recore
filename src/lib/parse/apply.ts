@@ -68,7 +68,7 @@ function rebuildAndSignal(
           set.parent != null && set.parent < setIds.length ? setIds[set.parent]! : null;
         db.runSync(
           `INSERT INTO sets (id, item_id, position, kind, parent_set_id, reps, weight_kg, distance_m, duration_s, rir, note)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             setId,
             itemId,
@@ -81,6 +81,10 @@ function rebuildAndSignal(
             set.distance_m,
             set.duration_s,
             set.rir,
+            // The athlete's inline remark about this set. Part of the projection:
+            // wiped and rewritten with the rest of the structure on every parse,
+            // because the words themselves live in raw_text.
+            set.note,
           ],
         );
         setIds.push(setId);

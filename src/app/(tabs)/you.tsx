@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   LayoutAnimation,
@@ -9,21 +9,19 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   UIManager,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, {
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
-
 import { HistorySheet } from '@/components/history-sheet';
-import { glyphTint, Icon, type IconName } from '@/components/icon';
+import { Icon } from '@/components/icon';
 import { PressableScale, Stagger } from '@/components/motion';
-import { Eyebrow } from '@/components/primitives';
+import { AccordionRow, Row, Section, Segmented } from '@/components/settings-rows';
+import { listAliasOverrides } from '@/lib/db/alias-overrides';
+import { listPlanDays } from '@/lib/db/plan';
+import { clearParseCache } from '@/lib/db/cache';
+import { contactSupport, SUPPORT_EMAIL } from '@/lib/support';
 import { buildActivityGrid, type GridWeek } from '@/lib/activity';
 import { deleteAccount } from '@/lib/account/delete';
 import { useAuth } from '@/lib/auth/provider';
@@ -52,12 +50,15 @@ import type { LegalDocId } from '@/lib/legal';
 import { groupThousands } from '@/lib/parse/estimate';
 import { fmtNumber } from '@/lib/parse/summarize';
 import { recachePredictionFromLatest } from '@/lib/predict/cache';
-import { openReviewPage, reviewStoreUrl } from '@/lib/review';
+import { disableRecap, enableRecap, refreshRecapNotification } from '@/lib/recap';
+import { canRateApp, rateApp } from '@/lib/review';
 import {
   DAY_LABELS,
   daysLabel,
   formatBodyWeight,
   hasDay,
+  parseBodyHeight,
+  parseBodyWeight,
   toggleDay,
   type Experience,
   type SessionFeel,
@@ -70,17 +71,25 @@ import {
   getExperience,
   getGoal,
   getObLanguage,
+  getRecapHour,
+  getRestSeconds,
   getSessionFeel,
   getSmallestPlateKg,
   getTrainingStyle,
   getUsualDays,
   getWeightUnit,
+  isRecapEnabled,
   setBarWeightKg,
+  setBodyHeightCm,
+  setBodyWeightKg,
   setExperience,
   setGoal,
   setObLanguage,
+  setRecapHour,
+  setRestSeconds,
   setSessionFeel,
   setSmallestPlateKg,
+  REST_OPTIONS_S,
   setTrainingStyle,
   setUsualDays,
   setWeightUnit,
@@ -88,12 +97,13 @@ import {
   type ObLanguage,
   type WeightUnit,
 } from '@/lib/prefs';
-import { SPRING } from '@/lib/motion';
 import { scheduleSync } from '@/lib/sync/index';
 import {
   color,
+  FIXED_FONT_SCALE,
   fonts,
   hairline,
+  lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
@@ -102,6 +112,7 @@ import {
   TAB_BAR_CLEARANCE,
   type,
 } from '@/lib/theme';
+import { useDisplay } from '@/state/display';
 import { useSession } from '@/state/session-store';
 
 /**
@@ -177,6 +188,30 @@ const PLATE_SEG: { id: number; label: string }[] = PLATE_OPTIONS.map((p) => ({ i
 const BAR_OPTIONS = [15, 20] as const;
 const BAR_SEG: { id: number; label: string }[] = BAR_OPTIONS.map((b) => ({ id: b, label: `${b}` }));
 
+/** The §12.1 recap's editable hour — Sunday, one of four sensible slots. */
+const RECAP_HOUR_SEG: { id: number; label: string }[] = [8, 12, 18, 20].map((h) => ({
+  id: h,
+  label: `${String(h).padStart(2, '0')}:00`,
+}));
+
+const RECAP_TOGGLE: { id: 'off' | 'on'; label: string }[] = [
+  { id: 'off', label: 'Off' },
+  { id: 'on', label: 'On' },
+];
+
+/** How the ledger prints a set: aligned columns, or one spelled-out line each
+ * at accessibility size. The names describe the RESULT, not a font size. */
+const SET_READING_SEG: { id: 'standard' | 'large'; label: string }[] = [
+  { id: 'standard', label: 'Standard' },
+  { id: 'large', label: 'Larger' },
+];
+
+/** Rest-timer lengths, as the settings picker shows them ("1:30"). */
+const REST_SEG: { id: number; label: string }[] = REST_OPTIONS_S.map((s) => ({
+  id: s,
+  label: `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`,
+}));
+
 type Expand =
   | 'focus'
   | 'experience'
@@ -184,9 +219,13 @@ type Expand =
   | 'feel'
   | 'days'
   | 'unit'
+  | 'rest'
   | 'language'
+  | 'body'
   | 'plate'
   | 'bar'
+  | 'setreadings'
+  | 'recap'
   | null;
 
 /** "Jan Kovač" → "JK"; else the email's initial; else a bare mark. */
@@ -204,12 +243,19 @@ function initialsOf(name: string | null, email: string | null): string {
 const labelOf = <T,>(options: { id: T; label: string }[], id: T | null): string =>
   options.find((o) => o.id === id)?.label ?? 'Not set';
 
+/** The stored metric weight as bare text in the DISPLAY unit — what the body
+ * field edits. Empty when nothing is stored. */
+const weightTextOf = (kg: number | null, unit: WeightUnit): string =>
+  kg == null ? '' : (formatBodyWeight(kg, unit)?.split(' ')[0] ?? '');
+
 export default function Settings() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const userId = useSession((s) => s.userId);
   const hydrate = useSession((s) => s.hydrate);
+  // Bumped by every landed correction — the shorthand count follows it.
+  const fixRevision = useSession((s) => s.fixRevision);
   const [busy, setBusy] = useState<null | 'import' | 'signout' | 'delete' | 'restore'>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
@@ -217,20 +263,41 @@ export default function Settings() {
   const [language, setLanguageState] = useState<ObLanguage | null>(() => getObLanguage());
   const [plate, setPlateState] = useState<number | null>(() => getSmallestPlateKg());
   const [bar, setBarState] = useState<number>(() => getBarWeightKg());
-  // §5's answers, all editable here. Body context is read-only in this pass —
-  // it is shown so a person can see what Recore holds, and cleared or changed
-  // from the same place it was asked (`Restart onboarding`).
+  // §5's answers, all editable here — body context included (§11).
   const [experience, setExperienceState] = useState<Experience | null>(() => getExperience());
   const [style, setStyleState] = useState<TrainingStyle | null>(() => getTrainingStyle());
   const [feel, setFeelState] = useState<SessionFeel | null>(() => getSessionFeel());
   const [days, setDaysState] = useState<number>(() => getUsualDays());
   const [unit, setUnitState] = useState<WeightUnit>(() => getWeightUnit() ?? 'kg');
-  const bodyWeightKg = getBodyWeightKg();
-  const bodyHeightCm = getBodyHeightCm();
+  // Body context, editable in place (§11: every onboarding answer stays
+  // editable). The texts are what the fields show; the numbers are what is
+  // stored — a field only writes when its text parses, and an emptied field
+  // is a real answer that clears the value.
+  const [bodyWeightKg, setBodyWeightKgState] = useState<number | null>(() => getBodyWeightKg());
+  const [bodyHeightCm, setBodyHeightCmState] = useState<number | null>(() => getBodyHeightCm());
+  const [weightText, setWeightText] = useState<string>(() =>
+    weightTextOf(getBodyWeightKg(), getWeightUnit() ?? 'kg'),
+  );
+  const [heightText, setHeightText] = useState<string>(() => {
+    const cm = getBodyHeightCm();
+    return cm == null ? '' : String(cm);
+  });
   const [expanded, setExpanded] = useState<Expand>(null);
+  // Display preference — held in its own live store so the ledger follows the
+  // tap immediately (`state/display.ts`), with the value itself in the meta KV.
+  const largeSets = useDisplay((s) => s.largeSetReadings);
+  const setLargeSets = useDisplay((s) => s.setLargeSetReadings);
   const [lapsed, setLapsed] = useState<boolean>(() => isDevLapsed());
   const [historyOpen, setHistoryOpen] = useState(false);
   const [subscriptionMessage, setSubscriptionMessage] = useState<string | null>(null);
+  // The §12.1 weekly recap — the ONE recurring notification, off by default,
+  // off in one tap, its hour user-visible and editable right here.
+  const [recapOn, setRecapOnState] = useState<boolean>(() => isRecapEnabled());
+  const [recapHour, setRecapHourState] = useState<number>(() => getRecapHour());
+  const [recapMessage, setRecapMessage] = useState<string | null>(null);
+  const [rest, setRestState] = useState<number>(() => getRestSeconds());
+  const [accountMessage, setAccountMessage] = useState<string | null>(null);
+  const [supportMessage, setSupportMessage] = useState<string | null>(null);
   const entitlement = useEntitlementDecision();
 
   /**
@@ -286,6 +353,27 @@ export default function Settings() {
     };
   }, [userId]);
 
+  /** How many shorthands the parser has been taught — the count on the
+   * "Reading corrections" row. Re-read on every landed correction. */
+  const aliasCount = useMemo(
+    () => (userId ? listAliasOverrides(userId).length : 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [userId, fixRevision],
+  );
+
+  /**
+   * The session types, named — "Push, Pull, Legs". Read from the split's own
+   * days, because that is what a session type IS here; there is no second
+   * list to keep in step. Silent when no split exists rather than showing a
+   * zero, and truncated to three names so the row cannot outgrow its line.
+   */
+  const splitValue = useMemo(() => {
+    if (!userId) return 'Not set';
+    const labels = listPlanDays(userId).map((d) => d.label.trim()).filter(Boolean);
+    if (labels.length === 0) return 'Not set';
+    return labels.length > 3 ? `${labels.slice(0, 3).join(', ')} +${labels.length - 3}` : labels.join(', ');
+  }, [userId]);
+
   // The real account, never a placeholder: name (best-effort) + email + provider.
   const meta = session?.user.user_metadata as { full_name?: string; name?: string } | undefined;
   const displayName = meta?.full_name ?? meta?.name ?? null;
@@ -303,6 +391,13 @@ export default function Settings() {
     tap();
     setBarWeightKg(kg);
     setBarState(kg);
+  };
+
+  /** Writes the pref AND the live copy, so Today's ledger changes behind this
+   * screen rather than after a relaunch. */
+  const handleSetReadings = (id: 'standard' | 'large') => {
+    tap();
+    setLargeSets(id === 'large');
   };
 
   const handleGoal = (g: Goal) => {
@@ -339,6 +434,47 @@ export default function Settings() {
     tap();
     setWeightUnit(u);
     setUnitState(u);
+    // The weight field speaks the display unit — re-derive its text from the
+    // stored metric value so a unit switch never reinterprets typed digits.
+    setWeightText(weightTextOf(getBodyWeightKg(), u));
+  };
+
+  /** Write-through body weight: parses in the display unit, stores metric.
+   * Empty clears; text that doesn't parse yet just stays on screen. */
+  const handleBodyWeightText = (text: string) => {
+    setWeightText(text);
+    if (text.trim() === '') {
+      setBodyWeightKg(null);
+      setBodyWeightKgState(null);
+      return;
+    }
+    const kg = parseBodyWeight(text, unit);
+    if (kg != null) {
+      setBodyWeightKg(kg);
+      setBodyWeightKgState(kg);
+    }
+  };
+
+  const handleBodyHeightText = (text: string) => {
+    setHeightText(text);
+    if (text.trim() === '') {
+      setBodyHeightCm(null);
+      setBodyHeightCmState(null);
+      return;
+    }
+    const cm = parseBodyHeight(text, 'cm');
+    if (cm != null) {
+      setBodyHeightCm(cm);
+      setBodyHeightCmState(cm);
+    }
+  };
+
+  /** On blur a field that never parsed snaps back to what is stored, so the
+   * row and its editor cannot disagree about the record. */
+  const snapWeightText = () => setWeightText(weightTextOf(getBodyWeightKg(), unit));
+  const snapHeightText = () => {
+    const cm = getBodyHeightCm();
+    setHeightText(cm == null ? '' : String(cm));
   };
 
   /** The usual week. An expectation, never a target — nothing counts a miss. */
@@ -347,6 +483,31 @@ export default function Settings() {
     const next = toggleDay(days, index);
     setUsualDays(next);
     setDaysState(next);
+  };
+
+  /** On asks the OS in context and only claims On when a notice can actually
+   * fire (§2: never a state the app cannot keep). Off cancels the pending one. */
+  const handleRecapToggle = async (id: 'off' | 'on') => {
+    tap();
+    if (!userId) return;
+    setRecapMessage(null);
+    if (id === 'off') {
+      await disableRecap();
+      setRecapOnState(false);
+      return;
+    }
+    const ok = await enableRecap(userId);
+    setRecapOnState(ok);
+    if (!ok) {
+      setRecapMessage('Notifications are off for Recore in iOS Settings. Allow them there, then turn this on.');
+    }
+  };
+
+  const handleRecapHour = (h: number) => {
+    tap();
+    setRecapHour(h);
+    setRecapHourState(h);
+    if (userId) void refreshRecapNotification(userId);
   };
 
   const handlePlate = (kg: number) => {
@@ -415,6 +576,84 @@ export default function Settings() {
     const outcome = await shareExportFile(format, contents);
     if (outcome === 'unavailable') setExportMessage('Sharing is unavailable on this device.');
     else if (outcome === 'failed') setExportMessage('Export failed — try again.');
+  };
+
+  /**
+   * The rest timer's default length. It was reachable only by LONG-PRESSING
+   * the timer chip on Today — a gesture with no label anywhere — so the value
+   * most people never discovered they could change now sits where a default
+   * belongs. The chip reads the same pref, so the two can never disagree.
+   */
+  const handleRest = (seconds: number) => {
+    tap();
+    setRestSeconds(seconds);
+    setRestState(seconds);
+  };
+
+  /**
+   * ONE export row, two real files (§20 — the export is complete and free
+   * forever). JSON leads because it is the only one that carries `raw_text`:
+   * the words are the record, and an export that dropped them would not be a
+   * copy of the record at all. The sheet says so in those terms rather than
+   * naming file formats at someone who just wants their training.
+   */
+  const handleExportChoice = () => {
+    tap();
+    Alert.alert(
+      'Export my record',
+      'Everything includes the sessions exactly as you wrote them. The spreadsheet is the numbers only — useful elsewhere, but it cannot carry your words.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Everything (your words too)', onPress: () => void handleExport('json') },
+        { text: 'Spreadsheet (CSV)', onPress: () => void handleExport('csv') },
+      ],
+    );
+  };
+
+  const handleContact = async () => {
+    tap();
+    const opened = await contactSupport();
+    if (!opened) setSupportMessage(`No mail app is set up. Write to ${SUPPORT_EMAIL}.`);
+  };
+
+  const handleRate = async () => {
+    tap();
+    const opened = await rateApp();
+    if (!opened) setSupportMessage('The App Store is not reachable from this build yet.');
+  };
+
+  /**
+   * Clear local cache — the readings, never the record.
+   *
+   * It deletes the stored parse results and asks for them again; `raw_text`,
+   * sets, reflections, notes and corrections are untouched (`db/cache.ts`
+   * spells out exactly what moves). That is why the confirmation can promise
+   * that nothing is lost and mean it, and why this is amber rather than red.
+   */
+  const handleClearCache = () => {
+    if (busy || !userId) return;
+    tap();
+    Alert.alert(
+      'Clear local cache?',
+      'Recore will read your notes again from scratch. Nothing you wrote is deleted — your sessions, notes and corrections all stay exactly as they are.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear cache',
+          onPress: () => {
+            tapMedium();
+            const queued = clearParseCache(userId);
+            hydrate(userId);
+            scheduleSync();
+            setAccountMessage(
+              queued > 0
+                ? `Cleared — ${queued} ${queued === 1 ? 'session' : 'sessions'} will be read again as you open them.`
+                : 'Cleared. There was nothing cached.',
+            );
+          },
+        },
+      ],
+    );
   };
 
   const handleSignOut = async () => {
@@ -539,29 +778,35 @@ export default function Settings() {
         ]}
         showsVerticalScrollIndicator={false}>
         <Stagger step={55} initialDelay={80}>
-        {/* PROFILE HEADER — avatar + name + email (Mobbin identity block). */}
-        <View style={styles.profile}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarInitials} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {initialsOf(displayName, email)}
-            </Text>
-          </View>
-          <View style={styles.profileText}>
-            <Text style={styles.profileName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {displayName ?? 'Your account'}
-            </Text>
-            {email ? (
-              <Text style={styles.profileEmail} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {email}
+        {/* PROFILE — the identity block became a proper grouped card (12 Aug):
+            the avatar heads it, and what the account actually IS reads as
+            rows underneath. Read-only on purpose — the name and address belong
+            to the Apple or Google account that signs you in, and Recore
+            editing them here would be a second, disagreeing copy. */}
+        <Section label="Profile">
+          <View style={styles.profile}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarInitials} maxFontSizeMultiplier={FIXED_FONT_SCALE}>
+                {initialsOf(displayName, email)}
               </Text>
-            ) : null}
-            {providerLabel ? (
-              <Text style={styles.profileProvider} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {providerLabel} account
+            </View>
+            <View style={styles.profileText}>
+              <Text
+                style={styles.profileName}
+                numberOfLines={1}
+                maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {displayName ?? 'Your account'}
               </Text>
-            ) : null}
+              {providerLabel ? (
+                <Text style={styles.profileProvider} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  Signed in with {providerLabel}
+                </Text>
+              ) : null}
+            </View>
           </View>
-        </View>
+          <Row label="Name" value={displayName ?? 'Not set'} chevron={false} divider />
+          <Row label="Email" value={email ?? 'Not set'} chevron={false} divider />
+        </Section>
 
         {/* THE RECORD — the career numbers and the shape of the training year,
             in one card that is also a door to Progress (Mobbin: komoot and
@@ -628,24 +873,138 @@ export default function Settings() {
           </View>
         ) : null}
 
-        {/* TRAINING — calm value rows that expand inline to a segmented editor. */}
-        <Section label="Training" footnote="Predictions round to what your gym’s bar can actually hold.">
+        {/* SUBSCRIPTION — the store's own state, and three real actions. The
+            footnote doubles as the result line for Restore, the way "Your
+            record" does for import/export.
+
+            IT NEVER ASSERTS A DATE IT WAS NOT TOLD. `subscriptionSub` is built
+            from the store's own clock and is undefined when the store has not
+            answered, so this card can say "Active · renews 30 Aug" only when
+            RevenueCat said so (§2 rule 5). A hardcoded renewal date would be
+            the exact billing claim the invariant forbids. */}
+        <Section
+          label="Subscription"
+          footnote={subscriptionMessage ?? 'Managed by your Apple Account. Cancel any time.'}
+          footnoteActive={subscriptionMessage != null}>
           <Row
-            icon="calendar"
-            label="Your split"
-            sub="Plan what you train each day"
+            icon="sparkle"
+            label="Recore Pro"
+            value={subscriptionValue}
+            sub={subscriptionSub}
             onPress={() => {
               tap();
-              router.push('/split');
+              router.push('/paywall');
             }}
           />
+          <Row icon="card" label="Manage subscription" external divider onPress={handleManage} />
+          <Row
+            icon="refresh"
+            label={busy === 'restore' ? 'Restoring…' : 'Restore purchases'}
+            divider
+            disabled={busy !== null}
+            onPress={() => void handleRestore()}
+          />
+        </Section>
+
+        {/* TRAINING — the four settings that change how a SESSION works, in
+            the order they come up in a gym: what you lift in, how long you
+            rest, which days you train, and whether Sunday brings a recap.
+            Everything that describes YOU rather than the session moved to its
+            own card below (12 Aug) — this one used to be eleven rows deep and
+            the two most-changed values were buried in the middle of it. */}
+        <Section
+          label="Training"
+          footnote={recapMessage ?? 'Predictions round to what your gym’s bar can actually hold.'}
+          footnoteActive={recapMessage != null}>
+          <AccordionRow
+            icon="plate"
+            label="Units"
+            value={unit}
+            open={expanded === 'unit'}
+            onToggle={() => toggle('unit')}>
+            <Segmented options={UNIT_OPTIONS} selected={unit} onSelect={handleUnit} />
+          </AccordionRow>
+          <AccordionRow
+            icon="timer"
+            label="Rest timer default"
+            value={REST_SEG.find((o) => o.id === rest)?.label ?? '2:00'}
+            reading
+            open={expanded === 'rest'}
+            onToggle={() => toggle('rest')}
+            divider>
+            <Segmented options={REST_SEG} selected={rest} onSelect={handleRest} reading />
+          </AccordionRow>
+          {/* The usual week. The caption says what it is FOR, because a row of
+              day chips in a settings screen otherwise reads as a schedule —
+              and §11 forbids turning it into one. */}
+          <AccordionRow
+            icon="calendar"
+            label="Training days"
+            value={daysLabel(days) || 'Not set'}
+            open={expanded === 'days'}
+            onToggle={() => toggle('days')}
+            divider>
+            <View style={styles.dayRow}>
+              {DAY_LABELS.map((label, i) => {
+                const on = hasDay(days, i);
+                return (
+                  <PressableScale
+                    key={label}
+                    onPress={() => handleDay(i)}
+                    haptic="none"
+                    activeScale={0.94}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={label}
+                    accessibilityState={{ checked: on }}
+                    style={[styles.dayChip, on && styles.dayChipOn]}>
+                    <Text
+                      style={[styles.dayChipText, on && styles.dayChipTextOn]}
+                      maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                      {label}
+                    </Text>
+                  </PressableScale>
+                );
+              })}
+            </View>
+          </AccordionRow>
+          {/* The §12.1 weekly recap — the one recurring notification that
+              exists. It lives here rather than in a Notifications card of its
+              own: it is a training habit, and one row does not need a section. */}
+          <AccordionRow
+            icon="bell"
+            label="Weekly recap"
+            value={recapOn ? `Sundays ${String(recapHour).padStart(2, '0')}:00` : 'Off'}
+            reading={recapOn}
+            open={expanded === 'recap'}
+            onToggle={() => toggle('recap')}
+            divider>
+            <View style={styles.recapEditor}>
+              <Segmented
+                options={RECAP_TOGGLE}
+                selected={recapOn ? 'on' : 'off'}
+                onSelect={(id) => void handleRecapToggle(id)}
+              />
+              {recapOn ? (
+                <Segmented
+                  options={RECAP_HOUR_SEG}
+                  selected={recapHour}
+                  onSelect={handleRecapHour}
+                  reading
+                />
+              ) : null}
+            </View>
+          </AccordionRow>
+        </Section>
+
+        {/* ABOUT YOU — the onboarding answers, still editable in place (§11: a
+            replay of onboarding is not an editor). */}
+        <Section label="About you">
           <AccordionRow
             icon="target"
             label="Focus"
             value={labelOf(GOAL_OPTIONS, goal)}
             open={expanded === 'focus'}
-            onToggle={() => toggle('focus')}
-            divider>
+            onToggle={() => toggle('focus')}>
             <Segmented options={GOAL_OPTIONS} selected={goal} onSelect={handleGoal} />
           </AccordionRow>
           <AccordionRow
@@ -679,39 +1038,6 @@ export default function Settings() {
             divider>
             <Segmented options={FEEL_OPTIONS} selected={feel} onSelect={handleFeel} />
           </AccordionRow>
-          {/* The usual week. The caption says what it is FOR, because a row of
-              day chips in a settings screen otherwise reads as a schedule —
-              and §11 forbids turning it into one. */}
-          <AccordionRow
-            icon="calendar"
-            label="Usual training days"
-            value={daysLabel(days) || 'Not set'}
-            open={expanded === 'days'}
-            onToggle={() => toggle('days')}
-            divider>
-            <View style={styles.dayRow}>
-              {DAY_LABELS.map((label, i) => {
-                const on = hasDay(days, i);
-                return (
-                  <PressableScale
-                    key={label}
-                    onPress={() => handleDay(i)}
-                    haptic="none"
-                    activeScale={0.94}
-                    accessibilityRole="checkbox"
-                    accessibilityLabel={label}
-                    accessibilityState={{ checked: on }}
-                    style={[styles.dayChip, on && styles.dayChipOn]}>
-                    <Text
-                      style={[styles.dayChipText, on && styles.dayChipTextOn]}
-                      maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                      {label}
-                    </Text>
-                  </PressableScale>
-                );
-              })}
-            </View>
-          </AccordionRow>
           <AccordionRow
             icon="language"
             label="Writing language"
@@ -721,93 +1047,131 @@ export default function Settings() {
             divider>
             <Segmented options={LANGUAGE_OPTIONS} selected={language} onSelect={handleLanguage} />
           </AccordionRow>
+          {/* Body context, editable in place (§11: every onboarding answer
+              stays editable — a replay of onboarding is not an editor). Both
+              fields are optional; clearing one removes it from the record. */}
           <AccordionRow
-            icon="plate"
-            label="Units"
-            value={unit}
-            open={expanded === 'unit'}
-            onToggle={() => toggle('unit')}
+            icon="target"
+            label="Body context"
+            value={
+              [formatBodyWeight(bodyWeightKg, unit), bodyHeightCm ? `${bodyHeightCm} cm` : null]
+                .filter(Boolean)
+                .join(' · ') || 'Not set'
+            }
+            open={expanded === 'body'}
+            onToggle={() => toggle('body')}
             divider>
-            <Segmented options={UNIT_OPTIONS} selected={unit} onSelect={handleUnit} />
+            <View style={styles.bodyFields}>
+              <View style={styles.bodyField}>
+                <Text style={styles.bodyFieldLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  Weight
+                </Text>
+                <View style={styles.bodyInputWrap}>
+                  <TextInput
+                    style={styles.bodyInput}
+                    value={weightText}
+                    onChangeText={handleBodyWeightText}
+                    onEndEditing={snapWeightText}
+                    placeholder="—"
+                    placeholderTextColor={color.textMuted}
+                    keyboardType="decimal-pad"
+                    keyboardAppearance="light"
+                    selectionColor={color.accent}
+                    cursorColor={color.accent}
+                    allowFontScaling
+                    maxFontSizeMultiplier={MAX_FONT_SCALE}
+                    accessibilityLabel={`Body weight in ${unit === 'lb' ? 'pounds' : 'kilograms'}`}
+                  />
+                  <Text style={styles.bodyUnit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    {unit}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.bodyField}>
+                <Text style={styles.bodyFieldLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  Height
+                </Text>
+                <View style={styles.bodyInputWrap}>
+                  <TextInput
+                    style={styles.bodyInput}
+                    value={heightText}
+                    onChangeText={handleBodyHeightText}
+                    onEndEditing={snapHeightText}
+                    placeholder="—"
+                    placeholderTextColor={color.textMuted}
+                    keyboardType="number-pad"
+                    keyboardAppearance="light"
+                    selectionColor={color.accent}
+                    cursorColor={color.accent}
+                    allowFontScaling
+                    maxFontSizeMultiplier={MAX_FONT_SCALE}
+                    accessibilityLabel="Height in centimetres"
+                  />
+                  <Text style={styles.bodyUnit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    cm
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.bodyHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                Context for your own numbers. Never a target or a score. Clear a field to remove
+                it.
+              </Text>
+            </View>
           </AccordionRow>
-          {/* Body context, shown only when it exists. §5.1: skipping it changes
-              nothing essential, so an empty value draws no row at all rather
-              than an invitation to fill something in. */}
-          {bodyWeightKg != null || bodyHeightCm != null ? (
-            <Row
-              icon="target"
-              label="Body context"
-              value={
-                [formatBodyWeight(bodyWeightKg, unit), bodyHeightCm ? `${bodyHeightCm} cm` : null]
-                  .filter(Boolean)
-                  .join(' · ') || undefined
-              }
-              sub="Context for your own numbers. Never a target or a score."
-              chevron={false}
-              divider
-            />
-          ) : null}
           <AccordionRow
             icon="plate"
             label="Smallest plate"
             value={plate != null ? `${fmtNumber(plate)} kg` : 'Not set'}
+            reading={plate != null}
             open={expanded === 'plate'}
             onToggle={() => toggle('plate')}
             divider>
-            <Segmented options={PLATE_SEG} selected={plate} onSelect={handlePlate} mono />
+            <Segmented options={PLATE_SEG} selected={plate} onSelect={handlePlate} reading />
           </AccordionRow>
           <AccordionRow
             icon="barbell"
             label="Bar weight"
             value={`${bar} kg`}
+            reading
             open={expanded === 'bar'}
             onToggle={() => toggle('bar')}
             divider>
-            <Segmented options={BAR_SEG} selected={bar} onSelect={handleBar} mono />
+            <Segmented options={BAR_SEG} selected={bar} onSelect={handleBar} reading />
           </AccordionRow>
         </Section>
 
-        {/* SUBSCRIPTION — the store's own state, and three real actions. The
-            footnote doubles as the result line for Restore, the way "Your data"
-            does for import/export. */}
+        {/* YOUR RECORD — the four doors to the record itself: what a session is
+            called, what Recore has learned to read, and the two ways the whole
+            thing moves in or out. */}
         <Section
-          label="Subscription"
-          footnote={subscriptionMessage ?? 'Managed by your Apple Account. Cancel any time.'}
-          footnoteActive={subscriptionMessage != null}>
+          label="Your record"
+          footnote={dataCaption}
+          footnoteActive={importMessage != null || exportMessage != null}>
+          {/* Session types = the split's own days, which is where they are
+              named, renamed and deleted (`/split` → `/plan-day`). There is no
+              separate rename sheet to reuse — see the note in the change log:
+              MERGING two day types does not exist anywhere yet, so nothing
+              here pretends it does. */}
           <Row
-            icon="sparkle"
-            label="Recore Pro"
-            value={subscriptionValue}
-            sub={subscriptionSub}
+            icon="calendar"
+            label="Session types"
+            value={splitValue}
+            sub="Name the days you train"
             onPress={() => {
               tap();
-              router.push('/paywall');
+              router.push('/split');
             }}
           />
-          <Row icon="card" label="Manage in App Store" external divider onPress={handleManage} />
           <Row
-            icon="refresh"
-            label={busy === 'restore' ? 'Restoring…' : 'Restore purchases'}
+            icon="wrench"
+            label="Reading corrections"
+            value={aliasCount === 1 ? '1 shorthand' : `${aliasCount} shorthands`}
+            sub="What Recore has learned to read"
             divider
-            disabled={busy !== null}
-            onPress={() => void handleRestore()}
-          />
-        </Section>
-
-        {/* YOUR DATA — free-forever export/import; caption doubles as result. */}
-        <Section label="Your data" footnote={dataCaption} footnoteActive={importMessage != null || exportMessage != null}>
-          <Row
-            icon="download"
-            label="Export everything"
-            sub="JSON — your original notes and the full record"
-            onPress={() => void handleExport('json')}
-          />
-          <Row
-            icon="table"
-            label="Export for a spreadsheet"
-            sub="CSV — date, exercise, sets, weight"
-            divider
-            onPress={() => void handleExport('csv')}
+            onPress={() => {
+              tap();
+              router.push('/aliases');
+            }}
           />
           <Row
             icon="upload"
@@ -816,46 +1180,95 @@ export default function Settings() {
             disabled={busy !== null}
             onPress={() => void handleImport()}
           />
+          <Row
+            icon="download"
+            label="Export my record"
+            sub="Your sessions, including the words you wrote"
+            divider
+            onPress={handleExportChoice}
+          />
         </Section>
 
-        {/* PARSING & PRIVACY — real pages now, and the two links App Review
-            also taps on the paywall (PLAN A3 step 3, C3). */}
-        <Section label="Privacy">
-          <Row icon="sparkle" label="How parsing works" onPress={() => openDoc('parsing')} />
+        {/* INTEGRATIONS — one row, and it opens an honest "not connected".
+            A switch here would be a promise the app cannot keep: there is no
+            HealthKit code in the project (see `app/health.tsx`). */}
+        <Section label="Integrations">
+          <Row
+            icon="target"
+            label="Apple Health"
+            value="Not connected"
+            sub="Recore does not read or write Health data"
+            onPress={() => {
+              tap();
+              router.push('/health');
+            }}
+          />
+        </Section>
+
+        {/* DISPLAY — how the record is printed, not what is in it (owner,
+            9 Aug). Recore already follows the system text size; this is for the
+            person who wants their sets bigger HERE without enlarging every app
+            on their phone. It changes the ledger the moment it is tapped. */}
+        <Section
+          label="Display"
+          footnote="Recore already follows your iPhone’s text size. This makes the sets larger on their own.">
+          <AccordionRow
+            icon="table"
+            label="Set readings"
+            value={largeSets ? 'Larger' : 'Standard'}
+            open={expanded === 'setreadings'}
+            onToggle={() => toggle('setreadings')}>
+            <Segmented
+              options={SET_READING_SEG}
+              selected={largeSets ? 'large' : 'standard'}
+              onSelect={handleSetReadings}
+            />
+          </AccordionRow>
+        </Section>
+
+        {/* SUPPORT — a real mailbox, the store listing, and what this build
+            is. The credo is the one line of belief the app is allowed: it is
+            not a claim about the product, it is the rule the code follows. */}
+        <Section
+          label="Support"
+          footnote={supportMessage ?? undefined}
+          footnoteActive={supportMessage != null}>
+          <Row icon="document" label="Contact support" onPress={() => void handleContact()} />
+          {/* Not the §16.3 prompt: a labelled thing the user chose to tap. It
+              spends none of the three system asks unless iOS actually draws
+              the sheet, and the row is absent when there is no door at all. */}
+          {canRateApp() ? (
+            <Row icon="star" label="Rate Recore" external divider onPress={() => void handleRate()} />
+          ) : null}
+          <Row icon="sparkle" label="How parsing works" divider onPress={() => openDoc('parsing')} />
           <Row icon="lock" label="Privacy Policy" divider onPress={() => openDoc('privacy')} />
           <Row icon="document" label="Terms of Use" divider onPress={() => openDoc('terms')} />
-        </Section>
-
-        {/* SUPPORT — the real replay-onboarding action, plus the MANUAL door to
-            the store listing. That row is not the prompt §16.3 rules on: this
-            one is a labelled thing the user chose to tap, it spends none of the
-            three system asks, and it is not rendered at all until there is a
-            listing to open (§1.1 invariant 6). */}
-        <Section label="Support">
-          <Row icon="refresh" label="Restart onboarding" onPress={handleReplaySetup} />
-          {reviewStoreUrl() ? (
-            <Row
-              icon="star"
-              label="Rate Recore"
-              external
-              divider
-              onPress={() => {
-                tap();
-                openReviewPage();
-              }}
-            />
-          ) : null}
-        </Section>
-
-        {/* ACCOUNT — both actions are real. Delete deletes (PLAN D1). */}
-        <Section label="Account">
+          <Row icon="refresh" label="Restart onboarding" divider onPress={handleReplaySetup} />
           <Row
-            icon="sign-out"
-            label={busy === 'signout' ? 'Signing out…' : 'Sign out'}
-            labelBold
+            icon="wrench"
+            label="About"
+            value={Constants.expoConfig?.version ?? ''}
+            sub="Your words are the record."
+            chevron={false}
+            divider
+          />
+        </Section>
+
+        {/* ACCOUNT — the destructive zone, in order of how much it costs:
+            a cache that rebuilds itself, then the two that cannot be undone.
+            Every one of them is real (PLAN D1). */}
+        <Section
+          label="Account"
+          footnote={accountMessage ?? undefined}
+          footnoteActive={accountMessage != null}>
+          <Row
+            icon="refresh"
+            label="Clear local cache"
+            warn
+            sub="Reads your notes again. Nothing you wrote is deleted."
             chevron={false}
             disabled={busy !== null}
-            onPress={() => void handleSignOut()}
+            onPress={handleClearCache}
           />
           <Row
             icon="trash"
@@ -867,6 +1280,16 @@ export default function Settings() {
             divider
             disabled={busy !== null}
             onPress={handleDeleteAccount}
+          />
+          <Row
+            icon="sign-out"
+            label={busy === 'signout' ? 'Signing out…' : 'Sign out'}
+            danger
+            labelBold
+            chevron={false}
+            divider
+            disabled={busy !== null}
+            onPress={() => void handleSignOut()}
           />
         </Section>
 
@@ -900,9 +1323,9 @@ export default function Settings() {
           </Section>
         ) : null}
 
-        <Text style={styles.version} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          Recore <Text style={styles.versionNum}>{Constants.expoConfig?.version ?? ''}</Text>
-        </Text>
+        {/* The version used to sit loose at the foot of the screen. It is a
+            fact about this build, so it moved onto the About row where the
+            rest of them are — one place, not two. */}
         </Stagger>
       </ScrollView>
 
@@ -914,38 +1337,14 @@ export default function Settings() {
 }
 
 // --- building blocks ---------------------------------------------------------
-
-/** A labelled group: quiet Title-case header + a bordered card + optional caption. */
-function Section({
-  label,
-  footnote,
-  footnoteActive = false,
-  children,
-}: {
-  label?: string;
-  footnote?: string;
-  footnoteActive?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={styles.section}>
-      {label ? <Eyebrow tone="secondary" style={styles.sectionLabel}>{label}</Eyebrow> : null}
-      <View style={styles.card}>{children}</View>
-      {footnote ? (
-        <Text
-          style={[styles.footnote, footnoteActive && styles.footnoteActive]}
-          maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {footnote}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
+// The grouped-card vocabulary (Section / Row / AccordionRow / Segmented) moved
+// to `components/settings-rows.tsx` on 12 Aug 2026, when a second settings
+// surface needed it. What is left here is what only THIS screen draws.
 
 /**
- * A career number: a big mono numeral over a small caption (Mobbin — Tonal,
- * Open and Peloton Strength+ all land on the same shape). Tabular figures, so
- * three of them side by side sit on one optical baseline whatever the digits.
+ * A career number: a big numeral over a small caption (Mobbin — Tonal, Open and
+ * Peloton Strength+ all land on the same shape). Tabular figures, so three of
+ * them side by side sit on one optical baseline whatever the digits.
  */
 function Stat({ value, label }: { value: string; label: string }) {
   return (
@@ -1021,213 +1420,6 @@ function compactKg(kg: number): string {
   return kg >= 1_000_000 ? `${(kg / 1_000_000).toFixed(1)}M` : groupThousands(kg);
 }
 
-/** A grouped-list row: leading glyph, label (+ optional subline), value / chevron. */
-function Row({
-  icon,
-  label,
-  sub,
-  value,
-  labelBold = false,
-  danger = false,
-  chevron = true,
-  external = false,
-  divider = false,
-  disabled = false,
-  onPress,
-}: {
-  icon?: IconName;
-  label: string;
-  sub?: string;
-  value?: string;
-  labelBold?: boolean;
-  danger?: boolean;
-  chevron?: boolean;
-  external?: boolean;
-  divider?: boolean;
-  disabled?: boolean;
-  onPress?: () => void;
-}) {
-  const body = (
-    <>
-      {icon ? (
-        <View style={styles.rowIcon}>
-          <Icon
-            name={icon}
-            size={ROW_ICON}
-            // Each glyph carries its own colour (`glyphTint`), except on a
-            // destructive row — red is already spoken for there, and a row
-            // that deletes an account does not get a decorative hue.
-            tint={danger ? color.error : glyphTint(icon)}
-          />
-        </View>
-      ) : null}
-      <View style={styles.rowLeft}>
-        <Text
-          style={[styles.rowLabel, labelBold && styles.rowLabelBold, danger && styles.rowLabelDanger]}
-          numberOfLines={1}
-          maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {label}
-        </Text>
-        {sub ? (
-          <Text style={styles.rowSub} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {sub}
-          </Text>
-        ) : null}
-      </View>
-      <View style={styles.rowRight}>
-        {value != null ? (
-          <Text style={styles.rowValue} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {value}
-          </Text>
-        ) : null}
-        {external ? (
-          <Text style={styles.external} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            ↗
-          </Text>
-        ) : null}
-        {chevron ? <Icon name="chevron-forward" size={moderateScale(14)} tint={color.textMuted} /> : null}
-      </View>
-    </>
-  );
-
-  const row = !onPress ? (
-    <View style={styles.row}>{body}</View>
-  ) : (
-    <PressableScale
-      disabled={disabled}
-      onPress={onPress}
-      haptic="none"
-      activeScale={0.99}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={styles.row}
-      pressedStyle={styles.rowPressed}>
-      {body}
-    </PressableScale>
-  );
-
-  // The separator is a sibling, not a border on the row, so it can start at the
-  // LABEL rather than under the glyph (Mobbin — Granola). A border cannot be
-  // inset; this can, and the inset is what keeps the icons reading as one column.
-  if (!divider) return row;
-  return (
-    <>
-      <View style={styles.rowSep} />
-      {row}
-    </>
-  );
-}
-
-/** A value row (label · current value · chevron) that expands inline to reveal
- * its segmented editor — the calm "settings" read, with the control on demand. */
-function AccordionRow({
-  icon,
-  label,
-  value,
-  open,
-  onToggle,
-  divider = false,
-  children,
-}: {
-  icon?: IconName;
-  label: string;
-  value: string;
-  open: boolean;
-  onToggle: () => void;
-  divider?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <>
-      {divider ? <View style={styles.rowSep} /> : null}
-      <PressableScale
-        onPress={onToggle}
-        haptic="none"
-        activeScale={0.99}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        accessibilityState={{ expanded: open }}
-        style={styles.row}
-        pressedStyle={styles.rowPressed}>
-        {icon ? (
-          <View style={styles.rowIcon}>
-            <Icon name={icon} size={ROW_ICON} tint={glyphTint(icon)} />
-          </View>
-        ) : null}
-        <View style={styles.rowLeft}>
-          <Text style={styles.rowLabel} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {label}
-          </Text>
-        </View>
-        <View style={styles.rowRight}>
-          <Text
-            style={[styles.rowValue, open && styles.rowValueOpen]}
-            numberOfLines={1}
-            maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {value}
-          </Text>
-          <Chevron open={open} />
-        </View>
-      </PressableScale>
-      {open ? <View style={styles.editor}>{children}</View> : null}
-    </>
-  );
-}
-
-/** The accordion's disclosure chevron — springs 0°→180° on open (reduceMotion-safe).
- * The row height still animates via LayoutAnimation; this just spins the caret. */
-function Chevron({ open }: { open: boolean }) {
-  const reduce = useReducedMotion();
-  const t = useSharedValue(open ? 1 : 0);
-  useEffect(() => {
-    t.value = reduce ? (open ? 1 : 0) : withSpring(open ? 1 : 0, SPRING.snappy);
-  }, [open, reduce, t]);
-  const spin = useAnimatedStyle(() => ({ transform: [{ rotate: `${t.value * 180}deg` }] }));
-  return (
-    <Animated.View style={spin}>
-      <Icon name="chevron-down" size={moderateScale(14)} tint={color.textMuted} />
-    </Animated.View>
-  );
-}
-
-/** The inline segmented editor revealed by an AccordionRow. */
-function Segmented<T extends string | number>({
-  options,
-  selected,
-  onSelect,
-  mono = false,
-}: {
-  options: { id: T; label: string }[];
-  selected: T | null;
-  onSelect: (id: T) => void;
-  mono?: boolean;
-}) {
-  return (
-    <View style={styles.segments}>
-      {options.map((o) => {
-        const isSelected = selected === o.id;
-        return (
-          <PressableScale
-            key={String(o.id)}
-            onPress={() => onSelect(o.id)}
-            haptic="none"
-            activeScale={0.94}
-            accessibilityRole="button"
-            accessibilityLabel={o.label}
-            accessibilityState={{ selected: isSelected }}
-            style={[styles.segment, isSelected && styles.segmentSelected]}>
-            <Text
-              style={[styles.segmentLabel, mono && styles.segmentMono, isSelected && styles.segmentLabelSelected]}
-              numberOfLines={1}
-              maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {o.label}
-            </Text>
-          </PressableScale>
-        );
-      })}
-    </View>
-  );
-}
 
 const AVATAR = moderateScale(52);
 const ROW_ICON = moderateScale(18);
@@ -1413,8 +1605,53 @@ const styles = StyleSheet.create({
   dayChipTextOn: {
     color: color.bg,
   },
+  bodyFields: {
+    gap: spacing.sm,
+  },
+  bodyField: {
+    minHeight: moderateScale(44),
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  bodyFieldLabel: {
+    ...type.subhead,
+    color: color.textSecondary,
+  },
+  bodyInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: color.border,
+    borderRadius: radius.sm,
+    backgroundColor: color.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+  },
+  bodyInput: {
+    minWidth: moderateScale(64),
+    textAlign: 'right',
+    padding: 0,
+    color: color.textPrimary,
+    fontFamily: fonts.reading,
+    fontSize: type.subhead.fontSize,
+    fontVariant: ['tabular-nums'],
+  },
+  bodyUnit: {
+    ...type.caption,
+    color: color.textMuted,
+  },
+  bodyHint: {
+    ...type.footnote,
+    color: color.textMuted,
+  },
+  recapEditor: {
+    gap: spacing.sm,
+  },
   statValue: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(24),
     fontWeight: '600',
     letterSpacing: -0.4,
@@ -1436,7 +1673,8 @@ const styles = StyleSheet.create({
     width: DOT,
   },
   gridMonth: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(8.5),
     letterSpacing: 0.4,
     color: color.textMuted,
@@ -1500,7 +1738,7 @@ const styles = StyleSheet.create({
   },
   rowSub: {
     ...type.caption,
-    lineHeight: moderateScale(16),
+    lineHeight: lineFor(16),
     color: color.textMuted,
     marginTop: 2,
   },
@@ -1522,7 +1760,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   external: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(14),
     color: color.textMuted,
   },
@@ -1557,7 +1796,7 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   segmentMono: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     letterSpacing: 0.2,
     fontVariant: ['tabular-nums'],
   },
@@ -1567,7 +1806,7 @@ const styles = StyleSheet.create({
 
   footnote: {
     ...type.footnote,
-    lineHeight: moderateScale(16),
+    lineHeight: lineFor(16),
     color: color.textMuted,
     marginTop: spacing.sm,
     marginHorizontal: spacing.xs,
@@ -1583,7 +1822,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   versionNum: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontVariant: ['tabular-nums'],
     color: color.textMuted,
   },

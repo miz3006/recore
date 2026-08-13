@@ -19,6 +19,17 @@ export interface ParsedSet {
   rir: number | null;
   /** 0-based index of the parent set within the same item (dropset/myo chain). */
   parent: number | null;
+  /**
+   * The athlete's own words about THIS set, lifted verbatim out of `raw_text`
+   * ("zadnjo serijo forma padla"). A PROJECTION like every other field here: it
+   * is rebuilt from the text on each parse, so a re-parse rewriting it loses
+   * nothing — the words themselves live in `raw_text`, which is the record.
+   *
+   * NOT the per-entry note (`lib/entry-note.ts`, `workouts.entry_notes`). That
+   * one is authored OUTSIDE the workout text precisely so a re-parse can never
+   * touch it, and no parser may ever write it.
+   */
+  note: string | null;
 }
 
 export interface ParsedItem {
@@ -47,10 +58,26 @@ export const MAX_RAW_TEXT_CHARS = 4000;
  * would keep serving its OLD cached parse after a deploy — the new prompt would
  * be invisible. A cache produced by an older version is re-parsed, not served.
  */
-export const CLIENT_PARSE_VERSION = 5;
+export const CLIENT_PARSE_VERSION = 6;
 
 const SET_KIND_SET = new Set<string>(SET_KINDS);
 const MODALITY_SET = new Set<string>(MODALITIES);
+
+/** RIR bounds, mirrored from the edge function. Negative RIR is real: a set
+ * taken past failure has fewer than zero reps in reserve, and clamping it to 0
+ * would erase the difference between "at failure" and "one forced rep". */
+export const MIN_RIR = -5;
+export const MAX_RIR = 10;
+
+/** The longest inline comment kept on one set. */
+export const MAX_SET_NOTE_CHARS = 200;
+
+/** Model output is untrusted text: trim, cap, and drop anything empty. */
+function clampText(v: unknown, max: number): string | null {
+  if (typeof v !== 'string') return null;
+  const trimmed = v.trim().slice(0, max).trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 function clampNumber(v: unknown, min: number, max: number, integer = false): number | null {
   if (typeof v !== 'number' || !Number.isFinite(v)) return null;
@@ -83,9 +110,10 @@ export function validateParseResult(raw: unknown): ParseResult | null {
         weight_kg: clampNumber(t.weight_kg, 0, 2000),
         distance_m: clampNumber(t.distance_m, 0, 1_000_000),
         duration_s: clampNumber(t.duration_s, 0, 86_400, true),
-        rir: clampNumber(t.rir, 0, 10),
+        rir: clampNumber(t.rir, MIN_RIR, MAX_RIR),
         parent:
           t.parent == null ? null : clampNumber(t.parent, 0, Math.max(0, sets.length - 1), true),
+        note: clampText(t.note, MAX_SET_NOTE_CHARS),
       });
     }
     if (sets.length === 0) continue;
@@ -116,10 +144,18 @@ export function validateParseResult(raw: unknown): ParseResult | null {
 // prescription (e.g. "3×12 100" — sets×reps weight, the same voice the ghost
 // prediction speaks in) — the visible proof the analysis understood it.
 
+/**
+ * `at` is the DAY of the session being compared against (YYYY-MM-DD local, a
+ * `DayKey` — typed as a string here so this module stays free of the database
+ * layer). "Same as last" without it is a claim the reader cannot check: last
+ * Friday, or the identical session three weeks ago? It is optional because
+ * signals cached before it existed have to keep rendering — those simply say
+ * less, they never say something wrong.
+ */
 export type GutterSignal =
-  | { kind: 'up'; delta: string }
-  | { kind: 'down'; delta: string }
-  | { kind: 'equal' }
+  | { kind: 'up'; delta: string; at?: string }
+  | { kind: 'down'; delta: string; at?: string }
+  | { kind: 'equal'; at?: string }
   | { kind: 'pr' }
   | { kind: 'set'; text: string };
 

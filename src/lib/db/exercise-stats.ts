@@ -15,6 +15,16 @@ export interface ExerciseSession {
   topReps: number | null;
   setCount: number;
   volume: number;
+  /**
+   * What the athlete wrote about this lift on that day, in the order they wrote
+   * it — the inline remarks the parser lifted out of the line ("zadnjo serijo
+   * forma padla"). Quoted back verbatim or not at all: nothing here is
+   * summarised, scored, or read by any prescription.
+   *
+   * Empty for every session logged before PARSE_VERSION 6, and empty for a
+   * session where nothing was written. Both are ordinary states, not gaps.
+   */
+  notes: string[];
 }
 
 export interface ExerciseStats {
@@ -55,10 +65,17 @@ export function getExerciseStats(userId: string, canonical: string): ExerciseSta
 
   const sessions: ExerciseSession[] = workouts
     .map((w) => {
-      const sets = db.getAllSync<{ kind: string; reps: number | null; weight_kg: number | null }>(
-        `SELECT s.kind, s.reps, s.weight_kg FROM sets s
+      const sets = db.getAllSync<{
+        kind: string;
+        reps: number | null;
+        weight_kg: number | null;
+        note: string | null;
+      }>(
+        // Ordered so the remarks read back in the order they were written.
+        `SELECT s.kind, s.reps, s.weight_kg, s.note FROM sets s
          JOIN items i ON s.item_id = i.id
-         WHERE i.workout_id = ? AND i.exercise_id IN (${idList})`,
+         WHERE i.workout_id = ? AND i.exercise_id IN (${idList})
+         ORDER BY i.position, s.position`,
         [w.id, ...ids],
       );
       const counted = sets.filter(
@@ -88,6 +105,11 @@ export function getExerciseStats(userId: string, canonical: string): ExerciseSta
         topReps,
         setCount: counted.length,
         volume: Math.round(volume),
+        // Every remark on the lift that day, warmups included — the athlete
+        // wrote it, so it is theirs to read back.
+        notes: sets
+          .map((s) => s.note?.trim())
+          .filter((n): n is string => !!n && n.length > 0),
       };
     })
     .reverse(); // oldest → newest for the chart

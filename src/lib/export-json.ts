@@ -1,5 +1,6 @@
 import { dayKeyFor } from './db/dates';
 import { getDb } from './db/index';
+import { parseEntryNotes } from './entry-note';
 import { getFunnelSnapshot } from './funnel';
 
 /**
@@ -58,10 +59,11 @@ export function buildExportJson(userId: string): string {
     performed_at: string;
     raw_text: string;
     reflection: string | null;
+    entry_notes: string | null;
     created_at: string;
     updated_at: string;
   }>(
-    `SELECT id, performed_at, raw_text, reflection, created_at, updated_at
+    `SELECT id, performed_at, raw_text, reflection, entry_notes, created_at, updated_at
      FROM workouts WHERE user_id = ? AND trim(raw_text) <> '' ORDER BY performed_at ASC`,
     [userId],
   );
@@ -105,7 +107,7 @@ export function buildExportJson(userId: string): string {
     app: 'Recore',
     schema: EXPORT_SCHEMA,
     exported_at: new Date().toISOString(),
-    note: 'raw_text is what you typed and is the record. Everything under "items" was read out of it and can be rebuilt from it. "reflection" is your own note about how the session went — it is never parsed and never changes a number.',
+    note: 'raw_text is what you typed and is the record. Everything under "items" was read out of it and can be rebuilt from it. "reflection" is your own note about how the session went, and "entry_notes" are your notes on individual exercises — neither is ever parsed and neither changes a number.',
     workouts: workouts.map((w) => ({
       date: dayKeyFor(new Date(w.performed_at)),
       performed_at: w.performed_at,
@@ -114,6 +116,13 @@ export function buildExportJson(userId: string): string {
       // drops it when there is none, so a skipped check-in leaves no key
       // rather than a null someone has to interpret.
       ...(w.reflection ? { reflection: w.reflection } : {}),
+      // §12: per-entry notes are the athlete's words too, so they leave with
+      // the export. Decoded rather than dumped as a JSON string, so the file
+      // reads as a record — and a session with none leaves no key at all.
+      ...(() => {
+        const notes = parseEntryNotes(w.entry_notes);
+        return Object.keys(notes).length > 0 ? { entry_notes: notes } : {};
+      })(),
       created_at: w.created_at,
       updated_at: w.updated_at,
       items: (itemsByWorkout.get(w.id) ?? []).map((i) =>

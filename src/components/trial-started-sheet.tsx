@@ -13,7 +13,7 @@ import {
   markTrialWelcomeShown,
 } from '@/lib/billing/state';
 import { formatChargeDate } from '@/lib/billing/trial';
-import { color, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { color, lineFor, MAX_FONT_SCALE, spacing, type } from '@/lib/theme';
 
 import { BottomSheet } from './bottom-sheet';
 import { AppButton, Eyebrow } from './primitives';
@@ -123,13 +123,13 @@ const styles = StyleSheet.create({
   body: {
     marginTop: spacing.md,
     ...type.subhead,
-    lineHeight: moderateScale(23),
+    lineHeight: lineFor(23),
     color: color.textSecondary,
   },
   foot: {
     marginTop: spacing.sm,
     ...type.footnote,
-    lineHeight: moderateScale(17),
+    lineHeight: lineFor(17),
     color: color.textMuted,
   },
   buttons: {

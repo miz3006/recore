@@ -99,17 +99,64 @@ export function PressableScale({
   );
 }
 
-/** Fade + rise on mount — the one reveal used everywhere. */
+/** Fade + rise on mount — the one reveal used everywhere. `layout` (optional)
+ * forwards a Reanimated layout transition so a list can also reflow smoothly
+ * when a sibling appears (the onboarding affirm line); callers gate it on
+ * Reduce Motion themselves. */
 export function FadeSlideIn({
   children,
   delay = 0,
   distance = 10,
   duration = DUR.base,
   style,
+  layout,
 }: {
   children: React.ReactNode;
   delay?: number;
   distance?: number;
+  duration?: number;
+  style?: StyleProp<ViewStyle>;
+  layout?: React.ComponentProps<typeof Animated.View>['layout'];
+}) {
+  const reduce = useReducedMotion();
+  const p = useSharedValue(reduce ? 1 : 0);
+
+  useEffect(() => {
+    if (reduce) return;
+    p.value = withDelay(delay, withTiming(1, { duration, easing: EASE.emphasized }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: p.value,
+    transform: [{ translateY: (1 - p.value) * distance }],
+  }));
+
+  return (
+    <Animated.View layout={layout} style={[animatedStyle, style]}>
+      {children}
+    </Animated.View>
+  );
+}
+
+/**
+ * Fade + settle-scale on mount — the reveal for a surface that should LAND
+ * rather than rise: the onboarding illustration slot, the summary card. It
+ * arrives a breath small (0.96) and settles to full size on the emphasized
+ * ease — deliberate, no overshoot (nothing bounces except the PR flag).
+ * Reduce Motion resolves to the final state instantly.
+ */
+export function FadeScaleIn({
+  children,
+  delay = 0,
+  from = 0.96,
+  duration = DUR.slow,
+  style,
+}: {
+  children: React.ReactNode;
+  delay?: number;
+  /** Starting scale. */
+  from?: number;
   duration?: number;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -124,7 +171,7 @@ export function FadeSlideIn({
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: p.value,
-    transform: [{ translateY: (1 - p.value) * distance }],
+    transform: [{ scale: from + (1 - from) * p.value }],
   }));
 
   return <Animated.View style={[animatedStyle, style]}>{children}</Animated.View>;

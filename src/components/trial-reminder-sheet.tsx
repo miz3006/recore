@@ -11,7 +11,7 @@ import {
 import { managementUrl } from '@/lib/billing/store';
 import { formatChargeDate } from '@/lib/billing/trial';
 import { tap } from '@/lib/haptics';
-import { color, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { color, lineFor, MAX_FONT_SCALE, spacing, type } from '@/lib/theme';
 
 import { BottomSheet } from './bottom-sheet';
 import { AppButton, Eyebrow } from './primitives';
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
   body: {
     marginTop: spacing.md,
     ...type.subhead,
-    lineHeight: moderateScale(23),
+    lineHeight: lineFor(23),
     color: color.textSecondary,
   },
   buttons: {

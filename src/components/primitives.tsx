@@ -188,63 +188,11 @@ export function StatTile({
   );
 }
 
-/** A monochrome star row — social proof stays ink, never gold. `filled` many
- * of `count` solid, the rest hairline-outlined, so a 4.8 reads honestly. */
-export function Stars({ score = 5, count = 5, size = moderateScale(13) }: { score?: number; count?: number; size?: number }) {
-  const full = Math.round(score);
-  return (
-    <View style={styles.starRow} accessibilityLabel={`${score} out of ${count} stars`}>
-      {Array.from({ length: count }).map((_, i) => (
-        <Text
-          key={i}
-          style={[styles.star, { fontSize: size }, i >= full && styles.starEmpty]}
-          maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {i < full ? '★' : '☆'}
-        </Text>
-      ))}
-    </View>
-  );
-}
-
-/**
- * The social-proof line — stars + a quiet mono score/volume ("4.9 · 1,200+
- * lifters"). The research is unambiguous: every high-converting paywall wears
- * this. Monochrome, serious, no badges. `align` centers it on the paywall.
- */
-export function Rating({
-  score = 4.9,
-  countLabel,
-  align = 'center',
-}: {
-  score?: number;
-  countLabel: string;
-  align?: 'center' | 'flex-start';
-}) {
-  return (
-    <View style={[styles.rating, { alignItems: align }]}>
-      <Stars score={score} />
-      <Text style={styles.ratingText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {score.toFixed(1)} · {countLabel}
-      </Text>
-    </View>
-  );
-}
-
-/** An early-lifter note — quote, stars, attribution. Placeholder copy until
- * real reviews exist (App Store rules: never fabricate on the live paywall). */
-export function Testimonial({ quote, who, style }: { quote: string; who: string; style?: StyleProp<ViewStyle> }) {
-  return (
-    <View style={[styles.testimonial, style]}>
-      <Stars size={moderateScale(11)} />
-      <Text style={styles.testimonialQuote} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {`“${quote}”`}
-      </Text>
-      <Text style={styles.testimonialWho} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {who}
-      </Text>
-    </View>
-  );
-}
+// Stars / Rating / Testimonial were DELETED on 11 Aug 2026 (blocker B4).
+// They fabricated a 4.9 score and a five-star quote card with no reviews
+// behind them — CLAUDE.md §3: no fabricated reviews anywhere, including
+// placeholders. Real App Store reviews, when they exist, come back as data,
+// not as a default prop.
 
 /** A small bordered mono label — "BEST VALUE", "SAVE 16%". Ink outline, never
  * a filled color chip (that would break the monochrome contract). */
@@ -289,14 +237,16 @@ const styles = StyleSheet.create({
 
   // Button
   btn: {
-    height: CONTROL_HEIGHT,
+    minHeight: CONTROL_HEIGHT,
+    paddingVertical: spacing.sm,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
   },
   btnCompact: {
-    height: moderateScale(44),
+    minHeight: moderateScale(44),
+    paddingVertical: spacing.sm,
   },
   btnRow: {
     flexDirection: 'row',
@@ -359,46 +309,6 @@ const styles = StyleSheet.create({
     color: color.error,
   },
 
-  // Social proof
-  starRow: {
-    flexDirection: 'row',
-    gap: moderateScale(2),
-  },
-  star: {
-    color: color.textPrimary,
-    letterSpacing: 1,
-  },
-  starEmpty: {
-    color: color.textMuted,
-  },
-  rating: {
-    gap: spacing.xs + 1,
-  },
-  ratingText: {
-    fontFamily: fonts.mono,
-    fontSize: moderateScale(12),
-    letterSpacing: 0.2,
-    color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
-  testimonial: {
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.border,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.sm,
-  },
-  testimonialQuote: {
-    ...type.subhead,
-    color: color.textPrimary,
-  },
-  testimonialWho: {
-    fontFamily: fonts.mono,
-    fontSize: moderateScale(11),
-    letterSpacing: 0.3,
-    color: color.textMuted,
-  },
   badge: {
     alignSelf: 'flex-start',
     borderWidth: 1,
@@ -412,7 +322,8 @@ const styles = StyleSheet.create({
     borderColor: color.accent,
   },
   badgeText: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(9.5),
     fontWeight: '700',
     letterSpacing: 1,

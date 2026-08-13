@@ -14,6 +14,7 @@ import { getRecentSessions } from '@/lib/db/insights';
 import {
   color,
   fonts,
+  lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   monoText,
@@ -272,7 +273,8 @@ const styles = StyleSheet.create({
   chip: {
     alignSelf: 'flex-start',
     ...type.footnote,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontWeight: '700',
     letterSpacing: 1,
     color: color.textSecondary,
@@ -293,7 +295,7 @@ const styles = StyleSheet.create({
   },
   recordRange: {
     marginTop: 2,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: type.footnote.fontSize,
     color: color.textMuted,
     fontVariant: ['tabular-nums'],
@@ -301,7 +303,7 @@ const styles = StyleSheet.create({
   bannerBody: {
     marginTop: spacing.sm + 2,
     ...type.subhead,
-    lineHeight: moderateScale(23),
+    lineHeight: lineFor(23),
     color: color.textPrimary,
   },
   bannerButtons: {

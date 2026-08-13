@@ -5,8 +5,10 @@ import {
   buildProgression,
   daysBetween,
   describeDelta,
+  median,
   metricValue,
   MIN_SESSIONS_FOR_CARD,
+  sortLifts,
   trainingSpread,
   type LiftSession,
 } from './progression.ts';
@@ -31,6 +33,24 @@ test('a lift under the session floor gets no card at all', () => {
   const rows = [s({ day: '2026-06-02' }), s({ day: '2026-06-09' })];
   assert.equal(MIN_SESSIONS_FOR_CARD, 3);
   assert.equal(buildProgression(rows, 'e1rm', FROM).lifts.length, 0);
+});
+
+test('a lift under the floor is still listed, never dropped from the screen', () => {
+  const rows = [s({ day: '2026-06-02', e1rm: 110 }), s({ day: '2026-06-09', e1rm: 115 })];
+  const view = buildProgression(rows, 'e1rm', FROM);
+  assert.equal(view.belowFloor.length, 1);
+  const [brief] = view.belowFloor;
+  assert.ok(brief);
+  assert.equal(brief.canonical, 'Bench Press');
+  assert.equal(brief.sessions, 2);
+  assert.equal(brief.latest, 115, 'the row carries the latest value, not the first');
+  // A charted lift is never also listed as below the floor.
+  assert.equal(view.counted, 0);
+});
+
+test('a charted lift never appears in the below-floor list', () => {
+  const rows = ['2026-06-02', '2026-06-09', '2026-06-16'].map((day) => s({ day }));
+  assert.deepEqual(buildProgression(rows, 'e1rm', FROM).belowFloor, []);
 });
 
 test('three sessions in range is enough, and the series is oldest to newest', () => {
@@ -114,6 +134,79 @@ test('the verdict counts only lifts that ended above where they started', () => 
   const view = buildProgression([...up, ...flat, ...down], 'e1rm', FROM);
   assert.equal(view.counted, 3);
   assert.equal(view.improved, 1);
+});
+
+test('the summary splits the lifts into up, same, and down', () => {
+  const up = ['2026-06-02', '2026-06-09', '2026-06-16'].map((day, i) =>
+    s({ day, e1rm: 100 + i * 5 }),
+  );
+  const flat = ['2026-06-03', '2026-06-10', '2026-06-17'].map((day) =>
+    s({ key: 'ohp', canonical: 'Overhead Press', day, e1rm: 60 }),
+  );
+  const down = ['2026-06-04', '2026-06-11', '2026-06-18'].map((day, i) =>
+    s({ key: 'row', canonical: 'Barbell Row', day, e1rm: 90 - i * 2 }),
+  );
+  const view = buildProgression([...up, ...flat, ...down], 'e1rm', FROM);
+  assert.equal(view.improved, 1);
+  assert.equal(view.unchanged, 1);
+  assert.equal(view.declined, 1);
+  // 10% up, 0%, and 4/90 down — the median lift is the flat one.
+  assert.equal(view.medianPercent, 0);
+});
+
+test('a percentage is the move as a share of where the lift started', () => {
+  const rows = ['2026-06-02', '2026-06-09', '2026-06-16'].map((day, i) =>
+    s({ day, e1rm: 100 + i * 10 }),
+  );
+  const [lift] = buildProgression(rows, 'e1rm', FROM).lifts;
+  assert.ok(lift);
+  assert.equal(lift.percent, 20);
+  assert.equal(lift.firstDay, '2026-06-02');
+});
+
+test('a best set inside the range counts as a new best, an older one does not', () => {
+  const inside = ['2026-06-02', '2026-06-09', '2026-06-16'].map((day, i) =>
+    s({ day, e1rm: 100 + i * 5 }),
+  );
+  assert.equal(buildProgression(inside, 'e1rm', FROM).newBests, 1);
+  // The same range, but the bar was set last winter.
+  const older = [s({ day: '2025-12-01', e1rm: 200 }), ...inside];
+  assert.equal(buildProgression(older, 'e1rm', FROM).newBests, 0);
+});
+
+test('the gain sort ranks on the SHARE moved, so a light lift can outrank a heavy one', () => {
+  // Overhead press: 40 → 48, +20%. Deadlift: 200 → 220, +10% (twice the kilos).
+  const ohp = ['2026-06-02', '2026-06-09', '2026-06-16'].map((day, i) =>
+    s({ key: 'ohp', canonical: 'Overhead Press', day, e1rm: 40 + i * 4 }),
+  );
+  const dl = ['2026-06-03', '2026-06-10', '2026-06-17'].map((day, i) =>
+    s({ key: 'deadlift', canonical: 'Deadlift', day, e1rm: 200 + i * 10 }),
+  );
+  const view = buildProgression([...ohp, ...dl], 'e1rm', FROM);
+  assert.deepEqual(
+    sortLifts(view.lifts, 'gain').map((l) => l.canonical),
+    ['Overhead Press', 'Deadlift'],
+  );
+  assert.deepEqual(
+    sortLifts(view.lifts, 'recent').map((l) => l.canonical),
+    ['Deadlift', 'Overhead Press'],
+  );
+  assert.deepEqual(
+    sortLifts(view.lifts, 'name').map((l) => l.canonical),
+    ['Deadlift', 'Overhead Press'],
+  );
+  // Sorting never mutates the view it was handed.
+  assert.deepEqual(
+    view.lifts.map((l) => l.canonical),
+    ['Deadlift', 'Overhead Press'],
+  );
+});
+
+test('median takes the middle of odd sets and the mean of the two middles of even ones', () => {
+  assert.equal(median([]), null);
+  assert.equal(median([5]), 5);
+  assert.equal(median([3, 1, 2]), 2);
+  assert.equal(median([4, 1, 3, 2]), 2.5);
 });
 
 test('sessions in range count distinct DAYS, not exercise rows', () => {

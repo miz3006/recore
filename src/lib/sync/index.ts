@@ -104,6 +104,7 @@ interface LocalWorkout {
   performed_at: string;
   raw_text: string;
   reflection: string | null;
+  entry_notes: string | null;
   parse_version: number | null;
   created_at: string;
   updated_at: string;
@@ -126,6 +127,9 @@ async function pushWorkouts(userId: string) {
       // The athlete's own note about the session (§8.1). It rides the workout
       // row, so it gets this row's RLS and this row's cascade delete.
       reflection: w.reflection,
+      // The athlete's per-entry notes, as the JSON map the column stores. Same
+      // row, same RLS, same cascade delete as the reflection beside it.
+      entry_notes: w.entry_notes,
       parse_version: w.parse_version,
       created_at: w.created_at,
       updated_at: w.updated_at,
@@ -316,7 +320,9 @@ async function pullRemote(userId: string) {
 
   const { data: workouts, error } = await supabase
     .from('workouts')
-    .select('id, user_id, performed_at, raw_text, reflection, parse_version, created_at, updated_at')
+    .select(
+      'id, user_id, performed_at, raw_text, reflection, entry_notes, parse_version, created_at, updated_at',
+    )
     .gt('updated_at', since)
     .order('updated_at', { ascending: true })
     .limit(100);
@@ -333,12 +339,13 @@ async function pullRemote(userId: string) {
     if (local?.dirty === 1) continue; // local edits win
 
     db.runSync(
-      `INSERT INTO workouts (id, user_id, performed_at, raw_text, reflection, parse_version, created_at, updated_at, dirty, structure_dirty, needs_parse)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
+      `INSERT INTO workouts (id, user_id, performed_at, raw_text, reflection, entry_notes, parse_version, created_at, updated_at, dirty, structure_dirty, needs_parse)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
        ON CONFLICT(id) DO UPDATE SET
          performed_at = excluded.performed_at,
          raw_text = excluded.raw_text,
          reflection = excluded.reflection,
+         entry_notes = excluded.entry_notes,
          parse_version = excluded.parse_version,
          updated_at = excluded.updated_at
        WHERE workouts.dirty = 0`,
@@ -348,6 +355,10 @@ async function pullRemote(userId: string) {
         w.performed_at,
         w.raw_text,
         w.reflection,
+        // A remote row is untrusted text until `parseEntryNotes` reads it; it is
+        // stored as it arrived and validated on every read, exactly like the
+        // local column.
+        typeof w.entry_notes === 'string' ? w.entry_notes : null,
         w.parse_version,
         w.created_at,
         w.updated_at,

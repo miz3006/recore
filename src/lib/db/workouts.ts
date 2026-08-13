@@ -118,6 +118,28 @@ export function getLoggedDayKeys(userId: string): Set<DayKey> {
 }
 
 /**
+ * Sessions on the record, all time — the top bar's one figure (owner, 11 Aug
+ * 2026).
+ *
+ * It replaced the bare streak numeral there, and the reason is §20 rather than
+ * arithmetic: a number that goes DOWN when you rest is a daily goal wearing a
+ * serious face, and this product does not set daily goals. A total only ever
+ * grows, and it means exactly what it says. The streak rule itself survives
+ * untouched in `lib/streak.ts` for the consistency sheet, which explains its
+ * own tolerance in words.
+ *
+ * A session = a day with a non-empty note, the same definition the calendar
+ * dots and the week chart use, so the three can never disagree.
+ */
+export function countSessions(userId: string): number {
+  const row = getDb().getFirstSync<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM workouts WHERE user_id = ? AND trim(raw_text) <> ''",
+    [userId],
+  );
+  return row?.n ?? 0;
+}
+
+/**
  * The streak: consecutive TRAINING DAYS (CLAUDE.md §16.2, PLAN D6).
  *
  * The rule and its tests live in `src/lib/streak.ts`, which is pure. This is

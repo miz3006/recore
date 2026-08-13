@@ -19,6 +19,7 @@ import { tap, tapMedium } from '@/lib/haptics';
 import {
   color,
   fonts,
+  lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
@@ -236,7 +237,8 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
 
   caption: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(10),
     letterSpacing: 1.2,
     color: color.textMuted,
@@ -256,7 +258,7 @@ const styles = StyleSheet.create({
   movesInput: {
     minHeight: moderateScale(150),
     fontSize: moderateScale(17),
-    lineHeight: moderateScale(28),
+    lineHeight: lineFor(28),
     color: color.textPrimary,
   },
 
@@ -268,7 +270,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   previewCap: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(9.5),
     letterSpacing: 1.2,
     color: color.textMuted,
@@ -277,7 +280,8 @@ const styles = StyleSheet.create({
   previewRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
   previewName: { flexShrink: 1, fontSize: moderateScale(14.5), color: color.textPrimary },
   previewTyped: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(11),
     color: color.textMuted,
   },
@@ -285,13 +289,14 @@ const styles = StyleSheet.create({
   hint: {
     marginTop: spacing.lg,
     ...type.footnote,
-    lineHeight: moderateScale(18),
+    lineHeight: lineFor(18),
     color: color.textMuted,
   },
 
   deleteBtn: {
     marginTop: spacing.xl,
-    height: moderateScale(46),
+    minHeight: moderateScale(46),
+    paddingVertical: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: color.border,

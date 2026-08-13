@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildReceipt, matchPlanIndex, nameKey, namesMatch, typedNameOf } from './receipt.ts';
-import { doneKeyFor, echoTextOf, setsLineText, topOfSets } from './summarize.ts';
+import {
+  buildReceipt,
+  lastSetOf,
+  matchPlanIndex,
+  nameKey,
+  namesMatch,
+  typedNameOf,
+} from './receipt.ts';
+import { doneKeyFor, echoTextOf, setsLineText, setTableOf, topOfSets } from './summarize.ts';
 import { type LineSignal, type ParseResult, type ParsedItem, type ParsedSet } from './types.ts';
 
 const set = (over: Partial<ParsedSet>): ParsedSet => ({
@@ -13,6 +20,7 @@ const set = (over: Partial<ParsedSet>): ParsedSet => ({
   duration_s: null,
   rir: null,
   parent: null,
+  note: null,
   ...over,
 });
 
@@ -127,6 +135,99 @@ test('faithful set text: uniform work stays compact', () => {
   assert.equal(buildReceipt(resultOf(squat), []).rows[0]!.setText, '100 kg × 5·5·5');
 });
 
+// --- the per-set mini table (one row per set, under the exercise) ------------
+
+test('set table: a pyramid keeps every set on its own row, in order', () => {
+  const squat = item('Squat', 0, [
+    set({ reps: 10, weight_kg: 120 }),
+    set({ reps: 15, weight_kg: 100 }),
+    set({ reps: 8, weight_kg: 90 }),
+  ]);
+  const table = buildReceipt(resultOf(squat), []).rows[0]!.table;
+  assert.equal(table.loadHead, 'KG');
+  assert.equal(table.workHead, 'REPS');
+  assert.deepEqual(
+    table.rows.map((r) => [r.label, r.load, r.work]),
+    [
+      ['1', '120', '10'],
+      ['2', '100', '15'],
+      ['3', '90', '8'],
+    ],
+  );
+  assert.ok(table.rows.every((r) => r.counted));
+});
+
+test('set table: warm-ups and drops stay visible, labelled, and outside the numbering', () => {
+  const bench = item('Bench Press', 0, [
+    set({ kind: 'warmup', reps: 10, weight_kg: 40 }),
+    set({ reps: 8, weight_kg: 80 }),
+    set({ reps: 8, weight_kg: 80 }),
+    set({ kind: 'drop', reps: 8, weight_kg: 60 }),
+  ]);
+  const table = setTableOf(bench.sets);
+  assert.deepEqual(
+    table.rows.map((r) => r.label),
+    ['warm', '1', '2', 'drop'],
+  );
+  assert.deepEqual(
+    table.rows.map((r) => r.counted),
+    [false, true, true, false],
+  );
+  // ...and the counted contract is untouched by showing them.
+  assert.equal(buildReceipt(resultOf(bench), []).totalSets, 2);
+});
+
+test('set table: bodyweight drops the load column, mixed work marks the unloaded set', () => {
+  const dips = setTableOf([set({ reps: 16 }), set({ reps: 16 }), set({ reps: 15 })]);
+  assert.equal(dips.loadHead, null);
+  assert.deepEqual(
+    dips.rows.map((r) => [r.load, r.work]),
+    [
+      ['', '16'],
+      ['', '16'],
+      ['', '15'],
+    ],
+  );
+
+  const mixed = setTableOf([set({ reps: 10, weight_kg: 20 }), set({ reps: 12 })]);
+  assert.equal(mixed.loadHead, 'KG');
+  assert.deepEqual(
+    mixed.rows.map((r) => r.load),
+    ['20', 'bw'],
+  );
+});
+
+test('set table: cardio and holds get their own column and units', () => {
+  const run = setTableOf([set({ distance_m: 5000 }), set({ distance_m: 400 })]);
+  assert.equal(run.workHead, 'DIST');
+  assert.deepEqual(
+    run.rows.map((r) => r.work),
+    ['5 km', '400 m'],
+  );
+
+  const plank = setTableOf([set({ duration_s: 45 }), set({ duration_s: 90 })]);
+  assert.equal(plank.workHead, 'TIME');
+  assert.deepEqual(
+    plank.rows.map((r) => r.work),
+    ['45 s', '1:30'],
+  );
+});
+
+test('set table: RIR and a second metric ride along as the row note', () => {
+  const carry = setTableOf([
+    set({ reps: 8, weight_kg: 100, rir: 2 }),
+    set({ weight_kg: 40, distance_m: 20, duration_s: 60 }),
+  ]);
+  assert.ok(carry.hasNote);
+  assert.deepEqual(
+    carry.rows.map((r) => [r.load, r.work, r.note]),
+    [
+      ['100', '8', 'RIR 2'],
+      ['40', '20 m', '1:00'],
+    ],
+  );
+});
+
 test('comparison signal attaches, echo-kind does not', () => {
   const signals: LineSignal[] = [
     { line: 0, signal: { kind: 'up', delta: '+2.5' } },
@@ -210,4 +311,40 @@ test('a run-only session totals in distance, not an empty 0 kg', () => {
   assert.equal(receipt.volume, 0);
   assert.equal(receipt.distanceM, 5000);
   assert.equal(receipt.totalSets, 1);
+});
+
+test('the last set is the last COUNTED set of the last exercise', () => {
+  const receipt = buildReceipt(
+    resultOf(
+      item('Squat', 0, [set({ reps: 5, weight_kg: 100 })]),
+      item('Bench Press', 1, [
+        set({ reps: 5, weight_kg: 120 }),
+        // A warm-up written after the working set is still not what you just
+        // did — the same rule that keeps it out of the tonnage.
+        set({ kind: 'warmup', reps: 10, weight_kg: 40 }),
+      ]),
+    ),
+    [],
+  );
+  assert.deepEqual(lastSetOf(receipt), { exercise: 'Bench Press', reading: '120 kg × 5' });
+});
+
+test('the last set speaks bodyweight, distance and time too', () => {
+  assert.deepEqual(
+    lastSetOf(buildReceipt(resultOf(item('Pull-up', 0, [set({ reps: 10 })])), [])),
+    { exercise: 'Pull-up', reading: '10' },
+  );
+  assert.deepEqual(
+    lastSetOf(buildReceipt(resultOf(item('Run', 0, [set({ distance_m: 5000 })])), [])),
+    { exercise: 'Run', reading: '5 km' },
+  );
+});
+
+test('nothing counted, nothing to report', () => {
+  const warmupOnly = buildReceipt(
+    resultOf(item('Squat', 0, [set({ kind: 'warmup', reps: 10, weight_kg: 40 })])),
+    [],
+  );
+  assert.equal(lastSetOf(warmupOnly), null);
+  assert.equal(lastSetOf(buildReceipt(resultOf(), [])), null);
 });

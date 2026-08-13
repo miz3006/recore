@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { briefDateline, briefProse, splitLede } from './brief-prose.ts';
+import { briefDateline, briefProse, splitLede, whenLabel } from './brief-prose.ts';
 import type { Brief } from './db/brief.ts';
 
 const empty: Brief = {
@@ -15,9 +15,21 @@ const empty: Brief = {
   prReach: null,
   sessions7: 0,
   sessions8w: 0,
+  notes: [],
 };
 
 const line = { name: 'Bench Press', value: '82.5 kg × 5·5·5', why: null };
+
+/** A mover fixture. `currentE1rm` and `series` arrived with the Next tab's
+ * trust guard (`lib/next/sections.ts`) and `briefProse` reads neither — they
+ * live here so a field this file does not care about cannot break it again. */
+const mover = (canonical: string, deltaKg: number): Brief['movers'][number] => ({
+  canonical,
+  deltaKg,
+  weeks: 8,
+  currentE1rm: deltaKg * 8,
+  series: [],
+});
 
 test('an empty brief composes an empty paragraph', () => {
   assert.equal(briefProse(empty), '');
@@ -65,7 +77,7 @@ test('the week folds into the ghost sentence too', () => {
 test('a single mover carries its own delta and no tail', () => {
   const out = briefProse({
     ...empty,
-    movers: [{ canonical: 'Deadlift', deltaKg: 16, weeks: 8 }],
+    movers: [mover('Deadlift', 16)],
   });
   assert.equal(out, 'Deadlift is moving — up 16 kg of estimated 1RM in 8 weeks.');
 });
@@ -74,9 +86,9 @@ test('extra movers fold into a counted tail', () => {
   const out = briefProse({
     ...empty,
     movers: [
-      { canonical: 'Deadlift', deltaKg: 16, weeks: 8 },
-      { canonical: 'Squat', deltaKg: 10, weeks: 8 },
-      { canonical: 'Bench Press', deltaKg: 5, weeks: 8 },
+      mover('Deadlift', 16),
+      mover('Squat', 10),
+      mover('Bench Press', 5),
     ],
   });
   assert.match(out, /with 2 more lifts climbing behind it\./);
@@ -134,11 +146,12 @@ test('a full brief keeps §9 order: week+next, stakes, moving, stuck, record, wa
     lines: [line, line],
     headline: null,
     stalls: [{ canonical: 'Overhead Press', weight: 40, sessions: 3, deloadTo: 35 }],
-    movers: [{ canonical: 'Deadlift', deltaKg: 16, weeks: 8 }],
+    movers: [mover('Deadlift', 16)],
     adherence: { followed: 7, settled: 9 } as Brief['adherence'],
     prReach: { name: 'Bench Press', weightKg: 82.5 },
     sessions7: 2,
     sessions8w: 14,
+    notes: [],
   });
   const order = [
     out.indexOf('2 sessions in the last seven days, and today reads as Push'),
@@ -171,4 +184,34 @@ test('a one-sentence paragraph is all lede', () => {
 
 test('the dateline reads as a written date', () => {
   assert.equal(briefDateline(new Date(2026, 6, 30)), 'Thursday, 30 July');
+});
+
+test('a quoted note dates itself the way a person would', () => {
+  assert.equal(whenLabel('2026-08-04', '2026-08-04'), 'today');
+  assert.equal(whenLabel('2026-08-03', '2026-08-04'), 'yesterday');
+  assert.equal(whenLabel('2026-08-01', '2026-08-04'), '3 days ago');
+  assert.equal(whenLabel('2026-07-29', '2026-08-04'), '6 days ago');
+  assert.equal(whenLabel('2026-07-28', '2026-08-04'), 'a week ago');
+  assert.equal(whenLabel('2026-07-21', '2026-08-04'), '2 weeks ago');
+  // A future day (clock change, imported row) reads as today, never as nonsense.
+  assert.equal(whenLabel('2026-08-06', '2026-08-04'), 'today');
+});
+
+test('a note NEVER reaches the paragraph a model is allowed to rewrite', () => {
+  // The athlete's own words are quoted on screen, verbatim, beside the lift —
+  // they are deliberately not part of the composed paragraph, so nothing
+  // personal is sent to `explain-brief` and no rewrite can reword them.
+  const out = briefProse({
+    ...empty,
+    lines: [
+      {
+        ...line,
+        note: { name: 'Bench Press', text: 'right shoulder tight', day: '2026-08-03' },
+      },
+    ],
+    notes: [{ name: 'Squat', text: 'depth felt better', day: '2026-08-02' }],
+    sessions7: 1,
+  });
+  assert.ok(!out.includes('shoulder'), 'a quoted note leaked into the composed paragraph');
+  assert.ok(!out.includes('depth'), 'a quoted note leaked into the composed paragraph');
 });

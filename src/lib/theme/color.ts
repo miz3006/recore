@@ -44,16 +44,60 @@ export const color = {
   trend: '#BF5B23', // TREND ember: the progression line of ONE lift + its wash, in the lift sheet ONLY
   textPrimary: '#171914', // what the USER typed; headings; ink
   textSecondary: '#687064', // supporting copy, gutter readings, tags, labels
-  textMuted: '#9AA093', // dates, evidence lines, placeholders, disabled
+  textMuted: '#82887B', // dates, evidence lines, placeholders, disabled — see the contrast note below
   border: '#D4D7CC', // 1px card + control borders (hairline rule)
   divider: '#E9EAE2', // row dividers inside cards
   tableRule: '#E9EAE2', // hairline rules between table/receipt rows
+  /**
+   * ATTENTION (owner, 12 Aug 2026) — plateau / backoff / paused. Never for
+   * chrome or CTAs.
+   *
+   * The palette had no token for "this needs your eye" that was not also a
+   * verdict. `signal` green is a load not yet lifted and may never mean
+   * anything else; `error` red is a failure or a destructive action; `warning`
+   * amber belongs to the app's own state (offline, allowance) rather than to
+   * the record. A stalled lift is none of those — it is a fact about training
+   * that deserves one degree more weight than muted ink.
+   *
+   * Its three permitted homes: the STANDING STILL eyebrow, the backoff load
+   * inside a WATCH line, and the PAUSED tag on a session type once those ship.
+   *
+   * MEASURED (§14.3's ink-ladder contract): **4.58:1 on `bg`, 4.87:1 on
+   * `surface`** — clears AA, so it may carry a number a person must read. It
+   * measures **4.14:1 on `surfaceHigh`** and therefore must not be drawn on
+   * the recessed tone.
+   */
+  attention: '#B45309', // plateau / backoff / paused — never chrome, never a CTA
   warning: '#8A5613', // amber: CHECK chips, offline/allowance banners
   warningBorder: '#D8BE86', // border for amber CHECK tags
   error: '#A33D36', // failures ("Purchase didn't go through") + destructive ONLY
 } as const;
 
 export type ColorToken = keyof typeof color;
+
+/**
+ * ## The ink ladder, measured (owner, 9 Aug 2026 — "make it readable at low
+ * vision")
+ *
+ * Contrast against the `bg` canvas (`surface` is a shade kinder to all three):
+ *
+ * | Token | Ratio | What it may carry |
+ * |---|---|---|
+ * | `textPrimary` | **16.2:1** | Anything. The record's own voice. |
+ * | `textSecondary` | **4.7:1** | Clears AA for body text — any number, comparison or label a person must READ. |
+ * | `textMuted` | **3.3:1** | Clears the 3:1 floor for large text and non-text marks only: dates, placeholders, disabled states, decoration. |
+ *
+ * `textMuted` was `#9AA093` — **2.45:1**, which fails AA (4.5) and misses even
+ * the 3:1 floor, while being used 180+ times including on values people were
+ * expected to read. Darkening the token lifts every one of those at once; the
+ * standing rule that came with it is the important half:
+ *
+ * **If the text carries information, it is `textSecondary` or ink. `textMuted`
+ * is for things the eye may skip.**
+ *
+ * Where a surface still puts a value in muted, that is a bug to fix at the call
+ * site, not a reason to lighten this token again.
+ */
 
 /**
  * The settings-glyph palette — owner, 28 July. The **only** place in Recore

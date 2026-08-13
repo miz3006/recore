@@ -13,8 +13,19 @@ import { TourTarget } from './tour-targets';
 /**
  * The Home navigation row: the "Recore" wordmark, a centered day pill that names
  * the open day and opens the calendar (a chevron marks it tappable), and the
- * bare mono streak — a serious number, never a flame. One date, one tap target.
- * Every control dips on touch (PressableScale) so the chrome feels physical.
+ * count of sessions on the record — a serious number, never a flame. One date,
+ * one tap target. Every control dips on touch (PressableScale) so the chrome
+ * feels physical.
+ *
+ * THE CORNER FIGURE IS A TOTAL, AND IT IS LABELLED (owner, 11 Aug 2026). It
+ * used to be the bare streak numeral: a "42" alone in the corner, which is not
+ * a fact, it is a riddle — 42 what? — and the answer, a count that FALLS when
+ * you rest, was a daily goal wearing a serious face. §20 forbids exactly that.
+ * "42 sessions" only ever grows and says what it is.
+ *
+ * The streak rule itself is not deleted, and tapping still opens it: the
+ * consistency sheet explains in words that rest days never break it, which is
+ * the honest place for a number that needs a paragraph.
  *
  * THE SETTINGS AVATAR IS GONE (owner, 28 July). It pushed `/you`, which has
  * been a tab since the four-tab restructure — so the gear was a second door to
@@ -23,7 +34,7 @@ import { TourTarget } from './tour-targets';
  * wordmark · day · streak, and the right side is quieter for it.
  */
 export function TopBar() {
-  const streak = useSession((s) => s.streak);
+  const sessionCount = useSession((s) => s.sessionCount);
   const selectedDay = useSession((s) => s.selectedDay);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [streakOpen, setStreakOpen] = useState(false);
@@ -55,15 +66,20 @@ export function TopBar() {
       </TourTarget>
 
       <View style={[styles.side, styles.right]}>
-        {streak > 0 ? (
+        {sessionCount > 0 ? (
           <PressableScale
             onPress={() => setStreakOpen(true)}
             hitSlop={spacing.sm}
             activeScale={0.9}
             accessibilityRole="button"
-            accessibilityLabel={`${streak} training ${streak === 1 ? 'day' : 'days'} in a row`}>
-            <Text style={styles.streakNum} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {streak}
+            accessibilityLabel={`${sessionCount} ${
+              sessionCount === 1 ? 'session' : 'sessions'
+            } on record. Open consistency`}>
+            <Text style={styles.sessionCount} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {sessionCount}
+              <Text style={styles.sessionUnit}>
+                {sessionCount === 1 ? ' session' : ' sessions'}
+              </Text>
             </Text>
           </PressableScale>
         ) : null}
@@ -123,12 +139,18 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     color: color.textPrimary,
   },
-  streakNum: {
-    fontFamily: fonts.mono,
-    color: color.textMuted,
+  // Mono and quiet: it is a reading, and it is the least important thing in the
+  // row — the wordmark and the day are what the eye is here for.
+  sessionCount: {
+    fontFamily: fonts.reading,
+    color: color.textSecondary,
     fontSize: type.caption.fontSize,
     fontWeight: '500',
     letterSpacing: 0.2,
     fontVariant: ['tabular-nums'],
+  },
+  sessionUnit: {
+    fontWeight: '400',
+    color: color.textMuted,
   },
 });

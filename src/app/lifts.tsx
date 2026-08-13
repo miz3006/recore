@@ -236,7 +236,8 @@ const styles = StyleSheet.create({
     color: color.textMuted,
   },
   value: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: type.subhead.fontSize,
     color: color.textSecondary,
     flexShrink: 0,
@@ -254,7 +255,8 @@ const styles = StyleSheet.create({
     backgroundColor: color.surfaceHigh,
   },
   emptyExampleText: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: type.subhead.fontSize,
     color: color.textSecondary,
   },

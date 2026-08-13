@@ -23,6 +23,8 @@ export interface SummarizableSet {
   reps: number | null;
   distance_m: number | null;
   duration_s: number | null;
+  /** Reps in reserve, when the line carried one ("bench 100x8 @2"). */
+  rir?: number | null;
 }
 
 /** Working-set kinds excluded from all counted math: warm-ups (CLAUDE.md §3),
@@ -144,6 +146,110 @@ export function setsLineText(sets: SummarizableSet[]): string | null {
 
   // Cardio / holds / carries keep the existing top-set summary voice.
   return echoTextOf(topOfSets(sets));
+}
+
+// --- The per-set mini table (owner, 4 Aug 2026) ------------------------------
+// `setsLineText` compresses an exercise into ONE faithful line, which stops
+// being readable the moment a pyramid or a long run of sets arrives
+// ("120·100·90 kg × 10·15·8" is exact and still has to be decoded). The ledger
+// card and the receipt therefore show the same sets as a small TABLE — one set
+// per row, columns aligned in tabular mono, so a session is scanned instead of
+// parsed by eye. Nothing new is computed here: every cell is a set the parser
+// already read, and the counted contract (warm-ups/drops/skipped stay out of
+// the totals) is unchanged — they are simply visible now, labelled for what
+// they are.
+
+/** One rendered set — pure text, ready for a row. */
+export interface SetTableRow {
+  /** "1", "2", … over COUNTED sets; "warm", "drop", "skip" for the rest. */
+  label: string;
+  /** Load cell: "100", "bw" when this set alone is unloaded, "" for cardio. */
+  load: string;
+  /** Work cell: reps "10", distance "400 m", duration "1:30". */
+  work: string;
+  /** Trailing meta: "RIR 2", plus any second metric the work cell cannot hold. */
+  note: string;
+  /** Counts toward the session totals (non-warmup, non-drop, non-skipped). */
+  counted: boolean;
+}
+
+export interface SetTable {
+  rows: SetTableRow[];
+  /** Header over the load column — null when nothing here is loaded. */
+  loadHead: string | null;
+  /** Header over the work column: "REPS" · "DIST" · "TIME". */
+  workHead: string | null;
+  /** At least one row has a note, so the column is worth its width. */
+  hasNote: boolean;
+}
+
+/** "45 s" under a minute, "1:30" above it. */
+export function formatDurationShort(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)} s`;
+  const m = Math.floor(seconds / 60);
+  const r = Math.round(seconds % 60);
+  return `${m}:${String(r).padStart(2, '0')}`;
+}
+
+/** The label a non-counted set carries in the position column. */
+function kindLabel(kind: string): string | null {
+  if (kind === 'warmup') return 'warm';
+  if (kind === 'drop') return 'drop';
+  if (kind === 'skipped') return 'skip';
+  return null;
+}
+
+/**
+ * Every set of one exercise as table rows. Warm-ups, drops and skipped work are
+ * KEPT as rows (labelled, never numbered) because the record is the record —
+ * they are only excluded from the counted numbering, exactly as they are
+ * excluded from tonnage everywhere else.
+ */
+export function setTableOf(sets: SummarizableSet[]): SetTable {
+  const anyLoad = sets.some((s) => s.weight_kg != null);
+  const anyReps = sets.some((s) => s.reps != null);
+  const anyDistance = sets.some((s) => s.distance_m != null);
+  const anyDuration = sets.some((s) => s.duration_s != null);
+
+  const rows: SetTableRow[] = [];
+  let counted = 0;
+
+  for (const s of sets) {
+    const isCounted = !skipped(s.kind);
+    if (isCounted) counted += 1;
+
+    const notes: string[] = [];
+    if (s.rir != null) notes.push(`RIR ${fmtNumber(s.rir)}`);
+
+    // One metric owns the work column; a second one rides along as a note, so a
+    // weighted carry ("40 kg × 20 m in 60 s") loses nothing.
+    let work = '';
+    if (s.reps != null) {
+      work = String(s.reps);
+      if (s.distance_m != null) notes.push(formatDistanceTotal(s.distance_m));
+      if (s.duration_s != null) notes.push(formatDurationShort(s.duration_s));
+    } else if (s.distance_m != null) {
+      work = formatDistanceTotal(s.distance_m);
+      if (s.duration_s != null) notes.push(formatDurationShort(s.duration_s));
+    } else if (s.duration_s != null) {
+      work = formatDurationShort(s.duration_s);
+    }
+
+    rows.push({
+      label: kindLabel(s.kind) ?? String(counted),
+      load: s.weight_kg != null ? fmtNumber(s.weight_kg) : anyLoad ? 'bw' : '',
+      work,
+      note: notes.join(' · '),
+      counted: isCounted,
+    });
+  }
+
+  return {
+    rows,
+    loadHead: anyLoad ? 'KG' : null,
+    workHead: anyReps ? 'REPS' : anyDistance ? 'DIST' : anyDuration ? 'TIME' : null,
+    hasNote: rows.some((r) => r.note.length > 0),
+  };
 }
 
 /** Session distance from PARSED sets (runs, sled, carries), in meters. The

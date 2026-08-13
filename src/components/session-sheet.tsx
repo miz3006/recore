@@ -9,7 +9,7 @@ import {
 } from '@/lib/db/insights';
 import { groupThousands } from '@/lib/parse/estimate';
 import { fmtNumber } from '@/lib/parse/summarize';
-import { color, fonts, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { color, fonts, lineFor, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 import { labelForDay, useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   },
   heroLine: {
     marginTop: spacing.lg,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(13),
     color: color.textSecondary,
     fontVariant: ['tabular-nums'],
@@ -237,7 +237,8 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
   groupTag: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(9),
     fontWeight: '700',
     letterSpacing: 0.6,
@@ -272,7 +273,8 @@ const styles = StyleSheet.create({
     color: color.textMuted,
   },
   prLabel: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(10),
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -287,7 +289,7 @@ const styles = StyleSheet.create({
   setValue: {
     flexShrink: 1,
     textAlign: 'right',
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(13),
     color: color.textPrimary,
     fontVariant: ['tabular-nums'],
@@ -302,7 +304,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
     fontSize: moderateScale(12),
-    lineHeight: moderateScale(19),
+    lineHeight: lineFor(19),
     color: color.textMuted,
   },
   empty: {

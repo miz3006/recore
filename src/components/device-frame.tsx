@@ -1,6 +1,6 @@
 import { Image, StyleSheet, Text, View, type ImageSourcePropType, type StyleProp, type ViewStyle } from 'react-native';
 
-import { color, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
+import { color, lineFor, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 
 /**
  * A device frame around a REAL screenshot of the app (owner, 28 July) — the
@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.sm,
     textAlign: 'center',
     ...type.footnote,
-    lineHeight: moderateScale(16),
+    lineHeight: lineFor(16),
     color: color.textMuted,
   },
 });

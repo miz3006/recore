@@ -10,6 +10,7 @@ import { legalDoc, type LegalLink } from '@/lib/legal';
 import {
   color,
   HIT,
+  lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
@@ -201,7 +202,7 @@ const styles = StyleSheet.create({
   intro: {
     marginTop: spacing.lg,
     ...type.subhead,
-    lineHeight: moderateScale(24),
+    lineHeight: lineFor(24),
     color: color.textPrimary,
   },
   section: {
@@ -210,7 +211,7 @@ const styles = StyleSheet.create({
   },
   body: {
     ...type.subhead,
-    lineHeight: moderateScale(24),
+    lineHeight: lineFor(24),
     color: color.textSecondary,
   },
   bulletRow: {
@@ -219,7 +220,7 @@ const styles = StyleSheet.create({
   },
   bulletDot: {
     ...type.subhead,
-    lineHeight: moderateScale(24),
+    lineHeight: lineFor(24),
     color: color.textMuted,
   },
   bulletText: {

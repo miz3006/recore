@@ -11,7 +11,7 @@ import {
 import { todayKey, type DayKey } from '@/lib/db/dates';
 import { getLoggedDayKeys, getWorkoutForDay } from '@/lib/db/workouts';
 import { tapMedium } from '@/lib/haptics';
-import { color, fonts, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { color, FIXED_FONT_SCALE, fonts, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
@@ -236,7 +236,7 @@ function Month({
                 <View style={[styles.dayCircle, isToday && styles.todayRing]}>
                   <Text
                     style={[styles.dayNum, future && styles.futureNum]}
-                    maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    maxFontSizeMultiplier={FIXED_FONT_SCALE}>
                     {Number(day.slice(8))}
                   </Text>
                 </View>
@@ -254,7 +254,7 @@ function Month({
               accessibilityRole="button"
               accessibilityLabel={`${Number(day.slice(8))} ${MONTHS_LONG[cursor.month]}, trained. Open the session.`}>
               <View style={[styles.dayCircle, styles.trainedFill]}>
-                <Text style={[styles.dayNum, styles.trainedNum]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                <Text style={[styles.dayNum, styles.trainedNum]} maxFontSizeMultiplier={FIXED_FONT_SCALE}>
                   {Number(day.slice(8))}
                 </Text>
               </View>
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
   monthCount: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(11),
     fontVariant: ['tabular-nums'],
     color: color.textMuted,
@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
     borderColor: color.accent,
   },
   dayNum: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(13),
     fontVariant: ['tabular-nums'],
     color: color.textSecondary,

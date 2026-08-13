@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
     minWidth: moderateScale(64),
   },
   signal: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
     fontSize: moderateScale(15),
     fontWeight: '500',
     letterSpacing: 0.2,
@@ -245,7 +245,8 @@ const styles = StyleSheet.create({
     borderColor: alpha(color.accent, ink.pill),
   },
   prText: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(11),
     fontWeight: '500',
     letterSpacing: 1,

@@ -5,7 +5,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
-import { AppButton, Badge, Eyebrow } from '@/components/primitives';
+import { PrimaryCta } from '@/components/onboarding/PrimaryCta';
+import {
+  BLUE,
+  CARD_RADIUS,
+  INK_CARD,
+  SELECT_BORDER,
+} from '@/components/onboarding/tokens';
+import { Eyebrow } from '@/components/primitives';
 import { useAuth } from '@/lib/auth/provider';
 import { perMonth, savePct, type Plan } from '@/lib/billing/pricing';
 import { purchase, restore } from '@/lib/billing/state';
@@ -17,23 +24,23 @@ import {
   type StorePlan,
 } from '@/lib/billing/store';
 import { formatChargeDate } from '@/lib/billing/trial';
-import { getLedgerSize } from '@/lib/db/ledger-size';
 import { markPaywallShown, markPlanSelected } from '@/lib/funnel';
 import { tap } from '@/lib/haptics';
 import type { LegalDocId } from '@/lib/legal';
-import { getName, getPrimaryLift } from '@/lib/prefs';
+import type { Goal } from '@/lib/onboarding';
+import { getGoal, getName, getPrimaryLift } from '@/lib/prefs';
 import {
   color,
   fonts,
   HIT,
+  lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
-  shadow,
+  readingStyle,
   spacing,
   type,
 } from '@/lib/theme';
-import { useSession } from '@/state/session-store';
 
 /**
  * /paywall — the LAST pre-account step of the conversion funnel. The user has
@@ -134,32 +141,33 @@ function trialEndLabel(days: number): string {
   return formatChargeDate(Date.now() + days * 86_400_000);
 }
 
+/** The goal's headline, in the option's own words — nothing invented. */
+const GOAL_HEADLINES: Record<Goal, string> = {
+  strength: 'Built for your\nstrength goal',
+  muscle: 'Built for your\nmuscle goal',
+  fitness: 'Built for your\nfitness goal',
+  both: 'Built for strength\nand muscle',
+  sport: 'Built for your\ntraining',
+};
+
 /**
- * The headline mirrors an ONBOARDING ANSWER (block E, E6) — the highest-value
- * finding in the spec's research, and it costs a string interpolation.
+ * The headline mirrors an ONBOARDING ANSWER (21-screen rebuild, 11 Aug 2026)
+ * — it costs a string interpolation. The key lift wins when it was named,
+ * the stated goal otherwise; neither answered falls back to a line that
+ * claims nothing.
  *
- * Priority, and the order is the whole idea:
- *   1. They already have a record → say how big it is, in their numbers.
- *   2. They named a lift → say that lift.
- *   3. Neither → the exercises their own demo line produced a minute ago.
- *
- * **Never a claim about Recore.** Always a statement about what the user
- * already has. This is not a refill of the proof slot A1 emptied — §12.1
- * forbids that, and this is the headline, computed from the user's own data.
+ * **Never a claim about Recore's quality.** Always a statement about what the
+ * user themselves chose. This is not a refill of the proof slot A1 emptied —
+ * §12.1 forbids that.
  */
-function headlineFor(userId: string | null): string {
-  if (userId) {
-    const ledger = getLedgerSize(userId);
-    if (ledger.sessions > 0) {
-      const months = ledger.months === 1 ? '1 month' : `${ledger.months} months`;
-      return `${ledger.sessions} sessions.\n${ledger.exercises} exercises. ${months}.`;
-    }
-  }
+function headlineFor(): string {
   const lift = getPrimaryLift();
   if (lift && lift.trim().length >= 3) {
-    return `Your ${lift.trim().toLowerCase()},\nin one line a session.`;
+    return `Built to grow\nyour ${lift.trim().toLowerCase()}`;
   }
-  return 'Your words.\nA ledger you can trust.';
+  const goal = getGoal();
+  if (goal) return GOAL_HEADLINES[goal];
+  return 'Built for\nyour record';
 }
 
 function CloseGlyph() {
@@ -173,8 +181,21 @@ function CloseGlyph() {
 function CheckGlyph() {
   return (
     <Svg width={moderateScale(11)} height={moderateScale(11)} viewBox="0 0 16 16">
-      <Path d="M3 8.5L6.5 12 13 4.5" stroke={color.bg} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <Path d="M3 8.5L6.5 12 13 4.5" stroke="#FFFFFF" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </Svg>
+  );
+}
+
+/** The annual card's saving, as a filled blue pill. Rendered only when
+ * `savePct` could compute the number from the two live prices — there is no
+ * such thing as a decorative saving badge here. */
+function SavePill({ label }: { label: string }) {
+  return (
+    <View style={styles.savePill}>
+      <Text style={styles.savePillText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {label}
+      </Text>
+    </View>
   );
 }
 
@@ -191,10 +212,9 @@ export default function Paywall() {
   // focused.
   const [canDismiss] = useState(() => router.canGoBack());
   const name = getName();
-  const userId = useSession((s) => s.userId);
-  // Computed once, on mount: the headline names what the user already has, and
-  // it must not change under them while they read it.
-  const [headline] = useState(() => headlineFor(userId));
+  // Computed once, on mount: the headline names what the user chose, and it
+  // must not change under them while they read it.
+  const [headline] = useState(() => headlineFor());
 
   // The offer, read from the store. `null` while in flight or unreachable —
   // and an unreachable store means NO PRICE IS SHOWN, never a placeholder one.
@@ -361,13 +381,15 @@ export default function Paywall() {
     router.push('/sign-in');
   };
 
-  // The label states what the button does, from what the store offers. Never a
-  // trial the product is not configured to give (§2, §6).
+  // The label states what the button does, from what the store offers — the
+  // day count is the store's own, so "my 7-day free trial" can never promise a
+  // trial App Store Connect will not honour (§2, §6). Never a price in the
+  // CTA; the price sits in the muted line below it.
   const trialDays = selected?.trialDays ?? 0;
   const ctaLabel = !canBuy
     ? 'Pricing unavailable'
     : trialDays > 0
-      ? `Start ${trialDays}-day free trial`
+      ? `Start my ${trialDays}-day free trial`
       : 'Subscribe';
   const timeline = timelineFor(trialDays, selected?.priceLabel ?? null);
 
@@ -494,7 +516,19 @@ export default function Paywall() {
             </Text>
           ) : null}
 
-          <AppButton
+          {/* THE ONE GREEN LINE IN THE APP OUTSIDE A PLANNED PRESCRIPTION
+              (owner, 12 Aug 2026). It states a fact about billing — nothing is
+              charged today — and it renders ONLY while the selected plan
+              actually carries a trial the store will honour. With no trial,
+              money IS due today and the line would be a lie, so it is absent
+              rather than reworded. */}
+          {trialDays > 0 ? (
+            <Text style={styles.dueToday} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              Nothing due today
+            </Text>
+          ) : null}
+
+          <PrimaryCta
             label={ctaLabel}
             onPress={handleCta}
             disabled={!canBuy || busy !== null}
@@ -509,7 +543,7 @@ export default function Paywall() {
           {selected ? (
             <Text style={styles.legal} maxFontSizeMultiplier={MAX_FONT_SCALE}>
               {trialDays > 0
-                ? `No charge today. Free until ${trialEndLabel(trialDays)}, then ${selected.priceLabel} · cancel anytime in the App Store.`
+                ? `${trialDays}-day free trial, then ${selected.priceLabel} from ${trialEndLabel(trialDays)} · cancel anytime in the App Store.`
                 : `${selected.priceLabel}, billed until you cancel · cancel anytime in the App Store.`}
             </Text>
           ) : null}
@@ -541,8 +575,11 @@ export default function Paywall() {
 }
 
 /**
- * One plan card. Both cards are the same component, the same size and the same
- * tap target — §6's first condition for an honest preselection.
+ * One plan card, side by side with the other (owner's restyle, 12 Aug 2026 —
+ * they were stacked full-width rows). Both cards are the same component, the
+ * same size and the same tap target, which is §6's first condition for an
+ * honest preselection; the selected one takes a Recore blue 2 pt edge and a
+ * blue check, and nothing else about it grows or brightens.
  *
  * A card with no store plan behind it renders its title and a dash where the
  * price goes. That is the honest pre-fetch state: the shape is there, the
@@ -566,53 +603,58 @@ function PlanCard({
   // Apple's own per-month string when it gives one; our own arithmetic on its
   // price when it does not. Never a hardcoded currency symbol.
   const perMonthValue = storePlan ? perMonth(storePlan.price) : null;
-  const rightValue = storePlan
+  const perMonthLine = storePlan
     ? (storePlan.pricePerMonthLabel ??
-      (storePlan.plan === 'annual' && perMonthValue != null
-        ? `${perMonthValue} / mo`
-        : storePlan.priceLabel))
-    : loading
-      ? '—'
-      : '—';
+      (storePlan.plan === 'annual' && perMonthValue != null ? `${perMonthValue} / mo` : null))
+    : null;
 
-  const sub = storePlan
+  const trialLine = storePlan
     ? storePlan.trialDays > 0
-      ? `${storePlan.trialDays}-day free trial, then ${storePlan.priceLabel}`
-      : `${storePlan.priceLabel} · cancel anytime`
+      ? `${storePlan.trialDays}-day free trial`
+      : 'cancel anytime'
     : loading
-      ? 'Loading the price from the App Store'
+      ? 'Loading the price'
       : 'Price unavailable';
+
+  // What VoiceOver reads: the whole offer in one sentence, as it always did.
+  const spoken = storePlan
+    ? storePlan.trialDays > 0
+      ? `${title}. ${storePlan.trialDays}-day free trial, then ${storePlan.priceLabel}`
+      : `${title}. ${storePlan.priceLabel} · cancel anytime`
+    : `${title}. ${trialLine}`;
 
   return (
     <PressableScale
       onPress={onPress}
       activeScale={0.98}
-      style={[styles.plan, selected ? styles.planSelected : styles.planIdle]}
+      style={[styles.plan, selected && styles.planSelected]}
       pressedStyle={styles.planPressed}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
-      accessibilityLabel={`${title}. ${sub}`}>
-      <View style={styles.planText}>
-        <View style={styles.planTitleRow}>
-          <Text
-            style={[styles.planTitle, selected ? styles.planTitleOn : styles.planTitleOff]}
-            maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {title}
+      accessibilityLabel={spoken}>
+      {/* Reserved on both cards so the two titles sit on one line. */}
+      <View style={styles.planBadgeSlot}>{badge ? <SavePill label={badge} /> : null}</View>
+
+      <Text style={styles.planTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {title}
+      </Text>
+      <Text style={styles.planPrice} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {storePlan ? storePlan.priceLabel : '—'}
+      </Text>
+      {/* Reserved as well: an annual with a per-month breakdown must not make
+          the monthly card shorter than it. */}
+      <View style={styles.planPerSlot}>
+        {perMonthLine ? (
+          <Text style={styles.planPer} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {perMonthLine}
           </Text>
-          {badge ? <Badge label={badge} tone={selected ? 'ink' : 'quiet'} /> : null}
-        </View>
-        <Text
-          style={[styles.planNote, selected ? styles.planNoteOn : styles.planNoteOff]}
-          maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {sub}
-        </Text>
+        ) : null}
       </View>
-      <View style={styles.planRight}>
-        <Text
-          style={[styles.planPrice, selected ? styles.planPriceOn : styles.planPriceOff]}
-          maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {rightValue}
-        </Text>
+      <Text style={styles.planTrial} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {trialLine}
+      </Text>
+
+      <View style={styles.planMark}>
         {selected ? (
           <View style={styles.radioFilled}>
             <CheckGlyph />
@@ -683,7 +725,8 @@ const styles = StyleSheet.create({
     backgroundColor: color.surfaceHigh,
   },
   devChipText: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.reading,
+    fontVariant: ['tabular-nums'],
     fontSize: moderateScale(11),
     fontWeight: '600',
     letterSpacing: 0.8,
@@ -711,7 +754,7 @@ const styles = StyleSheet.create({
   subline: {
     marginTop: spacing.md,
     ...type.subhead,
-    lineHeight: moderateScale(23),
+    lineHeight: lineFor(23),
     color: color.textSecondary,
   },
   outcomes: {
@@ -732,13 +775,13 @@ const styles = StyleSheet.create({
   outcomeText: {
     flex: 1,
     ...type.footnote,
-    lineHeight: moderateScale(20),
+    lineHeight: lineFor(20),
     color: color.textSecondary,
   },
   notice: {
     marginTop: spacing.md,
     ...type.footnote,
-    lineHeight: moderateScale(18),
+    lineHeight: lineFor(18),
     color: color.textSecondary,
     textAlign: 'center',
     paddingHorizontal: spacing.sm,
@@ -785,7 +828,7 @@ const styles = StyleSheet.create({
   tlBody: {
     marginTop: 2,
     ...type.caption,
-    lineHeight: moderateScale(20),
+    lineHeight: lineFor(20),
     color: color.textSecondary,
   },
   bottom: {
@@ -793,79 +836,79 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xxl,
   },
   plans: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
     gap: spacing.md,
   },
   plan: {
-    backgroundColor: color.surface,
-    borderRadius: radius.xxl,
+    flex: 1,
+    backgroundColor: INK_CARD,
+    borderRadius: CARD_RADIUS,
+    borderWidth: SELECT_BORDER,
+    // Invisible until chosen: the same colour as the fill it edges.
+    borderColor: INK_CARD,
     paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg + 2,
-    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  planIdle: {
-    borderWidth: 1,
-    borderColor: color.border,
+    gap: 3,
   },
   planSelected: {
-    borderWidth: 1.5,
-    borderColor: color.accent,
-    ...shadow.raised,
+    borderColor: BLUE,
   },
   planPressed: {
     backgroundColor: color.surfaceHigh,
   },
-  planText: {
-    flex: 1,
-    gap: 3,
+  /** Height reserved on both cards so the two titles share a baseline. */
+  planBadgeSlot: {
+    height: moderateScale(20),
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
   },
-  planTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+  savePill: {
+    borderRadius: radius.pill,
+    backgroundColor: BLUE,
+    paddingVertical: 3,
+    paddingHorizontal: spacing.sm,
+  },
+  savePillText: {
+    ...readingStyle('700'),
+    fontSize: moderateScale(9.5),
+    letterSpacing: 0.8,
+    color: '#FFFFFF',
   },
   planTitle: {
     ...type.headline,
-  },
-  planTitleOn: {
     color: color.textPrimary,
-  },
-  planTitleOff: {
-    color: color.textSecondary,
-  },
-  planNote: {
-    ...type.footnote,
-  },
-  planNoteOn: {
-    color: color.textSecondary,
-  },
-  planNoteOff: {
-    color: color.textMuted,
-  },
-  planRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
   },
   planPrice: {
-    fontFamily: fonts.mono,
-    fontSize: moderateScale(15),
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
-  },
-  planPriceOn: {
+    ...readingStyle('700'),
+    fontSize: moderateScale(22),
+    letterSpacing: -0.4,
     color: color.textPrimary,
   },
-  planPriceOff: {
+  planPerSlot: {
+    height: lineFor(16),
+    justifyContent: 'center',
+  },
+  planPer: {
+    ...readingStyle('500'),
+    fontSize: moderateScale(11.5),
+    color: color.textSecondary,
+  },
+  planTrial: {
+    ...type.footnote,
+    lineHeight: lineFor(16),
     color: color.textMuted,
+    textAlign: 'center',
+  },
+  planMark: {
+    marginTop: spacing.sm,
   },
   radioFilled: {
     width: moderateScale(22),
     height: moderateScale(22),
     borderRadius: radius.pill,
-    backgroundColor: color.accent,
+    backgroundColor: BLUE,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -876,13 +919,21 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: color.border,
   },
-  cta: {
+  /** The single permitted green line — see the note at its call site. */
+  dueToday: {
     marginTop: spacing.lg,
+    ...type.subhead,
+    fontWeight: '600',
+    color: color.signal,
+    textAlign: 'center',
+  },
+  cta: {
+    marginTop: spacing.md,
   },
   legal: {
     marginTop: spacing.md,
     ...type.footnote,
-    lineHeight: moderateScale(18),
+    lineHeight: lineFor(18),
     color: color.textMuted,
     textAlign: 'center',
     paddingHorizontal: spacing.sm,

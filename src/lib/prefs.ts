@@ -60,6 +60,7 @@ const KEYS = {
   primaryLift: 'pref_primary_lift',
   liftsPinned: 'pref_lifts_pinned_done',
   coachRingDone: 'pref_coach_ring_done',
+  composerHintDone: 'pref_composer_hint_done',
   tourDone: 'pref_tour_done',
   // --- §5's new answers (step 2) ---
   experience: 'pref_experience',
@@ -69,6 +70,12 @@ const KEYS = {
   bodyWeightKg: 'pref_body_weight_kg',
   bodyHeightCm: 'pref_body_height_cm',
   importOffered: 'pref_import_offered',
+  /** Display: the ledger's set readings, spelled out and larger. */
+  largeSetReadings: 'pref_large_set_readings',
+  // --- the §12.1 weekly recap ---
+  recapIntent: 'pref_recap_intent',
+  recapEnabled: 'pref_recap_enabled',
+  recapHour: 'pref_recap_hour',
 } as const;
 
 export function isOnboardingDone(): boolean {
@@ -367,6 +374,40 @@ export function hasCoachRingDone(): boolean {
   return getMeta(KEYS.coachRingDone) === '1';
 }
 
+/**
+ * The empty canvas's one example line ('like "bench 3x8 60, felt easy"').
+ *
+ * It is shown while the athlete has fewer than three sessions on record and
+ * then never again — the flag is what makes "never again" true, rather than
+ * trusting a count that could be re-derived differently later. Retired by
+ * arriving at the third session, not by being dismissed: the hint teaches how
+ * to write a line, and having written three is the proof it worked.
+ */
+export const COMPOSER_HINT_SESSIONS = 3;
+
+export function markComposerHintDone() {
+  setMeta(KEYS.composerHintDone, '1');
+}
+
+export function hasComposerHintDone(): boolean {
+  return getMeta(KEYS.composerHintDone) === '1';
+}
+
+/**
+ * Larger set readings (owner, 9 Aug 2026): the ledger prints each set as its
+ * own spelled-out line instead of a column table, at the size the accessibility
+ * text settings would give it — WITHOUT asking the person to enlarge every app
+ * on their phone. Off by default; the OS text size still turns it on by itself
+ * when it is set large (`set-table.tsx`).
+ */
+export function setLargeSetReadings(on: boolean) {
+  setMeta(KEYS.largeSetReadings, on ? '1' : '0');
+}
+
+export function hasLargeSetReadings(): boolean {
+  return getMeta(KEYS.largeSetReadings) === '1';
+}
+
 /** Set when the first-open spotlight tour is finished OR skipped — either way
  * it was offered once and never returns (owner, 29 Jul). */
 export function markTourDone() {
@@ -375,4 +416,43 @@ export function markTourDone() {
 
 export function isTourDone(): boolean {
   return getMeta(KEYS.tourDone) === '1';
+}
+
+// --- the §12.1 weekly recap -------------------------------------------------
+
+export type RecapIntent = 'yes' | 'no';
+
+/** The onboarding answer ("Want a weekly recap?") — intent only, §5.1. The OS
+ * permission is asked later, in context, when the first recap exists. */
+export function setRecapIntent(intent: RecapIntent) {
+  setMeta(KEYS.recapIntent, intent);
+}
+
+export function getRecapIntent(): RecapIntent | null {
+  const v = getMeta(KEYS.recapIntent);
+  return v === 'yes' || v === 'no' ? v : null;
+}
+
+/** Whether the ONE recurring notification (§12.1) is on. Off by default —
+ * enabling is always the user's explicit act, never an install side effect. */
+export function setRecapEnabled(on: boolean) {
+  setMeta(KEYS.recapEnabled, on ? '1' : '0');
+}
+
+export function isRecapEnabled(): boolean {
+  return getMeta(KEYS.recapEnabled) === '1';
+}
+
+/** The recap's user-visible, editable hour (0–23) on Sunday. §12.1: "at a
+ * user-visible and editable time". */
+export const RECAP_DEFAULT_HOUR = 18;
+
+export function setRecapHour(hour: number) {
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return;
+  setMeta(KEYS.recapHour, String(hour));
+}
+
+export function getRecapHour(): number {
+  const n = Number.parseInt(getMeta(KEYS.recapHour) ?? '', 10);
+  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : RECAP_DEFAULT_HOUR;
 }

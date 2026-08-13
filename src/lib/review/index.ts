@@ -173,6 +173,48 @@ export function openReviewPage() {
   void Linking.openURL(url).catch(() => {});
 }
 
+/**
+ * The Settings row's "Rate Recore" — a review the user came looking for, so it
+ * is UNGATED. The gate in `gate.ts` exists to stop the app from interrupting
+ * someone; it has no business refusing a person who walked into Settings and
+ * asked.
+ *
+ * Two real destinations, in order of honesty: the App Store's own write-review
+ * page when a listing exists, otherwise Apple's in-app sheet. The sheet is
+ * still rate-limited by iOS and may draw nothing at all — which is why the
+ * attempt is recorded exactly as the automatic path records it, so a settings
+ * tap cannot quietly burn the yearly quota that the earned prompt is saving.
+ *
+ * Returns false when neither door exists (Expo Go, no listing) so the caller
+ * can hide the row rather than offer a control that does nothing.
+ */
+export function canRateApp(): boolean {
+  return reviewStoreUrl() !== null || getStoreReview() !== null;
+}
+
+export async function rateApp(nowMs: number = Date.now()): Promise<boolean> {
+  const url = reviewStoreUrl();
+  if (url) {
+    try {
+      await Linking.openURL(url);
+      return true;
+    } catch {
+      // fall through to the native sheet
+    }
+  }
+
+  const storeReview = getStoreReview();
+  if (!storeReview) return false;
+  try {
+    if (!(await storeReview.hasAction())) return false;
+    await storeReview.requestReview();
+    markAsked(nowMs);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Everything the gate needs, read straight out of SQLite. All synchronous. */
 function readMoment(session: FinishedSession): ReviewMoment {
   const { userId, workoutId, prToday } = session;

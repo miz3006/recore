@@ -16,6 +16,7 @@ import {
 import {
   color,
   hairline,
+  lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   monoText,
@@ -31,9 +32,9 @@ import { PressableScale } from './motion';
 
 /**
  * The end-of-session check-in (product-direction §8.1) — ONE sheet, opened once
- * right after Finish, and reachable again from the receipt at the bottom of the
- * note because the honest moment to answer is sometimes twenty minutes later on
- * the train home.
+ * right after Finish, and reachable again from the session summary (the resting
+ * today pill) because the honest moment to answer is sometimes twenty minutes
+ * later on the train home.
  *
  * IT CARRIES TWO THINGS, and the owner's ruling of 29 July is why they share a
  * surface rather than queueing two sheets behind one Finish:
@@ -289,7 +290,7 @@ export function CheckInSheet() {
           onPress={commitAndClose}
         />
         <Text style={styles.foot} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          Reachable again from the receipt at the bottom of your note.
+          Reachable again later — tap the today pill, then Add a reflection.
         </Text>
       </View>
     </BottomSheet>
@@ -313,7 +314,7 @@ const styles = StyleSheet.create({
   sub: {
     marginTop: spacing.sm,
     ...type.footnote,
-    lineHeight: moderateScale(17),
+    lineHeight: lineFor(17),
     color: color.textMuted,
   },
   scroll: {
@@ -339,7 +340,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     textAlignVertical: 'top',
     ...type.subhead,
-    lineHeight: moderateScale(22),
+    lineHeight: lineFor(22),
     color: color.textPrimary,
   },
   prompts: {
@@ -399,7 +400,7 @@ const styles = StyleSheet.create({
   },
   effortSub: {
     ...type.footnote,
-    lineHeight: moderateScale(17),
+    lineHeight: lineFor(17),
     color: color.textMuted,
   },
   item: {
@@ -459,7 +460,7 @@ const styles = StyleSheet.create({
   },
   levelHint: {
     fontSize: moderateScale(9.5),
-    lineHeight: moderateScale(12),
+    lineHeight: lineFor(12),
     textAlign: 'center',
     color: color.textMuted,
   },
@@ -473,7 +474,7 @@ const styles = StyleSheet.create({
   },
   foot: {
     ...type.footnote,
-    lineHeight: moderateScale(16),
+    lineHeight: lineFor(16),
     color: color.textMuted,
     textAlign: 'center',
   },

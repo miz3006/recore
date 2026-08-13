@@ -1,38 +1,43 @@
-import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef } from 'react';
-import {
-  Image as RNImage,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-  type ImageSourcePropType,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  LinearTransition,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 
 import { Icon } from '@/components/icon';
-import { FadeSlideIn, PressableScale } from '@/components/motion';
+import { FadeSlideIn } from '@/components/motion';
+import { BuildingChecklist } from '@/components/onboarding/BuildingChecklist';
 import {
-  EXPERIENCE_IMAGES,
-  QUESTION_STEP_COUNT,
-  readyLines,
+  buildingLines,
+  FOUNDER_NOTE,
+  PROGRESS_TOTAL,
+  progressFilled,
+  PROOF_LINES,
   resolveWeightUnit,
   STEPS,
-  stepImageSource,
+  stepHeadline,
+  summaryLines,
+  TRIAL_TIMELINE,
 } from '@/components/onboarding/config';
 import { DayPicker } from '@/components/onboarding/DayPicker';
+import { FounderNote } from '@/components/onboarding/FounderNote';
+import { contentDelay, OnboardingScreen } from '@/components/onboarding/OnboardingScreen';
 import { OptionRow } from '@/components/onboarding/OptionRow';
-import { ProgressRail } from '@/components/onboarding/ProgressRail';
 import { SuggestionChips } from '@/components/onboarding/SuggestionChips';
 import { TextField } from '@/components/onboarding/TextField';
+import { ToggleRow } from '@/components/onboarding/Toggle';
+import { BLUE, ENTER_MS, INK_CARD, INK_TRACK, RISE_PX, CARD_RADIUS } from '@/components/onboarding/tokens';
 import { WeightInput } from '@/components/onboarding/WeightInput';
-import { AppButton } from '@/components/primitives';
 import { defaultLanguage } from '@/lib/locale';
 import { markObStepReached, markOnboardingCompleted, setObStepCount } from '@/lib/funnel';
+import { DUR, EASE } from '@/lib/motion';
 import {
   isExperience,
   isGoal,
@@ -50,65 +55,84 @@ import {
   setObLanguage,
   setObTracker,
   setPrimaryLift,
+  setRecapIntent,
   setRestSeconds,
   setSessionFeel,
   setUsualDays,
   setWeightUnit,
 } from '@/lib/prefs';
-import { alpha, color, HIT, ink, MAX_FONT_SCALE, spacing, type } from '@/lib/theme';
+import {
+  color,
+  lineFor,
+  MAX_FONT_SCALE,
+  moderateScale,
+  radius,
+  spacing,
+  type,
+} from '@/lib/theme';
 import { useOnboardingAnswers } from '@/state/onboarding';
 
 /**
- * The illustrated onboarding renderer — ONE screen for every entry of
- * `components/onboarding/config.ts` (welcome, thirteen steps, Ready echo),
- * keyed by the `[step]` route param (1-based). Each step is a full-bleed 9:16
- * illustration; a gradient to paper carries the copy. The Mobbin pass (29 Jul:
- * Breathwrk / Alma / GO Club / Opal) set the layout language: bold question,
- * options lifted into the lower-middle band, a calm empty strip under them.
+ * The onboarding renderer — ONE screen for every entry of
+ * `components/onboarding/config.ts`, keyed by the `[step]` route param
+ * (1-based).
  *
- * Steps slide in natively from the right (`slide_from_right`) and the content
- * staggers up inside the new screen — reveal on arrival, not decoration.
+ * **12 Aug 2026 — the mascot-led restyle (owner's spec).** The page itself is
+ * no longer described here: `OnboardingScreen` owns the template and its fixed
+ * zones (chrome row → illustration on bare paper → eyebrow, headline, subtext →
+ * content → the blue CTA pinned to the bottom), and this file only decides what
+ * goes in the content band and what the button does. That is why the flow's
+ * geometry cannot drift screen to screen — there is one place it is written.
  *
- * Answering writes to the persisted store and advances after a short beat so
- * the selected state is seen. The next step's image prefetches on mount —
- * never everything at once — and the gender step also warms both experience
- * variants, because which one that step shows depends on the answer given
- * here.
+ * What the restyle changed here:
  *
- * This flow IS the funnel (the old fourteen-screen flow was deleted 30 Jul,
- * owner's yes): the dispatcher sends anyone not yet onboarded to
- * `/onboarding/<resume step>`, and the Ready step completes — every answer
- * with a validated home written through prefs, done + completed marked —
- * then leads to /paywall. Per §5.1 no OS permission is requested here; the
- * notifications answer is intent, asked for real when the first recap exists.
+ * · Recore blue is the flow's one accent (selected answers, the progress fill,
+ *   the CTA, an emphasised value). Selection used to sweep a row to solid ink.
+ * · The illustration is drawn straight onto the paper — no card, no border.
+ * · The NOTIFICATIONS step is a switch rather than two radio rows. Both option
+ *   labels are still the step's own copy and the stored answer is still
+ *   'yes'/'no'; the difference is that a switch can be turned back off, so the
+ *   screen carries a Continue instead of auto-advancing on first touch.
+ * · An optional FOUNDER NOTE sits after the product truths
+ *   (`FOUNDER_NOTE_ENABLED`).
+ *
+ * Single-select answers write to the persisted store and advance after ~250 ms
+ * — the option's blue check springs in first, so the choice is seen; the
+ * commitment step holds longer to show its affirming line. Text, number and
+ * multi-select screens advance with the CTA, and the optional inputs keep
+ * empty-means-skip. The building screen advances itself (with `replace`, so
+ * Back from the summary lands on a question, not a replay).
+ *
+ * This flow IS the funnel: the dispatcher sends anyone not yet onboarded to
+ * `/onboarding/<resume step>`, and the trial-timeline step completes — every
+ * answer with a validated home written through prefs, done + completed marked
+ * — then hands back to the dispatcher (a fresh user meets the paywall there;
+ * an entitled replay returns to Today). Per §5.1 no OS permission is requested
+ * here; the notifications answer is intent, asked for real when the first
+ * recap exists.
  */
 
-const ADVANCE_DELAY_MS = 180;
-const STAGGER_MS = 60;
-const RISE_PX = 12;
-const GRADIENT_HEIGHT_RATIO = 0.7;
-
-/** Transparent → 85% at the middle stop → solid paper under the options. */
-const GRADIENT_COLORS = [alpha(color.bg, 0), alpha(color.bg, 0.85), color.bg] as const;
-const GRADIENT_LOCATIONS = [0, 0.35, 1] as const;
-
-/** Bundled assets resolve to a URI for expo-image's prefetch (dev server URL
- * in development, the packaged asset in release). */
-function prefetchImage(source: ImageSourcePropType) {
-  const uri = RNImage.resolveAssetSource(source)?.uri;
-  if (uri) void Image.prefetch(uri);
-}
+/** Long enough for the blue check to land before the screen slides away. */
+const ADVANCE_DELAY_MS = 250;
+/**
+ * The commitment step's affirming line gets a longer hold than a plain answer
+ * — but a hold is a thing to READ, never a thing to wait out. 900 ms leaves the
+ * line on screen well past its fade-in, and tapping the same answer again skips
+ * the rest, so the slowest path is a choice rather than a wall.
+ */
+const AFFIRM_DELAY_MS = 900;
 
 /**
  * The end of the flow. Every answer with a validated, consequence-bearing
  * home is written through it — goal reaches the engine's fallback range,
  * experience the level of explanation, tracker the §2.1 import fast path,
  * session feel the composer vocabulary, the day mask the weekly rhythm, the
- * rest choice the toolbar timer, the name and priority movement their
- * greeting and Lifts pin, and the typed weight (converted to metric exactly
- * once, here) the You screen's body context. Language and display unit come
- * from the device locale (§5: derivable answers are not worth a screen).
- * Only the notifications intent stays in the store, waiting for §12.1.
+ * rest choice the toolbar timer, the name and key lift their greeting and
+ * Lifts pin, the typed weight (converted to metric exactly once, here) the
+ * You screen's body context, and the notifications answer the §12.1 recap
+ * intent. Gender and commitment stay in the answers store — they personalise
+ * the flow's own copy and illustrations. Language and display unit come from
+ * the device locale (§5: derivable answers are not worth a screen).
  */
 function completeFlow() {
   const { answers } = useOnboardingAnswers.getState();
@@ -132,6 +156,11 @@ function completeFlow() {
   setWeightUnit(unit);
   const kg = parseBodyWeight(answers.bodyweight ?? '', unit);
   if (kg != null) setBodyWeightKg(kg);
+  // The §12.1 recap intent — read when the first recap exists (its card offers
+  // the notification only to a yes) and by the You row's default. Intent only:
+  // no permission prompt happens here (§5.1).
+  const notif = answers.notifications;
+  if (notif === 'yes' || notif === 'no') setRecapIntent(notif);
   setObLanguage(defaultLanguage());
 
   setObStepCount(STEPS.length);
@@ -139,11 +168,62 @@ function completeFlow() {
   markOnboardingCompleted(); // the denominator of every step's drop-off (E7)
 }
 
+/** The blue check of the summary card and the product-truth rows. */
+function CheckMark({ size, stroke }: { size: number; stroke: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 16 16">
+      <Path
+        d="M3 8.5L6.5 12 13 4.5"
+        stroke={stroke}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </Svg>
+  );
+}
+
+/** The connecting rail between two timeline nodes, DRAWN downward (scaleY
+ * from the top) once its upper node has landed — the trial's path unfolding
+ * in order rather than appearing pre-printed. Reduce Motion shows it whole. */
+function TimelineConnector({ delay }: { delay: number }) {
+  const reduce = useReducedMotion();
+  const p = useSharedValue(reduce ? 1 : 0);
+
+  useEffect(() => {
+    if (!reduce) {
+      p.value = withDelay(delay, withTiming(1, { duration: DUR.slow, easing: EASE.emphasized }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: p.value }] }));
+
+  return <Animated.View style={[styles.tlLine, animatedStyle]} />;
+}
+
+/** One trial-timeline node mark: 'start' is a filled blue disc with a white
+ * check — it begins now; the future nodes are quiet ink circles carrying the
+ * reminder bell and the billing card. No emoji anywhere in this flow. */
+function TimelineNode({ glyph }: { glyph: 'start' | 'bell' | 'card' }) {
+  if (glyph === 'start') {
+    return (
+      <View style={[styles.tlNode, styles.tlNodeFilled]}>
+        <CheckMark size={moderateScale(13)} stroke="#FFFFFF" />
+      </View>
+    );
+  }
+  return (
+    <View style={[styles.tlNode, styles.tlNodeHollow]}>
+      <Icon name={glyph} size={moderateScale(14)} tint={color.textSecondary} />
+    </View>
+  );
+}
+
 export default function OnboardingStep() {
   const router = useRouter();
   const { step: stepParam } = useLocalSearchParams<{ step?: string }>();
-  const { height: screenHeight } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
 
   // A malformed or out-of-range param renders the nearest real step — never a
   // crash, never a redirect loop.
@@ -163,21 +243,6 @@ export default function OnboardingStep() {
     markObStepReached(stepNumber);
   }, [stepNumber, setStep]);
 
-  // Warm exactly what the next screen needs. STEPS is 0-based, stepNumber is
-  // 1-based, so STEPS[stepNumber] is the step AFTER this one. The gender step
-  // also warms both experience variants — its answer decides which one shows.
-  useEffect(() => {
-    const next = STEPS[stepNumber];
-    if (next) prefetchImage(stepImageSource(next, useOnboardingAnswers.getState().answers));
-    if (step.id === 'gender') {
-      prefetchImage(EXPERIENCE_IMAGES.base);
-      prefetchImage(EXPERIENCE_IMAGES.v2);
-    }
-  }, [stepNumber, step.id]);
-
-  const source = useMemo(() => stepImageSource(step, answers), [step, answers]);
-  const selected = step.storeAs ? answers[step.storeAs] : null;
-
   const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -186,17 +251,48 @@ export default function OnboardingStep() {
     [],
   );
 
-  const goNext = () => {
-    if (stepNumber < STEPS.length) {
-      router.push(`/onboarding/${stepNumber + 1}`);
-    } else {
-      // The Ready echo is the last screen: complete, then the paywall gate.
-      completeFlow();
-      router.replace('/paywall');
-    }
-  };
+  /** The commitment step's affirming line, shown under the options once an
+   * answer is in and until the flow advances. */
+  const [affirmLine, setAffirmLine] = useState<string | null>(null);
+
+  // When the affirm line appears it pushes the option rows up a touch; the
+  // layout transition turns that jump into a glide. Reduce Motion keeps the
+  // instant reflow.
+  const reduce = useReducedMotion();
+  const listLayout = reduce ? undefined : LinearTransition.duration(DUR.base);
+
+  const goNext = useCallback(
+    (mode: 'push' | 'replace' = 'push') => {
+      if (stepNumber < STEPS.length) {
+        const href = `/onboarding/${stepNumber + 1}` as const;
+        if (mode === 'replace') router.replace(href);
+        else router.push(href);
+      } else {
+        // The trial-timeline is the last config screen: complete, then hand
+        // back to the dispatcher. A fresh user meets the paywall gate there;
+        // an entitled subscriber replaying setup walks straight back into the
+        // app instead of being asked to buy again.
+        completeFlow();
+        router.replace('/');
+      }
+    },
+    [stepNumber, router],
+  );
+
+  /** Drop a pending advance and the line it was holding for. A cancelled
+   * advance must leave nothing armed behind it, or the in-flight guard in
+   * `onSelect` locks the screen for good. */
+  const cancelAdvance = useCallback(() => {
+    if (advanceTimer.current) clearTimeout(advanceTimer.current);
+    advanceTimer.current = null;
+    setAffirmLine(null);
+  }, []);
 
   const goBack = () => {
+    // Leaving cancels any advance still in flight. Without this the timer fires
+    // 900 ms later from a screen the user already left and pushes them forward
+    // again — and the armed ref would still be blocking taps if they returned.
+    cancelAdvance();
     // After a cold-start resume there is no history behind this screen —
     // walking to the previous step keeps Back honest instead of dead.
     if (router.canGoBack()) router.back();
@@ -204,286 +300,395 @@ export default function OnboardingStep() {
   };
 
   const onSelect = (optionId: string) => {
-    if (advanceTimer.current) return; // an answer is already on its way forward
-    if (step.storeAs) setAnswer(step.storeAs, optionId);
-    advanceTimer.current = setTimeout(() => {
-      advanceTimer.current = null;
-      goNext();
-    }, ADVANCE_DELAY_MS);
+    if (advanceTimer.current) {
+      // An answer is already on its way forward. Tapping the SAME one again
+      // means "read it, go" — the affirm hold is readable, not compulsory.
+      // A different option inside the window is ignored: the check has already
+      // landed on that row and swapping the line mid-flight reads as a glitch.
+      if (selected === optionId) {
+        clearTimeout(advanceTimer.current);
+        advanceTimer.current = null;
+        goNext();
+      }
+      return;
+    }
+    if (step.storeKey) setAnswer(step.storeKey, optionId);
+    const affirm = step.affirm?.[optionId] ?? null;
+    if (affirm) setAffirmLine(affirm);
+    advanceTimer.current = setTimeout(
+      () => {
+        advanceTimer.current = null;
+        goNext();
+      },
+      affirm ? AFFIRM_DELAY_MS : ADVANCE_DELAY_MS,
+    );
   };
+
+  // The building screen advances itself; `replace` keeps it off the stack so
+  // Back from the summary lands on the question before it, not on a replay.
+  const onBuilt = useCallback(() => {
+    if (advanceTimer.current) return;
+    goNext('replace');
+  }, [goNext]);
 
   // The day picker's mask, the text fields and the weight field all live in
   // the same persisted answers as every radio choice.
+  const selected = step.storeKey ? answers[step.storeKey] : null;
   const dayMask = normalizeDayMask(answers.trainingDays);
-  const textValue = step.storeAs ? (answers[step.storeAs] ?? '') : '';
+  const textValue = step.storeKey ? (answers[step.storeKey] ?? '') : '';
   const weightText = answers.bodyweight ?? '';
   const weightUnit = resolveWeightUnit(answers);
   // Empty means skip (§5: body context is optional); non-empty must parse.
   const weightInvalid =
     weightText.trim().length > 0 && parseBodyWeight(weightText, weightUnit) == null;
-  const echo = useMemo(
-    () => (step.kind === 'ready' ? readyLines(answers) : []),
+
+  const headline = stepHeadline(step, answers);
+  const checklist = useMemo(
+    () => (step.kind === 'building' ? buildingLines(answers) : []),
+    [step.kind, answers],
+  );
+  const summary = useMemo(
+    () => (step.kind === 'summary' ? summaryLines(answers) : []),
     [step.kind, answers],
   );
 
-  // The delay ladder: title, then subtitle (when present), then the controls.
-  const optionsDelay = (step.subtitle ? 2 : 1) * STAGGER_MS;
+  /**
+   * The notifications step is a SWITCH, not a pair of radio rows — the one
+   * question in the flow whose answer a person may want to change their mind
+   * about before moving on. Its two labels are the step's own config copy and
+   * the stored answer is still 'yes' / 'no'; only the control changed.
+   *
+   * Unanswered reads as on, and the row says so in words before Continue writes
+   * it. Recap intent is not a permission — §5.1 keeps the OS prompt for the
+   * moment the first recap actually exists — so a visible, single-tap default
+   * is honest here in a way it would not be for a system dialog.
+   */
+  const isNotifications = step.slug === 'notifications';
+  const notificationsOn = (answers.notifications ?? 'yes') === 'yes';
+  const notificationsLabel =
+    step.options?.find((o) => o.id === (notificationsOn ? 'yes' : 'no'))?.label ?? '';
 
-  return (
-    <View style={styles.root}>
-      {/* Forward always arrives from the right; the iOS back-swipe stays live. */}
-      <Stack.Screen options={{ animation: 'slide_from_right', gestureEnabled: true }} />
+  // What sits in the content band, and how many staggered items it holds (the
+  // CTA lands one beat after the last of them).
+  let content: React.ReactNode = null;
+  let contentCount = 1;
+  let cta: { label: string; onPress: () => void; disabled?: boolean } | null = null;
 
-      <Image
-        source={source}
-        style={StyleSheet.absoluteFill}
-        contentFit="cover"
-        contentPosition={step.focus === 'top' ? 'top' : 'center'}
-        cachePolicy="memory-disk"
-        transition={200}
-        accessibilityIgnoresInvertColors
-      />
-
-      <LinearGradient
-        pointerEvents="none"
-        colors={GRADIENT_COLORS}
-        locations={GRADIENT_LOCATIONS}
-        style={[styles.gradient, { height: screenHeight * GRADIENT_HEIGHT_RATIO }]}
-      />
-
-      {isIntro ? null : (
-        <View style={[styles.top, { paddingTop: insets.top + spacing.sm }]}>
-          <ProgressRail
-            total={QUESTION_STEP_COUNT}
-            completed={stepNumber - 1}
-            style={styles.rail}
+  if (step.kind === 'question' && step.options) {
+    if (isNotifications) {
+      content = (
+        <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
+          <ToggleRow
+            label={notificationsLabel}
+            value={notificationsOn}
+            onValueChange={(next) => setAnswer('notifications', next ? 'yes' : 'no')}
           />
-          <PressableScale
-            onPress={goBack}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            style={styles.back}>
-            <Icon name="chevron-back" size={22} tint={color.textPrimary} />
-          </PressableScale>
-        </View>
-      )}
-
-      {/* The keyboard-avoider matters on the typed steps (name, movement,
-          weight); it is inert everywhere else, so every step shares one tree. */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        pointerEvents="box-none"
-        style={StyleSheet.absoluteFill}>
-        <View style={styles.contentWrap} pointerEvents="box-none">
-          <View
-            style={[
-              styles.content,
-              { paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.xxxl },
-            ]}>
-            <FadeSlideIn delay={0} distance={RISE_PX}>
-              <Text
-                style={isIntro ? styles.heroTitle : styles.title}
-                accessibilityRole="header"
-                maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {step.title}
+        </FadeSlideIn>
+      );
+      contentCount = 1;
+      cta = {
+        label: step.cta ?? 'Continue',
+        onPress: () => {
+          // Continue always writes what the row is showing, so a person who
+          // never touched the switch still gets the answer they could read.
+          setAnswer('notifications', notificationsOn ? 'yes' : 'no');
+          goNext();
+        },
+      };
+    } else {
+      contentCount = step.options.length;
+      content = (
+        <View
+          style={styles.stack}
+          accessibilityRole="radiogroup"
+          accessibilityLabel={headline}>
+          {step.options.map((option, i) => (
+            <FadeSlideIn
+              key={option.id}
+              delay={contentDelay(i)}
+              distance={RISE_PX}
+              duration={ENTER_MS}
+              layout={listLayout}>
+              <OptionRow
+                label={option.label}
+                selected={selected === option.id}
+                onPress={() => onSelect(option.id)}
+              />
+            </FadeSlideIn>
+          ))}
+          {affirmLine ? (
+            <FadeSlideIn delay={0} distance={RISE_PX} duration={ENTER_MS}>
+              <Text style={styles.affirm} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {affirmLine}
               </Text>
             </FadeSlideIn>
-
-            {step.subtitle ? (
-              <FadeSlideIn delay={STAGGER_MS} distance={RISE_PX}>
-                <Text style={styles.subtitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {step.subtitle}
-                </Text>
-              </FadeSlideIn>
-            ) : null}
-
-            {step.kind === 'question' && step.options ? (
-              <View
-                style={styles.options}
-                accessibilityRole="radiogroup"
-                accessibilityLabel={step.title}>
-                {step.options.map((option, i) => (
-                  <FadeSlideIn
-                    key={option.id}
-                    delay={optionsDelay + i * STAGGER_MS}
-                    distance={RISE_PX}>
-                    <OptionRow
-                      label={option.label}
-                      emoji={option.emoji}
-                      selected={selected === option.id}
-                      onPress={() => onSelect(option.id)}
-                    />
-                  </FadeSlideIn>
-                ))}
-              </View>
-            ) : null}
-
-            {step.kind === 'text' && step.storeAs ? (
-              <View style={styles.options}>
-                <FadeSlideIn delay={optionsDelay} distance={RISE_PX}>
-                  <TextField
-                    value={textValue ?? ''}
-                    onChangeText={(text) => setAnswer(step.storeAs!, text)}
-                    placeholder={step.placeholder ?? ''}
-                    onSubmit={goNext}
-                    accessibilityLabel={step.title}
-                  />
-                </FadeSlideIn>
-                {step.suggestions ? (
-                  <FadeSlideIn delay={optionsDelay + STAGGER_MS} distance={RISE_PX}>
-                    {/* A chip answers-and-advances like a radio option. */}
-                    <SuggestionChips
-                      suggestions={step.suggestions}
-                      current={textValue ?? ''}
-                      onPick={onSelect}
-                    />
-                  </FadeSlideIn>
-                ) : null}
-                <FadeSlideIn
-                  delay={optionsDelay + (step.suggestions ? 2 : 1) * STAGGER_MS}
-                  distance={RISE_PX}>
-                  <AppButton label="Continue" onPress={goNext} />
-                </FadeSlideIn>
-              </View>
-            ) : null}
-
-            {step.kind === 'days' ? (
-              <View style={styles.options}>
-                <FadeSlideIn delay={optionsDelay} distance={RISE_PX}>
-                  <DayPicker
-                    mask={dayMask}
-                    onToggle={(day) => setAnswer('trainingDays', String(toggleDay(dayMask, day)))}
-                  />
-                </FadeSlideIn>
-                <FadeSlideIn delay={optionsDelay + STAGGER_MS} distance={RISE_PX}>
-                  <AppButton label="Continue" onPress={goNext} />
-                </FadeSlideIn>
-              </View>
-            ) : null}
-
-            {step.kind === 'weight' ? (
-              <View style={styles.options}>
-                <FadeSlideIn delay={optionsDelay} distance={RISE_PX}>
-                  <WeightInput
-                    value={weightText}
-                    unit={weightUnit}
-                    onChangeText={(text) => setAnswer('bodyweight', text)}
-                    onChangeUnit={(u) => setAnswer('weightUnit', u)}
-                    onSubmit={() => {
-                      if (!weightInvalid) goNext();
-                    }}
-                  />
-                </FadeSlideIn>
-                <FadeSlideIn delay={optionsDelay + STAGGER_MS} distance={RISE_PX}>
-                  <AppButton label="Continue" onPress={goNext} disabled={weightInvalid} />
-                </FadeSlideIn>
-              </View>
-            ) : null}
-
-            {step.kind === 'ready' ? (
-              <View style={styles.options}>
-                {echo.map((line, i) => (
-                  <FadeSlideIn key={line} delay={optionsDelay + i * STAGGER_MS} distance={RISE_PX}>
-                    <View style={styles.echoRow}>
-                      <View style={styles.echoDot} />
-                      <Text style={styles.echoText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                        {line}
-                      </Text>
-                    </View>
-                  </FadeSlideIn>
-                ))}
-                <FadeSlideIn
-                  delay={optionsDelay + echo.length * STAGGER_MS}
-                  distance={RISE_PX}
-                  style={styles.echoCta}>
-                  <AppButton label="See plans" onPress={goNext} />
-                </FadeSlideIn>
-              </View>
-            ) : null}
-
-            {step.kind === 'intro' || step.kind === 'lesson' ? (
-              <FadeSlideIn delay={optionsDelay} distance={RISE_PX} style={styles.options}>
-                <AppButton label={isIntro ? 'Get started' : 'Continue'} onPress={goNext} />
-              </FadeSlideIn>
-            ) : null}
-          </View>
+          ) : null}
         </View>
-      </KeyboardAvoidingView>
-    </View>
+      );
+    }
+  } else if (step.kind === 'text' && step.storeKey) {
+    contentCount = step.suggestions ? 2 : 1;
+    content = (
+      <View style={styles.stack}>
+        <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
+          <TextField
+            value={textValue ?? ''}
+            onChangeText={(text) => setAnswer(step.storeKey!, text)}
+            placeholder={step.placeholder ?? ''}
+            onSubmit={() => goNext()}
+            accessibilityLabel={headline}
+          />
+        </FadeSlideIn>
+        {step.suggestions ? (
+          <FadeSlideIn delay={contentDelay(1)} distance={RISE_PX} duration={ENTER_MS}>
+            {/* A chip answers-and-advances like a radio option. */}
+            <SuggestionChips
+              suggestions={step.suggestions}
+              current={textValue ?? ''}
+              onPick={onSelect}
+            />
+          </FadeSlideIn>
+        ) : null}
+      </View>
+    );
+    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
+  } else if (step.kind === 'days') {
+    content = (
+      <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
+        <DayPicker
+          mask={dayMask}
+          onToggle={(day) => setAnswer('trainingDays', String(toggleDay(dayMask, day)))}
+        />
+      </FadeSlideIn>
+    );
+    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
+  } else if (step.kind === 'weight') {
+    content = (
+      <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
+        <WeightInput
+          value={weightText}
+          unit={weightUnit}
+          onChangeText={(text) => setAnswer('bodyweight', text)}
+          onChangeUnit={(u) => setAnswer('weightUnit', u)}
+          onSubmit={() => {
+            if (!weightInvalid) goNext();
+          }}
+        />
+      </FadeSlideIn>
+    );
+    cta = { label: step.cta ?? 'Continue', onPress: () => goNext(), disabled: weightInvalid };
+  } else if (step.kind === 'building') {
+    content = (
+      <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
+        <BuildingChecklist lines={checklist} onDone={onBuilt} />
+      </FadeSlideIn>
+    );
+  } else if (step.kind === 'summary') {
+    content = (
+      <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
+        <View style={styles.summaryCard}>
+          {summary.map((line, i) => (
+            <View key={line}>
+              {i > 0 ? <View style={styles.cardDivider} /> : null}
+              <View style={styles.cardRow}>
+                <View style={styles.cardCheck}>
+                  <CheckMark size={moderateScale(13)} stroke={BLUE} />
+                </View>
+                <Text style={styles.cardText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  {line}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </FadeSlideIn>
+    );
+    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
+  } else if (step.kind === 'proof') {
+    contentCount = PROOF_LINES.length;
+    content = (
+      <View style={styles.proofStack}>
+        {PROOF_LINES.map((line, i) => (
+          <FadeSlideIn key={line} delay={contentDelay(i)} distance={RISE_PX} duration={ENTER_MS}>
+            <View style={styles.proofRow}>
+              <View style={styles.proofCheck}>
+                <CheckMark size={moderateScale(13)} stroke={BLUE} />
+              </View>
+              <Text style={styles.proofText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {line}
+              </Text>
+            </View>
+          </FadeSlideIn>
+        ))}
+      </View>
+    );
+    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
+  } else if (step.kind === 'timeline') {
+    contentCount = TRIAL_TIMELINE.length;
+    content = (
+      <View>
+        {TRIAL_TIMELINE.map((node, i) => (
+          <FadeSlideIn
+            key={node.title}
+            delay={contentDelay(i)}
+            distance={RISE_PX}
+            duration={ENTER_MS}>
+            <View style={styles.tlRow}>
+              <View style={styles.tlRail}>
+                <TimelineNode glyph={node.glyph} />
+                {i < TRIAL_TIMELINE.length - 1 ? (
+                  <TimelineConnector delay={contentDelay(i) + 160} />
+                ) : null}
+              </View>
+              <View style={[styles.tlText, i < TRIAL_TIMELINE.length - 1 && styles.tlTextPad]}>
+                <Text style={styles.tlTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  {node.title}
+                </Text>
+                <Text style={styles.tlBody} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  {node.body}
+                </Text>
+              </View>
+            </View>
+          </FadeSlideIn>
+        ))}
+      </View>
+    );
+    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
+  } else if (step.kind === 'founder') {
+    contentCount = FOUNDER_NOTE.length + 1;
+    content = <FounderNote />;
+    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
+  } else {
+    // 'intro' and 'explainer' — the illustration and the copy are the screen.
+    contentCount = 0;
+    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
+  }
+
+  return (
+    <>
+      {/* Forward always arrives from the right; the iOS back-swipe stays live.
+          The zones inside crossfade in on top of it, which is the second half
+          of the transition. */}
+      <Stack.Screen options={{ animation: 'slide_from_right', gestureEnabled: true }} />
+      <OnboardingScreen
+        slug={step.slug}
+        eyebrow={step.eyebrow}
+        headline={headline}
+        subtext={step.subtext}
+        hero={isIntro}
+        progress={
+          isIntro ? null : { total: PROGRESS_TOTAL, completed: progressFilled(stepNumber) }
+        }
+        // The building screen has no way back on purpose: it is already writing
+        // the record it narrates, and there is nothing to undo.
+        onBack={isIntro || step.kind === 'building' ? null : goBack}
+        cta={cta}
+        contentCount={contentCount}>
+        {content}
+      </OnboardingScreen>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: color.bg,
-  },
-  gradient: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  top: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-  },
-  rail: {
-    marginHorizontal: spacing.xxl,
-  },
-  back: {
-    width: HIT,
-    height: HIT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.xs,
-    marginLeft: spacing.md,
-  },
-  contentWrap: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  content: {
-    paddingHorizontal: spacing.xxl,
-  },
-  title: {
-    ...type.question,
-    color: color.textPrimary,
-  },
-  /** The welcome headline — the marketing register, one notch up. */
-  heroTitle: {
-    ...type.display,
-    color: color.textPrimary,
-  },
-  subtitle: {
-    ...type.body,
-    color: alpha(color.textPrimary, ink.echo),
-    marginTop: spacing.md,
-  },
-  options: {
-    marginTop: spacing.xxl,
+  stack: {
     gap: spacing.md,
   },
-  echoRow: {
+  proofStack: {
+    gap: spacing.lg,
+  },
+  affirm: {
+    ...type.subhead,
+    fontWeight: '500',
+    lineHeight: lineFor(21),
+    color: color.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
+  // The summary's record card — the answers read back on one soft card, a
+  // hairline rule between rows, each line marked with the flow's blue check.
+  summaryCard: {
+    backgroundColor: INK_CARD,
+    borderRadius: CARD_RADIUS,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm,
+  },
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  cardCheck: {
+    marginTop: moderateScale(3),
+  },
+  cardText: {
+    flex: 1,
+    ...type.subhead,
+    lineHeight: lineFor(21),
+    color: color.textPrimary,
+  },
+  cardDivider: {
+    height: 1,
+    backgroundColor: INK_TRACK,
+  },
+  proofRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
   },
-  echoDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: color.textSecondary,
-    marginTop: spacing.sm,
+  proofCheck: {
+    marginTop: moderateScale(3),
   },
-  echoText: {
+  proofText: {
+    flex: 1,
+    ...type.headline,
+    lineHeight: lineFor(22),
+    color: color.textPrimary,
+  },
+  tlRow: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+  },
+  tlRail: {
+    alignItems: 'center',
+  },
+  tlNode: {
+    width: moderateScale(30),
+    height: moderateScale(30),
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tlNodeFilled: {
+    backgroundColor: BLUE,
+  },
+  tlNodeHollow: {
+    borderWidth: 1.5,
+    borderColor: INK_TRACK,
+  },
+  tlLine: {
+    width: 1.5,
+    flex: 1,
+    marginVertical: spacing.xs,
+    backgroundColor: INK_TRACK,
+    transformOrigin: 'top',
+  },
+  tlText: {
+    flex: 1,
+    paddingTop: moderateScale(4),
+  },
+  tlTextPad: {
+    paddingBottom: spacing.xl,
+  },
+  tlTitle: {
+    ...type.headline,
+    color: color.textPrimary,
+  },
+  tlBody: {
+    marginTop: 2,
     ...type.subhead,
-    color: alpha(color.textPrimary, ink.delta),
-    flexShrink: 1,
-  },
-  echoCta: {
-    marginTop: spacing.md,
+    lineHeight: lineFor(21),
+    color: color.textSecondary,
   },
 });

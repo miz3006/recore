@@ -12,6 +12,7 @@ const workingSet = (reps: number, weight: number | null): ParsedSet => ({
   duration_s: null,
   rir: null,
   parent: null,
+  note: null,
 });
 
 const item = (exercise: string, line: number, sets: ParsedSet[]): ParsedItem => ({

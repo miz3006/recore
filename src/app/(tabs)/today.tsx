@@ -1,22 +1,27 @@
 import { useEffect, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomToolbar } from '@/components/bottom-toolbar';
 import { DaySwipe } from '@/components/day-swipe';
 import { CheckInSheet } from '@/components/check-in-sheet';
+import { EntryNoteSheet } from '@/components/entry-note-sheet';
 import { FixSheet } from '@/components/fix-sheet';
 import { InsightHeader } from '@/components/insight-header';
 import { NoteSurface } from '@/components/note-surface';
-import { PlanStrip } from '@/components/plan-strip';
 import { ReadOnlyLedger } from '@/components/read-only-ledger';
+import { SessionStart } from '@/components/session-start';
 import { SpotlightTour } from '@/components/spotlight-tour';
 import { SummaryPill } from '@/components/summary-pill';
 import { TopBar } from '@/components/top-bar';
 import { TrialReminderSheet } from '@/components/trial-reminder-sheet';
 import { TrialStartedSheet } from '@/components/trial-started-sheet';
 import { useEntitlement } from '@/lib/billing/state';
+import { refreshRecapNotification } from '@/lib/recap';
+import { DUR } from '@/lib/motion';
 import { color, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
+import { useHasEntries, useSession } from '@/state/session-store';
 
 /**
  * Today — the default tab and 85% of the time spent in Recore (CLAUDE.md §5.1).
@@ -40,6 +45,18 @@ export default function Today() {
   // Resolved once per session in AuthProvider and cached (§12.2) — reading it
   // here is a memory read, never a check.
   const entitlement = useEntitlement();
+  const reduceMotion = useReducedMotion();
+  // Whether today has produced a reading — the one test the weekly line, the
+  // session-start card and the resting pill all share.
+  const hasEntries = useHasEntries();
+  const userId = useSession((s) => s.userId);
+
+  // Keep the pending §12.1 recap notice current: its content is computed at
+  // schedule time, so every open re-computes it from the record as it stands
+  // (Finish does the same). A no-op while the recap is off.
+  useEffect(() => {
+    if (userId) void refreshRecapNotification(userId);
+  }, [userId]);
 
   useEffect(() => {
     const show = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -91,10 +108,27 @@ export default function Today() {
             another day. The header, the plan strip and the note travel
             together, because all three belong to the day being read. */}
         <DaySwipe enabled={!keyboardOpen}>
-          {/* The landmark recedes while typing — mid-workout the note owns the
-              screen (CLAUDE.md §8). */}
-          <InsightHeader hidden={keyboardOpen} />
-          <PlanStrip />
+          {/* THE FURNITURE ARRIVES WITH THE RECORD (owner, 12 Aug 2026).
+              A day with no reading on it shows the header row and a blank
+              page — nothing else. The weekly line, the session-start card and
+              the resting pill all describe training that does not exist yet,
+              and six pieces of chrome around an empty line is the app talking
+              to itself. They fade in together the moment the first line is
+              read, so the canvas visibly BECOMES the ledger.
+
+              All three ask the same question (`useHasEntries`) so they can
+              never disagree about whether the page is blank. */}
+          {hasEntries ? (
+            <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(DUR.slow)}>
+              {/* The landmark recedes while typing — mid-workout the note owns
+                  the screen (CLAUDE.md §8). */}
+              <InsightHeader hidden={keyboardOpen} />
+              {/* On an empty today the strip is grown into the session-start
+                  question (§8.2); everywhere else it renders the plain
+                  read-only strip itself. */}
+              <SessionStart composing={keyboardOpen} />
+            </Animated.View>
+          ) : null}
           <NoteSurface />
         </DaySwipe>
         {/* The bottom swaps with focus: accessory bar while composing (frame
@@ -104,12 +138,13 @@ export default function Today() {
         <View style={keyboardOpen ? undefined : styles.hidden}>
           <BottomToolbar bottomInset={bottomInset} />
         </View>
-        {keyboardOpen ? null : <SummaryPill bottomInset={bottomInset} />}
+        {keyboardOpen || !hasEntries ? null : <SummaryPill bottomInset={bottomInset} />}
       </KeyboardAvoidingView>
 
       {/* The Lift detail sheet is app-wide (`_layout.tsx`) — Lifts opens the
           same one, and two mounted copies would stack two modals. FixSheet is
-          the composer's own, so it stays here. */}
+          the composer's own, so it stays here — opened from a card's alias
+          echo or the inline editor's "fix reading". */}
       <FixSheet />
 
       {/* The end-of-session check-in (§8.1) — the reflection and the effort
@@ -118,6 +153,13 @@ export default function Today() {
           deliberately does NOT wait for a parse: offline there are no effort
           rows and the check-in still has to work. */}
       <CheckInSheet />
+
+      {/* One ledger entry's own sheet (owner, 4 Aug) — how hard that lift was
+          (which moves the next load) and the athlete's words about it (which
+          Next quotes back, never counts). Reached from the card's ⋯ sheet since
+          11 Aug, when the per-card bubble was retired in favour of one
+          end-of-session prompt. It renders nothing until an entry is chosen. */}
+      <EntryNoteSheet />
 
       {/* The day-5 trial reminder (§12.1). It decides its own visibility on
           mount and renders nothing at all when there is no trial running, which

@@ -1,26 +1,38 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
-import { FadeSlideIn, FadeSwap, PressableScale, Stagger } from '@/components/motion';
-import { Eyebrow } from '@/components/primitives';
+import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
+import { BriefFooter, BriefLede } from '@/components/next/brief';
+import { SECTION_GAP } from '@/components/next/section';
+import { NextSession } from '@/components/next/session';
+import { Signals } from '@/components/next/signals';
+import { NextSkeleton } from '@/components/next/skeleton';
+import { SplitChips } from '@/components/next/split-chips';
 import { getCachedBriefSummary, refineBriefSummary } from '@/lib/brief-explain';
-import { briefDateline, briefProse, splitLede } from '@/lib/brief-prose';
-import { buildBrief, type Brief } from '@/lib/db/brief';
+import { briefDateline, briefProse } from '@/lib/brief-prose';
+import { buildBrief, planDayLines, type Brief } from '@/lib/db/brief';
+import { todayKey } from '@/lib/db/dates';
+import { listPlanDays, resolveTodayPlanDay } from '@/lib/db/plan';
 import { markBriefShown } from '@/lib/funnel';
 import { tap } from '@/lib/haptics';
-import { fmtNumber } from '@/lib/parse/summarize';
+import { devWarn } from '@/lib/log';
+import { buildSections, sessionRowsOf } from '@/lib/next/sections';
 import {
   color,
-  fonts,
   hairline,
+  lineFor,
   MAX_FONT_SCALE,
   moderateScale,
-  monoText,
   radius,
-  shadow,
+  readingStyle,
   spacing,
   TAB_BAR_CLEARANCE,
   type,
@@ -28,51 +40,50 @@ import {
 import { useSession } from '@/state/session-store';
 
 /**
- * Next — "What am I doing next?" (owner, 28 July 2026).
+ * Next — "What am I doing next?" (owner, 28 July 2026; rebuilt 13 August).
  *
  * §16 names the prediction as the single strongest retention mechanism in the
  * product: *a reason to open the app on a training day that exists before the
- * user has done anything.* It had no door of its own — a thin strip on Today
- * and a card under the composer. This is the door. It took the Lifts tab's
- * place; Lifts is one tap deeper, from Progress, because "how is my bench
- * going" is a question you ask occasionally and "what am I doing next" is one
- * you ask every training day.
+ * user has done anything.*
  *
  * WHAT THIS IS NOT. The owner's first shape for it was "an AI summary you use
- * as a plan". That is a different product and it breaks three standing rules at
- * once: §1.1 invariant 3 (a model never picks a weight), §20 ("a programme
- * generator — we never tell someone what to train, only what to beat"), and the
- * Terms of Use, which say in as many words that Recore is a calculation and not
- * coaching. It would also destroy the one number no competitor publishes: you
- * cannot measure "followed 7 of the last 9" against a plan that changes its
- * mind.
+ * as a plan". That breaks three standing rules at once: §1.1 invariant 3 (a
+ * model never picks a weight), §20 ("we never tell someone what to train, only
+ * what to beat"), and the Terms, which say in as many words that Recore is a
+ * calculation and not coaching. So **every figure on this screen is computed**
+ * (`db/brief.ts` + the pure engine), and the only text a model may touch is the
+ * prose that `explain-brief` is already allowed to REWRITE — never to author
+ * (§9.1). Same history, same briefing, every time, offline.
  *
- * So **every figure on this screen is computed** (`db/brief.ts` + the pure
- * engine), and the only text a model may touch is the headline sentence, which
- * `explain-prediction` is already allowed to REWRITE — never to author (§8.3).
- * Same history, same briefing, every time, offline.
+ * ## The 13 August rebuild
  *
- * THE BRIEFING leads (owner, 28 July; re-formed 30 July to product-direction
- * §9): a dated editorial card — the "YOUR BRIEF" label §9 names, a lede one
- * notch over body, the rest at body, and a provenance foot carrying the REAL
- * session count. The reference pattern is Strava's Athlete Intelligence /
- * Tempo's readiness (Mobbin): label + prose + the data it summarizes. The
- * paragraph is COMPOSED, never generated — `src/lib/brief-prose.ts`, pure and
- * tested, templates over this same Brief in §9's order (week → next → stakes
- * → moving → holding → record → one thing to watch) — and the model's rewrite
- * (§9.1) lands with one FadeSwap dip: the upgrade is visible, never
- * performed. The adherence record and the watch item read as the paragraph's
- * closing sentences rather than extra blocks.
+ * The August 12 pass fixed what the page SAID. This one fixes what it looked
+ * like, and the diagnosis was one sentence: **four raised cards of equal weight
+ * and no focal point.** The brief was a card, the session was a card, the two
+ * evidence blocks were cards with the identical row shape, and the number a
+ * lifter actually opens this tab for — the load — was 19 pt, three cards down,
+ * smaller than the headline of a paragraph they had already read.
  *
- * Below it, each block disappearing when it has nothing true to say
- * (§1.1 invariant 6):
- *   1. What's next — the declared split day, or the ghost.
- *   2. Standing still — the engine's own deload condition, shown one session
- *      early. The app showing its work before it acts.
- *   3. Moving — e1RM that genuinely climbed.
+ * The page is now one editorial column on paper with exactly ONE raised
+ * surface:
  *
- * No green anywhere except the prescription VALUES in block 1, which is exactly
- * what `signal` means everywhere else: a number not yet lifted (§5.1).
+ *   1. title + dateline, with a scroll-edge hairline that fades in only once
+ *      content is actually under it (never a permanent divider);
+ *   2. the LEDE — the brief's one or two lines, on bare paper (§9's "short
+ *      briefing paragraph", finally short);
+ *   3. the SESSION — the first lift on the one raised card, its load at 30 pt
+ *      and the engine's decision above it as a filled pill; the rest of the
+ *      session as plain rows underneath;
+ *   4. SIGNALS — the old "standing still" and "moving" cards, which were one
+ *      table split in two, as a single horizontally-scrolling strip of tiles;
+ *   5. the full brief behind one disclosure, its provenance, and All lifts.
+ *
+ * Vertical rhythm carries the hierarchy now, so a section with nothing true to
+ * say is still ABSENT rather than an empty header (§1.1 invariant 6) and the
+ * page above it does not move.
+ *
+ * This file assembles; it decides nothing. Every placement rule lives in the
+ * pure module (`lib/next/sections.ts`) or in one section component.
  */
 export default function Next() {
   const router = useRouter();
@@ -93,10 +104,10 @@ export default function Next() {
 
   const prose = brief ? briefProse(brief) : '';
 
-  // The model-written upgrade (§8.5, owner ruling 29 Jul): the composed
-  // paragraph renders instantly; a validated rewrite swaps in when it lands —
-  // late or never, and never blocking anything. Cached per paragraph, so a
-  // stable brief costs one call ever.
+  // The model-written upgrade (§9.1): the composed paragraph is ready
+  // instantly; a validated rewrite swaps in when it lands — late or never, and
+  // never blocking anything. Cached per paragraph, so a stable brief costs one
+  // call ever.
   const [summary, setSummary] = useState<string | null>(() =>
     prose ? getCachedBriefSummary(prose) : null,
   );
@@ -104,8 +115,8 @@ export default function Next() {
     const cached = prose ? getCachedBriefSummary(prose) : null;
     setSummary(cached);
     if (!prose) return;
-    // §13's fallback-rate counters (§9.3): which phrasing was actually on
-    // screen. An upgrade mid-look counts once in each column, truthfully.
+    // §9.3's fallback-rate counters: which phrasing was actually on screen. An
+    // upgrade mid-look counts once in each column, truthfully.
     markBriefShown(cached ? 'model' : 'composed');
     refineBriefSummary(prose, (s) => {
       setSummary(s);
@@ -113,50 +124,104 @@ export default function Next() {
     });
   }, [prose]);
 
-  // The lede split and the dateline are display-only: cache and guard always
-  // see the whole paragraph, and the date is the device's own clock.
-  const lede = splitLede(summary ?? prose);
-  const dateline = briefDateline(new Date());
-  const provenanceN = brief?.sessions8w ?? 0;
-  const provenanceBase =
-    provenanceN > 0
-      ? `${provenanceN === 1 ? 'one session' : `${provenanceN} sessions`} in the last 8 weeks`
-      : null;
-  // Both feet are TRUE for the state they describe: the composed paragraph is
-  // deterministic; the rewrite is phrasing over the same numbers, guarded so a
-  // number the record doesn't hold can never appear (brief-guard). The session
-  // count is the record's own, read in buildBrief — never estimated.
-  const provenance = summary
-    ? provenanceBase
-      ? `Phrased from your computed brief — ${provenanceBase}, every number read from your record.`
-      : 'Phrased from your computed brief — every number is read from your record.'
-    : provenanceBase
-      ? `Read from your record — ${provenanceBase}, same history, same brief, offline.`
-      : 'Read from your record — same history, same briefing, offline.';
+  // Where every placement rule on this page lives. `devWarn` is how a refused
+  // e1RM delta reaches a developer without reaching the athlete.
+  const sections = useMemo(
+    () => (brief ? buildSections(brief, { phrased: summary != null, warn: devWarn }) : null),
+    [brief, summary],
+  );
+
+  /**
+   * THE SPLIT PREVIEW (13 Aug). Next has only ever shown the day the athlete is
+   * due for; the chips let them look at another day of their own split and see
+   * what it would ask of them, computed by the same `planStripFor` the real
+   * strip runs on.
+   *
+   * Looking is not answering: selecting a chip writes nothing and does not move
+   * which day is due. That stays the session-start card's job (§8.2).
+   */
+  /* eslint-disable react-hooks/exhaustive-deps */
+  const planDays = useMemo(() => (userId ? listPlanDays(userId) : []), [userId, refresh]);
+  const dueId = useMemo(
+    () => (userId ? (resolveTodayPlanDay(userId, todayKey())?.id ?? null) : null),
+    [userId, refresh],
+  );
+  /* eslint-enable react-hooks/exhaustive-deps */
+
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  // A day deleted in /split while this screen was open must not leave a chip
+  // selected that no longer exists.
+  const previewDay =
+    previewId && previewId !== dueId ? (planDays.find((d) => d.id === previewId) ?? null) : null;
+  const dueLabel = planDays.find((d) => d.id === dueId)?.label ?? null;
+
+  const preview = useMemo(() => {
+    if (!userId || !previewDay || !brief) return null;
+    // The same stalls the due day folds in, so a plateau reads identically
+    // whichever day names the lift. No ghost sentence: it belongs to the
+    // session actually due, and attaching it here would be a fabrication.
+    const { rows } = sessionRowsOf(planDayLines(userId, previewDay), brief.stalls, null);
+    return { title: previewDay.label, rows };
+  }, [userId, previewDay, brief]);
 
   const hasAnything =
+    sections != null &&
     brief != null &&
-    (brief.lines.length > 0 ||
-      brief.stalls.length > 0 ||
-      brief.movers.length > 0 ||
-      brief.adherence != null);
+    (sections.sessionRows.length > 0 ||
+      sections.standing.length > 0 ||
+      sections.moving.length > 0 ||
+      brief.notes.length > 0 ||
+      sections.adherenceChip != null);
+
+  /**
+   * The scroll-edge rule. Apple's own guidance for floating chrome is to fade a
+   * separator in where content actually meets it rather than to draw a
+   * permanent divider — so the header is a clean title until something is
+   * underneath it, and the line arrives over the first 12 pt of travel.
+   *
+   * Opacity only, on the UI thread. Nothing here moves, so there is nothing for
+   * Reduce Motion to take away.
+   */
+  const y = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    y.value = e.contentOffset.y;
+  });
+  const edgeStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(1, Math.max(0, y.value / 12)),
+  }));
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <View style={styles.nav}>
-        <Text style={styles.navTitle} accessibilityRole="header" maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        <Text
+          style={styles.navTitle}
+          accessibilityRole="header"
+          maxFontSizeMultiplier={MAX_FONT_SCALE}>
           Next
         </Text>
+        <Text style={styles.dateline} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {briefDateline(new Date())}
+        </Text>
+        <Animated.View style={[styles.edge, edgeStyle]} pointerEvents="none" />
       </View>
 
-      <ScrollView
+      <Animated.ScrollView
         style={styles.scroll}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: insets.bottom + spacing.xxl + TAB_BAR_CLEARANCE },
+          // The All lifts row is the last thing on the page and has to sit
+          // ENTIRELY above the floating tab bar, not under its glass.
+          { paddingBottom: insets.bottom + TAB_BAR_CLEARANCE + spacing.xxxl },
         ]}
         showsVerticalScrollIndicator={false}>
-        {!hasAnything ? (
+        {!sections ? (
+          // No account resolved yet — the record is still being opened. The one
+          // thing this must not do is show the empty state, which is a real
+          // claim about an empty record rather than a way to pass the time.
+          <NextSkeleton />
+        ) : !hasAnything ? (
           // §15: an empty screen invites an action, it never reports a lack.
           <FadeSlideIn>
             <Text style={styles.emptyTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -169,155 +234,72 @@ export default function Next() {
           </FadeSlideIn>
         ) : (
           <Stagger initialDelay={60} step={70} distance={12}>
-            {prose ? (
-              // The brief — §9's calm editorial card: dated, labelled, a lede
-              // over body prose, a provenance foot with the real session
-              // count. The label wears Recore blue (§4.2's product accent) and
-              // sits INSIDE the card: this is one authored artefact, not a
-              // section head over data rows.
-              <View style={styles.block}>
-                <View style={styles.briefCard}>
-                  <View style={styles.briefHead}>
-                    <Eyebrow tone="secondary" style={styles.briefLabel}>
-                      Your brief
-                    </Eyebrow>
-                    <Text style={styles.briefDate} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                      {dateline}
-                    </Text>
-                  </View>
-                  <FadeSwap swapKey={summary ? 'model' : 'composed'}>
-                    <Text style={styles.briefLede} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                      {lede.lead}
-                    </Text>
-                    {lede.rest ? (
-                      <Text style={styles.briefBody} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                        {lede.rest}
-                      </Text>
-                    ) : null}
-                  </FadeSwap>
-                  <Text style={styles.briefFoot} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {provenance}
+            <View style={styles.lede}>
+              <BriefLede headline={sections.headline} adherence={sections.adherenceChip} />
+            </View>
+
+            {planDays.length >= 2 ? (
+              <View style={styles.chips}>
+                <SplitChips
+                  days={planDays}
+                  activeId={previewDay?.id ?? dueId}
+                  dueId={dueId}
+                  onSelect={(id) => {
+                    tap();
+                    setPreviewId(id === dueId ? null : id);
+                  }}
+                />
+              </View>
+            ) : null}
+
+            {/* Keyed on the day so switching replays the lever's spring — the
+                one element on the card that actually changed. */}
+            {preview ? (
+              preview.rows.length > 0 ? (
+                <View style={styles.section}>
+                  <NextSession
+                    key={previewDay?.id}
+                    title={preview.title}
+                    rows={preview.rows}
+                    note={null}
+                    footNote={
+                      dueLabel
+                        ? `A look ahead. Today reads as ${dueLabel}.`
+                        : 'A look ahead — not the session you are due for.'
+                    }
+                  />
+                </View>
+              ) : (
+                <View style={styles.section}>
+                  <Text style={styles.previewEmpty} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    {`Nothing to progress on ${preview.title} yet. These movements need one logged session each before Recore can say what beats them.`}
                   </Text>
                 </View>
+              )
+            ) : sections.sessionRows.length > 0 ? (
+              <View style={styles.section}>
+                <NextSession
+                  key={dueId ?? 'due'}
+                  title={sections.sessionTitle}
+                  rows={sections.sessionRows}
+                  note={sections.sessionNote}
+                />
               </View>
             ) : null}
 
-            {brief!.lines.length > 0 ? (
-              <View style={styles.block}>
-                <Eyebrow tone="secondary">
-                  {brief!.forToday ? `Today · ${brief!.dayLabel ?? 'your split'}` : 'Next session'}
-                </Eyebrow>
-                {brief!.headline ? (
-                  <Text style={styles.headline} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {brief!.headline}
-                  </Text>
-                ) : null}
-                <View style={styles.card}>
-                  {brief!.lines.map((l, i) => (
-                    <View key={`${l.name}:${i}`} style={[styles.planRow, i > 0 && styles.rowRule]}>
-                      <View style={styles.planTop}>
-                        <Text style={styles.rowName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                          {l.name}
-                        </Text>
-                        {l.bestKg != null ? (
-                          <Text style={styles.planBest} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                            {`best ${fmtNumber(l.bestKg)}`}
-                          </Text>
-                        ) : null}
-                      </View>
-                      {/* The proposal, shown as its own arithmetic: what the
-                          record holds (§20: what to beat, never what to do),
-                          an ink arrow, what the engine set from it. Green
-                          stays on the not-yet-lifted number alone (§4.2) —
-                          the suggestion is the PAIR, not a colour. */}
-                      {l.last || l.value ? (
-                        <View style={styles.planLoads}>
-                          {l.last ? (
-                            <Text style={styles.planLast} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                              {`last ${l.last}`}
-                            </Text>
-                          ) : null}
-                          {l.last && l.value ? (
-                            <Text style={styles.planArrow} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                              →
-                            </Text>
-                          ) : null}
-                          {l.value ? (
-                            <Text style={styles.rowPlanned} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                              {l.value}
-                            </Text>
-                          ) : null}
-                        </View>
-                      ) : null}
-                      {/* The engine's own reason — visible, because a reason
-                          is what separates a proposal from a bare number, and
-                          §4.2 requires planned green to carry one. */}
-                      {l.why ? (
-                        <Text style={styles.planWhy} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                          {l.why}
-                        </Text>
-                      ) : null}
-                    </View>
-                  ))}
-                </View>
-                <Text style={styles.foot} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  Not training until you lift it. Write what you actually do.
-                </Text>
+            {sections.standing.length > 0 || sections.moving.length > 0 ? (
+              <View style={styles.section}>
+                <Signals standing={sections.standing} moving={sections.moving} />
               </View>
             ) : null}
 
-            {brief!.stalls.length > 0 ? (
-              <View style={styles.block}>
-                <Eyebrow tone="secondary">Standing still</Eyebrow>
-                <View style={styles.card}>
-                  {brief!.stalls.map((s, i) => (
-                    <View key={s.canonical} style={[styles.row, i > 0 && styles.rowRule]}>
-                      <View style={styles.rowText}>
-                        <Text style={styles.rowName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                          {s.canonical}
-                        </Text>
-                        <Text style={styles.rowWhy} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                          {s.deloadTo != null
-                            ? `${s.sessions} sessions at the same weight — next one backs off to ${fmtNumber(s.deloadTo)}`
-                            : `${s.sessions} sessions at the same weight`}
-                        </Text>
-                      </View>
-                      <Text style={styles.rowValue} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                        {`${fmtNumber(s.weight)} kg`}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ) : null}
-
-            {brief!.movers.length > 0 ? (
-              <View style={styles.block}>
-                <Eyebrow tone="secondary">Moving</Eyebrow>
-                <View style={styles.card}>
-                  {brief!.movers.map((m, i) => (
-                    <View key={m.canonical} style={[styles.row, i > 0 && styles.rowRule]}>
-                      <View style={styles.rowText}>
-                        <Text style={styles.rowName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                          {m.canonical}
-                        </Text>
-                        <Text style={styles.rowWhy} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                          {`estimated 1RM, last ${m.weeks} weeks`}
-                        </Text>
-                      </View>
-                      {/* A delta is a WORD plus a number, never a bare + and
-                          never a colour (§5.1). */}
-                      <Text style={styles.rowValue} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                        {`up ${fmtNumber(m.deltaKg)} kg`}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ) : null}
-
-            {/* The adherence record closes the briefing paragraph above —
-                a fourth block would say the same sentence twice. */}
+            <View style={styles.section}>
+              <BriefFooter
+                prose={summary ?? prose}
+                proseKey={summary ? 'model' : 'composed'}
+                provenance={sections.provenance}
+              />
+            </View>
 
             {/* Lifts moved out of the tab bar to make room for this screen. It
                 is one tap away, not gone. */}
@@ -339,7 +321,7 @@ export default function Next() {
             </PressableScale>
           </Stagger>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
     </SafeAreaView>
   );
 }
@@ -351,14 +333,30 @@ const styles = StyleSheet.create({
   },
   nav: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: spacing.md,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.md,
   },
   navTitle: {
     ...type.title2,
     color: color.textPrimary,
+  },
+  dateline: {
+    ...readingStyle('400'),
+    fontSize: type.footnote.fontSize,
+    color: color.textMuted,
+  },
+  /** The scroll edge — absent at rest, faded in once content is under it. */
+  edge: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: hairline,
+    backgroundColor: color.divider,
   },
   scroll: {
     flex: 1,
@@ -367,151 +365,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
   },
-  block: {
+  /** The lede sits closer to the session than sections do to each other: it is
+   * the standfirst OF that card, not a block of its own. */
+  lede: {
     marginBottom: spacing.xl,
-    gap: spacing.sm,
+    paddingHorizontal: spacing.xs,
   },
-  headline: {
+  /** ONE gap between sections, everywhere on the page. Sections that render
+   * nothing are not wrapped at all, so a hidden block never leaves a double gap
+   * behind it. */
+  section: {
+    marginBottom: SECTION_GAP,
+  },
+  /** The chips belong TO the card under them, so they sit closer than a
+   * section gap — proximity is what says "this switches that". */
+  chips: {
+    marginBottom: spacing.md,
+  },
+  previewEmpty: {
     ...type.subhead,
-    lineHeight: moderateScale(22),
-    color: color.textPrimary,
-  },
-  card: {
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.divider,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.lg,
-    ...shadow.card,
-  },
-  row: {
-    minHeight: moderateScale(52),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  rowRule: {
-    borderTopWidth: 1,
-    borderTopColor: color.divider,
-  },
-  rowText: {
-    flex: 1,
-  },
-  rowName: {
-    ...type.subhead,
-    fontWeight: '600',
-    color: color.textPrimary,
-    flexShrink: 1,
-  },
-  rowWhy: {
-    marginTop: 2,
-    ...type.footnote,
-    lineHeight: moderateScale(16),
-    color: color.textMuted,
-  },
-  // The prescription rows read top-down as a proposal: lift (and its all-time
-  // best), then last → planned, then the reason. A column, unlike the
-  // stall/mover rows, because a from → to pair folded into a right gutter
-  // stops reading as a pair.
-  planRow: {
-    minHeight: moderateScale(52),
-    justifyContent: 'center',
-    gap: moderateScale(3),
-    paddingVertical: spacing.md,
-  },
-  planTop: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  planBest: {
-    fontFamily: fonts.mono,
-    fontSize: type.footnote.fontSize,
-    color: color.textMuted,
-    fontVariant: ['tabular-nums'],
-  },
-  planLoads: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    flexWrap: 'wrap',
-    columnGap: spacing.sm,
-    rowGap: 2,
-  },
-  planLast: {
-    fontFamily: fonts.mono,
-    fontSize: type.footnote.fontSize,
-    color: color.textMuted,
-    fontVariant: ['tabular-nums'],
-  },
-  planArrow: {
-    fontFamily: fonts.mono,
-    fontSize: type.footnote.fontSize,
+    lineHeight: lineFor(22),
     color: color.textSecondary,
-  },
-  planWhy: {
-    ...type.footnote,
-    lineHeight: moderateScale(16),
-    color: color.textSecondary,
-  },
-  rowPlanned: {
-    ...monoText,
-    color: color.signal,
-  },
-  rowValue: {
-    ...monoText,
-    color: color.textSecondary,
-  },
-  foot: {
-    ...type.footnote,
-    color: color.textMuted,
-  },
-  // The brief: the one card on this screen whose content is sentences — the
-  // app writing, not tabulating — and the one card with hero weight (§9's
-  // "calm editorial card"): a larger radius, more air, the raised cast. Every
-  // other surface keeps the standard card so the hierarchy is one level deep.
-  briefCard: {
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.divider,
-    borderRadius: radius.xl,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl,
-    gap: spacing.md,
-    ...shadow.raised,
-  },
-  briefHead: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  briefLabel: {
-    color: color.trained,
-  },
-  briefDate: {
-    ...type.footnote,
-    color: color.textMuted,
-    fontVariant: ['tabular-nums'],
-  },
-  briefLede: {
-    ...type.lede,
-    color: color.textPrimary,
-  },
-  briefBody: {
-    marginTop: spacing.sm,
-    ...type.body,
-    color: color.textPrimary,
-  },
-  briefFoot: {
-    marginTop: spacing.xs,
-    paddingTop: spacing.sm,
-    borderTopWidth: hairline,
-    borderTopColor: color.divider,
-    ...type.footnote,
-    color: color.textMuted,
   },
   liftsRow: {
     minHeight: moderateScale(52),
@@ -540,7 +414,7 @@ const styles = StyleSheet.create({
   emptyBody: {
     marginTop: spacing.md,
     ...type.subhead,
-    lineHeight: moderateScale(23),
+    lineHeight: lineFor(23),
     color: color.textSecondary,
   },
 });

@@ -25,11 +25,27 @@ export function moderateScale(size: number, factor = 0.5): number {
 }
 
 /**
- * Upper bound on the OS Dynamic Type multiplier (~1.3). Text is allowed to grow
- * for accessibility, but clamped here so large sizes don't break the layout
- * (task §1). Pass as `maxFontSizeMultiplier` on every scalable Text.
+ * Upper bound on the OS Dynamic Type multiplier. Pass as `maxFontSizeMultiplier`
+ * on every scalable Text.
+ *
+ * **Raised from 1.3 to 1.5 on 9 August 2026 (owner ask: readable at low
+ * vision).** 1.3 was never a considered accessibility limit — it was the point
+ * where the layout broke, because the app hardcoded line heights that could not
+ * grow with their glyphs. That is fixed at the source now (`lineFor` below, used
+ * by every type token and every literal line height), so the clamp could move to
+ * where the reader is actually served. Someone running iOS at 235% still does
+ * not get 235% here; going further needs the fixed-geometry surfaces
+ * (calendar cells, the note gutter) rebuilt, not just a bigger number.
  */
-export const MAX_FONT_SCALE = 1.3;
+export const MAX_FONT_SCALE = 1.5;
+
+/**
+ * The clamp for text locked inside GEOMETRY that cannot grow with it — a day
+ * number in a calendar circle, initials in an avatar, a reading pinned to a
+ * note line. Growing those crops the glyph instead of helping, so they stop
+ * one step below the app clamp. Everything else uses `MAX_FONT_SCALE`.
+ */
+export const FIXED_FONT_SCALE = 1.2;
 
 /**
  * The user's OS font scale, clamped to MAX_FONT_SCALE. RN scales a Text's
@@ -37,3 +53,19 @@ export const MAX_FONT_SCALE = 1.3;
  * the SAME factor so the glyph and its line box grow together.
  */
 export const osFontScale = Math.min(PixelRatio.getFontScale(), MAX_FONT_SCALE);
+
+/**
+ * A line height for `size`, grown by the reader's own text setting.
+ *
+ * RN scales a Text's `fontSize` by the OS font scale but leaves an explicit
+ * `lineHeight` exactly where it was written — so a hardcoded `lineHeight: 22`
+ * under a 17pt font is fine at 1× and clips its own descenders at 1.3×. THIS is
+ * what capped the app at 1.3. Every line height in the app goes through here
+ * instead, so the line box and the glyph grow together.
+ *
+ * Read once at module load, like `osFontScale`: a text-size change mid-session
+ * lands fully after the next launch.
+ */
+export function lineFor(size: number, factor = 0.5): number {
+  return PixelRatio.roundToNearestPixel(moderateScale(size, factor) * osFontScale);
+}
