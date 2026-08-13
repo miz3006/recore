@@ -41,6 +41,8 @@ export type IconName =
   | 'table'
   | 'upload'
   | 'lock'
+  // The trial timeline's "everything is unlocked today" node.
+  | 'unlock'
   | 'document'
   | 'star'
   | 'sign-out'
@@ -99,6 +101,7 @@ const MAP: Record<IconName, Glyph> = {
   table: { set: 'ion', name: 'grid-outline' },
   upload: { set: 'ion', name: 'cloud-upload-outline' },
   lock: { set: 'ion', name: 'lock-closed-outline' },
+  unlock: { set: 'ion', name: 'lock-open-outline' },
   document: { set: 'ion', name: 'document-text-outline' },
   star: { set: 'ion', name: 'star-outline' },
   'sign-out': { set: 'ion', name: 'log-out-outline' },
@@ -138,6 +141,7 @@ const GLYPH_TINT: Partial<Record<IconName, string>> = {
   table: glyphColor.plum,
   upload: glyphColor.orange,
   lock: glyphColor.slate,
+  unlock: glyphColor.slate,
   document: glyphColor.slate,
   star: glyphColor.gold,
   'sign-out': glyphColor.slate,

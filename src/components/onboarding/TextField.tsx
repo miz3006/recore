@@ -3,7 +3,7 @@ import { StyleSheet, TextInput, View } from 'react-native';
 
 import { color, MAX_FONT_SCALE, moderateScale, spacing } from '@/lib/theme';
 
-import { BLUE, CARD_RADIUS, INK_CARD, SELECT_BORDER } from './tokens';
+import { BLUE, INK_CARD, ROW_RADIUS, SELECT_BORDER } from './tokens';
 
 /**
  * The single-line text answer of the flow (name, priority movement). A soft
@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
     backgroundColor: INK_CARD,
     borderWidth: SELECT_BORDER,
     borderColor: INK_CARD,
-    borderRadius: CARD_RADIUS,
+    borderRadius: ROW_RADIUS,
     paddingHorizontal: spacing.xl,
   },
   fieldFocused: {

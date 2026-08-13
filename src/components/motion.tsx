@@ -193,23 +193,27 @@ export function FadeScaleIn({
 export function FadeSlideX({
   children,
   direction = 1,
+  delay = 0,
   distance = 22,
   duration = DUR.base,
   style,
+  layout,
 }: {
   children: React.ReactNode;
   /** 1 = arriving from the right (forward), -1 = from the left (back). */
   direction?: 1 | -1;
+  delay?: number;
   distance?: number;
   duration?: number;
   style?: StyleProp<ViewStyle>;
+  layout?: React.ComponentProps<typeof Animated.View>['layout'];
 }) {
   const reduce = useReducedMotion();
   const p = useSharedValue(reduce ? 1 : 0);
 
   useEffect(() => {
     if (reduce) return;
-    p.value = withTiming(1, { duration, easing: EASE.emphasized });
+    p.value = withDelay(delay, withTiming(1, { duration, easing: EASE.emphasized }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -218,7 +222,11 @@ export function FadeSlideX({
     transform: [{ translateX: (1 - p.value) * distance * direction }],
   }));
 
-  return <Animated.View style={[animatedStyle, style]}>{children}</Animated.View>;
+  return (
+    <Animated.View layout={layout} style={[animatedStyle, style]}>
+      {children}
+    </Animated.View>
+  );
 }
 
 /**

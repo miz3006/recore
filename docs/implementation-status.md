@@ -1172,3 +1172,56 @@ owner's key, owner's run).
 
   Gates: typecheck 0 · 318/318 · lint 0 · iOS export pass. **Unverified:** device QA — the
   top-left placement with the keyboard up, and the canvas→ledger glide on hardware.
+- **13 Aug 2026 — the Claude Design onboarding canvas, imported (owner ask: "use this design,
+  and you can add some animations between pages"; the nineteen illustrations arrived with it).**
+  Source: `claude.ai/design/p/77a1cd08…/Recore Onboarding.dc.html`, read through the design MCP —
+  21 frames, a component-states sheet, a motion specification, a style tile and an illustration
+  appendix.
+
+  **The illustrations are the substance of this pass.** All nineteen (`assets/new_onboarding/`,
+  one per screen the design draws a character on) arrived as opaque 1024² frames with the
+  generator's transparency CHECKERBOARD flattened into the pixels — dropping them in as supplied
+  would have put a grey grid behind the mascot on every screen. The alpha was reconstructed from
+  that pattern, each drawing trimmed to its own bounding box so `contain` fills the band instead
+  of fitting empty margin, then written to `assets/onboarding/<slug>.png` at 880 px on the long
+  edge and 64 colours — 2.6 MB for the set, verified present in the iOS export. Every slug in
+  `STEPS` now has art except `building` and `trial-timeline`, which the design marks typographic
+  and which stay so; `paywall` is registered under the same registry and the paywall route reads
+  it. The previous single `welcome.png` (a different pose, from the 13 Aug trial pass) is
+  replaced. **The recovery script is not in the repository** — it was a one-off, and the assets
+  it produced are the artefact.
+
+  Adopted from the canvas: 20 pt row/field radius, the 56 pt CTA, the 30/34 headline, day and
+  suggestion chips that FILL blue with a white label when chosen, the summary as a plain list of
+  blue-disc bullets rather than a card, the product truths as ruled lines rather than a checked
+  list, an all-outlined trial timeline (the first node was a filled blue disc, which read as a
+  step already completed), and the weekly-recap question as the design's filled/outlined pair of
+  full-height choices — which replaces `ToggleRow`. **`components/onboarding/Toggle.tsx` is now
+  orphaned** (`WeightInput` has its own unit toggle); left in place for the owner to decide on.
+
+  Motion, per the design's own specification sheet: the entrance stagger now slides
+  HORIZONTALLY and in the direction the flow moved (`components/onboarding/direction.ts` +
+  `FadeSlideX`, which gained a `delay`) so the mascot and the question trail the page and Back
+  no longer looks like Forward; the native slide is kept underneath it because it is what
+  carries the interactive edge-swipe. New: `ParseDemo` on screen 02 — the typed line, then the
+  parsed record wiping in left→right behind a paper-coloured cover (transforms only). New: the
+  paywall CTA's glow swells ONCE on arrival, never loops (a pulsing buy button is a countdown by
+  another name, §2 rule 6). The paywall also gained the mascot at half band height.
+
+  **Copy was NOT taken from the canvas.** Several of its lines are claims this repository
+  deliberately removed — "Lifters who keep a record progress faster", "Three months is where
+  most lifters see their first real PRs", "Why lifters switch to Recore" — each an invented
+  statistic or implied social proof that CLAUDE.md §2 rule 2 and §3 forbid. The design is the
+  visual authority here; `config.ts` remains the copy authority.
+
+  Not adopted: the canvas's fixed y-geometry (the band is derived from the WINDOW so Dynamic
+  Type and short devices work — the existing rule, and the reason nothing here sets a fixed
+  height around text), its script face for the typed line (`fonts.mono` is already this app's
+  voice for raw text; a third family is not warranted), and the extra spring on the paywall plan
+  cards, which already arrive on the screen's own stagger.
+
+  Gates: typecheck 0 · **331/331** · lint 0 · iOS export pass. **Unverified:** device QA — the
+  directional entrance and the screen-02 wipe on hardware, Reduce Motion across the flow, the
+  cut-out mascots against `color.bg` on a real display, and VoiceOver on the new
+  primary/outline recap rows. No prompt, schema or guard was touched, so no §9.4 evaluation is
+  owed.

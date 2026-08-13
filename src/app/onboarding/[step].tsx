@@ -27,13 +27,14 @@ import {
   TRIAL_TIMELINE,
 } from '@/components/onboarding/config';
 import { DayPicker } from '@/components/onboarding/DayPicker';
+import { setFlowDirection } from '@/components/onboarding/direction';
 import { FounderNote } from '@/components/onboarding/FounderNote';
 import { contentDelay, OnboardingScreen } from '@/components/onboarding/OnboardingScreen';
 import { OptionRow } from '@/components/onboarding/OptionRow';
+import { ParseDemo } from '@/components/onboarding/ParseDemo';
 import { SuggestionChips } from '@/components/onboarding/SuggestionChips';
 import { TextField } from '@/components/onboarding/TextField';
-import { ToggleRow } from '@/components/onboarding/Toggle';
-import { BLUE, ENTER_MS, INK_CARD, INK_TRACK, RISE_PX, CARD_RADIUS } from '@/components/onboarding/tokens';
+import { BLUE, ENTER_MS, INK_TRACK, RISE_PX } from '@/components/onboarding/tokens';
 import { WeightInput } from '@/components/onboarding/WeightInput';
 import { defaultLanguage } from '@/lib/locale';
 import { markObStepReached, markOnboardingCompleted, setObStepCount } from '@/lib/funnel';
@@ -203,20 +204,23 @@ function TimelineConnector({ delay }: { delay: number }) {
   return <Animated.View style={[styles.tlLine, animatedStyle]} />;
 }
 
-/** One trial-timeline node mark: 'start' is a filled blue disc with a white
- * check — it begins now; the future nodes are quiet ink circles carrying the
- * reminder bell and the billing card. No emoji anywhere in this flow. */
+/**
+ * One trial-timeline node mark. All three are OUTLINED ink circles carrying a
+ * monochrome glyph (design import, 13 Aug 2026) — the unlocked padlock of
+ * today, the reminder bell, the billing card. The first node used to be a
+ * filled blue disc; it made "today" look like a step already completed on a
+ * screen that is describing three things that have not happened yet, and it
+ * spent the flow's accent on the one screen that must read as plain fact.
+ * No emoji anywhere in this flow.
+ */
 function TimelineNode({ glyph }: { glyph: 'start' | 'bell' | 'card' }) {
-  if (glyph === 'start') {
-    return (
-      <View style={[styles.tlNode, styles.tlNodeFilled]}>
-        <CheckMark size={moderateScale(13)} stroke="#FFFFFF" />
-      </View>
-    );
-  }
   return (
-    <View style={[styles.tlNode, styles.tlNodeHollow]}>
-      <Icon name={glyph} size={moderateScale(14)} tint={color.textSecondary} />
+    <View style={styles.tlNode}>
+      <Icon
+        name={glyph === 'start' ? 'unlock' : glyph}
+        size={moderateScale(16)}
+        tint={color.textPrimary}
+      />
     </View>
   );
 }
@@ -263,6 +267,7 @@ export default function OnboardingStep() {
 
   const goNext = useCallback(
     (mode: 'push' | 'replace' = 'push') => {
+      setFlowDirection(1);
       if (stepNumber < STEPS.length) {
         const href = `/onboarding/${stepNumber + 1}` as const;
         if (mode === 'replace') router.replace(href);
@@ -293,6 +298,7 @@ export default function OnboardingStep() {
     // 900 ms later from a screen the user already left and pushes them forward
     // again — and the armed ref would still be blocking taps if they returned.
     cancelAdvance();
+    setFlowDirection(-1);
     // After a cold-start resume there is no history behind this screen —
     // walking to the previous step keeps Back honest instead of dead.
     if (router.canGoBack()) router.back();
@@ -353,20 +359,21 @@ export default function OnboardingStep() {
   );
 
   /**
-   * The notifications step is a SWITCH, not a pair of radio rows — the one
-   * question in the flow whose answer a person may want to change their mind
-   * about before moving on. Its two labels are the step's own config copy and
-   * the stored answer is still 'yes' / 'no'; only the control changed.
+   * The notifications step is the one question drawn as a PAIR OF FULL-HEIGHT
+   * CHOICES rather than a list (Claude Design canvas, 13 Aug 2026): a filled
+   * blue row for yes, an outlined row for no. Its two labels are the step's own
+   * config copy and the stored answer is still 'yes' / 'no'.
    *
-   * Unanswered reads as on, and the row says so in words before Continue writes
-   * it. Recap intent is not a permission — §5.1 keeps the OS prompt for the
-   * moment the first recap actually exists — so a visible, single-tap default
-   * is honest here in a way it would not be for a system dialog.
+   * It is also the one question in the flow whose answer a person may want to
+   * change their mind about before moving on, so it does NOT auto-advance —
+   * Continue writes whatever the screen is showing. Unanswered reads as yes,
+   * and the filled row says which one that is before the button commits it.
+   * Recap intent is not a permission — §5.1 keeps the OS prompt for the moment
+   * the first recap actually exists — so a visible default is honest here in a
+   * way it would not be for a system dialog.
    */
   const isNotifications = step.slug === 'notifications';
-  const notificationsOn = (answers.notifications ?? 'yes') === 'yes';
-  const notificationsLabel =
-    step.options?.find((o) => o.id === (notificationsOn ? 'yes' : 'no'))?.label ?? '';
+  const notificationsAnswer = answers.notifications ?? 'yes';
 
   // What sits in the content band, and how many staggered items it holds (the
   // CTA lands one beat after the last of them).
@@ -376,22 +383,31 @@ export default function OnboardingStep() {
 
   if (step.kind === 'question' && step.options) {
     if (isNotifications) {
+      contentCount = step.options.length;
       content = (
-        <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
-          <ToggleRow
-            label={notificationsLabel}
-            value={notificationsOn}
-            onValueChange={(next) => setAnswer('notifications', next ? 'yes' : 'no')}
-          />
-        </FadeSlideIn>
+        <View style={styles.stack} accessibilityRole="radiogroup" accessibilityLabel={headline}>
+          {step.options.map((option, i) => (
+            <FadeSlideIn
+              key={option.id}
+              delay={contentDelay(i)}
+              distance={RISE_PX}
+              duration={ENTER_MS}>
+              <OptionRow
+                label={option.label}
+                selected={notificationsAnswer === option.id}
+                onPress={() => setAnswer('notifications', option.id)}
+                variant={option.id === 'yes' ? 'primary' : 'outline'}
+              />
+            </FadeSlideIn>
+          ))}
+        </View>
       );
-      contentCount = 1;
       cta = {
         label: step.cta ?? 'Continue',
         onPress: () => {
-          // Continue always writes what the row is showing, so a person who
-          // never touched the switch still gets the answer they could read.
-          setAnswer('notifications', notificationsOn ? 'yes' : 'no');
+          // Continue always writes what the screen is showing, so a person who
+          // never touched a row still gets the answer they could read.
+          setAnswer('notifications', notificationsAnswer);
           goNext();
         },
       };
@@ -484,36 +500,37 @@ export default function OnboardingStep() {
       </FadeSlideIn>
     );
   } else if (step.kind === 'summary') {
+    // A plain list, not a card (design import, 13 Aug 2026). Every line is
+    // already the person's own answer read back; boxing them made the screen
+    // look like a receipt from the app rather than a page of their own.
+    contentCount = summary.length;
     content = (
-      <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
-        <View style={styles.summaryCard}>
-          {summary.map((line, i) => (
-            <View key={line}>
-              {i > 0 ? <View style={styles.cardDivider} /> : null}
-              <View style={styles.cardRow}>
-                <View style={styles.cardCheck}>
-                  <CheckMark size={moderateScale(13)} stroke={BLUE} />
-                </View>
-                <Text style={styles.cardText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {line}
-                </Text>
+      <View style={styles.summaryList}>
+        {summary.map((line, i) => (
+          <FadeSlideIn key={line} delay={contentDelay(i)} distance={RISE_PX} duration={ENTER_MS}>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryDisc}>
+                <CheckMark size={moderateScale(11)} stroke="#FFFFFF" />
               </View>
+              <Text style={styles.summaryText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {line}
+              </Text>
             </View>
-          ))}
-        </View>
-      </FadeSlideIn>
+          </FadeSlideIn>
+        ))}
+      </View>
     );
     cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
   } else if (step.kind === 'proof') {
+    // Ruled lines, no marks (design import, 13 Aug 2026): these are statements
+    // about the product, and a check beside each one reads as a feature list
+    // ticking itself off. The rule is the ledger's own device.
     contentCount = PROOF_LINES.length;
     content = (
-      <View style={styles.proofStack}>
+      <View>
         {PROOF_LINES.map((line, i) => (
           <FadeSlideIn key={line} delay={contentDelay(i)} distance={RISE_PX} duration={ENTER_MS}>
-            <View style={styles.proofRow}>
-              <View style={styles.proofCheck}>
-                <CheckMark size={moderateScale(13)} stroke={BLUE} />
-              </View>
+            <View style={[styles.proofRow, i < PROOF_LINES.length - 1 && styles.proofRuled]}>
               <Text style={styles.proofText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 {line}
               </Text>
@@ -558,8 +575,20 @@ export default function OnboardingStep() {
     contentCount = FOUNDER_NOTE.length + 1;
     content = <FounderNote />;
     cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
+  } else if (step.slug === 'demo') {
+    // The one explainer that DEMONSTRATES instead of describing: the typed line
+    // and the record the parser makes of it, revealed once (§9 of the design's
+    // motion sheet — "the core promise, animated once").
+    contentCount = 2;
+    content = (
+      <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
+        <ParseDemo />
+      </FadeSlideIn>
+    );
+    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
   } else {
-    // 'intro' and 'explainer' — the illustration and the copy are the screen.
+    // 'intro' and the remaining explainers — the illustration and the copy are
+    // the screen.
     contentCount = 0;
     cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
   }
@@ -567,9 +596,15 @@ export default function OnboardingStep() {
   return (
     <>
       {/* Forward always arrives from the right; the iOS back-swipe stays live.
-          The zones inside crossfade in on top of it, which is the second half
-          of the transition. */}
-      <Stack.Screen options={{ animation: 'slide_from_right', gestureEnabled: true }} />
+          The zones inside slide and crossfade on top of it a beat later, which
+          is the other half of the design's 350 ms transition — see
+          `OnboardingScreen`. The native animation is kept (rather than driven
+          by hand) precisely because it is what carries the interactive
+          edge-swipe, and a wizard you cannot swipe out of is a worse screen
+          than one whose transition we authored ourselves. */}
+      <Stack.Screen
+        options={{ animation: 'slide_from_right', animationDuration: 350, gestureEnabled: true }}
+      />
       <OnboardingScreen
         slug={step.slug}
         eyebrow={step.eyebrow}
@@ -594,9 +629,6 @@ const styles = StyleSheet.create({
   stack: {
     gap: spacing.md,
   },
-  proofStack: {
-    gap: spacing.lg,
-  },
   affirm: {
     ...type.subhead,
     fontWeight: '500',
@@ -605,45 +637,43 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xs,
   },
-  // The summary's record card — the answers read back on one soft card, a
-  // hairline rule between rows, each line marked with the flow's blue check.
-  summaryCard: {
-    backgroundColor: INK_CARD,
-    borderRadius: CARD_RADIUS,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
+  // The answers read back as a plain list, each line marked with a small blue
+  // disc — the flow's accent used once per line, at the size of a bullet.
+  summaryList: {
+    gap: spacing.md + 2,
   },
-  cardRow: {
+  summaryRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
-    paddingVertical: spacing.md,
   },
-  cardCheck: {
-    marginTop: moderateScale(3),
+  summaryDisc: {
+    width: moderateScale(20),
+    height: moderateScale(20),
+    borderRadius: radius.pill,
+    backgroundColor: BLUE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: moderateScale(1),
   },
-  cardText: {
+  summaryText: {
     flex: 1,
     ...type.subhead,
+    fontWeight: '500',
     lineHeight: lineFor(21),
     color: color.textPrimary,
   },
-  cardDivider: {
-    height: 1,
-    backgroundColor: INK_TRACK,
-  },
   proofRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
+    paddingVertical: spacing.lg - 1,
   },
-  proofCheck: {
-    marginTop: moderateScale(3),
+  proofRuled: {
+    borderBottomWidth: 1,
+    borderBottomColor: INK_TRACK,
   },
   proofText: {
-    flex: 1,
     ...type.headline,
-    lineHeight: lineFor(22),
+    fontWeight: '500',
+    lineHeight: lineFor(24),
     color: color.textPrimary,
   },
   tlRow: {
@@ -654,18 +684,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tlNode: {
-    width: moderateScale(30),
-    height: moderateScale(30),
+    width: moderateScale(40),
+    height: moderateScale(40),
     borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tlNodeFilled: {
-    backgroundColor: BLUE,
-  },
-  tlNodeHollow: {
     borderWidth: 1.5,
     borderColor: INK_TRACK,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tlLine: {
     width: 1.5,

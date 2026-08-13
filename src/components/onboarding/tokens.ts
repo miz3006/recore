@@ -31,8 +31,20 @@ export const INK_CHROME = alpha(color.accent, 0.06);
 /** Empty track: the progress bar, the idle switch. */
 export const INK_TRACK = alpha(color.accent, 0.1);
 
-/** The soft-card radius of the reference — one value for every card here. */
+/**
+ * Radii, from the Claude Design canvas (13 Aug 2026 import). Three values and
+ * no others: rows and fields take 20, the value card 24, controls and chips are
+ * pills.
+ */
 export const CARD_RADIUS = 24;
+export const ROW_RADIUS = 20;
+
+/**
+ * The CTA's own height. `CONTROL_HEIGHT` is the app's 50 pt button and stays
+ * that everywhere else; the funnel's button is the design's 56 and is the one
+ * control on these screens, so it is allowed to be the bigger thing.
+ */
+export const CTA_HEIGHT = moderateScale(56);
 
 /** Selected-state border. Constant width, animated colour: a border that grows
  * would move the label under it, and product-direction §4.3 bans animating a
@@ -45,6 +57,12 @@ export const STAGGER_MS = 60;
 /** Fade duration and rise distance of one staggered zone. */
 export const ENTER_MS = 250;
 export const RISE_PX = 12;
+/**
+ * How far a zone travels sideways on arrival. Deliberately short: this is the
+ * tail of the page's own slide, not a second slide of its own, and a long throw
+ * would read as two screens moving past each other.
+ */
+export const SLIDE_PX = 20;
 
 /** Fixed stagger slots, so a screen with no subtext still starts its content on
  * the same beat as one that has it — the flow's rhythm must not depend on which

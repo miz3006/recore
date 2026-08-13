@@ -1,10 +1,19 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withDelay,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
+import { IllustrationSlot } from '@/components/onboarding/IllustrationSlot';
 import { PrimaryCta } from '@/components/onboarding/PrimaryCta';
 import {
   BLUE,
@@ -26,6 +35,7 @@ import {
 import { formatChargeDate } from '@/lib/billing/trial';
 import { markPaywallShown, markPlanSelected } from '@/lib/funnel';
 import { tap } from '@/lib/haptics';
+import { EASE } from '@/lib/motion';
 import type { LegalDocId } from '@/lib/legal';
 import type { Goal } from '@/lib/onboarding';
 import { getGoal, getName, getPrimaryLift } from '@/lib/prefs';
@@ -141,6 +151,14 @@ function trialEndLabel(days: number): string {
   return formatChargeDate(Date.now() + days * 86_400_000);
 }
 
+/**
+ * The mascot's band on this screen. Half what an onboarding step gives it: the
+ * paywall has to fit five outcomes, a trial timeline, two plans and the legal
+ * line above the fold, and the picture is the one element here that can shrink
+ * without costing the reader a fact.
+ */
+const MASCOT_HEIGHT = moderateScale(120);
+
 /** The goal's headline, in the option's own words — nothing invented. */
 const GOAL_HEADLINES: Record<Goal, string> = {
   strength: 'Built for your\nstrength goal',
@@ -237,6 +255,34 @@ export default function Paywall() {
   useEffect(() => {
     markPaywallShown();
   }, []);
+
+  /**
+   * The CTA's glow breathes ONCE on arrival (Claude Design canvas, 13 Aug 2026:
+   * 1.2 s from 600 ms, "never repeatedly"). It is the last screen of the funnel
+   * and the button is what the screen is for, so one swell that says "here" is
+   * within §4.3's "motion that makes cause and effect clearer".
+   *
+   * A LOOP would not be. A pulsing buy button is a countdown by another name —
+   * the urgency pressure CLAUDE.md §2 rule 6 rules out — so this fires once per
+   * mount and then the button is simply a button. Reduce Motion never fires it.
+   */
+  const reduce = useReducedMotion();
+  const glow = useSharedValue(0);
+  useEffect(() => {
+    if (reduce) return;
+    glow.value = withDelay(
+      600,
+      withSequence(
+        withTiming(1, { duration: 540, easing: EASE.inOut }),
+        withTiming(0, { duration: 660, easing: EASE.inOut }),
+      ),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const glowStyle = useAnimatedStyle(() => ({
+    shadowOpacity: 0.28 + glow.value * 0.27,
+    shadowRadius: 18 + glow.value * 12,
+  }));
 
   useEffect(() => {
     let alive = true;
@@ -439,6 +485,14 @@ export default function Paywall() {
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Stagger initialDelay={60} step={70} distance={14}>
+          {/* The funnel's mascot, one last time and at half height — this is a
+              commercial screen and the picture has to yield to the price. The
+              slot reads the same registry as every onboarding step, so the
+              character that walked the person through twenty questions is the
+              character standing here. */}
+          <View style={styles.mascot}>
+            <IllustrationSlot slug="paywall" height={MASCOT_HEIGHT} />
+          </View>
           <Eyebrow tone="secondary">{name ? `You're all set, ${name}` : 'Recore Pro'}</Eyebrow>
           <Text style={styles.headline} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {headline}
@@ -533,7 +587,7 @@ export default function Paywall() {
             onPress={handleCta}
             disabled={!canBuy || busy !== null}
             loading={busy === 'purchase'}
-            style={styles.cta}
+            style={[styles.cta, glowStyle]}
           />
 
           {/* Every number in this line came from the store. "in Settings" was
@@ -745,6 +799,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
+  },
+  mascot: {
+    alignItems: 'center',
+    marginBottom: spacing.md,
   },
   headline: {
     ...type.title,

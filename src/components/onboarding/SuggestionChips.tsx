@@ -4,16 +4,20 @@ import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reani
 import { PressableScale } from '@/components/motion';
 import { color, MAX_FONT_SCALE, radius, spacing, type } from '@/lib/theme';
 
-import { BLUE, INK_CARD, SELECT_BORDER } from './tokens';
+import { BLUE, INK_CARD } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 /**
  * Quick-pick pills under a text answer (the key-lift step): the best-known
  * choices one tap away, the field above for everything else. Tapping a chip
  * answers-and-advances exactly like a radio option, so the common case costs
- * one touch and typing stays first-class. Same surface language as OptionRow
- * after the 12 Aug restyle — a soft ink-3 % pill that takes a Recore blue edge
- * and a blue label; the chip matching the field's current text reads selected.
+ * one touch and typing stays first-class.
+ *
+ * A soft ink-3 % pill that FILLS blue with a white label when chosen (Claude
+ * Design canvas, 13 Aug 2026), matching the day circles: both are small
+ * multiple-choice marks that have to read from across the screen, where an
+ * outline does not. The chip matching the field's current text reads selected,
+ * so typing a lift by hand deselects the row by itself.
  */
 export function SuggestionChips({
   suggestions,
@@ -52,10 +56,10 @@ function Chip({
   const p = useSelectFill(selected);
 
   const chipStyle = useAnimatedStyle(() => ({
-    borderColor: interpolateColor(p.value, [0, 1], [INK_CARD, BLUE]),
+    backgroundColor: interpolateColor(p.value, [0, 1], [INK_CARD, BLUE]),
   }));
   const labelStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(p.value, [0, 1], [color.textPrimary, BLUE]),
+    color: interpolateColor(p.value, [0, 1], [color.textPrimary, '#FFFFFF']),
   }));
 
   return (
@@ -81,10 +85,9 @@ const styles = StyleSheet.create({
   },
   chip: {
     backgroundColor: INK_CARD,
-    borderWidth: SELECT_BORDER,
     borderRadius: radius.pill,
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md + 2,
   },
   label: {
     ...type.subhead,

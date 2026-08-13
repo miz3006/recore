@@ -8,9 +8,9 @@ import {
 } from 'react-native';
 
 import { PressableScale } from '@/components/motion';
-import { CONTROL_HEIGHT, lineFor, MAX_FONT_SCALE, radius, spacing, type } from '@/lib/theme';
+import { lineFor, MAX_FONT_SCALE, radius, spacing, type } from '@/lib/theme';
 
-import { BLUE } from './tokens';
+import { BLUE, CTA_HEIGHT } from './tokens';
 
 /**
  * The funnel's primary button: full-width, fully rounded, filled Recore blue,
@@ -67,7 +67,7 @@ export function PrimaryCta({
 
 const styles = StyleSheet.create({
   cta: {
-    minHeight: CONTROL_HEIGHT,
+    minHeight: CTA_HEIGHT,
     borderRadius: radius.pill,
     backgroundColor: BLUE,
     alignItems: 'center',

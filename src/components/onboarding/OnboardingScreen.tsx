@@ -12,10 +12,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
-import { FadeSlideIn, PressableScale } from '@/components/motion';
+import { FadeSlideIn, FadeSlideX, PressableScale } from '@/components/motion';
 import { Eyebrow } from '@/components/primitives';
 import { alpha, color, HIT, ink, lineFor, MAX_FONT_SCALE, spacing, type } from '@/lib/theme';
 
+import { flowDirection } from './direction';
 import { IllustrationSlot } from './IllustrationSlot';
 import { PrimaryCta } from './PrimaryCta';
 import { ProgressRail } from './ProgressRail';
@@ -24,6 +25,7 @@ import {
   ENTER_MS,
   INK_CHROME,
   RISE_PX,
+  SLIDE_PX,
   SLOT,
   slotDelay,
   STAGGER_MS,
@@ -60,10 +62,21 @@ import {
  * ## Entrance
  *
  * One staggered arrival per screen, in reading order: mascot, headline,
- * subtext, content, CTA — 250 ms of fade and 12 pt of rise each, 60 ms apart.
- * The slots are fixed (see `SLOT`), so a step with no subtext still starts its
- * content on the third beat and the flow keeps one rhythm. The idle float of
- * the illustration starts after the whole entrance has landed.
+ * subtext, content, CTA — 250 ms of fade and a short HORIZONTAL slide each,
+ * 60 ms apart. The slots are fixed (see `SLOT`), so a step with no subtext
+ * still starts its content on the third beat and the flow keeps one rhythm. The
+ * idle float of the illustration starts after the whole entrance has landed.
+ *
+ * The slide runs on the axis the flow itself moves on and in the direction it
+ * moved (`direction.ts`): forward the zones come from the right, Back from the
+ * left. Because the page underneath is sliding too, the zones arriving a beat
+ * later read as parallax — the mascot and the question trail the paper they are
+ * printed on, which is what gives a flat two-colour flow any depth at all. It
+ * is also the only thing on screen that says which way you just went.
+ *
+ * The zone that does NOT slide is the CTA: it is pinned under the thumb and a
+ * button that arrives sideways is a button that gets mis-tapped. It fades and
+ * rises the way it always did.
  *
  * ## The keyboard
  *
@@ -114,6 +127,9 @@ export function OnboardingScreen({
   const ctaDelay = slotDelay(SLOT.content + contentCount);
   // The mascot may start breathing once the last zone has finished arriving.
   const idleDelay = ctaDelay + ENTER_MS;
+  // Read once, at mount: the direction belongs to the navigation that brought
+  // this screen in, not to whatever the flow does next.
+  const [dir] = useState(flowDirection);
 
   return (
     <View style={styles.root}>
@@ -147,37 +163,52 @@ export function OnboardingScreen({
         style={styles.flex}>
         <View style={styles.page}>
           <View style={[styles.band, keyboardUp && styles.bandCompact, { height: bandHeight }]}>
-            <FadeSlideIn
+            {/* The mascot leads, and it travels furthest — it is the element the
+                eye is holding while the page changes underneath it. */}
+            <FadeSlideX
+              direction={dir}
               delay={slotDelay(SLOT.illustration)}
-              distance={RISE_PX}
+              distance={SLIDE_PX * 1.5}
               duration={ENTER_MS}>
               <IllustrationSlot slug={slug} height={bandHeight} idleDelay={idleDelay} />
-            </FadeSlideIn>
+            </FadeSlideX>
           </View>
 
-          <FadeSlideIn delay={slotDelay(SLOT.eyebrow)} distance={RISE_PX} duration={ENTER_MS}>
+          <FadeSlideX
+            direction={dir}
+            delay={slotDelay(SLOT.eyebrow)}
+            distance={SLIDE_PX}
+            duration={ENTER_MS}>
             {/* Reserved even when empty, so the headline baseline is the same
                 on the welcome as on every question. */}
             <View style={styles.eyebrowLine}>
               {eyebrow ? <Eyebrow tone="muted">{eyebrow}</Eyebrow> : null}
             </View>
-          </FadeSlideIn>
+          </FadeSlideX>
 
-          <FadeSlideIn delay={slotDelay(SLOT.headline)} distance={RISE_PX} duration={ENTER_MS}>
+          <FadeSlideX
+            direction={dir}
+            delay={slotDelay(SLOT.headline)}
+            distance={SLIDE_PX}
+            duration={ENTER_MS}>
             <Text
               style={hero ? styles.hero : styles.headline}
               accessibilityRole="header"
               maxFontSizeMultiplier={MAX_FONT_SCALE}>
               {headline}
             </Text>
-          </FadeSlideIn>
+          </FadeSlideX>
 
           {subtext ? (
-            <FadeSlideIn delay={slotDelay(SLOT.subtext)} distance={RISE_PX} duration={ENTER_MS}>
+            <FadeSlideX
+              direction={dir}
+              delay={slotDelay(SLOT.subtext)}
+              distance={SLIDE_PX}
+              duration={ENTER_MS}>
               <Text style={styles.subtext} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 {subtext}
               </Text>
-            </FadeSlideIn>
+            </FadeSlideX>
           ) : null}
 
           <ScrollView

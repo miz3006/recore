@@ -50,8 +50,9 @@ export const type = {
   title2: { fontSize: moderateScale(22), lineHeight: lineFor(27), fontWeight: '700', letterSpacing: -0.5 },
   /** The illustrated-onboarding question — bold like every other title (owner,
    * 29 Jul, after the Mobbin pass: Tonal/Strava/WHOOP all carry the question at
-   * full weight; a light question over art read as a caption, not an ask). */
-  question: { fontSize: moderateScale(28), lineHeight: lineFor(33), fontWeight: '700', letterSpacing: -0.6 },
+   * full weight; a light question over art read as a caption, not an ask).
+   * 30/34 at -0.02em since the 13 Aug design import. */
+  question: { fontSize: moderateScale(30), lineHeight: lineFor(34), fontWeight: '700', letterSpacing: -0.6 },
   headline: { fontSize: moderateScale(17), lineHeight: lineFor(22), fontWeight: '600', letterSpacing: -0.3 },
   /** The brief's opening sentence (product-direction §9) — one notch over
    * body, so the paragraph leads like an article, not a form. */
