@@ -892,6 +892,77 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — v6 Phase 1: the warm canvas comes back, and one blue replaces three.**
+  Design skill `recore-design` + its `MIGRATION.md`; the owner picked **Volt `#0B5CD6`** on
+  device, which unblocks everything the migration marked *blocked by Phase 0*. **Tokens only —
+  no component and no screen was restyled in this pass**, so what the app draws today is the
+  old composition wearing the new values. Phase 2 (shared components) and Phase 3 (screens,
+  one per commit) are the rest, and the bare-row record, the floating pill chrome and the
+  `ThoughtProcessCard` do not exist yet.
+  - **One canvas, and it is paper again.** `color.canvas` `#FCF9F4` with `canvasTop` `#FDF6EE`
+    and `canvasBot` `#F9F5F9` as the two ends of the static diagonal gradient. The
+    document/grouped split is abolished: no `#F2F2F7` grouped world, no white document world —
+    one canvas for Today, the tabs, sheets' backdrop, settings and every onboarding step, and
+    **white is a SURFACE** (pills, cards, sheets, chips). `color.bg` survives as a deprecated
+    alias of `canvas` so Phase 2 can move its 15 call sites in 12 files one file at a time;
+    because `app/_layout.tsx` reads it, the root and navigator background are already cream.
+    This reverses "the canvas is white" (17 Aug) and the grouped grey that followed it
+    (18 Aug), and the reason is measured, not taste: on `#F2F2F7` `signal` was **4.42:1** and
+    `textSecondary` **4.54:1**, so a prescribed load and every supporting reading in the app
+    sat at or under AA. Re-measured on the worst of the three tints: `textPrimary` 15.76,
+    `textSecondary` **4.70**, `textMuted` 3.36, `brand` 5.53, `signal` **4.57**, `attention`
+    4.65, `gain` 5.00, `loss` 5.21, `warning` 5.69, `error` 5.94 — every information-carrying
+    ink clears 4.5:1. `trend` at 4.11 is the palette's one exception and draws a line and its
+    wash, never a number. A warmer cream was measured and rejected for exactly this, so
+    **deepening the canvas means re-measuring the whole ladder.**
+  - **One blue does every job.** `brand` `#0B5CD6` / `brandPressed` `#0A4CB0` / `brandGlow`:
+    primary CTA, selected states and their checks, links, active controls, progress fill,
+    chart lines. `ctaFill`, `ctaFillPressed` and `trained` are now deprecated aliases of it —
+    30 refs in 14 files and 15 refs in 8 files respectively — and are deleted with Phase 3;
+    no file may name a blue literal. `#007AFF` is retired: it measures 4.02:1 on white and
+    3.72–3.82:1 across the canvas tints and fails text-sized use. Volt measures **5.97:1 on
+    white and 5.53–5.69:1 on the tints**, and white-on-fill is the same 5.97, so it clears AA
+    as a filled button too. This retires "primary CTAs are ink-fill — restraint IS the brand"
+    (17 Aug): the primary CTA is a filled brand pill with a glow (skill §Decided-1). `accent`
+    keeps its other jobs and the onboarding progress rail stays ink, never brand.
+  - **Elevation is load-bearing again.** `SHADOW_INK` `#1C1C1E` → warm `#2E2418` (a neutral
+    near-black on cream reads as a grey smudge rather than as light). `shadow.card` .05/14/4
+    and `shadow.raised` .07/28/10 — softer, wider blur, lower opacity. **`shadow.glow` added:**
+    brand at 28 %, radius 20, y 8 — the only coloured shadow in the app, and the primary CTA's
+    alone. A white pill on the canvas is **1.05:1 by tone**, so the shadow is the whole reason
+    it is visible; the 18 Aug note that the shadow "carries less weight" now that list screens
+    sit on grouped grey is void with the grey.
+  - **Radii and the CTA height.** `radius.lg` 18 → **20**, `radius.xl` 22 → **24**; `xxl` 28 is
+    a deprecated alias of `xl` holding its 6 call sites through Phase 2. **`CTA_HEIGHT` 56 is
+    app-wide** and lives in `theme/spacing.ts` (skill §Decided-3); `CONTROL_HEIGHT` 50 keeps
+    secondary, ghost and compact controls.
+  - **The funnel loses its private scale** (skill §Decided-2). `components/onboarding/tokens.ts`
+    no longer declares `CARD_RADIUS` 24, `ROW_RADIUS` 20 or its own `CTA_HEIGHT`, and `BLUE` /
+    `BLUE_WASH` / `BLUE_CARD` derive from `color.brand`. All of them are deprecated aliases
+    until their call sites move in Phase 2 (20 files: the funnel plus `paywall.tsx`). `BLUE_WASH`
+    was set at 8 % against `#007AFF`; Volt is a deeper blue, so it is a fraction stronger at the
+    same number — it carries no text, so there is no ratio to clear, only a weight to judge on
+    device.
+  - **The canvas field is the whole app, and it stopped moving.** `lib/paper-field.ts`'s three
+    tones are `canvasTop`/`canvas`/`canvasBot` rather than a Today-only surface, and the
+    forty-two-second drift is deleted along with `paperFieldMotion`, the overscanned sheet, the
+    two shared values and the Reduce Motion branch — the skill's §Canvas says "diagonal, subtle,
+    static, and never animates", and a page breathing under someone writing down a workout is
+    motion that does not make cause and effect clearer. `MAX_STOP_DELTA` became
+    `MAX_STOP_CONTRAST` 1.03; the stops measure **1.007:1** apart, so the page reads as "not
+    flat" and never as "a gradient". The tests changed with it: `#FFFFFF` is now asserted **not**
+    to be a canvas tone (white is a surface), every stop must sit within 1.03:1 of the value the
+    ink ladder was measured on, `textSecondary` and `signal` are asserted over 4.5:1 on the
+    deepest stop, and all three tints are checked against `theme/color.ts`'s own source so a
+    recolour cannot land by halves.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**.
+  - **Unverified: device QA**, which is what this phase stops for — the cream in daylight, the
+    glow, and Volt at text size on a real display. Two things were noticed and deliberately not
+    fixed, because neither is Phase 1: the **splash background is still `#FFFFFF`** in
+    `app.json` and `ios/recore/Images.xcassets/SplashScreenBackground.colorset`, so launch now
+    flashes white before a cream app; and the Section 4 table above still cites pre-v6 evidence
+    (`trained`, the white canvas), which is refreshed when Phase 3 lands the screens.
 - **18 Aug 2026** — **the resting pill is gone from Today** (owner, same pass as the plan
   removal above). `SummaryPill` is unmounted from `app/(tabs)/today.tsx`: neither the live
   "last set · Bench Press · 82.5 kg × 5 · 1:30" nor the settled "today · N sets · X kg" is

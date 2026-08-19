@@ -5,6 +5,7 @@ export {
   radius,
   hairline,
   HIT,
+  CTA_HEIGHT,
   CONTROL_HEIGHT,
   ROUND_BUTTON,
   TAB_BAR_CLEARANCE,

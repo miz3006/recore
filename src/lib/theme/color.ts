@@ -1,68 +1,87 @@
 /**
- * Recore color system — LIGHT scheme ("Recore Light" design project;
- * scheme spec mirrored in `../design-import/` and the CLAUDE.md tokens).
+ * Recore color system — the v6 canvas (design skill `recore-design`, §Canvas
+ * and §Colour; migration Phase 1, 20 August 2026).
  *
- * THE RECORD CONTRACT still sets the palette, now on warm paper. Four data
- * states — Written / Interpreted / Recorded / Planned — live on a warm paper
- * canvas with a small number of intentional accents (product-direction §4.2,
- * v5.1): **green `#547C00` appears ONLY on planned, future prescription
- * values, always with their label and reason**; **blue `#007AFF` is RECORE
- * BLUE, the visible product accent** — selected onboarding choices,
- * interactive focus, active controls, walkthrough emphasis, recorded-progress
- * charts, and the day-trained marks it started as (it is an accent, never a
- * reward colour); and **ember `#BF5B23` is an optional secondary comparison
- * in a chart**, never the sole indicator of good or bad — today that is one
- * lift's progression line and the wash under it in the lift sheet. Ember
- * never touches a NUMBER — the readings beside the chart stay ink. A PR is a
- * neutral outlined label; comparisons are archival mono in muted grey;
- * warnings are amber words, never color alone; red is destructive actions and
- * genuine errors only.
+ * **The read: warm paper, black ink, one blue.**
  *
- * (History: v2's "blue ONLY on day-trained marks" ruling, 28 Jul, was widened
- * by v5.1 §4.2 — "Recore blue is a visible product accent, not a colour
- * confined to a calendar".)
+ * ## The canvas is warm paper again, and there is only ONE of them
  *
- * Primary CTAs are ink-fill (`accent` #171914 on `bg`/`surface` text) —
- * restraint IS the brand. If a pixel isn't a future prescription, it doesn't
- * get green.
+ * The document/grouped split is abolished. There is no `#F2F2F7` grouped world
+ * that a list screen sits on and no white document world that Today writes on:
+ * `canvas` runs the whole app — Today, the tabs, sheets' backdrop, settings,
+ * every onboarding step. **White is a SURFACE** (pills, cards, sheets, chips),
+ * never the canvas. `canvasTop` and `canvasBot` are the two ends of the static
+ * diagonal gradient drawn over it (`lib/paper-field.ts`).
  *
- * ## WHITE, NOT PAPER (owner, 17 August 2026)
+ * This reverses "WHITE, NOT PAPER" (17 Aug 2026) and the grouped-grey `bg` that
+ * followed it (18 Aug). The measured ladder below is why: on `#F2F2F7` two of
+ * the inks people are expected to READ failed AA — `signal` at 4.42 and
+ * `textSecondary` at 4.54 with no headroom. Every one of them clears 4.5:1 on
+ * the three canvas tints. A warmer cream was measured too and rejected for
+ * exactly this. **Do not deepen the canvas without re-measuring the whole ink
+ * ladder.**
  *
- * The canvas is now **pure white**, everywhere in the app, and so is every
- * surface that sits on it. The warm paper family (`#F4F5EF` canvas, `#FBFCF6`
- * raised paper) is history; the greys that used to lean olive to belong to it
- * are neutral, because a warm hairline on white reads as dirt rather than as
- * warmth.
+ * The elevation model that came with white stands, and matters more here: on a
+ * canvas a white pill is 1.05:1 by tone, so **a surface with neither border nor
+ * shadow is invisible — give it one** (`shadow.card`). `surfaceHigh` keeps the
+ * opposite job as the *recessed* tone.
  *
- * This changes the elevation model, and it has to: nothing can be brighter than
- * white, so a card is no longer a lighter tone — **it is white on white, lifted
- * by its hairline and its shadow**. `surfaceHigh` keeps the opposite job as the
- * *recessed* tone (segmented containers, hairline fills, pressed states), which
- * is now the only tonal step the neutrals have left. A surface that carries no
- * border and no shadow will no longer be visible; give it one.
+ * ## One blue does every job
  *
- * The inks are unchanged and every one of them gained contrast on the lighter
- * canvas (the measured ladder below).
+ * `brand` `#0B5CD6` ("Volt", owner's pick, 20 Aug 2026) is the primary CTA, the
+ * selected state and its check, links, active controls, progress fill and chart
+ * lines. It lives in exactly one token and **no file may name a blue literal**.
+ * `#007AFF` is retired: it measured 4.02:1 on white and 3.73:1 on the canvas and
+ * failed text-sized use. Volt measures **5.97:1 on white, 5.53–5.69:1 across the
+ * canvas tints**, and white-on-fill is the same ratio, so it also clears AA as a
+ * filled button. `ctaFill` / `ctaFillPressed` / `trained` are deprecated aliases
+ * of it for the duration of the migration and are deleted with Phase 3.
  *
- * Token roles are preserved from the dark scheme so every screen keeps reading
- * the same names; only the values change.
+ * Primary CTAs are a filled brand pill with `shadow.glow`. The old "primary CTAs
+ * are ink-fill — restraint IS the brand" ruling is retired (skill §Decided-1);
+ * `accent` keeps its other jobs (emphasized borders, badge fills, day marks) and
+ * the onboarding progress rail, which stays ink and never goes brand.
+ *
+ * ## What did NOT change
+ *
+ * **Green `#547C00` (`signal`) is PLANNED-ONLY** — a future prescription, a load
+ * not yet lifted, always with its label and reason. It may never mean good,
+ * done, recorded or success, it never becomes a CTA, a link or a selected state,
+ * and `gain` green may never stand in for it: recorded is not planned. The
+ * recorded semantics (`gain`/`loss`/`attention`/`trend`), the three inks, the
+ * borders, the four washes, `glyph.*`, the `ink` ladder and `alpha()` all carry
+ * over untouched.
+ *
+ * `trend` ember `#BF5B23` is an optional secondary comparison in the lift
+ * sheet — one lift's progression line and the wash under it. It never touches a
+ * NUMBER (4.11–4.22:1 on the canvas: a line, not a reading).
  */
 export const color = {
-  bg: '#F2F2F7', // GROUPED CANVAS (iOS systemGroupedBackground): what a LIST screen sits on, so a white card is a card. NOT a foreground — white-on-ink is `onInk`.
-  surface: '#FFFFFF', // cards, sheets, chips, pills, accessory bar, keys — and the full-bleed DOCUMENT screens (Today, onboarding, sign-in)
-  surfaceHigh: '#E5E5EA', // recessed: segmented container, hairline fills, pressed states (iOS systemGray5 — it has to stay legible on the grouped `bg` too)
-  onInk: '#FFFFFF', // a label, glyph or dot sitting ON `accent` / `ctaFill` — always white, whatever the canvas does
-  accent: '#1C1C1E', // ink: emphasized borders, badge fills, selected day marks — equals textPrimary. NO LONGER the primary CTA (18 Aug).
+  canvas: '#FCF9F4', // THE WORLD: every screen, every sheet backdrop. Also the flat fill wherever the gradient cannot render.
+  canvasTop: '#FDF6EE', // peach tint — top of the static diagonal gradient
+  canvasBot: '#F9F5F9', // faint lavender-pink tint — bottom of it
+  /** @deprecated alias of `canvas` — kept only until Phase 2 has moved its 13 call sites. Use `canvas`. */
+  bg: '#FCF9F4',
+  surface: '#FFFFFF', // pills, cards, sheets, chips, the input bar — a SURFACE on the canvas, never the canvas
+  surfaceHigh: '#E5E5EA', // recessed only: segmented containers, hairline fills, pressed states
+  onInk: '#FFFFFF', // a label, glyph or dot sitting ON `accent` / `brand` — always white, whatever the canvas does
+  accent: '#1C1C1E', // ink: emphasized borders, badge fills, selected day marks, the onboarding progress fill — equals textPrimary
   accentPressed: '#2C2C2E', // ink-fill pressed — never an opacity flash
-  ctaFill: '#007AFF', // THE PRIMARY BUTTON (owner, 18 Aug 2026): Apple tints its prominent button, it does not ink it. Same blue as `trained`.
-  ctaFillPressed: '#0062CC', // the CTA held down — a darker blue, never an opacity flash
+  brand: '#0B5CD6', // THE ONE BLUE: primary CTA, selected states + checks, links, active controls, progress fill, chart lines
+  brandPressed: '#0A4CB0', // the brand held down — a darker blue, never an opacity flash
+  brandGlow: '#0B5CD6', // `shadow.glow`'s cast — the only coloured shadow in the app, primary CTA only
+  /** @deprecated → `brand`. Removed with Phase 3. */
+  ctaFill: '#0B5CD6',
+  /** @deprecated → `brandPressed`. Removed with Phase 3. */
+  ctaFillPressed: '#0A4CB0',
+  /** @deprecated → `brand`. Removed with Phase 3. */
+  trained: '#0B5CD6',
   signal: '#547C00', // PLANNED green: future prescription values ONLY
-  trained: '#007AFF', // RECORE BLUE (iOS systemBlue): the product accent (§4.2) — selected choices, active controls, walkthrough emphasis, recorded-progress charts, day-trained marks
   trend: '#BF5B23', // TREND ember: the progression line of ONE lift + its wash, in the lift sheet ONLY
   textPrimary: '#1C1C1E', // what the USER typed; headings; ink
   textSecondary: '#6E6E73', // supporting copy, gutter readings, tags, labels
   textMuted: '#86868B', // dates, evidence lines, placeholders, disabled — see the contrast note below
-  border: '#D5D5D5', // 1px card + control borders (hairline rule) — it draws the card now that tone does not
+  border: '#D5D5D5', // 1px card + control borders (hairline rule)
   divider: '#E9E9E9', // row dividers inside cards
   tableRule: '#E9E9E9', // hairline rules between table/receipt rows
   /**
@@ -79,10 +98,11 @@ export const color = {
    * Its three permitted homes: the STANDING STILL eyebrow, the backoff load
    * inside a WATCH line, and the PAUSED tag on a session type once those ship.
    *
-   * MEASURED (§14.3's ink-ladder contract), re-measured on the white canvas of
-   * 17 Aug: **5.02:1 on `bg` and `surface`** — clears AA, so it may carry a
-   * number a person must read. It still measures **4.14:1 on `surfaceHigh`**
-   * and therefore must not be drawn on the recessed tone.
+   * MEASURED (§14.3's ink-ladder contract), re-measured on the canvas of 20 Aug
+   * 2026: **4.65–4.78:1 across the three canvas tints, 5.02:1 on `surface`** —
+   * clears AA, so it may carry a number a person must read. It still measures
+   * **4.00:1 on `surfaceHigh`** and therefore must not be drawn on the recessed
+   * tone.
    */
   attention: '#B45309', // plateau / backoff / paused — never chrome, never a CTA
   /**
@@ -97,13 +117,17 @@ export const color = {
    * both: the record contract forbids `gain` from standing in for `signal`
    * (recorded is not planned), so the treatment travels and the hue does not.
    *
+   * They are the fills of `Badge tone="wash"` — the one sanctioned filled chip
+   * (skill §Decided-4). A wash pairs with exactly ONE ink and nothing else.
+   *
    * THEY ARE PALER THAN `gainWash`/`lossWash`, and the arithmetic is why. A
    * 12%-strength wash suits `gain` #1F7A33 (5.4:1 on white) and leaves 4.7:1.
    * The same strength under `signal` #547C00 (4.93:1) and `attention` #B45309
    * (5.02:1) — both lighter hues — lands at **4.2:1** and fails §14.3's AA
    * contract for an 11 pt label. At the strengths below they clear it:
    * **`signal` on `signalWash` 4.59:1, `attention` on `attentionWash`
-   * 4.64:1.** Nothing but those two pairings may be drawn on them.
+   * 4.64:1.** Nothing but those two pairings may be drawn on them. (The washes
+   * are opaque fills, so the canvas underneath them does not change these.)
    */
   signalWash: '#F5F8EE', // the chip behind `signal` — 4.59:1
   attentionWash: '#FBF5F0', // the chip behind `attention` — 4.64:1
@@ -125,9 +149,9 @@ export const color = {
    *   destructive action and `loss` may never stand in for that either. Keeping
    *   four distinct tokens is what stops "down 5%" reading as "something broke".
    * - **They are their own hues.** MEASURED against the ink ladder below, on
-   *   the white canvas of 17 Aug: `gain` **5.4:1 on bg/surface, 4.7:1 on its
-   *   own chip wash**, `loss` **5.6 / 4.7** — both clear AA, so either may
-   *   carry a number a person has to read.
+   *   the canvas of 20 Aug 2026: `gain` **5.00–5.14:1 on the canvas tints, 5.40
+   *   on `surface`, 4.69 on its own chip wash**, `loss` **5.21–5.35 / 5.62 /
+   *   4.69** — both clear AA, so either may carry a number a person has to read.
    */
   gain: '#1F7A33', // RECORDED progress upward — never a planned value (that is `signal`)
   loss: '#C62828', // RECORDED regression — never an error or a destructive action (that is `error`)
@@ -144,37 +168,39 @@ export type ColorToken = keyof typeof color;
  * ## The ink ladder, measured (owner, 9 Aug 2026 — "make it readable at low
  * vision")
  *
- * Contrast against the canvas, RE-MEASURED on the white `bg` of 17 Aug 2026
- * (`surface` is the same white now, so one column answers for both; the
- * recessed `surfaceHigh` costs each of them about a fifth of its ratio):
+ * Contrast RE-MEASURED against the warm canvas of 20 Aug 2026. The canvas
+ * column is the worst of the three tints (`canvas` / `canvasTop` / `canvasBot`),
+ * because the gradient means any of them can be under a given pixel; the
+ * recessed `surfaceHigh` costs each ink about a fifth of its ratio:
  *
- * | Token | Ratio | What it may carry |
- * |---|---|---|
- * | `textPrimary` | **17.0:1** (was 17.7 warm, 16.2 on paper) | Anything. The record's own voice. |
- * | `textSecondary` | **5.1:1** (was 4.7 on paper) | Clears AA for body text — any number, comparison or label a person must READ. |
- * | `textMuted` | **3.6:1** (was 3.3 on paper) | Clears the 3:1 floor for large text and non-text marks only: dates, placeholders, disabled states, decoration. |
+ * | Token | on canvas (worst tint) | on `surface` | What it may carry |
+ * |---|---|---|---|
+ * | `textPrimary` | **15.76:1** | 17.01 | Anything. The record's own voice. |
+ * | `textSecondary` | **4.70:1** | 5.07 | Clears AA for body text — any number, comparison or label a person must READ. |
+ * | `textMuted` | **3.36:1** | 3.62 | Clears the 3:1 floor for large text and non-text marks only: dates, placeholders, disabled states, decoration. |
  *
- * ## The hue went neutral too (18 Aug 2026)
+ * The information-carrying accents on the same canvas, worst tint: `brand`
+ * 5.53, `signal` 4.57, `attention` 4.65, `gain` 5.00, `loss` 5.21, `warning`
+ * 5.69, `error` 5.94 — every one clears AA. `trend` is 4.11 and is the one
+ * exception the palette allows itself: it draws a LINE and its wash, never a
+ * number.
  *
- * §4.2 retired warm paper and said the neutrals go neutral; the INK had not
- * followed. `#171914` / `#687064` / `#82887B` were all green-cast (G > R > B),
- * which on a pure-white canvas reads as a slightly sickly grey rather than as
- * ink. They now sit on Apple's own label ramp — `#1C1C1E` label, `#6E6E73`,
- * `#86868B` — which runs the other way (B ≥ G = R, a hair cool) and is what
- * every native control on the screen next to us is already drawn in.
+ * The retired grouped grey `#F2F2F7` is what these numbers were bought from:
+ * there `signal` was 4.42 and `textSecondary` 4.54, so a prescribed load and
+ * every supporting reading in the app sat at or under the line.
+ *
+ * ## The hue of the ink (18 Aug 2026, unchanged by the canvas)
+ *
+ * `#1C1C1E` / `#6E6E73` / `#86868B` sit on Apple's own label ramp, which runs a
+ * hair cool (B ≥ G = R) and is what every native control on the screen next to
+ * us is already drawn in. They were green-cast before that.
  *
  * **The ladder was preserved, not copied.** Apple's `secondaryLabel` over white
  * is ~`#8A8A8E` (3.3:1) and its tertiary ~`#C4C4C6` (1.9:1) — both would drop
  * this app below the floor measured above, so only the HUE moved; each rung
  * kept its ratio. If a future token borrows an Apple grey, measure it first.
  *
- * Every ink gained on white; none of the rules below loosens because of it —
- * `textMuted` at 3.6 still fails AA for body text.
- *
- * `textMuted` was `#9AA093` — **2.45:1**, which fails AA (4.5) and misses even
- * the 3:1 floor, while being used 180+ times including on values people were
- * expected to read. Darkening the token lifts every one of those at once; the
- * standing rule that came with it is the important half:
+ * The standing rule that came with the ladder is the important half:
  *
  * **If the text carries information, it is `textSecondary` or ink. `textMuted`
  * is for things the eye may skip.**
@@ -197,14 +223,14 @@ export type ColorToken = keyof typeof color;
  *   appears on. A colour that means one thing here and another there is worse
  *   than no colour.
  * - **Green and blue are not in this set, and must never be added to it.**
- *   `signal` is a planned value and `trained` is a day trained; a settings row
- *   borrowing either would spend a meaning the app cannot get back. Red is
+ *   `signal` is a planned value and `brand` is the app's one accent; a settings
+ *   row borrowing either would spend a meaning the app cannot get back. Red is
  *   absent for the same reason — destructive rows already draw in `error`.
  * - **Darkened, and kept that way.** The values were pulled down off the iOS
- *   system hues when the canvas was warm paper; on the white canvas of 17 Aug
- *   they all gained contrast rather than losing it (3.9–6.4:1, `gold` the
- *   lowest), so they stay exactly as they are. Every value here clears 3:1
- *   against `bg`, `surface` and `surfaceHigh` (§14).
+ *   system hues when the canvas was warm paper, which is what it is again:
+ *   re-measured 20 Aug they run 3.58–5.90:1 on the canvas tints (`gold` the
+ *   lowest), so every one still clears the 3:1 floor a non-text mark needs on
+ *   `canvas`, `surface` and `surfaceHigh` (§14), and they stay as they are.
  */
 export const glyph = {
   indigo: '#5B57C2', // calendar, card — structure and billing
@@ -251,6 +277,10 @@ export const ink = {
 /**
  * Apply an alpha to a hex color. Used to let readings recede — e.g. parsed
  * gutter numbers sit at ~70% opacity so they stay quiet until looked at.
+ *
+ * **Never call this inside a worklet.** It is a plain JS function, so reaching
+ * it from `useAnimatedStyle` crashes on the UI thread at runtime — no gate
+ * catches it. Precompute the string outside the hook and close over it.
  */
 export function alpha(hex: string, opacity: number): string {
   const a = Math.round(Math.max(0, Math.min(1, opacity)) * 255)

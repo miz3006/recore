@@ -5,66 +5,71 @@ import { test } from 'node:test';
 
 import {
   CANVAS,
-  MAX_STOP_DELTA,
-  PAPER_FIELD_CYCLE_MS,
+  MAX_STOP_CONTRAST,
   PAPER_FIELD_LOCATIONS,
   PAPER_FIELD_STOPS,
   channels,
+  contrast,
   isCanvasTone,
-  largestStopDelta,
-  paperFieldMotion,
+  largestStopContrast,
 } from './paper-field.ts';
 
-test('reduce motion disables the gradient animation, and keeps the gradient', () => {
-  const still = paperFieldMotion(true);
-  assert.equal(still.animated, false);
-  assert.equal(still.cycleMs, 0);
-  assert.equal(still.driftPx, 0);
-  // The fallback is a STATIC gradient, not a flat colour: the stops are the
-  // field, the drift is only how it moves.
+test('the field is a gradient of three stops and nothing about it moves', () => {
   assert.equal(PAPER_FIELD_STOPS.length, 3);
-});
-
-test('with motion allowed the drift is measured in tens of seconds', () => {
-  const moving = paperFieldMotion(false);
-  assert.equal(moving.animated, true);
-  assert.ok(moving.driftPx > 0);
-  assert.ok(moving.cycleMs >= 20_000, `${moving.cycleMs} ms is not "tens of seconds"`);
-  assert.equal(moving.cycleMs, PAPER_FIELD_CYCLE_MS);
-});
-
-test('every stop is in the white canvas family and none is outside it', () => {
-  for (const stop of PAPER_FIELD_STOPS) {
-    assert.ok(isCanvasTone(stop), `${stop} is not a white canvas tone`);
+  // The drift is retired (design skill §Canvas: "static, and never animates"),
+  // so this module must not hand a component anything to animate.
+  const source = readFileSync(path.join(import.meta.dirname, 'paper-field.ts'), 'utf8');
+  for (const gone of ['paperFieldMotion', 'CYCLE_MS', 'DRIFT_PX']) {
+    assert.ok(!source.includes(`export ${gone}`) && !source.includes(`export const ${gone}`) &&
+      !source.includes(`export function ${gone}`), `${gone} is back — the canvas must not move`);
   }
-  assert.equal(isCanvasTone('#FFFFFF'), true); // the canvas itself
+});
+
+test('every stop is in the canvas family and none is outside it', () => {
+  for (const stop of PAPER_FIELD_STOPS) {
+    assert.ok(isCanvasTone(stop), `${stop} is not a canvas tone`);
+  }
   // The guard has to be able to say no, or it is asserting nothing.
-  assert.equal(isCanvasTone('#007AFF'), false);
-  assert.equal(isCanvasTone('#F4F5EF'), false); // the warm paper this replaced
-  assert.equal(isCanvasTone('#FDFDF8'), false); // white, tinted warm
-  assert.equal(isCanvasTone('#F8F9FB'), false); // white, tinted cool
-  assert.equal(isCanvasTone('#F0F0F0'), false); // neutral, but no longer white
+  assert.equal(isCanvasTone('#FFFFFF'), false); // white is a SURFACE, never the canvas
+  assert.equal(isCanvasTone('#F2F2F7'), false); // the grouped grey this replaced
+  assert.equal(isCanvasTone('#F4F5EF'), false); // the green-cast paper before that
+  assert.equal(isCanvasTone('#F8F9FB'), false); // near-white, but cool
+  assert.equal(isCanvasTone('#F0F0F0'), false); // tintless, and no longer near-white
+  assert.equal(isCanvasTone('#0B5CD6'), false); // the brand
   assert.equal(channels('nope'), null);
 });
 
-test('the contrast between stops is barely perceptible', () => {
-  const delta = largestStopDelta(PAPER_FIELD_STOPS);
-  assert.ok(delta > 0, 'a field with no difference between stops is a flat colour');
-  assert.ok(delta <= MAX_STOP_DELTA, `stops differ by ${delta} — that reads as a gradient`);
+test('the step between stops is under what an eye resolves', () => {
+  const worst = largestStopContrast(PAPER_FIELD_STOPS);
+  assert.ok(worst > 1, 'a field with no difference between stops is a flat colour');
+  assert.ok(worst <= MAX_STOP_CONTRAST, `stops differ by ${worst}:1 — that reads as a gradient`);
 });
 
-test('the canvas colour is a stop of its own field', () => {
+test('the ink ladder is measurable against one canvas value', () => {
+  // Everything in the app is contrast-checked against `canvas`. That only holds
+  // if no pixel of the gradient is meaningfully darker than it, whatever the
+  // stop under it.
+  for (const stop of PAPER_FIELD_STOPS) {
+    assert.ok(
+      contrast(stop, CANVAS) <= MAX_STOP_CONTRAST,
+      `${stop} is ${contrast(stop, CANVAS)}:1 from the canvas the ink was measured on`,
+    );
+  }
+  assert.ok(contrast('#6E6E73', PAPER_FIELD_STOPS[2]!) >= 4.5, 'textSecondary fails AA on a stop');
+  assert.ok(contrast('#547C00', PAPER_FIELD_STOPS[2]!) >= 4.5, 'signal fails AA on a stop');
+});
+
+test('the canvas colour is a stop of its own field, and the theme agrees', () => {
   assert.ok(PAPER_FIELD_STOPS.includes(CANVAS));
-  // …and it is still the surface Today is drawn on. The theme is RN-only and cannot be
-  // imported here, so the value is checked against the theme's source.
-  const themeSource = readFileSync(
-    path.join(import.meta.dirname, 'theme', 'color.ts'),
-    'utf8',
-  );
+  // The theme is RN-only and cannot be imported here, so the values are checked
+  // against its source. All three tints, so a recolour cannot land by halves.
+  const themeSource = readFileSync(path.join(import.meta.dirname, 'theme', 'color.ts'), 'utf8');
   assert.ok(
-    new RegExp(`surface: '${CANVAS}'`).test(themeSource),
-    `the field's ${CANVAS} is no longer color.surface`,
+    new RegExp(`canvas: '${CANVAS}'`).test(themeSource),
+    `the field's ${CANVAS} is no longer color.canvas`,
   );
+  assert.ok(new RegExp(`canvasTop: '${PAPER_FIELD_STOPS[0]}'`).test(themeSource));
+  assert.ok(new RegExp(`canvasBot: '${PAPER_FIELD_STOPS[2]}'`).test(themeSource));
 });
 
 test('the stops run in order along the diagonal, off-centre', () => {
@@ -76,12 +81,9 @@ test('the stops run in order along the diagonal, off-centre', () => {
   }
   assert.notEqual(PAPER_FIELD_LOCATIONS[1], 0.5);
 
-  // Lightest to deepest, so the ramp never doubles back on itself.
-  const luminance = PAPER_FIELD_STOPS.map((s) => {
-    const [r, g, b] = channels(s)!;
-    return r + g + b;
-  });
-  for (let i = 1; i < luminance.length; i += 1) {
-    assert.ok(luminance[i]! < luminance[i - 1]!, 'the ramp of the field reverses');
-  }
+  // Peach at the top, lavender at the bottom: the ends differ by HUE, and the
+  // warm end must stay the warm end.
+  const [topR, , topB] = channels(PAPER_FIELD_STOPS[0])!;
+  const [botR, , botB] = channels(PAPER_FIELD_STOPS[2])!;
+  assert.ok(topR - topB > botR - botB, 'the warm end of the diagonal is no longer the top');
 });

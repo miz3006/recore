@@ -1,10 +1,10 @@
-import { alpha, color, moderateScale } from '@/lib/theme';
+import { CTA_HEIGHT, alpha, color, moderateScale, radius } from '@/lib/theme';
 
 /**
  * The onboarding surface's own tokens — the mascot-led restyle (owner's spec,
  * 12 Aug 2026).
  *
- * ONE accent. Recore blue is THE onboarding colour and it does every job the
+ * ONE accent. The brand blue is THE onboarding colour and it does every job the
  * reference app gave its purple: the filled primary CTA, the progress fill, a
  * selected option's border, wash and check, an emphasised value, a text link,
  * and the three eyebrows the design colours (WHY WE ASKED, YOUR COMMITMENT,
@@ -27,13 +27,28 @@ import { alpha, color, moderateScale } from '@/lib/theme';
  * together if the owner wants them lighter.
  */
 
-/** Recore blue (#007AFF) — the one accent of the flow. */
-export const BLUE = color.trained;
+/**
+ * The brand blue — the one accent of the flow, and the app's one accent
+ * everywhere else too (design skill §Colour, 20 Aug 2026). It was the funnel's
+ * own reading of `color.trained`; there is no separate onboarding blue, so this
+ * is now an alias of `color.brand` and the call sites move off it in Phase 2.
+ *
+ * @deprecated import `color.brand` from `@/lib/theme`.
+ */
+export const BLUE = color.brand;
 
 /**
  * Soft card fill: option rows, the value cards, the notification preview.
- * Five per cent of ink on white lands on the same grey as the system's grouped
- * canvas (#F2F2F7), which is what the design draws these rows in.
+ *
+ * Five per cent of ink used to land on exactly the system's grouped canvas
+ * (#F2F2F7) — the grey the design drew these rows in. That canvas is gone: on
+ * the warm `canvas` the same wash resolves to **#F1EEE9**, a warm grey a step
+ * down from the page, which is still the row the design asks for.
+ *
+ * Phase 2 decides whether the option row keeps this wash or becomes `surface` +
+ * `shadow.card` like every other floating thing in v6. Until then the wash
+ * stays, because a row that is 4 % from its page is exactly the "invisible
+ * without a border or a shadow" case the elevation model warns about.
  */
 export const INK_CARD = alpha(color.accent, 0.05);
 /** Chrome circle: the back button. */
@@ -48,28 +63,41 @@ export const INK_TRACK = alpha(color.accent, 0.1);
 export const INK_RING = alpha(color.accent, 0.22);
 
 /**
- * The wash behind a CHOSEN option row — Recore blue at 8 %, which is the
- * lightest tint that still reads as "this one" beside four grey rows without
- * competing with the filled CTA underneath them.
+ * The wash behind a CHOSEN option row — brand at 8 %, which is the lightest
+ * tint that still reads as "this one" beside four grey rows without competing
+ * with the filled CTA underneath them.
+ *
+ * The strength was set against `#007AFF`; Volt `#0B5CD6` is a deeper blue, so
+ * 8 % of it is a fraction stronger at the same number. Re-judge on device
+ * rather than by arithmetic — this wash carries no text, so there is no ratio
+ * to clear, only a weight to match.
  */
-export const BLUE_WASH = alpha(color.trained, 0.08);
+export const BLUE_WASH = alpha(color.brand, 0.08);
 /** The commitment screen's stat card, one step lighter than a chosen row. */
-export const BLUE_CARD = alpha(color.trained, 0.06);
+export const BLUE_CARD = alpha(color.brand, 0.06);
 
 /**
- * Radii, from the Claude Design canvas (13 Aug 2026 import). Three values and
- * no others: rows and fields take 20, the value card 24, controls and chips are
- * pills.
+ * ## The funnel's radii ARE the app's radii (skill §Decided-2)
+ *
+ * These three were the funnel's private scale — 24 for a value card, 20 for a
+ * row — and the app's `radius` was a different set (18 / 22 / 28). v6 moves the
+ * app onto the funnel's numbers instead of the other way round, so there is
+ * nothing left for this file to declare. The two names below are aliases that
+ * hold their call sites through Phase 2 and are then deleted.
+ *
+ * @deprecated use `radius.xl` / `radius.lg` from `@/lib/theme`.
  */
-export const CARD_RADIUS = 24;
-export const ROW_RADIUS = 20;
+export const CARD_RADIUS = radius.xl;
+export const ROW_RADIUS = radius.lg;
 
 /**
- * The CTA's own height. `CONTROL_HEIGHT` is the app's 50 pt button and stays
- * that everywhere else; the funnel's button is the design's 56 and is the one
- * control on these screens, so it is allowed to be the bigger thing.
+ * The CTA's height — now the app's, not the funnel's (skill §Decided-3). Every
+ * primary button in Recore is 56; `CONTROL_HEIGHT` 50 is for secondary, ghost
+ * and compact controls.
+ *
+ * @deprecated import `CTA_HEIGHT` from `@/lib/theme`.
  */
-export const CTA_HEIGHT = moderateScale(56);
+export { CTA_HEIGHT };
 
 /** Selected-state border. Constant width, animated colour: a border that grows
  * would move the label under it, and product-direction §4.3 bans animating a

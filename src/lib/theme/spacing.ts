@@ -38,16 +38,30 @@ export const spacing = {
  *
  *     { borderRadius: radius.lg, borderCurve: 'continuous' }
  *
- * **Set it on every new surface that uses `sm`/`md`/`lg`/`xl`/`xxl`.** Skip it
+ * **Set it on every new surface that uses `sm`/`md`/`lg`/`xl`.** Skip it
  * only where the shape is already a circle or a pill (`radius.pill`, `X / 2`) —
  * there is no corner left for the curve to change.
+ */
+/**
+ * ## Four values and a pill — and the funnel has no scale of its own
+ *
+ * The design skill's §Spacing settles the radii for the whole app (20 Aug
+ * 2026): `sm` 10 · `md` 14 (buttons) · `lg` 20 (rows, fields, option rows) ·
+ * `xl` 24 (cards, sheets, hero surfaces) · `pill` 999. `onboarding/tokens.ts`
+ * declares neither `CARD_RADIUS` nor `ROW_RADIUS` any more — the funnel's radii
+ * ARE the app's radii (skill §Decided-2).
+ *
+ * `lg` and `xl` each grew two points, which is what makes a 24 pt sheet and a
+ * 20 pt row read as one family rather than as 18/22/28 read as three.
  */
 export const radius = {
   sm: 10,
   md: 14, // buttons
-  lg: 18, // cards / sheets (16–20px band)
-  xl: 22,
-  xxl: 28, // hero surfaces (paywall plans, onboarding cards) — the soft-depth band
+  lg: 20, // rows, fields, option rows
+  xl: 24, // cards, sheets, hero surfaces
+  /** @deprecated the 28 pt hero band is gone — `xl` is the hero radius now. This
+   * alias holds its 6 call sites through Phase 2 and is then deleted. */
+  xxl: 24,
   pill: 999, // controls, chips, date pill
 } as const;
 
@@ -57,7 +71,19 @@ export const hairline = StyleSheet.hairlineWidth;
 /** Standard tap target for round toolbar buttons. */
 export const HIT = 44;
 
-/** One consistent height for primary/secondary buttons (task §3). */
+/**
+ * **The height of every PRIMARY button in the app** (skill §Decided-3).
+ *
+ * It was the onboarding funnel's private token, on the reasoning that the CTA is
+ * the one control on those screens and may be the bigger thing. v6 makes that
+ * true everywhere: a primary action is 56 wherever it is, so the button that
+ * finishes a workout and the button that finishes onboarding are the same
+ * object. It is not redeclared anywhere else.
+ */
+export const CTA_HEIGHT = moderateScale(56);
+
+/** Secondary, ghost and compact controls — everything that is not the primary
+ * button on its screen. */
 export const CONTROL_HEIGHT = moderateScale(50);
 
 /** Round toolbar-button diameter; scales down so four still fit on an SE. */
