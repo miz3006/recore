@@ -70,6 +70,14 @@ export interface BriefLine {
   last?: string | null;
   /** The heaviest counted set ever recorded for this lift, or null. */
   bestKg?: number | null;
+  /** The prescribed load as a NUMBER — the engine's own `PlanRow.weightKg`,
+   * never parsed back out of `value` (§7.7). Next's card sets it at the top of
+   * the type scale, the way Progression sets a lift's latest e1RM, so it needs
+   * the figure rather than the sentence it sits inside. */
+  loadKg?: number | null;
+  /** The rep scheme alone — "5·5·5". Null on the ghost path, which stores
+   * text; the card falls back to the whole of `value` there. */
+  scheme?: string | null;
   /** The athlete's own last remark about this lift, quoted verbatim beside the
    * prescription. Never an input to `value` — see `BriefNote`. */
   note?: BriefNote | null;
@@ -272,8 +280,9 @@ function findMovers(userId: string, canonicals: string[]): BriefMover[] {
 function enrichLines(
   userId: string,
   lines: BriefLine[],
-  /** Prescribed load per line, parallel to `lines` — the heaviest-ever check
-   * only, never displayed. */
+  /** Prescribed load per line, parallel to `lines`. It answers the
+   * heaviest-ever check AND lands on the line as `loadKg`, which is what lets a
+   * card print the figure without splitting `value` apart on screen (§7.7). */
   prescribed: (number | null)[],
   recentNotes: ReturnType<typeof recentEntryNotes>,
 ): { lines: BriefLine[]; prReach: Brief['prReach']; quoted: Set<string> } {
@@ -286,13 +295,20 @@ function enrichLines(
     const note = found ? { name: found.exercise, text: found.note, day: found.day } : null;
     if (note) quoted.add(entryNoteKey(note.name));
 
-    if (!hint) return note ? { ...line, note } : line;
-    const best = bestWeightFor(userId, hint.canonical);
     const target = prescribed[i] ?? null;
+    if (!hint) return { ...line, loadKg: target, ...(note ? { note } : null) };
+    const best = bestWeightFor(userId, hint.canonical);
     if (prReach == null && best != null && target != null && target > best) {
       prReach = { name: hint.canonical, weightKg: target };
     }
-    return { ...line, canonical: hint.canonical, last: hint.echo, bestKg: best, note };
+    return {
+      ...line,
+      canonical: hint.canonical,
+      last: hint.echo,
+      bestKg: best,
+      loadKg: target,
+      note,
+    };
   });
 
   return { lines: out, prReach, quoted };
@@ -314,6 +330,7 @@ export function planDayLines(userId: string, planDay: PlanDayRow): BriefLine[] {
     value: r.value,
     why: r.why ?? null,
     move: r.move ?? null,
+    scheme: r.scheme ?? null,
   }));
   const prescribed = strip.rows.map((r) => r.weightKg ?? null);
   return enrichLines(userId, lines, prescribed, recentEntryNotes(userId)).lines;
@@ -340,6 +357,7 @@ export function buildBrief(userId: string): Brief {
       value: r.value,
       why: r.why ?? null,
       move: r.move ?? null,
+      scheme: r.scheme ?? null,
     }));
     // The engine's own number, carried through `PlanRow.weightKg` — the value
     // string ("82.5 × 5·5·5") is display and is never parsed back.

@@ -109,8 +109,7 @@ export default function Split() {
           hitSlop={spacing.sm}
           accessibilityRole="button"
           accessibilityLabel="Back"
-          style={styles.backBtn}
-          pressedStyle={styles.pressedFill}>
+          style={styles.backBtn}>
           <Icon name="chevron-back" size={moderateScale(16)} tint={color.textPrimary} />
         </PressableScale>
         <Text style={styles.navTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -172,7 +171,6 @@ export default function Split() {
               haptic="none"
               activeScale={0.98}
               style={styles.addDay}
-              pressedStyle={styles.pressedFill}
               accessibilityRole="button"
               accessibilityLabel="Add a day">
               <Text style={styles.addDayText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -210,9 +208,8 @@ function DayCard({
       <PressableScale
         onPress={onOpen}
         haptic="none"
-        activeScale={0.99}
+        activeScale={0.98}
         style={styles.cardTap}
-        pressedStyle={styles.cardTapPressed}
         accessibilityRole="button"
         accessibilityLabel={`Edit ${day.label}`}>
         <View style={styles.cardHead}>
@@ -302,7 +299,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pressedFill: { backgroundColor: color.surfaceHigh },
   navTitle: {
     ...type.headline,
     fontWeight: '700',
@@ -315,6 +311,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: color.surfaceHigh,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     padding: moderateScale(3),
     gap: moderateScale(3),
     marginBottom: spacing.lg,
@@ -323,6 +320,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: moderateScale(9),
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: hairline,
@@ -347,13 +345,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     marginBottom: spacing.md,
   },
   cardNext: { borderColor: color.textMuted },
   cardTap: { gap: spacing.xs, borderRadius: radius.sm, margin: -spacing.xs, padding: spacing.xs },
-  cardTapPressed: { backgroundColor: color.surfaceHigh },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   cardLabel: { flex: 1, ...type.headline, color: color.textPrimary },
   cardMoves: {
@@ -377,6 +375,7 @@ const styles = StyleSheet.create({
     minHeight: moderateScale(34),
     paddingVertical: spacing.sm,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.border,
     alignItems: 'center',
@@ -391,12 +390,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: color.textMuted,
   },
-  weekChipTextOn: { color: color.bg },
+  weekChipTextOn: { color: color.onInk },
 
   addDay: {
     minHeight: CONTROL_HEIGHT,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: color.border,
@@ -420,12 +420,13 @@ const styles = StyleSheet.create({
     minHeight: CONTROL_HEIGHT,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: color.accent,
+    borderCurve: 'continuous',
+    backgroundColor: color.ctaFill,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: spacing.sm,
   },
-  emptyBtnPressed: { backgroundColor: color.accentPressed },
-  emptyBtnText: { ...type.headline, color: color.bg },
+  emptyBtnPressed: { backgroundColor: color.ctaFillPressed },
+  emptyBtnText: { ...type.headline, color: color.onInk },
   emptyHint: { ...type.footnote, color: color.textMuted },
 });

@@ -5,6 +5,15 @@ import { loadUndoneKeys, loadUndoneMap, saveUndone } from '@/lib/db/done-state';
 import { getEntryNotes, setEntryNote } from '@/lib/db/entry-notes';
 import { getMeta, setMeta } from '@/lib/db/index';
 import { setPlanDayChoice } from '@/lib/db/plan';
+import { loadPlannedSession, plannedSessionFor, savePlannedSession } from '@/lib/db/planned';
+import {
+  editSet as editPlannedSetIn,
+  logSet as logPlannedSetIn,
+  settleFromNote,
+  unlogSet as unlogPlannedSetIn,
+  type PlannedSession,
+} from '@/lib/planned-session';
+import type { SessionOption } from '@/lib/session-options';
 import { computeStreak, countSessions, getWorkoutForDay, saveRawText } from '@/lib/db/workouts';
 import { getPredictionForOpen, markPredictionAccepted } from '@/lib/db/predictions';
 import { computePlanStrip, type PlanStrip } from '@/lib/db/strip';
@@ -109,6 +118,29 @@ interface SessionState {
    * due day. Persisted day-keyed in the meta KV, read by resolveTodayPlanDay —
    * so the strip, calendar, and Next brief all follow the answer. */
   choosePlanDay: (planDayId: string) => void;
+
+  /**
+   * The day's PREFILLED CHECKLIST (owner's spec §E, 13 Aug 2026), or null.
+   *
+   * It is not the record and never becomes one on its own: planned sets are
+   * excluded from today's totals, the week, the streak and every statistic,
+   * because none of them has been written into `raw_text`. A tapped circle
+   * writes its line through `setNote` like any keystroke — one path in, one
+   * source of truth, and from that instant the set counts everywhere.
+   */
+  plannedSession: PlannedSession | null;
+  /** Prefill today from a picker option (`lib/session-options.ts`). Choosing a
+   * split day also pins it as today's due day, so the strip, the calendar and
+   * the Next brief follow the same answer the picker gave. */
+  startPlannedSession: (option: SessionOption) => void;
+  /** Put the checklist away. The record it has already written stays. */
+  clearPlannedSession: () => void;
+  /** Tap a circle: done at the planned values, into the note, counting. */
+  logPlannedSet: (id: string) => void;
+  /** Untap it: back to planned, and out of the note again. */
+  unlogPlannedSet: (id: string) => void;
+  /** Log what actually happened instead of the plan. */
+  editPlannedSet: (id: string, values: { weightKg?: number | null; reps?: number | null }) => void;
 
   hydrate: (userId: string) => void;
   reset: () => void;
@@ -276,6 +308,31 @@ function loadDay(userId: string, day: DayKey) {
   };
 }
 
+/**
+ * One shape for every checklist action (§E): run the pure edit, persist the
+ * session, and put the text it produced through `setNote`.
+ *
+ * The order matters. The session is stored BEFORE the note is written, so that
+ * when `setNote` reconciles the checklist against the new text it recognises
+ * the line as the checklist's own and does not read it as the athlete taking
+ * the movement over.
+ */
+function applyPlannedEdit(
+  get: () => SessionState,
+  set: (partial: Partial<SessionState>) => void,
+  edit: (session: PlannedSession, note: string) => { session: PlannedSession; note: string },
+): void {
+  const { plannedSession, note, selectedDay } = get();
+  if (!plannedSession) return;
+
+  const next = edit(plannedSession, note);
+  if (next.session === plannedSession && next.note === note) return;
+
+  savePlannedSession(selectedDay, next.session);
+  set({ plannedSession: next.session });
+  if (next.note !== note) get().setNote(next.note);
+}
+
 export const useSession = create<SessionState>((set, get) => ({
   userId: null,
   selectedDay: todayKey(),
@@ -305,6 +362,7 @@ export const useSession = create<SessionState>((set, get) => ({
   ghost: null,
   ghostDismissed: false,
   planStrip: null,
+  plannedSession: null,
 
   hydrate: (userId) => {
     dumpStartedAt = null;
@@ -321,6 +379,7 @@ export const useSession = create<SessionState>((set, get) => ({
         : null,
       ghostDismissed: false,
       planStrip: computePlanStrip(userId, today),
+      plannedSession: loadPlannedSession(today),
     });
   },
 
@@ -356,6 +415,7 @@ export const useSession = create<SessionState>((set, get) => ({
       ghost: null,
       ghostDismissed: false,
       planStrip: null,
+      plannedSession: null,
     });
   },
 
@@ -372,6 +432,7 @@ export const useSession = create<SessionState>((set, get) => ({
       // ledger is not that entry.
       noteTarget: null,
       planStrip: computePlanStrip(userId, day),
+      plannedSession: loadPlannedSession(day),
     });
   },
 
@@ -396,6 +457,18 @@ export const useSession = create<SessionState>((set, get) => ({
       sessionFinished: false,
     });
     if (prevNote !== text) setMeta(sessionDoneKey(workoutId), null);
+
+    // §E.4 — the written line always wins. Any movement the athlete has written
+    // themselves is released by the checklist, which from then on tracks its
+    // rows without touching its text. Cheap: a scan of the note's lines.
+    const planned = get().plannedSession;
+    if (planned) {
+      const settled = settleFromNote(planned, text);
+      if (settled !== planned) {
+        savePlannedSession(selectedDay, settled);
+        set({ plannedSession: settled });
+      }
+    }
 
     // 2. Fire the background parse after the typing pause; push in background.
     // A fresh keystroke supersedes any failure-retry chain in flight.
@@ -446,6 +519,43 @@ export const useSession = create<SessionState>((set, get) => ({
     if (!userId || selectedDay !== todayKey()) return;
     setPlanDayChoice(userId, selectedDay, planDayId);
     set({ planStrip: computePlanStrip(userId, selectedDay) });
+  },
+
+  // --- the prefilled checklist (§D.3, §E) ------------------------------------
+  // Every one of these does the same two things: move rows in the pure state
+  // machine (`lib/planned-session.ts`), then push whatever text that implies
+  // through `setNote`. The note is written by the ONE path that has always
+  // written it, so a tapped set and a typed set are the same kind of fact.
+
+  startPlannedSession: (option) => {
+    const { userId, selectedDay } = get();
+    if (!userId) return;
+    // Choosing a split day answers the session-start question too — one answer,
+    // so the strip, the calendar and the Next brief cannot disagree with the
+    // checklist about what today is.
+    if (option.kind === 'type') get().choosePlanDay(option.id);
+
+    const session = plannedSessionFor(userId, option, selectedDay);
+    savePlannedSession(selectedDay, session);
+    set({ plannedSession: session });
+  },
+
+  clearPlannedSession: () => {
+    const { selectedDay } = get();
+    savePlannedSession(selectedDay, null);
+    set({ plannedSession: null });
+  },
+
+  logPlannedSet: (id) => {
+    applyPlannedEdit(get, set, (session, note) => logPlannedSetIn(session, note, id));
+  },
+
+  unlogPlannedSet: (id) => {
+    applyPlannedEdit(get, set, (session, note) => unlogPlannedSetIn(session, note, id));
+  },
+
+  editPlannedSet: (id, values) => {
+    applyPlannedEdit(get, set, (session, note) => editPlannedSetIn(session, note, id, values));
   },
 
   openExerciseSheet: (canonical, line = null) => set({ sheetExercise: canonical, sheetLine: line }),

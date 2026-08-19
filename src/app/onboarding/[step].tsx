@@ -1,51 +1,56 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  LinearTransition,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withDelay,
-  withTiming,
-} from 'react-native-reanimated';
-import Svg, { Path } from 'react-native-svg';
+import { useCallback, useEffect, useMemo } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { LinearTransition, useReducedMotion } from 'react-native-reanimated';
 
-import { Icon } from '@/components/icon';
-import { FadeSlideIn } from '@/components/motion';
-import { BuildingChecklist } from '@/components/onboarding/BuildingChecklist';
 import {
-  buildingLines,
-  FOUNDER_NOTE,
+  commitmentCount,
+  liftProjections,
+  MAX_KEY_LIFTS,
   PROGRESS_TOTAL,
   progressFilled,
-  PROOF_LINES,
   resolveWeightUnit,
   STEPS,
   stepHeadline,
-  summaryLines,
-  TRIAL_TIMELINE,
+  stepSubtext,
 } from '@/components/onboarding/config';
 import { DayPicker } from '@/components/onboarding/DayPicker';
-import { setFlowDirection } from '@/components/onboarding/direction';
-import { FounderNote } from '@/components/onboarding/FounderNote';
+import { Enter } from '@/components/onboarding/Enter';
+import { HoldHint, HoldToCommit } from '@/components/onboarding/HoldToCommit';
+import { formatLoad, LiftLoadRow } from '@/components/onboarding/LiftLoadRow';
 import { contentDelay, OnboardingScreen } from '@/components/onboarding/OnboardingScreen';
 import { OptionRow } from '@/components/onboarding/OptionRow';
+import {
+  Footnote,
+  OverloadCard,
+  Paragraph,
+  RecapPreview,
+  SectionLabel,
+  StatCard,
+} from '@/components/onboarding/panels';
 import { ParseDemo } from '@/components/onboarding/ParseDemo';
+import { ProjectionCard, ProjectionRow } from '@/components/onboarding/ProjectionCard';
 import { SuggestionChips } from '@/components/onboarding/SuggestionChips';
 import { TextField } from '@/components/onboarding/TextField';
-import { BLUE, ENTER_MS, INK_TRACK, RISE_PX } from '@/components/onboarding/tokens';
-import { WeightInput } from '@/components/onboarding/WeightInput';
-import { defaultLanguage } from '@/lib/locale';
+import { BLUE, PUSH_MS } from '@/components/onboarding/tokens';
 import { markObStepReached, markOnboardingCompleted, setObStepCount } from '@/lib/funnel';
-import { DUR, EASE } from '@/lib/motion';
+import { defaultLanguage } from '@/lib/locale';
+import { DUR } from '@/lib/motion';
 import {
+  COMMIT_WEEKS,
+  dayCount,
   isExperience,
   isGoal,
   isSessionFeel,
+  loadStep,
   normalizeDayMask,
   parseBodyWeight,
+  parseLiftLoads,
+  parseList,
+  serializeLiftLoads,
+  serializeList,
   toggleDay,
+  toggleInList,
 } from '@/lib/onboarding';
 import {
   markOnboardingDone,
@@ -62,15 +67,7 @@ import {
   setUsualDays,
   setWeightUnit,
 } from '@/lib/prefs';
-import {
-  color,
-  lineFor,
-  MAX_FONT_SCALE,
-  moderateScale,
-  radius,
-  spacing,
-  type,
-} from '@/lib/theme';
+import { color, MAX_FONT_SCALE, spacing, type } from '@/lib/theme';
 import { useOnboardingAnswers } from '@/state/onboarding';
 
 /**
@@ -78,62 +75,49 @@ import { useOnboardingAnswers } from '@/state/onboarding';
  * `components/onboarding/config.ts`, keyed by the `[step]` route param
  * (1-based).
  *
- * **12 Aug 2026 — the mascot-led restyle (owner's spec).** The page itself is
- * no longer described here: `OnboardingScreen` owns the template and its fixed
- * zones (chrome row → illustration on bare paper → eyebrow, headline, subtext →
- * content → the blue CTA pinned to the bottom), and this file only decides what
- * goes in the content band and what the button does. That is why the flow's
- * geometry cannot drift screen to screen — there is one place it is written.
+ * `OnboardingScreen` owns the template and its fixed zones (chrome row →
+ * illustration on bare paper → eyebrow, headline, subtext → content → the blue
+ * CTA pinned to the bottom); this file only decides what goes in the content
+ * band and what the button does. That is why the flow's geometry cannot drift
+ * screen to screen — there is one place it is written.
  *
- * What the restyle changed here:
+ * ## The v3 design import (18 August 2026)
  *
- * · Recore blue is the flow's one accent (selected answers, the progress fill,
- *   the CTA, an emphasised value). Selection used to sweep a row to solid ink.
- * · The illustration is drawn straight onto the paper — no card, no border.
- * · The NOTIFICATIONS step is a switch rather than two radio rows. Both option
- *   labels are still the step's own copy and the stored answer is still
- *   'yes'/'no'; the difference is that a switch can be turned back off, so the
- *   screen carries a Continue instead of auto-advancing on first touch.
- * · An optional FOUNDER NOTE sits after the product truths
- *   (`FOUNDER_NOTE_ENABLED`).
+ * **Nothing auto-advances any more.** Every question carries Continue. The old
+ * flow moved on ~250 ms after a tap, which reads well on a recording and badly
+ * in a hand: a mis-tap on a five-row list was unrecoverable without Back, and
+ * two of the new screens (about-you, days) ask two things at once, which an
+ * auto-advance cannot express at all. The check landing on the row is the
+ * feedback; the button is the commitment.
  *
- * Single-select answers write to the persisted store and advance after ~250 ms
- * — the option's blue check springs in first, so the choice is seen; the
- * commitment step holds longer to show its affirming line. Text, number and
- * multi-select screens advance with the CTA, and the optional inputs keep
- * empty-means-skip. The building screen advances itself (with `replace`, so
- * Back from the summary lands on a question, not a replay).
+ * **Required versus optional is explicit.** Three answers change deterministic
+ * behaviour downstream — the tracker (§2.1 import fast path), the goal (the
+ * engine's fallback range) and the experience (the projection's rate) — and
+ * their Continue stays inert until one is chosen. Everything else may be
+ * skipped, because §5 says a skipped question must change nothing essential,
+ * and every screen below honours that with a real fallback rather than a nag.
  *
- * This flow IS the funnel: the dispatcher sends anyone not yet onboarded to
- * `/onboarding/<resume step>`, and the trial-timeline step completes — every
- * answer with a validated home written through prefs, done + completed marked
- * — then hands back to the dispatcher (a fresh user meets the paywall there;
- * an entitled replay returns to Today). Per §5.1 no OS permission is requested
- * here; the notifications answer is intent, asked for real when the first
- * recap exists.
+ * The flow ends on the PROJECTION, which completes (every answer with a
+ * validated home written through prefs, done + completed marked) and hands back
+ * to the dispatcher: a fresh user meets the paywall there; an entitled replay
+ * returns to Today. Per §5.1 no OS permission is requested here — the recap
+ * answer is intent, asked for real when the first recap exists.
  */
 
-/** Long enough for the blue check to land before the screen slides away. */
-const ADVANCE_DELAY_MS = 250;
 /**
- * The commitment step's affirming line gets a longer hold than a plain answer
- * — but a hold is a thing to READ, never a thing to wait out. 900 ms leaves the
- * line on screen well past its fade-in, and tapping the same answer again skips
- * the rest, so the slowest path is a choice rather than a wall.
- */
-const AFFIRM_DELAY_MS = 900;
-
-/**
- * The end of the flow. Every answer with a validated, consequence-bearing
- * home is written through it — goal reaches the engine's fallback range,
- * experience the level of explanation, tracker the §2.1 import fast path,
- * session feel the composer vocabulary, the day mask the weekly rhythm, the
- * rest choice the toolbar timer, the name and key lift their greeting and
- * Lifts pin, the typed weight (converted to metric exactly once, here) the
- * You screen's body context, and the notifications answer the §12.1 recap
- * intent. Gender and commitment stay in the answers store — they personalise
- * the flow's own copy and illustrations. Language and display unit come from
- * the device locale (§5: derivable answers are not worth a screen).
+ * The end of the flow. Every answer with a validated, consequence-bearing home
+ * is written through it — goal reaches the engine's fallback range, experience
+ * the level of explanation, tracker the §2.1 import fast path, session feel the
+ * composer vocabulary, the day mask the weekly rhythm, the name its greeting,
+ * the first key lift the Lifts pin, and the recap answer the §12.1 intent.
+ *
+ * Rest length and bodyweight are no longer asked (the v3 flow dropped both
+ * screens); their writers stay because their answer keys are still in the store
+ * and putting either screen back must not need a second edit here.
+ *
+ * Gender and commitment stay in the answers store — they personalise the flow's
+ * own copy and illustrations. Language and display unit come from the device
+ * locale (§5: derivable answers are not worth a screen).
  */
 function completeFlow() {
   const { answers } = useOnboardingAnswers.getState();
@@ -142,24 +126,33 @@ function completeFlow() {
   if (name) setName(name);
   if (isGoal(answers.goal)) setGoal(answers.goal);
   if (isExperience(answers.experience)) setExperience(answers.experience);
-  const tracker = answers.tracker;
+
+  // 'sheet' is a v3 answer with no home in `ObTracker`, and it does not need
+  // one: a spreadsheet, a notes app and a paper log are the same thing to the
+  // import fast path — none of them hands Recore a file it can read. Mapping it
+  // to 'notes' keeps the stored vocabulary honest instead of widening a type
+  // that three other screens read.
+  const tracker = answers.tracker === 'sheet' ? 'notes' : answers.tracker;
   if (tracker === 'strong' || tracker === 'hevy' || tracker === 'notes' || tracker === 'none') {
     setObTracker(tracker);
   }
+
   if (isSessionFeel(answers.sessionFeel)) setSessionFeel(answers.sessionFeel);
   const days = normalizeDayMask(answers.trainingDays);
   if (days > 0) setUsualDays(days);
-  const lift = answers.primaryLift?.trim();
+
+  // The FIRST key lift is the pin, because it is the one the person reached for
+  // first on a screen that let them choose three.
+  const lift = parseList(answers.keyLifts)[0]?.trim();
   if (lift) setPrimaryLift(lift);
+
   const rest = Number.parseInt(answers.restSeconds ?? '', 10);
   if (Number.isInteger(rest) && rest > 0) setRestSeconds(rest);
   const unit = resolveWeightUnit(answers);
   setWeightUnit(unit);
   const kg = parseBodyWeight(answers.bodyweight ?? '', unit);
   if (kg != null) setBodyWeightKg(kg);
-  // The §12.1 recap intent — read when the first recap exists (its card offers
-  // the notification only to a yes) and by the You row's default. Intent only:
-  // no permission prompt happens here (§5.1).
+
   const notif = answers.notifications;
   if (notif === 'yes' || notif === 'no') setRecapIntent(notif);
   setObLanguage(defaultLanguage());
@@ -169,61 +162,19 @@ function completeFlow() {
   markOnboardingCompleted(); // the denominator of every step's drop-off (E7)
 }
 
-/** The blue check of the summary card and the product-truth rows. */
-function CheckMark({ size, stroke }: { size: number; stroke: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 16 16">
-      <Path
-        d="M3 8.5L6.5 12 13 4.5"
-        stroke={stroke}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </Svg>
-  );
-}
-
-/** The connecting rail between two timeline nodes, DRAWN downward (scaleY
- * from the top) once its upper node has landed — the trial's path unfolding
- * in order rather than appearing pre-printed. Reduce Motion shows it whole. */
-function TimelineConnector({ delay }: { delay: number }) {
-  const reduce = useReducedMotion();
-  const p = useSharedValue(reduce ? 1 : 0);
-
-  useEffect(() => {
-    if (!reduce) {
-      p.value = withDelay(delay, withTiming(1, { duration: DUR.slow, easing: EASE.emphasized }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: p.value }] }));
-
-  return <Animated.View style={[styles.tlLine, animatedStyle]} />;
-}
+/**
+ * The three answers whose absence changes what the app DOES, rather than what
+ * it says. Their Continue waits. Everything else is skippable by §5.
+ */
+const REQUIRED: readonly string[] = ['tracker', 'goal', 'experience'];
 
 /**
- * One trial-timeline node mark. All three are OUTLINED ink circles carrying a
- * monochrome glyph (design import, 13 Aug 2026) — the unlocked padlock of
- * today, the reminder bell, the billing card. The first node used to be a
- * filled blue disc; it made "today" look like a step already completed on a
- * screen that is describing three things that have not happened yet, and it
- * spent the flow's accent on the one screen that must read as plain fact.
- * No emoji anywhere in this flow.
+ * The obstacles screen's exclusive answer: "Nothing — I'm just starting" is not
+ * a fourth complaint, it is the absence of complaints, so it clears the others
+ * and any other choice clears it. Without this the screen accepts "nothing
+ * stops me" alongside "I forget to log it", which is not an answer.
  */
-function TimelineNode({ glyph }: { glyph: 'start' | 'bell' | 'card' }) {
-  return (
-    <View style={styles.tlNode}>
-      <Icon
-        name={glyph === 'start' ? 'unlock' : glyph}
-        size={moderateScale(16)}
-        tint={color.textPrimary}
-      />
-    </View>
-  );
-}
+const EXCLUSIVE_OBSTACLE = 'none';
 
 export default function OnboardingStep() {
   const router = useRouter();
@@ -247,377 +198,484 @@ export default function OnboardingStep() {
     markObStepReached(stepNumber);
   }, [stepNumber, setStep]);
 
-  const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (advanceTimer.current) clearTimeout(advanceTimer.current);
-    },
-    [],
-  );
-
-  /** The commitment step's affirming line, shown under the options once an
-   * answer is in and until the flow advances. */
-  const [affirmLine, setAffirmLine] = useState<string | null>(null);
-
-  // When the affirm line appears it pushes the option rows up a touch; the
-  // layout transition turns that jump into a glide. Reduce Motion keeps the
-  // instant reflow.
+  // Adding a lift row pushes the ones under it down; the layout transition
+  // turns that jump into a glide. Reduce Motion keeps the instant reflow.
   const reduce = useReducedMotion();
   const listLayout = reduce ? undefined : LinearTransition.duration(DUR.base);
 
-  const goNext = useCallback(
-    (mode: 'push' | 'replace' = 'push') => {
-      setFlowDirection(1);
-      if (stepNumber < STEPS.length) {
-        const href = `/onboarding/${stepNumber + 1}` as const;
-        if (mode === 'replace') router.replace(href);
-        else router.push(href);
-      } else {
-        // The trial-timeline is the last config screen: complete, then hand
-        // back to the dispatcher. A fresh user meets the paywall gate there;
-        // an entitled subscriber replaying setup walks straight back into the
-        // app instead of being asked to buy again.
-        completeFlow();
-        router.replace('/');
-      }
-    },
-    [stepNumber, router],
+  /**
+   * THE step-to-step transition, and the only one: a real push on the native
+   * stack. Every step of this funnel is its own route, so moving forward is a
+   * `router.push` and the platform animates it — off the main thread, in the
+   * same 350 ms every other app on the phone uses, with the interactive back
+   * swipe intact. Nothing in JavaScript slides a screen (`OnboardingScreen`'s
+   * per-zone horizontal slide was deleted 19 Aug 2026); the JS entrance only
+   * settles the CONTENTS of a page the platform has already delivered.
+   *
+   * `animationMatchesGesture` is the half that is easy to forget. Without it
+   * the back-swipe runs iOS's default push in reverse instead of the animation
+   * configured here, so dragging back looks like a different app than tapping
+   * forward. It matters more here than almost anywhere, because Back is a real
+   * part of this flow rather than an escape hatch.
+   *
+   * Reduce Motion swaps the slide for a fade: a full-screen horizontal
+   * translation is exactly what the setting is asking to be spared, and the
+   * cross-fade still says "a new page", which is the part that must survive.
+   */
+  const stackOptions = useMemo(
+    () =>
+      ({
+        animation: reduce ? ('fade' as const) : ('slide_from_right' as const),
+        animationDuration: reduce ? DUR.base : PUSH_MS,
+        animationMatchesGesture: true,
+        gestureEnabled: true,
+      }),
+    [reduce],
   );
 
-  /** Drop a pending advance and the line it was holding for. A cancelled
-   * advance must leave nothing armed behind it, or the in-flight guard in
-   * `onSelect` locks the screen for good. */
-  const cancelAdvance = useCallback(() => {
-    if (advanceTimer.current) clearTimeout(advanceTimer.current);
-    advanceTimer.current = null;
-    setAffirmLine(null);
-  }, []);
+  const goNext = useCallback(() => {
+    if (stepNumber < STEPS.length) {
+      router.push(`/onboarding/${stepNumber + 1}`);
+      return;
+    }
+    // The projection is the last config screen: complete, then hand back to the
+    // dispatcher. A fresh user meets the paywall gate there; an entitled
+    // subscriber replaying setup walks straight back into the app instead of
+    // being asked to buy again.
+    completeFlow();
+    router.replace('/');
+  }, [stepNumber, router]);
 
   const goBack = () => {
-    // Leaving cancels any advance still in flight. Without this the timer fires
-    // 900 ms later from a screen the user already left and pushes them forward
-    // again — and the armed ref would still be blocking taps if they returned.
-    cancelAdvance();
-    setFlowDirection(-1);
     // After a cold-start resume there is no history behind this screen —
     // walking to the previous step keeps Back honest instead of dead.
     if (router.canGoBack()) router.back();
     else router.replace(`/onboarding/${stepNumber - 1}`);
   };
 
-  const onSelect = (optionId: string) => {
-    if (advanceTimer.current) {
-      // An answer is already on its way forward. Tapping the SAME one again
-      // means "read it, go" — the affirm hold is readable, not compulsory.
-      // A different option inside the window is ignored: the check has already
-      // landed on that row and swapping the line mid-flight reads as a glitch.
-      if (selected === optionId) {
-        clearTimeout(advanceTimer.current);
-        advanceTimer.current = null;
-        goNext();
-      }
-      return;
-    }
-    if (step.storeKey) setAnswer(step.storeKey, optionId);
-    const affirm = step.affirm?.[optionId] ?? null;
-    if (affirm) setAffirmLine(affirm);
-    advanceTimer.current = setTimeout(
-      () => {
-        advanceTimer.current = null;
-        goNext();
-      },
-      affirm ? AFFIRM_DELAY_MS : ADVANCE_DELAY_MS,
-    );
+  const unit = resolveWeightUnit(answers);
+  const dayMask = normalizeDayMask(answers.trainingDays);
+  const selected = step.storeKey ? answers[step.storeKey] : null;
+  const headline = stepHeadline(step, answers);
+  const subtext = stepSubtext(step, answers);
+
+  const chosenLifts = useMemo(() => parseList(answers.keyLifts), [answers.keyLifts]);
+  const liftLoads = useMemo(() => parseLiftLoads(answers.liftLoads), [answers.liftLoads]);
+  const projections = useMemo(
+    () => (step.kind === 'projection' ? liftProjections(answers) : []),
+    [step.kind, answers],
+  );
+
+  const setLiftLoad = (lift: string, value: number) => {
+    setAnswer('liftLoads', serializeLiftLoads({ ...liftLoads, [lift]: value }));
   };
 
-  // The building screen advances itself; `replace` keeps it off the stack so
-  // Back from the summary lands on the question before it, not on a replay.
-  const onBuilt = useCallback(() => {
-    if (advanceTimer.current) return;
-    goNext('replace');
-  }, [goNext]);
+  const toggleObstacle = (id: string) => {
+    const current = parseList(answers.obstacles);
+    if (id === EXCLUSIVE_OBSTACLE) {
+      setAnswer('obstacles', current.includes(id) ? '' : id);
+      return;
+    }
+    const withoutExclusive = serializeList(current.filter((v) => v !== EXCLUSIVE_OBSTACLE));
+    setAnswer('obstacles', toggleInList(withoutExclusive, id));
+  };
 
-  // The day picker's mask, the text fields and the weight field all live in
-  // the same persisted answers as every radio choice.
-  const selected = step.storeKey ? answers[step.storeKey] : null;
-  const dayMask = normalizeDayMask(answers.trainingDays);
-  const textValue = step.storeKey ? (answers[step.storeKey] ?? '') : '';
-  const weightText = answers.bodyweight ?? '';
-  const weightUnit = resolveWeightUnit(answers);
-  // Empty means skip (§5: body context is optional); non-empty must parse.
-  const weightInvalid =
-    weightText.trim().length > 0 && parseBodyWeight(weightText, weightUnit) == null;
+  const toggleLift = (lift: string) => {
+    const next = toggleInList(answers.keyLifts, lift);
+    setAnswer('keyLifts', next);
+    // A lift dropped from the set takes its load with it: leaving an orphaned
+    // number in the map would put a lift nobody chose on the projection screen.
+    if (!parseList(next).includes(lift) && liftLoads[lift] != null) {
+      const rest = { ...liftLoads };
+      delete rest[lift];
+      setAnswer('liftLoads', serializeLiftLoads(rest));
+    }
+  };
 
-  const headline = stepHeadline(step, answers);
-  const checklist = useMemo(
-    () => (step.kind === 'building' ? buildingLines(answers) : []),
-    [step.kind, answers],
-  );
-  const summary = useMemo(
-    () => (step.kind === 'summary' ? summaryLines(answers) : []),
-    [step.kind, answers],
-  );
-
-  /**
-   * The notifications step is the one question drawn as a PAIR OF FULL-HEIGHT
-   * CHOICES rather than a list (Claude Design canvas, 13 Aug 2026): a filled
-   * blue row for yes, an outlined row for no. Its two labels are the step's own
-   * config copy and the stored answer is still 'yes' / 'no'.
-   *
-   * It is also the one question in the flow whose answer a person may want to
-   * change their mind about before moving on, so it does NOT auto-advance —
-   * Continue writes whatever the screen is showing. Unanswered reads as yes,
-   * and the filled row says which one that is before the button commits it.
-   * Recap intent is not a permission — §5.1 keeps the OS prompt for the moment
-   * the first recap actually exists — so a visible default is honest here in a
-   * way it would not be for a system dialog.
-   */
-  const isNotifications = step.slug === 'notifications';
-  const notificationsAnswer = answers.notifications ?? 'yes';
-
-  // What sits in the content band, and how many staggered items it holds (the
-  // CTA lands one beat after the last of them).
+  // What sits in the content band, how many staggered items it holds (the CTA
+  // lands one beat after the last of them), and what the button does.
   let content: React.ReactNode = null;
   let contentCount = 1;
-  let cta: { label: string; onPress: () => void; disabled?: boolean } | null = null;
+  let cta: { label: string; onPress: () => void; disabled?: boolean } | null = {
+    label: step.cta ?? 'Continue',
+    onPress: goNext,
+    disabled: REQUIRED.includes(step.slug) && !selected,
+  };
+  let ctaSlot: React.ReactNode = null;
+  let footer: React.ReactNode = null;
 
-  if (step.kind === 'question' && step.options) {
-    if (isNotifications) {
-      contentCount = step.options.length;
-      content = (
-        <View style={styles.stack} accessibilityRole="radiogroup" accessibilityLabel={headline}>
-          {step.options.map((option, i) => (
-            <FadeSlideIn
-              key={option.id}
-              delay={contentDelay(i)}
-              distance={RISE_PX}
-              duration={ENTER_MS}>
-              <OptionRow
-                label={option.label}
-                selected={notificationsAnswer === option.id}
-                onPress={() => setAnswer('notifications', option.id)}
-                variant={option.id === 'yes' ? 'primary' : 'outline'}
-              />
-            </FadeSlideIn>
-          ))}
-        </View>
-      );
-      cta = {
-        label: step.cta ?? 'Continue',
-        onPress: () => {
-          // Continue always writes what the screen is showing, so a person who
-          // never touched a row still gets the answer they could read.
-          setAnswer('notifications', notificationsAnswer);
-          goNext();
-        },
-      };
-    } else {
-      contentCount = step.options.length;
-      content = (
+  if (step.kind === 'intro') {
+    contentCount = 0;
+    footer = (
+      <Pressable
+        onPress={() => router.push('/sign-in')}
+        accessibilityRole="link"
+        accessibilityLabel="Already have an account? Sign in"
+        style={({ pressed }) => pressed && styles.pressed}>
+        <Text style={styles.signIn} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          Already have an account? <Text style={styles.signInLink}>Sign in</Text>
+        </Text>
+      </Pressable>
+    );
+  } else if (step.kind === 'choice' && step.options) {
+    contentCount = step.options.length;
+    content = (
+      <View style={styles.stack} accessibilityRole="radiogroup" accessibilityLabel={headline}>
+        {step.options.map((option, i) => (
+          <Enter key={option.id} delay={contentDelay(i)}>
+            <OptionRow
+              label={option.label}
+              detail={option.detail}
+              emoji={option.emoji}
+              selected={selected === option.id}
+              onPress={() => step.storeKey && setAnswer(step.storeKey, option.id)}
+            />
+          </Enter>
+        ))}
+      </View>
+    );
+  } else if (step.kind === 'multi' && step.options) {
+    const chosen = parseList(answers.obstacles);
+    contentCount = step.options.length;
+    content = (
+      <View style={styles.stack}>
+        {step.options.map((option, i) => (
+          <Enter key={option.id} delay={contentDelay(i)}>
+            <OptionRow
+              multi
+              label={option.label}
+              detail={option.detail}
+              selected={chosen.includes(option.id)}
+              onPress={() => toggleObstacle(option.id)}
+            />
+          </Enter>
+        ))}
+      </View>
+    );
+  } else if (step.kind === 'demo') {
+    contentCount = 2;
+    content = (
+      <Enter delay={contentDelay(0)}>
+        <ParseDemo />
+      </Enter>
+    );
+  } else if (step.kind === 'essay') {
+    const body = step.body ?? [];
+    contentCount = body.length;
+    content = (
+      <View style={styles.prose}>
+        {body.map((paragraph, i) => (
+          <Enter key={paragraph} delay={contentDelay(i)}>
+            <Paragraph>{paragraph}</Paragraph>
+          </Enter>
+        ))}
+      </View>
+    );
+  } else if (step.kind === 'about-you') {
+    const secondary = step.secondary!;
+    contentCount = 2 + secondary.options.length;
+    content = (
+      <View style={styles.stack}>
+        <Enter delay={contentDelay(0)}>
+          <View>
+            <SectionLabel>{step.sectionLabel ?? ''}</SectionLabel>
+            <TextField
+              value={answers.name ?? ''}
+              onChangeText={(text) => setAnswer('name', text)}
+              placeholder={step.placeholder ?? ''}
+              hint="Optional"
+              // The "optional" fact lives in the LABEL, not only in the
+              // decorative hint inside the field, so VoiceOver hears it too.
+              accessibilityLabel="Your first name, optional"
+            />
+          </View>
+        </Enter>
+        <Enter delay={contentDelay(1)}>
+          <View style={styles.section}>
+            <SectionLabel>{secondary.label}</SectionLabel>
+          </View>
+        </Enter>
         <View
           style={styles.stack}
           accessibilityRole="radiogroup"
-          accessibilityLabel={headline}>
-          {step.options.map((option, i) => (
-            <FadeSlideIn
+          accessibilityLabel={secondary.label}>
+          {secondary.options.map((option, i) => (
+            <Enter
               key={option.id}
-              delay={contentDelay(i)}
-              distance={RISE_PX}
-              duration={ENTER_MS}
-              layout={listLayout}>
+              delay={contentDelay(2 + i)}
+>
               <OptionRow
                 label={option.label}
-                selected={selected === option.id}
-                onPress={() => onSelect(option.id)}
+                selected={answers[secondary.storeKey] === option.id}
+                onPress={() => setAnswer(secondary.storeKey, option.id)}
               />
-            </FadeSlideIn>
+            </Enter>
           ))}
-          {affirmLine ? (
-            <FadeSlideIn delay={0} distance={RISE_PX} duration={ENTER_MS}>
-              <Text style={styles.affirm} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {affirmLine}
-              </Text>
-            </FadeSlideIn>
-          ) : null}
         </View>
-      );
-    }
-  } else if (step.kind === 'text' && step.storeKey) {
-    contentCount = step.suggestions ? 2 : 1;
+      </View>
+    );
+  } else if (step.kind === 'days') {
+    const secondary = step.secondary!;
+    const picked = dayCount(dayMask);
+    contentCount = 3 + secondary.options.length;
     content = (
       <View style={styles.stack}>
-        <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
-          <TextField
-            value={textValue ?? ''}
-            onChangeText={(text) => setAnswer(step.storeKey!, text)}
-            placeholder={step.placeholder ?? ''}
-            onSubmit={() => goNext()}
-            accessibilityLabel={headline}
+        <Enter delay={contentDelay(0)}>
+          <DayPicker
+            mask={dayMask}
+            onToggle={(day) => setAnswer('trainingDays', String(toggleDay(dayMask, day)))}
           />
-        </FadeSlideIn>
-        {step.suggestions ? (
-          <FadeSlideIn delay={contentDelay(1)} distance={RISE_PX} duration={ENTER_MS}>
-            {/* A chip answers-and-advances like a radio option. */}
-            <SuggestionChips
-              suggestions={step.suggestions}
-              current={textValue ?? ''}
-              onPick={onSelect}
-            />
-          </FadeSlideIn>
+        </Enter>
+        <Enter delay={contentDelay(1)}>
+          {/* The week read straight back. Nothing here counts a miss (§11) —
+              it is the shape of a week, not a target. */}
+          <View>
+            <Text style={styles.derived} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {picked > 0 ? `${picked} ${picked === 1 ? 'day' : 'days'} a week` : 'Pick your days'}
+            </Text>
+            <Text style={styles.derivedBody} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {picked > 0
+                ? 'Recore builds your Next tab around this rhythm.'
+                : 'Roughly is fine — you can change it any time.'}
+            </Text>
+          </View>
+        </Enter>
+        <Enter delay={contentDelay(2)}>
+          <View style={styles.section}>
+            <SectionLabel>{secondary.label}</SectionLabel>
+          </View>
+        </Enter>
+        <View
+          style={styles.stack}
+          accessibilityRole="radiogroup"
+          accessibilityLabel={secondary.label}>
+          {secondary.options.map((option, i) => (
+            <Enter
+              key={option.id}
+              delay={contentDelay(3 + i)}
+>
+              <OptionRow
+                label={option.label}
+                selected={answers[secondary.storeKey] === option.id}
+                onPress={() => setAnswer(secondary.storeKey, option.id)}
+              />
+            </Enter>
+          ))}
+        </View>
+      </View>
+    );
+  } else if (step.kind === 'lifts') {
+    contentCount = 2 + chosenLifts.length;
+    content = (
+      <View style={styles.stack}>
+        <Enter delay={contentDelay(0)}>
+          <SuggestionChips
+            suggestions={step.suggestions ?? []}
+            selected={chosenLifts}
+            onToggle={toggleLift}
+            max={step.maxChoices ?? MAX_KEY_LIFTS}
+          />
+        </Enter>
+        {chosenLifts.length > 0 ? (
+          <>
+            <Enter delay={contentDelay(1)}>
+              <View style={styles.section}>
+                <SectionLabel>{step.sectionLabel ?? ''}</SectionLabel>
+              </View>
+            </Enter>
+            {chosenLifts.map((lift, i) => (
+              <Enter
+                key={lift}
+                delay={contentDelay(2 + i)}
+                layout={listLayout}>
+                <LiftLoadRow
+                  lift={lift}
+                  value={liftLoads[lift] ?? null}
+                  unit={unit}
+                  onChange={(next) => setLiftLoad(lift, next)}
+                />
+              </Enter>
+            ))}
+            {step.footnote ? (
+              <Enter
+                delay={contentDelay(2 + chosenLifts.length)}
+>
+                <Footnote>{step.footnote}</Footnote>
+              </Enter>
+            ) : null}
+          </>
         ) : null}
       </View>
     );
-    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
-  } else if (step.kind === 'days') {
+  } else if (step.kind === 'overload') {
+    const body = step.body ?? [];
+    const example = overloadExample(chosenLifts[0], liftLoads[chosenLifts[0] ?? ''], unit);
+    contentCount = body.length + 2;
     content = (
-      <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
-        <DayPicker
-          mask={dayMask}
-          onToggle={(day) => setAnswer('trainingDays', String(toggleDay(dayMask, day)))}
-        />
-      </FadeSlideIn>
+      <View style={styles.prose}>
+        {body.map((paragraph, i) => (
+          <Enter key={paragraph} delay={contentDelay(i)}>
+            <Paragraph>{paragraph}</Paragraph>
+          </Enter>
+        ))}
+        <Enter delay={contentDelay(body.length)}>
+          <OverloadCard
+            lift={example.lift}
+            last={example.last}
+            next={example.next}
+            unit={unit}
+          />
+        </Enter>
+        {step.footnote ? (
+          <Enter
+            delay={contentDelay(body.length + 1)}
+>
+            <Footnote>{step.footnote}</Footnote>
+          </Enter>
+        ) : null}
+      </View>
     );
-    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
-  } else if (step.kind === 'weight') {
+  } else if (step.kind === 'commitment') {
+    const body = step.body ?? [];
+    const sessions = commitmentCount(answers);
+    contentCount = body.length + 1;
     content = (
-      <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
-        <WeightInput
-          value={weightText}
-          unit={weightUnit}
-          onChangeText={(text) => setAnswer('bodyweight', text)}
-          onChangeUnit={(u) => setAnswer('weightUnit', u)}
-          onSubmit={() => {
-            if (!weightInvalid) goNext();
+      <View style={styles.prose}>
+        <Enter delay={contentDelay(0)}>
+          <StatCard value={sessions} caption="sessions between now and the end of it" />
+        </Enter>
+        {body.map((paragraph, i) => (
+          <Enter
+            key={paragraph}
+            delay={contentDelay(1 + i)}
+>
+            <Paragraph>{paragraph}</Paragraph>
+          </Enter>
+        ))}
+      </View>
+    );
+    cta = null;
+    ctaSlot = (
+      <View>
+        <HoldHint>Press and hold</HoldHint>
+        <HoldToCommit
+          label={step.cta ?? 'Hold to commit'}
+          onComplete={() => {
+            setAnswer('commitment', `${COMMIT_WEEKS}w`);
+            goNext();
           }}
         />
-      </FadeSlideIn>
-    );
-    cta = { label: step.cta ?? 'Continue', onPress: () => goNext(), disabled: weightInvalid };
-  } else if (step.kind === 'building') {
-    content = (
-      <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
-        <BuildingChecklist lines={checklist} onDone={onBuilt} />
-      </FadeSlideIn>
-    );
-  } else if (step.kind === 'summary') {
-    // A plain list, not a card (design import, 13 Aug 2026). Every line is
-    // already the person's own answer read back; boxing them made the screen
-    // look like a receipt from the app rather than a page of their own.
-    contentCount = summary.length;
-    content = (
-      <View style={styles.summaryList}>
-        {summary.map((line, i) => (
-          <FadeSlideIn key={line} delay={contentDelay(i)} distance={RISE_PX} duration={ENTER_MS}>
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryDisc}>
-                <CheckMark size={moderateScale(11)} stroke="#FFFFFF" />
-              </View>
-              <Text style={styles.summaryText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {line}
-              </Text>
-            </View>
-          </FadeSlideIn>
-        ))}
       </View>
     );
-    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
-  } else if (step.kind === 'proof') {
-    // Ruled lines, no marks (design import, 13 Aug 2026): these are statements
-    // about the product, and a check beside each one reads as a feature list
-    // ticking itself off. The rule is the ledger's own device.
-    contentCount = PROOF_LINES.length;
+  } else if (step.kind === 'recap' && step.options) {
+    // A VISIBLE DEFAULT. Recap intent is not a permission — §5.1 keeps the OS
+    // prompt for the moment the first recap exists — so a preselected "yes" is
+    // honest here in a way it would never be for a system dialog, and Continue
+    // writes whatever the screen is showing rather than nothing at all.
+    const recap = selected ?? 'yes';
+    cta = { label: step.cta ?? 'Continue', onPress: () => {
+      setAnswer('notifications', recap);
+      goNext();
+    } };
+    contentCount = 1 + step.options.length;
     content = (
-      <View>
-        {PROOF_LINES.map((line, i) => (
-          <FadeSlideIn key={line} delay={contentDelay(i)} distance={RISE_PX} duration={ENTER_MS}>
-            <View style={[styles.proofRow, i < PROOF_LINES.length - 1 && styles.proofRuled]}>
-              <Text style={styles.proofText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {line}
-              </Text>
-            </View>
-          </FadeSlideIn>
-        ))}
+      <View style={styles.stack}>
+        <Enter delay={contentDelay(0)}>
+          <RecapPreview
+            title="Your week"
+            body="What moved, what stalled, and the one number worth beating."
+          />
+        </Enter>
+        <View
+          style={[styles.stack, styles.section]}
+          accessibilityRole="radiogroup"
+          accessibilityLabel={headline}>
+          {step.options.map((option, i) => (
+            <Enter
+              key={option.id}
+              delay={contentDelay(1 + i)}
+>
+              <OptionRow
+                label={option.label}
+                detail={option.detail}
+                emoji={option.emoji}
+                selected={recap === option.id}
+                onPress={() => setAnswer('notifications', option.id)}
+              />
+            </Enter>
+          ))}
+        </View>
       </View>
     );
-    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
-  } else if (step.kind === 'timeline') {
-    contentCount = TRIAL_TIMELINE.length;
+  } else if (step.kind === 'projection') {
+    const [lead, ...rest] = projections;
+    contentCount = projections.length + 1;
     content = (
-      <View>
-        {TRIAL_TIMELINE.map((node, i) => (
-          <FadeSlideIn
-            key={node.title}
-            delay={contentDelay(i)}
-            distance={RISE_PX}
-            duration={ENTER_MS}>
-            <View style={styles.tlRow}>
-              <View style={styles.tlRail}>
-                <TimelineNode glyph={node.glyph} />
-                {i < TRIAL_TIMELINE.length - 1 ? (
-                  <TimelineConnector delay={contentDelay(i) + 160} />
-                ) : null}
-              </View>
-              <View style={[styles.tlText, i < TRIAL_TIMELINE.length - 1 && styles.tlTextPad]}>
-                <Text style={styles.tlTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {node.title}
-                </Text>
-                <Text style={styles.tlBody} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {node.body}
-                </Text>
-              </View>
-            </View>
-          </FadeSlideIn>
-        ))}
+      <View style={styles.stack}>
+        {lead ? (
+          <>
+            <Enter delay={contentDelay(0)}>
+              <ProjectionCard
+                lift={lead.lift}
+                start={lead.start}
+                target={lead.target}
+                gain={lead.gain}
+                unit={lead.unit}
+              />
+            </Enter>
+            {rest.map((p, i) => (
+              <Enter
+                key={p.lift}
+                delay={contentDelay(1 + i)}
+>
+                <ProjectionRow
+                  lift={p.lift}
+                  start={p.start}
+                  target={p.target}
+                  unit={p.unit}
+                />
+              </Enter>
+            ))}
+          </>
+        ) : (
+          // No starting load was typed, so there is nothing to project FROM.
+          // The screen says that rather than inventing a lift and a number —
+          // §5.1: never a fake progression before a session is logged.
+          <Enter delay={contentDelay(0)}>
+            <Paragraph>
+              {`You skipped the starting numbers, so there is nothing to project from yet. Your first ${COMMIT_WEEKS} weeks will build it from what you actually lift.`}
+            </Paragraph>
+          </Enter>
+        )}
+        {step.footnote && lead ? (
+          <Enter
+            delay={contentDelay(1 + rest.length)}
+>
+            <Footnote>{step.footnote}</Footnote>
+          </Enter>
+        ) : null}
       </View>
     );
-    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
-  } else if (step.kind === 'founder') {
-    contentCount = FOUNDER_NOTE.length + 1;
-    content = <FounderNote />;
-    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
-  } else if (step.slug === 'demo') {
-    // The one explainer that DEMONSTRATES instead of describing: the typed line
-    // and the record the parser makes of it, revealed once (§9 of the design's
-    // motion sheet — "the core promise, animated once").
-    contentCount = 2;
-    content = (
-      <FadeSlideIn delay={contentDelay(0)} distance={RISE_PX} duration={ENTER_MS}>
-        <ParseDemo />
-      </FadeSlideIn>
-    );
-    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
-  } else {
-    // 'intro' and the remaining explainers — the illustration and the copy are
-    // the screen.
-    contentCount = 0;
-    cta = { label: step.cta ?? 'Continue', onPress: () => goNext() };
   }
 
   return (
     <>
-      {/* Forward always arrives from the right; the iOS back-swipe stays live.
-          The zones inside slide and crossfade on top of it a beat later, which
-          is the other half of the design's 350 ms transition — see
-          `OnboardingScreen`. The native animation is kept (rather than driven
-          by hand) precisely because it is what carries the interactive
-          edge-swipe, and a wizard you cannot swipe out of is a worse screen
-          than one whose transition we authored ourselves. */}
-      <Stack.Screen
-        options={{ animation: 'slide_from_right', animationDuration: 350, gestureEnabled: true }}
-      />
+      <Stack.Screen options={stackOptions} />
       <OnboardingScreen
         slug={step.slug}
         eyebrow={step.eyebrow}
+        eyebrowTone={step.eyebrowTone}
+        kicker={step.kicker}
         headline={headline}
-        subtext={step.subtext}
-        hero={isIntro}
+        subtext={subtext}
+        centered={isIntro}
         progress={
           isIntro ? null : { total: PROGRESS_TOTAL, completed: progressFilled(stepNumber) }
         }
-        // The building screen has no way back on purpose: it is already writing
-        // the record it narrates, and there is nothing to undo.
-        onBack={isIntro || step.kind === 'building' ? null : goBack}
+        onBack={isIntro ? null : goBack}
         cta={cta}
+        ctaSlot={ctaSlot}
+        footer={footer}
         contentCount={contentCount}>
         {content}
       </OnboardingScreen>
@@ -625,95 +683,59 @@ export default function OnboardingStep() {
   );
 }
 
+/**
+ * The overload card's two lines. It uses the person's OWN first key lift and
+ * the load they set for it whenever both exist — which is why the key-lift
+ * screen comes two screens earlier — and otherwise falls back to a named
+ * example. The jump is always `loadStep`, the smallest real plate change, which
+ * is the fact the whole screen is about.
+ */
+function overloadExample(
+  lift: string | undefined,
+  load: number | undefined,
+  unit: 'kg' | 'lb',
+): { lift: string; last: string; next: string } {
+  const step = loadStep(unit);
+  const fallbackLoad = unit === 'lb' ? 135 : 60;
+  const start = load != null && load > 0 ? load : fallbackLoad;
+  return {
+    lift: lift ?? 'Bench press',
+    last: formatLoad(start),
+    next: formatLoad(start + step),
+  };
+}
+
 const styles = StyleSheet.create({
   stack: {
     gap: spacing.md,
   },
-  affirm: {
-    ...type.subhead,
-    fontWeight: '500',
-    lineHeight: lineFor(21),
-    color: color.textSecondary,
-    textAlign: 'center',
-    marginTop: spacing.xs,
-  },
-  // The answers read back as a plain list, each line marked with a small blue
-  // disc — the flow's accent used once per line, at the size of a bullet.
-  summaryList: {
-    gap: spacing.md + 2,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  summaryDisc: {
-    width: moderateScale(20),
-    height: moderateScale(20),
-    borderRadius: radius.pill,
-    backgroundColor: BLUE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: moderateScale(1),
-  },
-  summaryText: {
-    flex: 1,
-    ...type.subhead,
-    fontWeight: '500',
-    lineHeight: lineFor(21),
-    color: color.textPrimary,
-  },
-  proofRow: {
-    paddingVertical: spacing.lg - 1,
-  },
-  proofRuled: {
-    borderBottomWidth: 1,
-    borderBottomColor: INK_TRACK,
-  },
-  proofText: {
-    ...type.headline,
-    fontWeight: '500',
-    lineHeight: lineFor(24),
-    color: color.textPrimary,
-  },
-  tlRow: {
-    flexDirection: 'row',
+  /** Paragraphs breathe wider than option rows do. */
+  prose: {
     gap: spacing.lg,
   },
-  tlRail: {
-    alignItems: 'center',
+  /** The gap above a second labelled group on the same page. */
+  section: {
+    marginTop: spacing.sm,
   },
-  tlNode: {
-    width: moderateScale(40),
-    height: moderateScale(40),
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-    borderColor: INK_TRACK,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tlLine: {
-    width: 1.5,
-    flex: 1,
-    marginVertical: spacing.xs,
-    backgroundColor: INK_TRACK,
-    transformOrigin: 'top',
-  },
-  tlText: {
-    flex: 1,
-    paddingTop: moderateScale(4),
-  },
-  tlTextPad: {
-    paddingBottom: spacing.xl,
-  },
-  tlTitle: {
-    ...type.headline,
+  /** The week read back — a headline-weight fact, not a caption. */
+  derived: {
+    ...type.title2,
     color: color.textPrimary,
   },
-  tlBody: {
-    marginTop: 2,
+  derivedBody: {
     ...type.subhead,
-    lineHeight: lineFor(21),
     color: color.textSecondary,
+    marginTop: 2,
+  },
+  signIn: {
+    ...type.subhead,
+    color: color.textSecondary,
+  },
+  signInLink: {
+    fontWeight: '600',
+    color: BLUE,
+  },
+  pressed: {
+    opacity: 0.6,
   },
 });

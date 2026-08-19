@@ -10,10 +10,9 @@ import { EntryNoteSheet } from '@/components/entry-note-sheet';
 import { FixSheet } from '@/components/fix-sheet';
 import { InsightHeader } from '@/components/insight-header';
 import { NoteSurface } from '@/components/note-surface';
+import { PaperField } from '@/components/paper-field';
 import { ReadOnlyLedger } from '@/components/read-only-ledger';
-import { SessionStart } from '@/components/session-start';
 import { SpotlightTour } from '@/components/spotlight-tour';
-import { SummaryPill } from '@/components/summary-pill';
 import { TopBar } from '@/components/top-bar';
 import { TrialReminderSheet } from '@/components/trial-reminder-sheet';
 import { TrialStartedSheet } from '@/components/trial-started-sheet';
@@ -28,8 +27,8 @@ import { useHasEntries, useSession } from '@/state/session-store';
  *
  * "Recore Light" frames 01–03: a warm paper canvas — the nav row (wordmark ·
  * day pill · settings), a blank page you write your workout into, and a bottom
- * that swaps with focus (accessory bar while composing, a quiet summary pill at
- * rest).
+ * that belongs to the keyboard alone (the accessory bar while composing, and
+ * nothing at all at rest — see the 18 Aug ruling below).
  *
  * This used to be `app/index.tsx`, which was Home *and* the funnel dispatcher.
  * The dispatcher stayed behind at `/`; everything below is unchanged except for
@@ -46,8 +45,8 @@ export default function Today() {
   // here is a memory read, never a check.
   const entitlement = useEntitlement();
   const reduceMotion = useReducedMotion();
-  // Whether today has produced a reading — the one test the weekly line, the
-  // session-start card and the resting pill all share.
+  // Whether today has produced a reading — the test the weekly line is gated
+  // on (the card and the pill that used to share it are both gone).
   const hasEntries = useHasEntries();
   const userId = useSession((s) => s.userId);
 
@@ -70,8 +69,9 @@ export default function Today() {
   }, []);
 
   // With the keyboard up the accessory bar rides on top of it and the tab bar
-  // is behind the keyboard — the composer owns the screen (§5.2). At rest the
-  // pill has to clear the floating bar, which no inset reports (see the token).
+  // is behind the keyboard — the composer owns the screen (§5.2). The resting
+  // value is what the bar would need to clear the floating tab bar, which no
+  // inset reports (see the token); nothing is drawn down there at rest now.
   const bottomInset = keyboardOpen
     ? spacing.sm
     : Math.max(insets.bottom, spacing.md) + TAB_BAR_CLEARANCE;
@@ -92,6 +92,11 @@ export default function Today() {
 
   return (
     <View style={styles.root}>
+      {/* The canvas is a surface, not a flat fill (§C): three near-white tones
+          a couple of units apart, drifting over forty-two seconds, behind
+          everything and still under Reduce Motion. */}
+      <PaperField />
+
       <SafeAreaView
         edges={['top']}
         onLayout={(e) => setHeaderH(e.nativeEvent.layout.height)}>
@@ -105,40 +110,67 @@ export default function Today() {
             yesterday, which the day pill and the calendar sheet were the only
             way to reach. Disabled while the keyboard is up: mid-sentence a
             horizontal drag is the user placing a cursor, not asking for
-            another day. The header, the plan strip and the note travel
-            together, because all three belong to the day being read. */}
+            another day. The header and the note travel together, because
+            both belong to the day being read. */}
         <DaySwipe enabled={!keyboardOpen}>
           {/* THE FURNITURE ARRIVES WITH THE RECORD (owner, 12 Aug 2026).
               A day with no reading on it shows the header row and a blank
               page — nothing else. The weekly line, the session-start card and
-              the resting pill all describe training that does not exist yet,
+              the resting pill all described training that did not exist yet,
               and six pieces of chrome around an empty line is the app talking
-              to itself. They fade in together the moment the first line is
-              read, so the canvas visibly BECOMES the ledger.
+              to itself.
 
-              All three ask the same question (`useHasEntries`) so they can
-              never disagree about whether the page is blank. */}
+              Two of the three have since been removed outright (the card on
+              17 Aug, the pill on 18 Aug); the weekly line is what is left, and
+              it still fades in on the first read line, so the canvas visibly
+              BECOMES the ledger. */}
           {hasEntries ? (
             <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(DUR.slow)}>
               {/* The landmark recedes while typing — mid-workout the note owns
                   the screen (CLAUDE.md §8). */}
               <InsightHeader hidden={keyboardOpen} />
-              {/* On an empty today the strip is grown into the session-start
-                  question (§8.2); everywhere else it renders the plain
-                  read-only strip itself. */}
-              <SessionStart composing={keyboardOpen} />
             </Animated.View>
           ) : null}
+          {/* THE PLAN IS NOT ON THIS PAGE (owner, 18 Aug 2026). The read-only
+              PLANNED strip that used to sit here — today's declared day with
+              its progressed loads — is gone from Today entirely. It lives one
+              tab over, in Next's brief, which already carries the identical
+              rows off the identical `computePlanStrip` read ("Today · Push
+              day", `lib/db/brief.ts`); printing them above the composer as
+              well was the same prescription twice, and it put a list of what
+              to do on the one page whose job is to record what happened.
+
+              With it goes the last thing between the header and the note: an
+              untouched day is now the blank page and nothing else, which is
+              what the 17 Aug "no exception" ruling was reaching for. Writing
+              still has the plan within reach — the accessory bar's plan button
+              writes the next prescribed line into the note (§8, bottom-
+              toolbar.tsx) — but it does that on demand, over the keyboard,
+              instead of standing on the page unasked.
+
+              `components/plan-strip.tsx` and `planned-checklist.tsx` stay on
+              disk, unmounted, so a way back is one wire. */}
           <NoteSurface />
         </DaySwipe>
-        {/* The bottom swaps with focus: accessory bar while composing (frame
-            03), a settled summary pill at rest (frames 01/02). The toolbar
-            stays MOUNTED (just hidden) at rest so a running rest timer keeps
-            counting instead of resetting when the keyboard closes. */}
+        {/* THE RESTING PILL IS GONE (owner, 18 Aug 2026). The floating capsule
+            that sat above the tab bar — "last set · Bench Press · 82.5 kg × 5
+            · 1:30" mid-session, "today · 14 sets · 9 840 kg" once settled —
+            is removed. The bottom of Today now belongs to the keyboard alone:
+            the accessory bar while composing, and nothing at all at rest.
+
+            KNOWN COST, ACCEPTED BY THE OWNER: the pill was the only way into
+            `SessionSummarySheet`, and that sheet is the only home of "Save as
+            a split day" (`save-split.tsx`). Both are unreachable from the app
+            as of this change. `summary-pill.tsx`, `session-summary-sheet.tsx`
+            and `save-split.tsx` stay in the tree, unmounted, so restoring the
+            door is one line here.
+
+            The toolbar stays MOUNTED (just hidden) at rest so a running rest
+            timer keeps counting instead of resetting when the keyboard
+            closes. */}
         <View style={keyboardOpen ? undefined : styles.hidden}>
           <BottomToolbar bottomInset={bottomInset} />
         </View>
-        {keyboardOpen || !hasEntries ? null : <SummaryPill bottomInset={bottomInset} />}
       </KeyboardAvoidingView>
 
       {/* The Lift detail sheet is app-wide (`_layout.tsx`) — Lifts opens the
@@ -186,7 +218,7 @@ export default function Today() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
   },
   flex: {
     flex: 1,

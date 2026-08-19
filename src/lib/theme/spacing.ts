@@ -22,6 +22,26 @@ export const spacing = {
   giant: 64,
 } as const;
 
+/**
+ * ## Every rounded rect is a SQUIRCLE (18 Aug 2026)
+ *
+ * iOS has not drawn a circular corner since iOS 7 — the system rounds with
+ * *continuous* curvature (the "squircle"), where the curve starts earlier and
+ * eases into the straight edge instead of meeting it at a hard tangent. It is
+ * the reason a hand-built card can sit next to a system sheet and look subtly
+ * cheap without anyone being able to name why.
+ *
+ * React Native exposes it as `borderCurve: 'continuous'` (RN 0.71+, iOS only —
+ * a no-op on Android and web, so it never needs a Platform.select). It is NOT
+ * implied by these tokens: the property has to be set on the same style as the
+ * radius.
+ *
+ *     { borderRadius: radius.lg, borderCurve: 'continuous' }
+ *
+ * **Set it on every new surface that uses `sm`/`md`/`lg`/`xl`/`xxl`.** Skip it
+ * only where the shape is already a circle or a pill (`radius.pill`, `X / 2`) —
+ * there is no corner left for the curve to change.
+ */
 export const radius = {
   sm: 10,
   md: 14, // buttons

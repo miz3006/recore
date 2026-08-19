@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -10,15 +10,15 @@ import Animated, {
 
 import { Icon } from '@/components/icon';
 import { FadeSlideIn, PressableScale } from '@/components/motion';
+import { Eyebrow } from '@/components/primitives';
 import { whenLabel } from '@/lib/brief-prose';
 import { todayKey } from '@/lib/db/dates';
-import { tap } from '@/lib/haptics';
 import { DUR, EASE, SPRING } from '@/lib/motion';
 import type { MoveLabel, SessionRow } from '@/lib/next/sections';
 import { fmtNumber } from '@/lib/parse/summarize';
 import {
   color,
-  hairline,
+  fonts,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
@@ -29,142 +29,253 @@ import {
   type,
 } from '@/lib/theme';
 
-import { SectionEyebrow } from './section';
-
 /**
- * THE SESSION — and, at the top of it, the one thing this whole tab exists to
- * answer: **what goes on the bar.**
+ * ONE CARD PER LIFT — the Next tab in Progression's card grammar (owner,
+ * 18 August 2026: *"Next should be the same as Progression, only performing its
+ * own function — I want the same consistency"*).
  *
- * ## Why this was rebuilt (13 Aug 2026)
+ * ## What changed, and why the old shape had to go
  *
- * The 12 August build got the CONTENT right and the hierarchy wrong. Every row
- * of the session lived inside a card that looked exactly like the brief card
- * above it and the two evidence cards below it: four raised surfaces of equal
- * weight, one repeated row shape, and the number a lifter carries to a rack set
- * at 19 pt — smaller than the headline of a paragraph they had already read.
- * Apple's own rule for this is one line long: use order, spacing and contrast so
- * *the most important thing is the most obvious*. Nothing on that page was.
+ * The 13 August build gave this page exactly ONE raised surface: the first lift
+ * of the session got a whole hero card at `radius.xxl` with its load at 30 pt,
+ * and every other lift of the same session followed as a plain hairline row on
+ * paper. That solved the problem it was built for — four cards of equal weight
+ * and no focal point — by inventing a hierarchy the CONTENT does not have. The
+ * second lift of a session is not a lesser fact than the first. It is the same
+ * fact about a different lift, and a reader scanning for "what do I put on the
+ * bar for rows?" had to read it in a different typographic voice from the one
+ * they had just learned two inches above.
  *
- * So the page now has exactly ONE raised surface and this is it. The first lift
- * of the session gets the whole card, its load set at 30 pt in the reading face,
- * and the engine's decision sits above that load as a filled pill you cannot
- * miss from arm's length — which is the distance this screen is actually read
- * from. The rest of the session follows as plain rows on paper: same
- * information, one level quieter, no second box.
+ * Progression had already answered this for the other half of the app: **one
+ * card per lift, all equal, ranked by an explicit control, and the card opens
+ * to show its own evidence.** Next now speaks that language exactly.
  *
- *     ┌──────────────────────────────┐
- *     │ FIRST UP              best 120│
- *     │ Bench press                   │
- *     │ ┏━━━━━━━━━━┓                  │
- *     │ ┃ ADD A REP┃  ← the decision  │
- *     │ ┗━━━━━━━━━━┛                  │
- *     │ 82.5 kg × 5·5·5   ← the load  │
- *     │ was 3×5 120                ⌄  │
- *     └──────────────────────────────┘
- *       Incline press   ADD 2.5 KG  60 × 8·8·8   ⌄
- *       Row             HOLD        70 × 10·10   ⌄
+ *     Progression                          Next
+ *     ─────────────────────────────────    ─────────────────────────────────
+ *     name  [up 12%] [PR]      120 kg      name  [ADD A REP]        82.5 kg
+ *     3 sessions · last Tue    up 12 kg    3 sessions at this wt      5·5·5
+ *     ───────── chart ─────────            was 3×5 80      best 120 kg
+ *     Jul 13 · 100    Aug 17 · 120
+ *     ── open: the sets behind it ──       ── open: WHY / WATCH ──
+ *     Full history               ›         Full history            ›
  *
- * ## The lever is a filled pill now, and the contrast is why
+ * Same card, same slots, same accordion, same closing opener. The FUNCTION of
+ * each slot is the only thing that differs, and it differs the way the two tabs
+ * do: Progression's big number is what you lifted, Next's is what you have not
+ * lifted yet. Progression's evidence is the sets that produced the reading;
+ * Next's is the arithmetic that produced the prescription.
  *
- * It was green TEXT on paper (4.78:1). That reads as a caption, and the whole
- * point of the label is that it answers the question every review of this
- * category converges on — *"you don't know whether to add weight or reps this
- * week"* — from across a gym.
+ * ## Three things that survived the move intact
  *
- * A filled pill was rejected in August because the tested version was green
- * text on a green WASH, which measured 4.33:1 and failed §14.3's AA contract.
- * Solid fill with a WHITE label is a different measurement and it passes:
- * **white on `signal` #547C00 is 4.93:1, white on `attention` #B45309 is
- * 5.02:1.** Both clear AA for normal text, and the label is 10.5 pt bold.
+ * **The lever is Progression's chip now.** It answers the question every review
+ * of this category converges on — *"you don't know whether to add weight or reps
+ * this week"* — and it is the one element that changes between sessions, so it
+ * sits exactly where Progression puts its delta chip: beside the name, same
+ * `radius.sm`, same 6/2 padding, same 11 pt reading face at 700. It was a solid
+ * fill with a white label until 18 Aug. That passed contrast and still read as a
+ * different object from the chip one tab across, which is the whole complaint.
+ * The tokens stay Next's — `signal` on the new `signalWash` (**4.59:1**),
+ * `attention` on `attentionWash` (**4.64:1**), both measured against §14.3.
+ * Progression's own `gainWash` strength would land these at 4.2:1 and fail,
+ * which is why the two washes are paler than the pair they echo; and `gain`
+ * itself may never stand in for `signal`, because recorded is not planned.
  *
- * Green stays what it has always been — a decision about a load not yet lifted
- * — and the load itself stays ink, because a number someone carries to a rack
- * is the last thing that should be tinted.
+ * **The load is PLANNED GREEN** (owner, 18 Aug — amended the same day). It drew
+ * in ink on the reasoning that a number someone carries to a rack should not be
+ * tinted. §4.2 is more specific than that reasoning: planned green is for *"a
+ * concrete future prescription only, always with its label and reason"*, and
+ * this figure is exactly that — with the lever chip beside it as its label and
+ * the WHY one tap under it as its reason. Green here is the app's fourth data
+ * state finally visible on the screen that is nothing but planned values.
  *
- * ## What is one tap down
+ * **WHY and WATCH stay one tap down.** The decision is needed every session;
+ * the arithmetic behind it is not (progressive disclosure, two levels total).
+ * The card is the disclosure, exactly as a Progression card is.
  *
- * The WHY sentence and the WATCH consequence. The decision is needed every
- * session; the arithmetic behind it is not (progressive disclosure, two levels
- * total). The chevron earns its place because it says something no other pixel
- * says: there is more under this.
+ * The quote is the one thing NOT behind the tap: the athlete's own words are
+ * not evidence for a calculation and never were (§8.1 — quote, never infer), so
+ * filing them under a control that reveals arithmetic would make them look like
+ * the wrong kind of thing.
  */
-export function NextSession({
-  title,
-  rows,
-  note,
-  footNote,
-  onExpand,
+export function LiftCard({
+  row,
+  open,
+  onToggle,
+  onOpenHistory,
 }: {
-  title: string;
-  rows: SessionRow[];
-  /** The ghost's sentence when no row claimed it. */
-  note: string | null;
-  /** Overrides the closing line. The split preview uses it to say, in words,
-   * that this is not the day you are due for — a screen showing one session's
-   * loads under another session's name has to admit it. */
-  footNote?: string;
-  onExpand?: (key: string) => void;
+  row: SessionRow;
+  open: boolean;
+  onToggle: () => void;
+  onOpenHistory: () => void;
 }) {
-  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
+  const expandable = Boolean(row.why || row.watch);
+  const meta = metaLine(row);
+  const ends = endLabels(row);
 
-  const toggle = useCallback(
-    (key: string) => {
-      tap();
-      setOpen((prev) => {
-        const next = new Set(prev);
-        if (next.has(key)) next.delete(key);
-        else {
-          next.add(key);
-          onExpand?.(key);
-        }
-        return next;
-      });
-    },
-    [onExpand],
-  );
+  const body = (
+    <View style={styles.cardBody}>
+      <View style={styles.cardTop}>
+        <View style={styles.cardName}>
+          <View style={styles.nameLine}>
+            <Text style={styles.liftName} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {row.name}
+            </Text>
+            {row.move ? <Lever move={row.move} /> : null}
+          </View>
+          {meta ? (
+            <Text
+              style={[styles.liftMeta, row.watch ? styles.metaWatch : null]}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {meta}
+            </Text>
+          ) : null}
+        </View>
+        <Load row={row} />
+      </View>
 
-  if (rows.length === 0) return null;
-
-  // The hero is rows[0] and never a "best" row chosen by ranking: plan order is
-  // session order, and promoting the third lift because it has a nicer number
-  // would misdescribe the session the athlete is about to do.
-  const [hero, ...rest] = rows;
-  const heroKey = hero!.key || '0';
-
-  return (
-    <View>
-      <SectionEyebrow>{title}</SectionEyebrow>
-
-      {note ? (
-        <Text style={styles.note} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {note}
-        </Text>
-      ) : null}
-
-      <Hero row={hero!} expanded={open.has(heroKey)} onToggle={() => toggle(heroKey)} />
-
-      {rest.length > 0 ? (
-        <View style={styles.rest}>
-          {rest.map((row, i) => {
-            const key = row.key || String(i + 1);
-            return (
-              <RestRow
-                key={row.key || `${row.name}:${i}`}
-                row={row}
-                first={i === 0}
-                expanded={open.has(key)}
-                onToggle={() => toggle(key)}
-              />
-            );
-          })}
+      {ends ? (
+        <View style={styles.ends}>
+          <Text style={styles.endLabel} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {ends.left ?? ''}
+          </Text>
+          {ends.right ? (
+            <Text
+              style={[styles.endLabel, row.beatsBest ? styles.endBest : null]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {ends.right}
+            </Text>
+          ) : null}
         </View>
       ) : null}
 
-      <Text style={styles.foot} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {footNote ?? 'Nothing counts until you lift it. Write what you actually do.'}
+      {expandable ? (
+        <View style={styles.chevronRow}>
+          <Chevron open={open} />
+        </View>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <View style={styles.card}>
+      {expandable ? (
+        <PressableScale
+          haptic="none"
+          activeScale={0.98}
+          onPress={onToggle}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          accessibilityLabel={spokenLabel(row)}
+          accessibilityHint={open ? 'Hides the reason' : 'Shows why this load was set'}>
+          {body}
+        </PressableScale>
+      ) : (
+        <View accessible accessibilityLabel={spokenLabel(row)}>
+          {body}
+        </View>
+      )}
+
+      <Quote row={row} />
+
+      {open ? (
+        <FadeSlideIn distance={6}>
+          <View style={styles.cardRule} />
+          <Detail row={row} />
+          {row.canonical ? (
+            <>
+              <View style={styles.cardRule} />
+              <PressableScale
+                haptic="none"
+                activeScale={0.98}
+                onPress={onOpenHistory}
+                accessibilityRole="button"
+                accessibilityLabel={`Full history for ${row.canonical}`}
+                style={styles.opener}>
+                <Text style={styles.openerLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  Full history
+                </Text>
+                <Icon name="chevron-forward" size={moderateScale(13)} tint={color.textMuted} />
+              </PressableScale>
+            </>
+          ) : null}
+        </FadeSlideIn>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * The lifts this session names that have nothing to progress from — the same
+ * block Progression gives lifts too shallow to chart, doing the same job on
+ * this side of the app.
+ *
+ * §7.3: never extrapolate from nothing. There is no load to print, so the row
+ * prints none and says what would change that — rather than dropping a lift the
+ * athlete is about to do off the page they opened to find out what they are
+ * about to do.
+ */
+export function UnknownLifts({ rows }: { rows: SessionRow[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <View style={styles.building}>
+      <Eyebrow>{`Also in this session · ${rows.length}`}</Eyebrow>
+      {rows.map((row) => (
+        <View
+          key={row.key || row.name}
+          style={styles.buildRow}
+          accessible
+          accessibilityLabel={`${row.name}, no history yet`}>
+          <Text style={styles.buildName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {row.name}
+          </Text>
+          <Text style={styles.buildMeta} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            no history yet
+          </Text>
+        </View>
+      ))}
+      <Text style={styles.buildingNote} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        One logged session each and Recore has something for these to beat.
       </Text>
     </View>
   );
+}
+
+/**
+ * The card's reading, in Progression's hero slot: the load at 28 pt with its
+ * unit, and the rep scheme under it where Progression puts its delta.
+ *
+ * When the engine handed over no figure — a ghost line, a cardio line, a
+ * bodyweight line — the whole prescription goes in one size down rather than
+ * being split apart on screen (§7.7). An empty slot is honest; a parsed one is
+ * how the multi-set display bug happened.
+ */
+function Load({ row }: { row: SessionRow }) {
+  if (row.loadKg != null) {
+    return (
+      <View style={styles.heroBox}>
+        <Text style={styles.hero} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {fmtNumber(row.loadKg)}
+          <Text style={styles.heroUnit}> kg</Text>
+        </Text>
+        {row.scheme ? (
+          <Text style={styles.heroSub} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {row.scheme}
+          </Text>
+        ) : null}
+      </View>
+    );
+  }
+  if (row.prescription) {
+    return (
+      <View style={styles.heroBox}>
+        <Text style={styles.heroCompact} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {row.prescription}
+        </Text>
+      </View>
+    );
+  }
+  return null;
 }
 
 /**
@@ -173,7 +284,7 @@ export function NextSession({
  * thing that arrives with a little weight reads as new information rather than
  * as part of the furniture. Reduce Motion places it.
  */
-function Lever({ move, large }: { move: MoveLabel; large?: boolean }) {
+function Lever({ move }: { move: MoveLabel }) {
   const reduce = useReducedMotion();
   const s = useSharedValue(reduce ? 1 : 0.86);
 
@@ -191,11 +302,16 @@ function Lever({ move, large }: { move: MoveLabel; large?: boolean }) {
     <Animated.View
       style={[
         styles.lever,
-        large && styles.leverLarge,
         move.tone === 'attention' ? styles.leverAttention : styles.leverSignal,
         animatedStyle,
       ]}>
-      <Text style={styles.leverText} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+      <Text
+        style={[
+          styles.leverText,
+          move.tone === 'attention' ? styles.leverInkAttention : styles.leverInkSignal,
+        ]}
+        numberOfLines={1}
+        maxFontSizeMultiplier={MAX_FONT_SCALE}>
         {move.label}
       </Text>
     </Animated.View>
@@ -218,43 +334,41 @@ function Chevron({ open }: { open: boolean }) {
 
   return (
     <Animated.View style={animatedStyle}>
-      <Icon name="chevron-down" size={moderateScale(15)} tint={color.textMuted} />
+      <Icon name="chevron-down" size={moderateScale(14)} tint={color.textMuted} />
     </Animated.View>
   );
 }
 
-/** WHY and WATCH — the level below the decision, shared by the hero and the
- * plain rows so one lift never explains itself two ways. */
+/** WHY and WATCH — the evidence an open card shows, the way an open Progression
+ * card shows the sets behind its latest point. */
 function Detail({ row }: { row: SessionRow }) {
   return (
-    <FadeSlideIn distance={4}>
-      <View style={styles.panel}>
-        {row.why ? (
-          <View style={styles.detailLine}>
-            <Text style={styles.detailLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              WHY
-            </Text>
-            <Text style={styles.detailText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {row.why}
-            </Text>
-          </View>
-        ) : null}
-        {row.watch ? (
-          <View style={styles.detailLine}>
-            <Text
-              style={[styles.detailLabel, styles.watchLabel]}
-              maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              WATCH
-            </Text>
-            <Text style={styles.detailText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {'One more flat session and this backs off to '}
-              <Text style={styles.backoff}>{`${fmtNumber(row.watch.deloadTo)} kg`}</Text>
-              {'.'}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-    </FadeSlideIn>
+    <View style={styles.detail}>
+      {row.why ? (
+        <View style={styles.detailLine}>
+          <Text style={styles.detailLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            WHY
+          </Text>
+          <Text style={styles.detailText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {row.why}
+          </Text>
+        </View>
+      ) : null}
+      {row.watch ? (
+        <View style={styles.detailLine}>
+          <Text
+            style={[styles.detailLabel, styles.watchLabel]}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            WATCH
+          </Text>
+          <Text style={styles.detailText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {'One more flat session and this backs off to '}
+            <Text style={styles.backoff}>{`${fmtNumber(row.watch.deloadTo)} kg`}</Text>
+            {'.'}
+          </Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -275,279 +389,229 @@ function Quote({ row }: { row: SessionRow }) {
   );
 }
 
-function Hero({
-  row,
-  expanded,
-  onToggle,
-}: {
-  row: SessionRow;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const expandable = Boolean(row.why || row.watch);
-
-  const body = (
-    <View style={styles.heroBody}>
-      <View style={styles.heroTop}>
-        <SectionEyebrow style={styles.heroEyebrow}>First up</SectionEyebrow>
-        {row.bestKg != null ? (
-          <Text style={styles.best} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {`best ${fmtNumber(row.bestKg)}`}
-          </Text>
-        ) : null}
-      </View>
-
-      <Text style={styles.heroName} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {row.name}
-      </Text>
-
-      {row.move ? (
-        <View style={styles.leverRow}>
-          <Lever move={row.move} large />
-        </View>
-      ) : null}
-
-      {row.prescription ? (
-        // The load, at the top of the type scale. Everything above it is a
-        // label for it and everything below it is a comparison against it.
-        <Text
-          style={styles.heroLoad}
-          numberOfLines={2}
-          maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {row.prescription}
-        </Text>
-      ) : null}
-
-      <View style={styles.heroFoot}>
-        {row.last ? (
-          <Text style={styles.was} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {`was ${row.last}`}
-          </Text>
-        ) : (
-          <View style={styles.flex} />
-        )}
-        {expandable ? <Chevron open={expanded} /> : null}
-      </View>
-
-      {expanded ? <Detail row={row} /> : null}
-      <Quote row={row} />
-    </View>
-  );
-
-  if (!expandable) return <View style={styles.hero}>{body}</View>;
-
-  return (
-    <PressableScale
-      onPress={onToggle}
-      haptic="none"
-      activeScale={0.995}
-      accessibilityRole="button"
-      accessibilityState={{ expanded }}
-      accessibilityLabel={`${row.name}${row.prescription ? `, next ${row.prescription}` : ''}`}
-      accessibilityHint={expanded ? 'Hides the reason' : 'Shows why this load was set'}
-      style={styles.hero}
-      pressedStyle={styles.heroPressed}>
-      {body}
-    </PressableScale>
-  );
+/**
+ * The supporting line under the name — Progression's `stallNote ?? "N sessions
+ * · last Tue"` slot, and the same priority order.
+ *
+ * A plateau outranks everything, because it is the fact that changes what the
+ * athlete does. With nothing to report the line is ABSENT rather than filled
+ * with a phrase that says nothing (§8.3: no reason, no line).
+ */
+function metaLine(row: SessionRow): string | null {
+  if (row.watch) {
+    const n = row.watch.sessions;
+    return `${n} ${n === 1 ? 'session' : 'sessions'} at this weight`;
+  }
+  if (!row.prescription) return 'no history yet';
+  return null;
 }
 
-/** A lift after the first: the same three facts on one line of paper. No card —
- * the session already has one, and it is above this. */
-function RestRow({
-  row,
-  first,
-  expanded,
-  onToggle,
-}: {
-  row: SessionRow;
-  first: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const expandable = Boolean(row.why || row.watch);
-
-  const body = (
-    <View style={styles.restBody}>
-      <View style={styles.restTop}>
-        <Text style={styles.restName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {row.name}
-        </Text>
-        {row.prescription ? (
-          <Text style={styles.restLoad} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {row.prescription}
-          </Text>
-        ) : null}
-        {expandable ? <Chevron open={expanded} /> : null}
-      </View>
-      <View style={styles.restMeta}>
-        {row.move ? <Lever move={row.move} /> : null}
-        {row.last ? (
-          <Text style={styles.was} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {`was ${row.last}`}
-          </Text>
-        ) : null}
-      </View>
-      {expanded ? <Detail row={row} /> : null}
-      <Quote row={row} />
-    </View>
-  );
-
-  return (
-    <>
-      {first ? null : <View style={styles.rule} />}
-      {expandable ? (
-        <PressableScale
-          onPress={onToggle}
-          haptic="none"
-          activeScale={1}
-          accessibilityRole="button"
-          accessibilityState={{ expanded }}
-          accessibilityLabel={`${row.name}${row.prescription ? `, next ${row.prescription}` : ''}`}
-          accessibilityHint={expanded ? 'Hides the reason' : 'Shows why this load was set'}
-          pressedStyle={styles.restPressed}>
-          {body}
-        </PressableScale>
-      ) : (
-        body
-      )}
-    </>
-  );
+/** The card's floor: what you did on the left, what it is measured against on
+ * the right — Progression's two chart endpoints, doing the same job. */
+function endLabels(row: SessionRow): { left: string | null; right: string | null } | null {
+  const left = row.last ? `was ${row.last}` : null;
+  const right = row.beatsBest
+    ? 'heaviest yet'
+    : row.bestKg != null
+      ? `best ${fmtNumber(row.bestKg)} kg`
+      : null;
+  if (!left && !right) return null;
+  return { left, right };
 }
+
+/** Spelled out in full, so VoiceOver never depends on the fill colour the lever
+ * uses to say the same thing (§14). */
+function spokenLabel(row: SessionRow): string {
+  return [
+    row.name,
+    row.move?.label.toLowerCase() ?? '',
+    row.prescription ? `next ${row.prescription}` : 'no prescription yet',
+    row.last ? `was ${row.last}` : '',
+    row.beatsBest ? 'would be your heaviest yet' : '',
+    row.watch ? `stuck for ${row.watch.sessions} sessions` : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
+}
+
+/**
+ * How far a pressed row's highlight bleeds past its content, toward the card's
+ * edge — the same rule and the same token Progression's card uses, so a press
+ * lights up identically on both tabs.
+ */
+const PRESS_BLEED = spacing.sm;
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-  },
-  // THE one raised surface on the page.
-  hero: {
+  // The card. Every value here is Progression's, deliberately: surface, one
+  // hairline, `radius.lg`, `spacing.lg` of padding, the resting shadow. No
+  // marginBottom — the page's own `gap` separates the cards.
+  card: {
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.divider,
-    borderRadius: radius.xxl,
-    ...shadow.raised,
+    borderRadius: radius.lg,
+    borderCurve: 'continuous',
+    padding: spacing.lg,
+    ...shadow.card,
   },
-  heroPressed: {
-    backgroundColor: color.surfaceHigh,
-  },
-  heroBody: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl,
+  cardBody: {
     gap: spacing.sm,
   },
-  heroTop: {
+  cardTop: {
     flexDirection: 'row',
-    alignItems: 'baseline',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
     gap: spacing.md,
   },
-  heroEyebrow: {
-    marginBottom: 0,
+  cardName: {
+    flexShrink: 1,
   },
-  best: {
-    ...readingStyle('400'),
-    fontSize: type.footnote.fontSize,
-    color: color.textMuted,
-  },
-  heroName: {
-    ...type.title2,
-    color: color.textPrimary,
-  },
-  leverRow: {
-    flexDirection: 'row',
-    marginTop: spacing.xs,
-  },
-  /**
-   * The load. 30 pt in the reading face with tabular figures — the largest
-   * thing on the screen, and deliberately larger than the tab title above it.
-   * Ink, never tinted: this is the number that goes on the bar.
-   */
-  heroLoad: {
-    ...readingStyle('700'),
-    fontSize: moderateScale(30),
-    lineHeight: lineFor(36),
-    letterSpacing: -0.5,
-    color: color.textPrimary,
-  },
-  heroFoot: {
+  nameLine: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  liftName: {
+    ...type.headline,
+    flexShrink: 1,
+    fontWeight: '700',
+    color: color.textPrimary,
+  },
+  liftMeta: {
+    fontFamily: fonts.reading,
+    fontSize: moderateScale(11.5),
+    marginTop: 3,
+    color: color.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+  /** A plateau is the one meta line that earns a hue. Amber clears AA on
+   * surface at 5.02:1, and the WORDS say "at this weight" beside it (§14). */
+  metaWatch: {
+    color: color.attention,
+  },
+
+  // The reading. Progression's hero box, to the point.
+  heroBox: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+  },
+  /**
+   * THE LOAD, IN PLANNED GREEN (owner, 18 Aug 2026).
+   *
+   * product-direction §4.2 has one line for this colour — *"a concrete future
+   * prescription only, always with its label and reason"* — and this figure is
+   * the most concrete future prescription in the app. It drew in ink until now
+   * on the reasoning that "a number someone carries to a rack should not be
+   * tinted"; that reasoning kept the app's fourth data state (Planned) invisible
+   * on the one screen that is nothing but planned values, which is the state the
+   * retired plan strip used to carry on Today.
+   *
+   * MEASURED: `signal` #547C00 on white is **4.93:1**. At 28 pt bold this is
+   * large text under WCAG, which owes 3:1 — so it clears its own floor with room
+   * and clears the normal-text 4.5:1 as well. The unit rides the same green at
+   * caption size, where 4.93:1 is still AA. The scheme under it stays ink: it is
+   * how the load is arranged, not a second load.
+   */
+  hero: {
+    fontFamily: fonts.reading,
+    fontSize: moderateScale(28),
+    fontWeight: '700',
+    letterSpacing: -0.5,
+    color: color.signal,
+    fontVariant: ['tabular-nums'],
+  },
+  heroUnit: {
+    fontSize: type.caption.fontSize,
+    fontWeight: '400',
+    color: color.signal,
+  },
+  heroSub: {
+    fontFamily: fonts.reading,
+    fontSize: moderateScale(12.5),
+    fontWeight: '600',
+    marginTop: 2,
+    color: color.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+  /** The whole prescription, for a line that carries no separate figure. */
+  heroCompact: {
+    ...readingStyle('700'),
+    fontSize: moderateScale(16),
+    lineHeight: lineFor(21),
+    textAlign: 'right',
+    // The same planned value, so the same green — 4.93:1 at 16 pt bold, which
+    // is large text (14 pt bold) and owes 3:1.
+    color: color.signal,
+    maxWidth: moderateScale(150),
+  },
+
+  ends: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: spacing.md,
-    minHeight: moderateScale(20),
+    gap: spacing.sm,
   },
-  was: {
-    ...readingStyle('400'),
-    fontSize: type.footnote.fontSize,
-    color: color.textMuted,
+  endLabel: {
+    fontFamily: fonts.reading,
+    fontSize: moderateScale(11),
+    color: color.textSecondary,
+    fontVariant: ['tabular-nums'],
   },
-  // The lever. White on a solid fill — 4.93:1 on signal, 5.02:1 on attention.
+  /** A load that would out-lift the record. `signal` green is exactly this —
+   * a value not yet lifted — and it is a WORD, never a digit (4.93:1). */
+  endBest: {
+    color: color.signal,
+    fontWeight: '700',
+  },
+  chevronRow: {
+    alignItems: 'center',
+    marginTop: -spacing.xs,
+  },
+
+  /**
+   * The lever — Progression's `shareChip`, to the pixel: same `radius.sm`, same
+   * 6/2 padding, same 11 pt reading face at 700, coloured ink on its own wash.
+   *
+   * It was a SOLID pill with a white label until 18 Aug, which passed contrast
+   * but made the one thing both tabs do — say a state in a small tinted chip
+   * beside a lift's name — look like two different objects. The tokens under it
+   * are still Next's: `signal` on `signalWash` (4.59:1), `attention` on
+   * `attentionWash` (4.64:1). Recorded green never stands in for planned green,
+   * so the SHAPE travelled from Progression and the hue did not.
+   */
   lever: {
     alignSelf: 'flex-start',
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: 4,
-  },
-  leverLarge: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    borderRadius: radius.sm,
+    borderCurve: 'continuous',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   leverSignal: {
-    backgroundColor: color.signal,
+    backgroundColor: color.signalWash,
   },
   leverAttention: {
-    backgroundColor: color.attention,
+    backgroundColor: color.attentionWash,
   },
   leverText: {
     ...readingStyle('700'),
-    fontSize: moderateScale(10.5),
-    lineHeight: lineFor(13),
-    letterSpacing: 1.2,
-    color: '#FFFFFF',
+    fontSize: moderateScale(11),
+    lineHeight: lineFor(14),
+    letterSpacing: 0.6,
   },
-  // The rest of the session: paper, hairlines, no second card.
-  rest: {
-    marginTop: spacing.lg,
+  leverInkSignal: {
+    color: color.signal,
   },
-  rule: {
-    height: hairline,
-    backgroundColor: color.divider,
+  leverInkAttention: {
+    color: color.attention,
   },
-  restBody: {
-    paddingVertical: spacing.md,
-    gap: spacing.xs,
+
+  // --- the evidence, inside an open card (Progression's own metrics) --------
+  cardRule: {
+    height: 1,
+    backgroundColor: color.tableRule,
+    marginVertical: spacing.md,
   },
-  restPressed: {
-    backgroundColor: color.surfaceHigh,
-  },
-  restTop: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: spacing.md,
-  },
-  restName: {
-    ...type.subhead,
-    fontWeight: '600',
-    color: color.textPrimary,
-    flexShrink: 1,
-  },
-  restLoad: {
-    flex: 1,
-    textAlign: 'right',
-    ...readingStyle('600'),
-    fontSize: moderateScale(16),
-    color: color.textPrimary,
-  },
-  restMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  panel: {
-    marginTop: spacing.xs,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: color.bg,
+  detail: {
     gap: spacing.md,
   },
   detailLine: {
@@ -572,16 +636,23 @@ const styles = StyleSheet.create({
     fontSize: type.footnote.fontSize,
     color: color.attention,
   },
-  // The ghost's sentence when it names no row on the card — a section-level
-  // lede, never attributed to a lift it does not mention.
-  note: {
-    marginBottom: spacing.md,
-    ...type.footnote,
-    lineHeight: lineFor(18),
+  opener: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: moderateScale(28),
+    marginHorizontal: -PRESS_BLEED,
+    paddingHorizontal: PRESS_BLEED,
+    borderRadius: radius.sm,
+    borderCurve: 'continuous',
+  },
+  openerLabel: {
+    ...type.caption,
     color: color.textSecondary,
   },
+
   quote: {
-    marginTop: spacing.xs,
+    marginTop: spacing.md,
     paddingLeft: spacing.sm,
     borderLeftWidth: 2,
     borderLeftColor: color.divider,
@@ -596,9 +667,33 @@ const styles = StyleSheet.create({
     ...type.caption,
     color: color.textMuted,
   },
-  foot: {
-    marginTop: spacing.md,
-    ...type.footnote,
+
+  // --- lifts with nothing to progress from (Progression's "building" block) --
+  building: {
+    gap: spacing.xs,
+  },
+  buildRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    minHeight: moderateScale(40),
+    borderBottomWidth: 1,
+    borderBottomColor: color.tableRule,
+  },
+  buildName: {
+    ...type.subhead,
+    flexShrink: 1,
+    color: color.textPrimary,
+  },
+  buildMeta: {
+    fontFamily: fonts.reading,
+    fontSize: moderateScale(11),
+    color: color.textMuted,
+  },
+  buildingNote: {
+    ...type.caption,
+    marginTop: spacing.xs,
     color: color.textMuted,
   },
 });

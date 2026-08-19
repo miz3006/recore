@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PressableScale, Stagger } from '@/components/motion';
 // The month layout is shared with You's history calendar — one definition of
@@ -17,8 +16,9 @@ import { BottomSheet } from './bottom-sheet';
 import { Icon } from './icon';
 
 /**
- * The date pill's calendar sheet (CLAUDE.md §8/§9, design frame 09) — a native
- * month grid on warm paper to switch days. It carries the record contract into
+ * The date pill's calendar sheet (CLAUDE.md §8/§9, design frame 09) — a month
+ * grid on a white FLOATING card (the sheet chrome insets every sheet off the
+ * screen edges since 18 Aug 2026, see `bottom-sheet.tsx`) to switch days. It carries the record contract into
  * the picker: every past day that has a logged workout wears a small BLUE dot
  * (the trained mark, §5.1), and when a next-session plan is genuinely offered,
  * today wears a GREEN dot (PLANNED). Today is ringed in ink; the
@@ -37,7 +37,6 @@ const DAY_CIRCLE = moderateScale(40);
 const DOT = moderateScale(4);
 
 export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const insets = useSafeAreaInsets();
   const userId = useSession((s) => s.userId);
   const selectedDay = useSession((s) => s.selectedDay);
   const selectDay = useSession((s) => s.selectDay);
@@ -99,7 +98,7 @@ export function CalendarSheet({ visible, onClose }: { visible: boolean; onClose:
     <BottomSheet
       visible={visible}
       onClose={onClose}
-      sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.xl) }]}>
+      sheetStyle={[styles.sheet, { paddingBottom: spacing.xl }]}>
       <Stagger step={55} initialDelay={80} distance={12}>
           {/* Header: Today · ‹ Month Year › · Done */}
           <View style={styles.header}>
@@ -257,6 +256,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: HIT,
+    marginTop: spacing.xs,
   },
   headerSide: {
     width: moderateScale(64),
@@ -268,7 +268,10 @@ const styles = StyleSheet.create({
   todayLabel: {
     ...type.subhead,
     fontWeight: '600',
-    color: color.textSecondary,
+    // A CONTROL, so it wears Recore blue (§4.2 — active controls) the way the
+    // system picker tints its own "Today". The record's blue is the dot below;
+    // this one is a button and reads as one because it is the only tinted WORD.
+    color: color.trained,
   },
   doneLabel: {
     ...type.subhead,
@@ -295,8 +298,8 @@ const styles = StyleSheet.create({
   },
   weekRow: {
     flexDirection: 'row',
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
   weekday: {
     ...type.caption,
@@ -342,7 +345,7 @@ const styles = StyleSheet.create({
     color: color.textMuted,
   },
   selectedNum: {
-    color: color.bg, // paper numeral on the ink fill
+    color: color.onInk, // paper numeral on the ink fill
     fontWeight: '600',
   },
   dot: {
@@ -361,7 +364,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.signal, // green — a plan offered
   },
   dotOnFill: {
-    backgroundColor: color.bg, // paper dot on the ink-filled selected day
+    backgroundColor: color.onInk, // paper dot on the ink-filled selected day
   },
   legend: {
     flexDirection: 'row',

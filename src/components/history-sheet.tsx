@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   cursorOf,
@@ -56,7 +55,6 @@ const CELL = moderateScale(44);
 const DAY_CIRCLE = moderateScale(34);
 
 export function HistorySheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const insets = useSafeAreaInsets();
   const userId = useSession((s) => s.userId);
   const openSessionSheet = useSession((s) => s.openSessionSheet);
 
@@ -123,7 +121,7 @@ export function HistorySheet({ visible, onClose }: { visible: boolean; onClose: 
       visible={visible}
       onClose={onClose}
       onClosed={handleClosed}
-      sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+      sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text style={styles.title} accessibilityRole="header" maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -268,7 +266,7 @@ function Month({
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     paddingHorizontal: spacing.lg,
     // Tall on purpose: this is a browsing surface, and a short one would make
     // "look all the way back" a scroll through a letterbox.
@@ -377,7 +375,7 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   trainedNum: {
-    color: color.bg,
+    color: color.onInk,
     fontWeight: '600',
   },
   futureNum: {

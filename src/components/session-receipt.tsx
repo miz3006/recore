@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
   // the hairlines read.
   wrap: {
     marginTop: spacing.xl,
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
@@ -478,13 +478,14 @@ const styles = StyleSheet.create({
     marginHorizontal: -PRESS_BLEED,
     paddingHorizontal: PRESS_BLEED,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
   },
   rowSep: {
     height: 1,
     backgroundColor: color.tableRule,
   },
   rowPressed: {
-    backgroundColor: color.surfaceHigh,
+    opacity: 0.6,
   },
   rowHead: {
     flexDirection: 'row',
@@ -548,6 +549,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     marginTop: spacing.sm,
@@ -578,6 +580,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     backgroundColor: color.surface,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
@@ -599,13 +602,14 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   shareBtnPressed: {
-    backgroundColor: color.surfaceHigh,
+    opacity: 0.6,
   },
   shareLabel: {
     color: color.textPrimary,

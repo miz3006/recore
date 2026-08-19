@@ -61,8 +61,7 @@ export default function Legal() {
           hitSlop={spacing.sm}
           accessibilityRole="button"
           accessibilityLabel="Back"
-          style={styles.backBtn}
-          pressedStyle={styles.pressedFill}>
+          style={styles.backBtn}>
           <Icon name="chevron-back" size={moderateScale(16)} tint={color.textPrimary} />
         </PressableScale>
         <Text style={styles.navTitle} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -97,11 +96,10 @@ export default function Legal() {
                   key={link.label}
                   onPress={() => openLink(link)}
                   haptic="none"
-                  activeScale={0.99}
+                  activeScale={0.98}
                   accessibilityRole="button"
                   accessibilityLabel={link.label}
-                  style={styles.linkRow}
-                  pressedStyle={styles.pressedFill}>
+                  style={styles.linkRow}>
                   <Text style={styles.linkRowLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                     {link.label}
                   </Text>
@@ -173,9 +171,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.pill,
   },
-  pressedFill: {
-    backgroundColor: color.surfaceHigh,
-  },
   navTitle: {
     flex: 1,
     textAlign: 'center',
@@ -239,6 +234,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.divider,
     backgroundColor: color.surface,

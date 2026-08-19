@@ -18,17 +18,30 @@ import { PressableScale } from './motion';
  * back to, and a chevron that pops to nowhere is a lie about the navigation. In
  * that shape the title also goes left-aligned, which is the §6.5 headline
  * direction anyway; the centred title only exists to balance the chevron.
+ *
+ * `large` + `subtitle` are the 17 Aug shape (owner, Progression mockup): a
+ * standing-large title with one counted line under it, tight, the way iOS sets
+ * a large-title header. `subtitle` belongs to the HEADER and hugs the title;
+ * `note` stays a body line with the body's own breathing room. A screen that
+ * passes a subtitle also loses the body's top padding, because the subtitle has
+ * already done that job and doubling it opens a hole under the header.
  */
 export function StubScreen({
   title,
+  subtitle,
   note,
   back = true,
+  large = false,
   children,
 }: {
   title: string;
+  /** One counted line directly under the title, inside the header. */
+  subtitle?: string;
   note?: string;
   /** False on a tab root: no chevron, left-aligned title. */
   back?: boolean;
+  /** Tab-root only: set the title at `largeTitle` instead of `title2`. */
+  large?: boolean;
   children?: React.ReactNode;
 }) {
   const router = useRouter();
@@ -51,16 +64,23 @@ export function StubScreen({
             <Icon name="chevron-back" size={moderateScale(22)} tint={color.textSecondary} />
           </PressableScale>
         ) : null}
-        <Text
-          style={[styles.title, back ? null : styles.titleRoot]}
-          accessibilityRole="header"
-          maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {title}
-        </Text>
+        <View style={styles.titleWrap}>
+          <Text
+            style={[styles.title, back ? null : large ? styles.titleLarge : styles.titleRoot]}
+            accessibilityRole="header"
+            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {title}
+          </Text>
+          {subtitle ? (
+            <Text style={styles.subtitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
         {back ? <View style={styles.back} /> : null}
       </View>
 
-      <View style={styles.body}>
+      <View style={[styles.body, subtitle ? styles.bodyTight : null]}>
         {note ? (
           <Text style={styles.note} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {note}
@@ -93,8 +113,10 @@ const styles = StyleSheet.create({
     width: HIT,
     justifyContent: 'center',
   },
-  title: {
+  titleWrap: {
     flex: 1,
+  },
+  title: {
     textAlign: 'center',
     color: color.textPrimary,
     fontSize: type.headline.fontSize,
@@ -104,11 +126,24 @@ const styles = StyleSheet.create({
     ...type.title2,
     textAlign: 'left',
   },
+  titleLarge: {
+    ...type.largeTitle,
+    textAlign: 'left',
+  },
+  subtitle: {
+    ...type.subhead,
+    marginTop: 2,
+    color: color.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
   body: {
     flex: 1,
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xxl,
     gap: spacing.lg,
+  },
+  bodyTight: {
+    paddingTop: spacing.lg,
   },
   note: {
     ...type.subhead,

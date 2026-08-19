@@ -1,7 +1,17 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
+import Animated, {
+  interpolateColor,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -19,8 +29,11 @@ import {
   BLUE,
   CARD_RADIUS,
   INK_CARD,
+  RISE_PX,
   SELECT_BORDER,
+  STAGGER_MS,
 } from '@/components/onboarding/tokens';
+import { useSelectFill } from '@/components/onboarding/use-select-fill';
 import { Eyebrow } from '@/components/primitives';
 import { useAuth } from '@/lib/auth/provider';
 import { perMonth, savePct, type Plan } from '@/lib/billing/pricing';
@@ -35,7 +48,7 @@ import {
 import { formatChargeDate } from '@/lib/billing/trial';
 import { markPaywallShown, markPlanSelected } from '@/lib/funnel';
 import { tap } from '@/lib/haptics';
-import { EASE } from '@/lib/motion';
+import { DUR, EASE } from '@/lib/motion';
 import type { LegalDocId } from '@/lib/legal';
 import type { Goal } from '@/lib/onboarding';
 import { getGoal, getName, getPrimaryLift } from '@/lib/prefs';
@@ -257,32 +270,60 @@ export default function Paywall() {
   }, []);
 
   /**
-   * The CTA's glow breathes ONCE on arrival (Claude Design canvas, 13 Aug 2026:
-   * 1.2 s from 600 ms, "never repeatedly"). It is the last screen of the funnel
-   * and the button is what the screen is for, so one swell that says "here" is
-   * within §4.3's "motion that makes cause and effect clearer".
+   * THE ONE DELIBERATE MOTION MOMENT ON THIS SCREEN. The CTA's glow breathes
+   * once on arrival (Claude Design canvas, 13 Aug 2026: 1.2 s from 600 ms,
+   * "never repeatedly"). It is the last screen of the funnel and the button is
+   * what the screen is for, so one swell that says "here" is within §4.3's
+   * "motion that makes cause and effect clearer".
    *
    * A LOOP would not be. A pulsing buy button is a countdown by another name —
    * the urgency pressure CLAUDE.md §2 rule 6 rules out — so this fires once per
    * mount and then the button is simply a button. Reduce Motion never fires it.
+   *
+   * ## It crossfades a pre-shadowed layer (19 August 2026)
+   *
+   * It used to animate the button's own `shadowOpacity` AND `shadowRadius`. A
+   * changing shadow radius is not a composited property: Core Animation
+   * re-renders the shadow every frame it changes, which is the most expensive
+   * way to draw the cheapest-looking effect. Now a second, heavier-shadowed
+   * pill sits behind the button and only its OPACITY moves — one composited
+   * property, and the same picture.
+   *
+   * iOS only. On Android the equivalent is `elevation`, whose shadow does not
+   * reliably respect a parent's opacity, so a layer that faded in might never
+   * fade out. One glow is a moment; a permanent double shadow is a defect.
    */
   const reduce = useReducedMotion();
   const glow = useSharedValue(0);
   useEffect(() => {
     if (reduce) return;
-    glow.value = withDelay(
-      600,
-      withSequence(
-        withTiming(1, { duration: 540, easing: EASE.inOut }),
-        withTiming(0, { duration: 660, easing: EASE.inOut }),
+    glow.set(
+      withDelay(
+        600,
+        withSequence(
+          withTiming(1, { duration: 540, easing: EASE.inOut }),
+          withTiming(0, { duration: 660, easing: EASE.inOut }),
+        ),
       ),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const glowStyle = useAnimatedStyle(() => ({
-    shadowOpacity: 0.28 + glow.value * 0.27,
-    shadowRadius: 18 + glow.value * 12,
-  }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.get() }));
+
+  /**
+   * Where each plan card sits inside its row, measured once on layout. The
+   * selection outline is one view that TRAVELS between them (see
+   * `PlanIndicator`) rather than a border switching off one card and on to the
+   * other, so choosing a plan is a movement the eye can follow instead of two
+   * simultaneous cuts. Nothing here is read per frame.
+   */
+  const [planLayouts, setPlanLayouts] = useState<Record<string, PlanBox>>({});
+  const measurePlan = useCallback((key: Plan, e: LayoutChangeEvent) => {
+    const { x, width } = e.nativeEvent.layout;
+    setPlanLayouts((prev) =>
+      prev[key]?.x === x && prev[key]?.width === width ? prev : { ...prev, [key]: { x, width } },
+    );
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -484,14 +525,14 @@ export default function Paywall() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Stagger initialDelay={60} step={70} distance={14}>
+        <Stagger initialDelay={STAGGER_MS} step={STAGGER_MS} distance={RISE_PX}>
           {/* The funnel's mascot, one last time and at half height — this is a
               commercial screen and the picture has to yield to the price. The
               slot reads the same registry as every onboarding step, so the
               character that walked the person through twenty questions is the
               character standing here. */}
-          <View style={styles.mascot}>
-            <IllustrationSlot slug="paywall" height={MASCOT_HEIGHT} />
+          <View style={[styles.mascot, { height: MASCOT_HEIGHT }]}>
+            <IllustrationSlot slug="paywall" />
           </View>
           <Eyebrow tone="secondary">{name ? `You're all set, ${name}` : 'Recore Pro'}</Eyebrow>
           <Text style={styles.headline} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -536,7 +577,7 @@ export default function Paywall() {
           </View>
         </Stagger>
 
-        <FadeSlideIn delay={320} style={styles.bottom}>
+        <FadeSlideIn delay={PAYWALL_BOTTOM_DELAY_MS} style={styles.bottom}>
           <View style={styles.plans}>
             <PlanCard
               title="Annual"
@@ -547,6 +588,7 @@ export default function Paywall() {
               // when the comparison cannot be made honestly — then no badge.
               badge={saving != null ? `SAVE ${saving}%` : null}
               onPress={() => setPlan('annual')}
+              onLayout={(e) => measurePlan('annual', e)}
             />
             <PlanCard
               title="Monthly"
@@ -555,7 +597,11 @@ export default function Paywall() {
               selected={plan === 'monthly'}
               badge={null}
               onPress={() => setPlan('monthly')}
+              onLayout={(e) => measurePlan('monthly', e)}
             />
+            {/* Drawn last so its edge sits over both cards, and inert so it
+                cannot eat the tap that moves it. */}
+            <PlanIndicator box={planLayouts[plan]} />
           </View>
 
           {offerState === 'unavailable' ? (
@@ -582,13 +628,17 @@ export default function Paywall() {
             </Text>
           ) : null}
 
-          <PrimaryCta
-            label={ctaLabel}
-            onPress={handleCta}
-            disabled={!canBuy || busy !== null}
-            loading={busy === 'purchase'}
-            style={[styles.cta, glowStyle]}
-          />
+          <View style={styles.ctaWrap}>
+            {Platform.OS === 'ios' ? (
+              <Animated.View style={[styles.ctaGlow, glowStyle]} pointerEvents="none" />
+            ) : null}
+            <PrimaryCta
+              label={ctaLabel}
+              onPress={handleCta}
+              disabled={!canBuy || busy !== null}
+              loading={busy === 'purchase'}
+            />
+          </View>
 
           {/* Every number in this line came from the store. "in Settings" was
               once ambiguous — Recore has a settings tab, and that is not where
@@ -638,6 +688,11 @@ export default function Paywall() {
  * A card with no store plan behind it renders its title and a dash where the
  * price goes. That is the honest pre-fetch state: the shape is there, the
  * number is not invented.
+ *
+ * The blue EDGE is not drawn here — `PlanIndicator` owns it, because it is one
+ * outline shared between the two cards rather than a property each card turns
+ * on and off. The card's own 2 pt border stays, in the card's own fill, so the
+ * geometry under the travelling outline never changes.
  */
 function PlanCard({
   title,
@@ -646,6 +701,7 @@ function PlanCard({
   selected,
   badge,
   onPress,
+  onLayout,
 }: {
   title: string;
   storePlan: StorePlan | null;
@@ -653,6 +709,7 @@ function PlanCard({
   selected: boolean;
   badge: string | null;
   onPress: () => void;
+  onLayout: (e: LayoutChangeEvent) => void;
 }) {
   // Apple's own per-month string when it gives one; our own arithmetic on its
   // price when it does not. Never a hardcoded currency symbol.
@@ -681,8 +738,9 @@ function PlanCard({
     <PressableScale
       onPress={onPress}
       activeScale={0.98}
-      style={[styles.plan, selected && styles.planSelected]}
-      pressedStyle={styles.planPressed}
+      haptic="selection"
+      style={styles.plan}
+      onLayout={onLayout}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
       accessibilityLabel={spoken}>
@@ -709,17 +767,101 @@ function PlanCard({
       </Text>
 
       <View style={styles.planMark}>
-        {selected ? (
-          <View style={styles.radioFilled}>
-            <CheckGlyph />
-          </View>
-        ) : (
-          <View style={styles.radioHollow} />
-        )}
+        <PlanRadio selected={selected} />
       </View>
     </PressableScale>
   );
 }
+
+/**
+ * The radio on a plan card. Both layers are always mounted and read one 160 ms
+ * progress, so it fills and empties on the same value the outline travels on —
+ * the mark and the edge are two halves of one answer, not two animations that
+ * happen to fire together.
+ */
+function PlanRadio({ selected }: { selected: boolean }) {
+  const p = useSelectFill(selected);
+  const ringStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(p.get(), [0, 1], [color.border, BLUE]),
+  }));
+  const fillStyle = useAnimatedStyle(() => ({
+    opacity: p.get(),
+    transform: [{ scale: 0.7 + 0.3 * p.get() }],
+  }));
+
+  return (
+    <Animated.View style={[styles.radioHollow, ringStyle]}>
+      <Animated.View style={[styles.radioFilled, fillStyle]}>
+        <CheckGlyph />
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+/** A plan card's measured box inside the row. */
+type PlanBox = { x: number; width: number };
+
+/**
+ * The selection outline, and the reason this is the "measured segmented
+ * indicator" rather than a border per card.
+ *
+ * Two cards each owning a `borderColor` means choosing a plan is two
+ * simultaneous cuts — one edge vanishing, another appearing — and nothing on
+ * screen connects them. One outline that TRAVELS says the same thing as a
+ * single movement, and it is the shape the eye already reads as "this one".
+ *
+ * `x` and `width` come from `onLayout`, measured once per card and again only
+ * on a resize. Nothing measures per frame.
+ *
+ * **This is the sanctioned `width` animation.** The outline is absolutely
+ * positioned with no children, so nothing else re-lays-out when it changes, and
+ * it has a 24 pt corner radius that a `scaleX` would smear into an oval across
+ * a 150 pt card. (The two cards are equal width today, so `width` is usually
+ * animating to the value it already has — it is here because "the cards are the
+ * same size" is an assumption a third plan or a `flex` tweak would break
+ * silently.)
+ *
+ * `ease-in-out`, because the outline is moving ACROSS the screen rather than
+ * entering or leaving it — the one case where easing at both ends is honest.
+ */
+function PlanIndicator({ box }: { box: PlanBox | undefined }) {
+  const reduce = useReducedMotion();
+  const x = useSharedValue(0);
+  const w = useSharedValue(0);
+  // The outline must APPEAR at the preselected card, not slide in from the left
+  // edge of the row on first layout.
+  const placed = useRef(false);
+
+  useEffect(() => {
+    if (!box) return;
+    if (!placed.current || reduce) {
+      placed.current = true;
+      x.set(box.x);
+      w.set(box.width);
+      return;
+    }
+    x.set(withTiming(box.x, TRAVEL));
+    w.set(withTiming(box.width, TRAVEL));
+  }, [box, reduce, x, w]);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateX: x.get() }],
+    width: w.get(),
+    // Hidden until the row has been laid out, so nothing flashes at x=0.
+    opacity: w.get() > 0 ? 1 : 0,
+  }));
+
+  return <Animated.View style={[styles.planIndicator, style]} pointerEvents="none" />;
+}
+
+const TRAVEL = { duration: DUR.base, easing: EASE.inOut } as const;
+
+/**
+ * When the plans and the button arrive. One beat after the last value prop, on
+ * the funnel's own cadence — this screen is the last page of the same flow, so
+ * it must not move to a rhythm of its own.
+ */
+const PAYWALL_BOTTOM_DELAY_MS = STAGGER_MS * 6;
 
 /** A quiet underlined link that is still a real 44 pt target. */
 function LinkButton({ label, onPress }: { label: string; onPress: () => void }) {
@@ -902,6 +1044,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: INK_CARD,
     borderRadius: CARD_RADIUS,
+    borderCurve: 'continuous',
     borderWidth: SELECT_BORDER,
     // Invisible until chosen: the same colour as the fill it edges.
     borderColor: INK_CARD,
@@ -910,11 +1053,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
   },
-  planSelected: {
+  /**
+   * The travelling selection edge. Absolutely positioned with no children, so
+   * animating its width re-lays-out nothing, and its corner radius survives
+   * where a scaleX would smear it. `translateX` carries it across.
+   */
+  planIndicator: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: CARD_RADIUS,
+    borderCurve: 'continuous',
+    borderWidth: SELECT_BORDER,
     borderColor: BLUE,
-  },
-  planPressed: {
-    backgroundColor: color.surfaceHigh,
   },
   /** Height reserved on both cards so the two titles share a baseline. */
   planBadgeSlot: {
@@ -962,20 +1114,21 @@ const styles = StyleSheet.create({
   planMark: {
     marginTop: spacing.sm,
   },
+  /** Always mounted, over the ring; its opacity and scale carry the state. */
   radioFilled: {
-    width: moderateScale(22),
-    height: moderateScale(22),
+    ...StyleSheet.absoluteFillObject,
     borderRadius: radius.pill,
     backgroundColor: BLUE,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /** The ring, always drawn — only its colour moves, so the mark never has to
+   * mount or unmount mid-transition. */
   radioHollow: {
     width: moderateScale(22),
     height: moderateScale(22),
     borderRadius: radius.pill,
     borderWidth: 1.5,
-    borderColor: color.border,
   },
   /** The single permitted green line — see the note at its call site. */
   dueToday: {
@@ -985,8 +1138,23 @@ const styles = StyleSheet.create({
     color: color.signal,
     textAlign: 'center',
   },
-  cta: {
+  /** Holds the button and the glow layer behind it, and owns the gap above. */
+  ctaWrap: {
     marginTop: spacing.md,
+  },
+  /**
+   * The pre-shadowed layer the arrival glow crossfades. Same pill, same blue,
+   * a heavier shadow — only its OPACITY animates, so the shadow is rasterized
+   * once instead of on every frame of a changing radius.
+   */
+  ctaGlow: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.pill,
+    backgroundColor: BLUE,
+    shadowColor: BLUE,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.55,
+    shadowRadius: 30,
   },
   legal: {
     marginTop: spacing.md,

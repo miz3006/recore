@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { effortToken, readEffort, setEffortOnLine } from './effort.ts';
+import {
+  EFFORT_CHOICE_LABEL,
+  EFFORT_CHOICES,
+  effortChoiceOf,
+  effortToken,
+  readEffort,
+  setEffortOnLine,
+} from './effort.ts';
 
 test('the token is training notation, not app metadata', () => {
   assert.equal(effortToken('easy'), 'rpe 7');
@@ -91,4 +98,40 @@ test('a round trip through the sheet is stable', () => {
   const marked = setEffortOnLine(line, 'hard');
   assert.equal(readEffort(marked), 'hard');
   assert.equal(setEffortOnLine(marked, null), line);
+});
+
+// --- the three answers the check-in asks (owner, 17 Aug 2026) ----------------
+
+test('the sheet asks three questions in plain words', () => {
+  assert.deepEqual(EFFORT_CHOICES, ['easy', 'hard', 'max']);
+  assert.deepEqual(
+    EFFORT_CHOICES.map((e) => EFFORT_CHOICE_LABEL[e]),
+    ['Could do more', 'Just right', 'Nothing left'],
+  );
+  // Plain and physical: no praise, no scale of faces (§15, §20).
+  for (const e of EFFORT_CHOICES) {
+    assert.ok(!/!/.test(EFFORT_CHOICE_LABEL[e]));
+    assert.ok(!/rpe|rir/i.test(EFFORT_CHOICE_LABEL[e]), 'the sheet speaks English, not notation');
+  }
+});
+
+test('an answer round-trips through the line it is written into', () => {
+  for (const e of EFFORT_CHOICES) {
+    const line = setEffortOnLine('bench 5x5 100kg', e);
+    assert.equal(readEffort(line), e, `${e} did not survive the note`);
+    assert.equal(effortChoiceOf(readEffort(line)), e, `${e} does not light its own chip`);
+  }
+});
+
+test('"just right" keeps the load, it never asks for more', () => {
+  // rir 2 makes the engine add weight; someone who said the session was RIGHT
+  // has not asked for that. The middle answer is deliberately rir 1.
+  assert.equal(effortToken('hard'), 'rpe 9');
+  assert.ok(!EFFORT_CHOICES.includes('moderate'));
+});
+
+test('a typed @8 lights "could do more" rather than nothing at all', () => {
+  assert.equal(readEffort('bench 5x5 100kg @8'), 'moderate');
+  assert.equal(effortChoiceOf('moderate'), 'easy');
+  assert.equal(effortChoiceOf(null), null);
 });

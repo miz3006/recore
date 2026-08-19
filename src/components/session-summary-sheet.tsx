@@ -1,7 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
 
@@ -20,6 +19,14 @@ import { PrLabel } from './gutter-value';
 import { SaveSplitBlock } from './save-split';
 
 /**
+ * UNREACHABLE SINCE 18 AUGUST 2026. `SummaryPill` was its only opener and the
+ * pill left Today on the owner's call; nothing else in the app presents this
+ * sheet, which also makes "Save as a split day" (`save-split.tsx`, mounted
+ * below) unreachable. Left in the tree, not deleted — restoring the pill
+ * restores both.
+ */
+
+/**
  * SessionSummarySheet (UX roadmap N1) — the resting `SummaryPill` was a passive
  * dead end; tapping it now opens this backward-looking review. It reads the
  * SAME settled receipt the ledger and the pill draw from, so it never disagrees
@@ -34,7 +41,6 @@ import { SaveSplitBlock } from './save-split';
  * presented sheet while one is still up).
  */
 export function SessionSummarySheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const note = useCurrentNote();
   const receipt = useSession((s) => s.receipt);
@@ -113,7 +119,7 @@ export function SessionSummarySheet({ visible, onClose }: { visible: boolean; on
       visible={visible}
       onClose={onClose}
       onClosed={handleClosed}
-      sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+      sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
       <View style={styles.headRow}>
         <Eyebrow tone="muted">Session</Eyebrow>
         {!data.empty ? (
@@ -277,7 +283,7 @@ function Stat({ n, label, raw }: { n?: string; label?: string; raw?: string }) {
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     paddingHorizontal: spacing.xl,
     maxHeight: '86%',
   },
@@ -381,7 +387,7 @@ const styles = StyleSheet.create({
     left: -9999,
     top: 0,
     width: 360,
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     padding: spacing.xl,
   },
   shareHead: {

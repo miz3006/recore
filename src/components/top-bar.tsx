@@ -55,7 +55,6 @@ export function TopBar() {
           hitSlop={spacing.xs}
           activeScale={0.96}
           style={styles.dayPill}
-          pressedStyle={styles.dayPillPressed}
           accessibilityRole="button"
           accessibilityLabel={`Open calendar — ${labelForDay(selectedDay)}`}>
           <Text style={styles.dayPillText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -129,9 +128,6 @@ const styles = StyleSheet.create({
     borderColor: color.divider,
     backgroundColor: color.surface,
     ...shadow.card,
-  },
-  dayPillPressed: {
-    backgroundColor: color.surfaceHigh,
   },
   dayPillText: {
     ...type.subhead,

@@ -58,6 +58,44 @@ export const EFFORT_HINT: Record<Effort, string> = {
   max: 'nothing left',
 };
 
+/**
+ * THE THREE ANSWERS THE END-OF-SESSION CHECK-IN ASKS (owner, 17 Aug 2026).
+ *
+ * The stored scale keeps four levels, because `readEffort` has to resolve every
+ * RPE a lifter can type. What the sheet ASKS is three, in the words a person
+ * uses walking out of the gym — "could do more", not "RPE 7". A fourth button
+ * would be a fourth thing to weigh at the exact moment nobody wants to weigh
+ * anything, and the engine only has three outcomes anyway.
+ *
+ * WHAT EACH ONE COMMITS TO, and the mapping is deliberately conservative:
+ *
+ *  · **Could do more** → `easy`, rir 3 — the engine adds weight (rule 2).
+ *  · **Just right** → `hard`, rir 1 — same weight, chase a rep. NOT `moderate`
+ *    (rir 2): rir 2 makes the engine add load, and someone who just said the
+ *    session was *right* has not asked for more. When the app is unsure it
+ *    keeps the load; it never talks itself into a heavier bar.
+ *  · **Nothing left** → `max`, rir 0 — same weight.
+ *
+ * `moderate` is therefore never WRITTEN from here, only read: a lifter who
+ * typed `@8` themselves lights the "could do more" chip, which is what rir 2
+ * means to them.
+ */
+export const EFFORT_CHOICES: Effort[] = ['easy', 'hard', 'max'];
+
+export const EFFORT_CHOICE_LABEL: Record<Effort, string> = {
+  easy: 'Could do more',
+  moderate: 'Could do more',
+  hard: 'Just right',
+  max: 'Nothing left',
+};
+
+/** Which of the three chips a stored marker lights up — see the note above on
+ * why a typed `moderate` reads as "could do more". */
+export function effortChoiceOf(effort: Effort | null): Effort | null {
+  if (effort === null) return null;
+  return effort === 'moderate' ? 'easy' : effort;
+}
+
 export function effortToken(effort: Effort): string {
   return `rpe ${EFFORT_RPE[effort]}`;
 }

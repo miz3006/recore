@@ -75,6 +75,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.divider,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     paddingHorizontal: spacing.lg,
     ...shadow.card,
   },

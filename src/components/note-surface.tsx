@@ -649,7 +649,7 @@ function ExerciseCard({
         onPress={showWords ? onToggleWords : onEdit}
         onLongPress={onToggleWords}
         haptic="none"
-        activeScale={0.99}
+        activeScale={0.98}
         accessibilityHint={showWords ? 'Shows the reading again' : 'Long press to show your words'}
         style={styles.cardBody}
         pressedStyle={styles.cardPressed}>
@@ -1000,7 +1000,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   checkMark: {
-    color: color.bg,
+    color: color.onInk,
     fontSize: moderateScale(12),
     fontWeight: '700',
     lineHeight: lineFor(14),
@@ -1100,6 +1100,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: moderateScale(8),
+    borderCurve: 'continuous',
   },
 
   // Pending / prose blocks.
@@ -1161,9 +1162,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     borderRadius: moderateScale(8),
+    borderCurve: 'continuous',
   },
   deletePressed: {
-    backgroundColor: color.surfaceHigh,
+    opacity: 0.6,
   },
   deleteText: {
     fontSize: moderateScale(13),

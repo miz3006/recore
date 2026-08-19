@@ -151,15 +151,14 @@ export default function Lifts() {
                 {i > 0 ? <View style={styles.rowSep} /> : null}
                 <PressableScale
                   haptic="none"
-                  activeScale={0.99}
+                  activeScale={0.98}
                   onPress={() => {
                     tap();
                     openExerciseSheet(l.canonical);
                   }}
                   accessibilityRole="button"
                   accessibilityLabel={`${l.canonical}, ${topSetText(l)}, ${metaText(l)}`}
-                  style={styles.row}
-                  pressedStyle={styles.rowPressed}>
+                  style={styles.row}>
                   <View style={styles.rowText}>
                     <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                       {l.canonical}
@@ -216,13 +215,11 @@ const styles = StyleSheet.create({
     marginHorizontal: -PRESS_BLEED,
     paddingHorizontal: PRESS_BLEED,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
   },
   rowSep: {
     height: hairline,
     backgroundColor: color.tableRule,
-  },
-  rowPressed: {
-    backgroundColor: color.surfaceHigh,
   },
   rowText: {
     flexShrink: 1,
@@ -252,6 +249,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     backgroundColor: color.surfaceHigh,
   },
   emptyExampleText: {

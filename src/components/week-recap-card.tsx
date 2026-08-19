@@ -201,6 +201,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: color.surface,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.border,
     padding: spacing.lg,
@@ -256,6 +257,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     alignSelf: 'flex-start',
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.border,
     paddingHorizontal: spacing.md,
@@ -275,13 +277,14 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     alignSelf: 'flex-start',
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.border,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
   donePressed: {
-    backgroundColor: color.surfaceHigh,
+    opacity: 0.6,
   },
   doneLabel: {
     fontSize: type.caption.fontSize,

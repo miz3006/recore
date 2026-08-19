@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { shiftDayKey, todayKey } from '@/lib/db/dates';
 import { mondayOf } from '@/lib/db/stats';
@@ -29,7 +28,6 @@ import { Eyebrow } from './primitives';
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;
 
 export function StreakSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const insets = useSafeAreaInsets();
   const userId = useSession((s) => s.userId);
   const streak = useSession((s) => s.streak);
 
@@ -51,7 +49,7 @@ export function StreakSheet({ visible, onClose }: { visible: boolean; onClose: (
     <BottomSheet
       visible={visible}
       onClose={onClose}
-      sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+      sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
       <Eyebrow tone="muted" style={styles.eyebrow}>
         This week
       </Eyebrow>
@@ -112,7 +110,7 @@ const DOT = moderateScale(9);
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     paddingHorizontal: spacing.xl,
   },
   eyebrow: {

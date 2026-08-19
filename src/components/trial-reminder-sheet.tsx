@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Linking, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   getPriceLabel,
@@ -35,7 +34,6 @@ import { AppButton, Eyebrow } from './primitives';
  * day 5 still gets it; opening on day 6 having seen it on day 5 does not.
  */
 export function TrialReminderSheet() {
-  const insets = useSafeAreaInsets();
   // Decided once, on mount: this is a "first open in the window" surface, and
   // re-evaluating on every render would re-open it after the dismiss.
   const [visible, setVisible] = useState(() => isTrialReminderDue());
@@ -75,7 +73,7 @@ export function TrialReminderSheet() {
     <BottomSheet
       visible={visible}
       onClose={close}
-      sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.xl) }]}>
+      sheetStyle={[styles.sheet, { paddingBottom: spacing.xl }]}>
       <Eyebrow tone="muted" style={styles.eyebrow}>
         Free trial
       </Eyebrow>
@@ -103,7 +101,7 @@ export function TrialReminderSheet() {
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     paddingHorizontal: spacing.xl,
   },
   eyebrow: {

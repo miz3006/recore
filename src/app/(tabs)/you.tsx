@@ -13,11 +13,12 @@ import {
   UIManager,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HistorySheet } from '@/components/history-sheet';
 import { Icon } from '@/components/icon';
 import { PressableScale, Stagger } from '@/components/motion';
 import { AccordionRow, Row, Section, Segmented } from '@/components/settings-rows';
+import { EDGE_FADE, ScrollEdgeHeader } from '@/components/scroll-edge';
 import { listAliasOverrides } from '@/lib/db/alias-overrides';
 import { listPlanDays } from '@/lib/db/plan';
 import { clearParseCache } from '@/lib/db/cache';
@@ -251,6 +252,8 @@ const weightTextOf = (kg: number | null, unit: WeightUnit): string =>
 export default function Settings() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // Measured, not guessed: the title row grows with Dynamic Type.
+  const [headerH, setHeaderH] = useState(0);
   const { session } = useAuth();
   const userId = useSession((s) => s.userId);
   const hydrate = useSession((s) => s.hydrate);
@@ -759,23 +762,25 @@ export default function Settings() {
     'Export and deletion stay available even without an active subscription.';
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
-      {/* A tab root, so no chevron: there is nothing to go back to, and the
-          title goes left-aligned per §6.5 rather than centred to balance one. */}
-      <View style={styles.nav}>
-        <Text style={styles.navTitle} accessibilityRole="header" maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          You
-        </Text>
-      </View>
-
+    <View style={styles.root}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
-          // Content scrolls *behind* the tab bar (§5.2 — glass needs something
-          // to refract), so the last row clears it with padding, not an inset.
-          { paddingBottom: insets.bottom + spacing.xxl + TAB_BAR_CLEARANCE },
+          {
+            // The list runs UNDER the title and fades out into it (§ScrollEdge);
+            // its own top padding is what the header measured, plus the fade, so
+            // nothing ever rests beneath the gradient.
+            paddingTop: headerH + EDGE_FADE,
+            // Content scrolls *behind* the tab bar (§5.2 — glass needs something
+            // to refract), so the last row clears it with padding, not an inset.
+            paddingBottom: insets.bottom + spacing.xxl + TAB_BAR_CLEARANCE,
+          },
         ]}
+        // The list is now the FIRST view in the controller, so UIKit would
+        // helpfully add its own safe-area inset on top of the padding the
+        // header just measured. It is our header; we do the arithmetic.
+        contentInsetAdjustmentBehavior="never"
         showsVerticalScrollIndicator={false}>
         <Stagger step={55} initialDelay={80}>
         {/* PROFILE — the identity block became a proper grouped card (12 Aug):
@@ -825,11 +830,10 @@ export default function Settings() {
                   router.push('/progress');
                 }}
                 haptic="none"
-                activeScale={0.995}
+                activeScale={0.98}
                 accessibilityRole="button"
                 accessibilityLabel={`${record.days} training days, ${record.sets} sets, ${groupThousands(record.volume)} kilograms. Open Progress.`}
-                style={styles.stats}
-                pressedStyle={styles.rowPressed}>
+                style={styles.stats}>
                 <Stat value={String(record.days)} label="Training days" />
                 <View style={styles.statRule} />
                 <Stat value={String(record.sets)} label="Sets" />
@@ -846,11 +850,10 @@ export default function Settings() {
                   setHistoryOpen(true);
                 }}
                 haptic="none"
-                activeScale={0.995}
+                activeScale={0.98}
                 accessibilityRole="button"
                 accessibilityLabel="Open your full training record"
-                style={styles.gridBlock}
-                pressedStyle={styles.rowPressed}>
+                style={styles.gridBlock}>
                 <ActivityGrid weeks={record.grid} />
                 <View style={styles.gridFoot}>
                   <Text style={styles.gridFootLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -1329,10 +1332,24 @@ export default function Settings() {
         </Stagger>
       </ScrollView>
 
+      {/* Drawn after the list so it sits over it. A tab root, so no chevron:
+          there is nothing to go back to, and the title goes left-aligned per
+          §6.5 rather than centred to balance one. */}
+      <ScrollEdgeHeader onHeight={setHeaderH}>
+        <View style={styles.nav}>
+          <Text
+            style={styles.navTitle}
+            accessibilityRole="header"
+            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            You
+          </Text>
+        </View>
+      </ScrollEdgeHeader>
+
       {/* The full record, opened from the grid. Mounted here rather than app-
           wide: unlike ExerciseSheet, You is the only screen that opens it. */}
       <HistorySheet visible={historyOpen} onClose={() => setHistoryOpen(false)} />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1461,7 +1478,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
   },
 
   // Profile identity block.
@@ -1520,6 +1536,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.divider,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     paddingHorizontal: spacing.lg + 2,
     // A hair of vertical padding so the first and last row's pressed highlight
     // (PRESS_BLEED below) stays inside the card's own rounded corner instead of
@@ -1539,19 +1556,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.sm,
-    marginHorizontal: -PRESS_BLEED,
-    paddingHorizontal: PRESS_BLEED,
-    borderRadius: radius.sm,
   },
-  // The grid keeps its own inner width (margin out, padding back), so bleeding
-  // the press highlight never changes where the dots sit.
+  // A CARD-SHAPED TARGET DIPS, IT DOES NOT SHADE (owner, 18 Aug 2026).
+  //
+  // Both blocks used to fill `surfaceHigh` while held. A grey rectangle inside
+  // a white card is the one press treatment that always looks cheap: it cannot
+  // reach the card's edge (the card's own rounded corner has no clip to hide
+  // behind, and clipping it would cost the shadow), so it lands as a floating
+  // grey box with white margins either side. iOS shades LIST ROWS, which run
+  // wall to wall; a block this size is a card, and a card presses by moving.
+  // The scale dip does all of it now — hence no fill, and no bleed to carry.
   gridBlock: {
     paddingTop: spacing.lg,
     paddingBottom: spacing.xs,
     gap: spacing.sm,
-    marginHorizontal: -PRESS_BLEED,
-    paddingHorizontal: PRESS_BLEED,
-    borderRadius: radius.sm,
   },
   gridFoot: {
     flexDirection: 'row',
@@ -1587,6 +1605,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: moderateScale(44),
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.border,
     backgroundColor: color.surface,
@@ -1603,7 +1622,7 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   dayChipTextOn: {
-    color: color.bg,
+    color: color.onInk,
   },
   bodyFields: {
     gap: spacing.sm,
@@ -1626,6 +1645,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     backgroundColor: color.surface,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 2,
@@ -1707,6 +1727,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -PRESS_BLEED,
     paddingHorizontal: PRESS_BLEED,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
@@ -1719,9 +1740,6 @@ const styles = StyleSheet.create({
     height: hairline,
     marginLeft: ROW_ICON_SLOT,
     backgroundColor: color.divider,
-  },
-  rowPressed: {
-    backgroundColor: color.surfaceHigh,
   },
   rowLeft: {
     flex: 1,
@@ -1774,6 +1792,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: color.surfaceHigh,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     padding: moderateScale(3),
     gap: moderateScale(3),
   },
@@ -1781,6 +1800,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: moderateScale(8),
     borderRadius: radius.sm - 3,
+    borderCurve: 'continuous',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: hairline,

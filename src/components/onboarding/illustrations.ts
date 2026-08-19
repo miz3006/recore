@@ -1,6 +1,18 @@
 import type { VideoSource } from 'expo-video';
 import type { ImageSourcePropType } from 'react-native';
 
+import type { IllustrationSlug } from './illustration-layout';
+
+export {
+  ILLUSTRATION_LAYOUT,
+  ILLUSTRATION_SLUGS,
+  ONBOARDING_SLUGS,
+  layoutFor,
+  type IllustrationLayout,
+  type IllustrationSlug,
+  type OnboardingSlug,
+} from './illustration-layout';
+
 /**
  * The ONE registry that maps an onboarding screen slug to its illustration
  * asset. Screens never reference assets directly — they render
@@ -16,13 +28,19 @@ import type { ImageSourcePropType } from 'react-native';
  * off-white rectangle will show that rectangle as a seam against `color.bg`.
  * Transparent PNG at 3× (or a Lottie) is the shape that belongs here.
  *
- * A `video` entry loops silently in the slot (expo-video). Its `poster` is not
- * optional: it is the frame shown while the first video frame decodes, and it
- * is the WHOLE illustration under Reduce Motion, where nothing may loop. Export
- * one square still from the clip whenever a video lands here.
+ * ## The manifest is two files
  *
- * `lottie` is declared for the same reason `video` was — so an animated asset
- * needs no type change when it arrives.
+ * This one holds the ASSETS, and `illustration-layout.ts` holds the NUMBERS —
+ * per-slug `scale` and `offsetX/offsetY`, plus the flow's slug list they are
+ * keyed by. They are split because that file has no imports and therefore runs
+ * under `node --test`, which is what makes "every screen has an entry" an
+ * executable check instead of a comment. Adding an illustration is still one
+ * line here; adjusting how it sits in the band is one line there.
+ *
+ * `video` and `lottie` stay declared so an animated asset needs no type change
+ * when it arrives — but since §A.1 (13 Aug 2026) the slot renders a `video`
+ * entry's POSTER and never plays it: onboarding illustrations do not move.
+ * Export one still from any clip that lands here.
  *
  * ## The set, 13 August 2026
  *
@@ -34,9 +52,17 @@ import type { ImageSourcePropType } from 'react-native';
  * band instead of fitting empty margin, and the result written here at 880 px
  * on the long edge (the band is ~304 pt, so 3× has room to spare).
  *
- * Two screens carry no illustration and never will: `building` and
- * `trial-timeline` are typographic by design — the checklist writing itself and
- * the three trial nodes ARE the picture. `founder-note` has its own portrait.
+ * ## The v3 import, 18 August 2026
+ *
+ * The flow is now the design's fourteen screens, and their slugs are new. The
+ * owner's nineteen drawings are unchanged — this file re-points the surviving
+ * slugs at the drawings that still fit their screen, and the five that no
+ * longer have a screen (`demo`, `gender`, `bodyweight`, `rest-timer`,
+ * `social-proof`) stay in `assets/onboarding/` unreferenced rather than being
+ * deleted, so a screen the owner puts back finds its picture waiting.
+ *
+ * ONE screen carries no illustration: the parse demo is typographic by design —
+ * the line being typed and the record made of it ARE the picture.
  */
 export type Illustration =
   | { kind: 'image'; source: ImageSourcePropType }
@@ -45,39 +71,31 @@ export type Illustration =
 
 /** slug → asset. Every unlisted slug shows the slot's placeholder until its
  * illustration is dropped in. */
-export const ILLUSTRATIONS: Partial<Record<string, Illustration>> = {
+export const ILLUSTRATIONS: Partial<Record<IllustrationSlug, Illustration>> = {
   welcome: { kind: 'image', source: require('../../../assets/onboarding/welcome.png') },
-  demo: { kind: 'image', source: require('../../../assets/onboarding/demo.png') },
-  name: { kind: 'image', source: require('../../../assets/onboarding/name.png') },
-  gender: { kind: 'image', source: require('../../../assets/onboarding/gender.png') },
-  goal: { kind: 'image', source: require('../../../assets/onboarding/goal.png') },
-  experience: { kind: 'image', source: require('../../../assets/onboarding/experience.png') },
   tracker: { kind: 'image', source: require('../../../assets/onboarding/tracker.png') },
-  'why-tracking': {
+  obstacles: { kind: 'image', source: require('../../../assets/onboarding/style.png') },
+  // `demo` is deliberately absent — v3 screen 4 draws no character (see
+  // `SLUGS_WITHOUT_ARTWORK`), so the slot renders nothing rather than a
+  // placeholder box.
+  'why-written': {
     kind: 'image',
     source: require('../../../assets/onboarding/why-tracking.png'),
   },
-  style: { kind: 'image', source: require('../../../assets/onboarding/style.png') },
+  goal: { kind: 'image', source: require('../../../assets/onboarding/goal.png') },
+  experience: { kind: 'image', source: require('../../../assets/onboarding/experience.png') },
+  'about-you': { kind: 'image', source: require('../../../assets/onboarding/name.png') },
   days: { kind: 'image', source: require('../../../assets/onboarding/days.png') },
-  'key-lift': { kind: 'image', source: require('../../../assets/onboarding/key-lift.png') },
-  'rest-timer': { kind: 'image', source: require('../../../assets/onboarding/rest-timer.png') },
-  bodyweight: { kind: 'image', source: require('../../../assets/onboarding/bodyweight.png') },
+  'key-lifts': { kind: 'image', source: require('../../../assets/onboarding/key-lift.png') },
   overload: { kind: 'image', source: require('../../../assets/onboarding/overload.png') },
   commitment: { kind: 'image', source: require('../../../assets/onboarding/commitment.png') },
-  notifications: {
-    kind: 'image',
-    source: require('../../../assets/onboarding/notifications.png'),
-  },
-  summary: { kind: 'image', source: require('../../../assets/onboarding/summary.png') },
-  'social-proof': {
-    kind: 'image',
-    source: require('../../../assets/onboarding/social-proof.png'),
-  },
+  recap: { kind: 'image', source: require('../../../assets/onboarding/notifications.png') },
+  projection: { kind: 'image', source: require('../../../assets/onboarding/summary.png') },
   // Not a step of `STEPS` — the paywall is its own route, and it reads this
   // registry by the same slug so the flow's last screen keeps the same mascot.
   paywall: { kind: 'image', source: require('../../../assets/onboarding/paywall.png') },
 };
 
 export function illustrationFor(slug: string): Illustration | null {
-  return ILLUSTRATIONS[slug] ?? null;
+  return ILLUSTRATIONS[slug as IllustrationSlug] ?? null;
 }

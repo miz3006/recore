@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   ENTRY_NOTE_PLACEHOLDER,
@@ -62,7 +61,6 @@ export function EntryNoteSheet() {
   const close = useSession((s) => s.closeEntryNote);
   const entryNotes = useSession((s) => s.entryNotes);
   const saveEntryNote = useSession((s) => s.saveEntryNote);
-  const insets = useSafeAreaInsets();
 
   const [text, setText] = useState('');
   const [placeholder, setPlaceholder] = useState(ENTRY_NOTE_PLACEHOLDER);
@@ -100,7 +98,7 @@ export function EntryNoteSheet() {
     <BottomSheet
       visible={target !== null}
       onClose={commitAndClose}
-      sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+      sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
       <Eyebrow tone="muted" style={styles.eyebrow}>
         This entry
       </Eyebrow>
@@ -161,8 +159,7 @@ export function EntryNoteSheet() {
                 accessibilityRole="button"
                 accessibilityLabel={`Suggest: ${p}`}
                 accessibilityState={{ selected: placeholder === p }}
-                style={[styles.prompt, placeholder === p && styles.promptOn]}
-                pressedStyle={styles.pressed}>
+                style={[styles.prompt, placeholder === p && styles.promptOn]}>
                 <Text
                   style={[styles.promptText, placeholder === p && styles.promptTextOn]}
                   maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -191,7 +188,7 @@ export function EntryNoteSheet() {
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     paddingHorizontal: spacing.xl,
     maxHeight: '86%',
   },
@@ -243,6 +240,7 @@ const styles = StyleSheet.create({
     gap: 2,
     paddingHorizontal: spacing.xs,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     borderWidth: hairline,
     borderColor: color.border,
     backgroundColor: color.surface,
@@ -252,16 +250,13 @@ const styles = StyleSheet.create({
     backgroundColor: color.accent,
     borderColor: color.accent,
   },
-  pressed: {
-    backgroundColor: color.surfaceHigh,
-  },
   levelLabel: {
     ...type.caption,
     fontWeight: '600',
     color: color.textPrimary,
   },
   levelLabelOn: {
-    color: color.bg,
+    color: color.onInk,
   },
   levelHint: {
     fontSize: moderateScale(9.5),
@@ -270,7 +265,7 @@ const styles = StyleSheet.create({
     color: color.textMuted,
   },
   levelHintOn: {
-    color: color.bg,
+    color: color.onInk,
     opacity: 0.72,
   },
 
@@ -280,6 +275,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     backgroundColor: color.surface,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,

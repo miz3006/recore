@@ -97,8 +97,7 @@ export default function PlanDayEditor() {
             hitSlop={spacing.sm}
             accessibilityRole="button"
             accessibilityLabel="Back"
-            style={styles.backBtn}
-            pressedStyle={styles.pressedFill}>
+            style={styles.backBtn}>
             <Icon name="chevron-back" size={moderateScale(16)} tint={color.textPrimary} />
           </PressableScale>
           <Text style={styles.navTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -189,7 +188,6 @@ export default function PlanDayEditor() {
               haptic="none"
               activeScale={0.98}
               style={styles.deleteBtn}
-              pressedStyle={styles.pressedFill}
               accessibilityRole="button"
               accessibilityLabel="Remove this day">
               <Text style={styles.deleteText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -224,7 +222,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pressedFill: { backgroundColor: color.surfaceHigh },
   navTitle: {
     ...type.headline,
     fontWeight: '700',
@@ -298,6 +295,7 @@ const styles = StyleSheet.create({
     minHeight: moderateScale(46),
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.border,
     alignItems: 'center',

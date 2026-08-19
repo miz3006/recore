@@ -1,15 +1,22 @@
 import { Platform, type ViewStyle } from 'react-native';
 
 /**
- * Elevation — the "soft depth" redesign move (2026-07-23). The app stays
- * strictly monochrome ink-on-warm-paper; the ONLY new expressive tool is a
- * single, restrained shadow so the surfaces that matter (paywall plans,
- * onboarding cards, the session receipt) lift off the page and read as premium
- * without a drop of color. Everything small keeps its 1px hairline.
+ * Elevation — the "soft depth" redesign move (2026-07-23). The ONLY expressive
+ * tool here is a single, restrained shadow so the surfaces that matter (paywall
+ * plans, onboarding cards, the session receipt) lift off the page and read as
+ * premium without a drop of color. Everything small keeps its 1px hairline.
  *
- * The shadow is WARM and low-contrast — cast in the ink's own family (`#20221A`)
- * at a whisper of opacity — so on `#F4F5EF` paper it looks like real diffused
- * light, never a grey box. Two levels only:
+ * IT CARRIES LESS WEIGHT SINCE 18 AUG 2026 than it did the day before. When
+ * `bg` and `surface` were both white, this shadow and the hairline WERE a
+ * card's entire edge. Now the list screens sit on the grouped grey `#F2F2F7`
+ * and the tone does that job the way iOS does it — so on a grouped screen this
+ * is a small extra lift, not the thing keeping the card visible. On the white
+ * document screens (Today, onboarding, sheets) the old rule still holds: a
+ * surface with neither border nor shadow is invisible there.
+ *
+ * The shadow is low-contrast and cast in the ink's own family (`#20221A`) at a
+ * whisper of opacity, so it reads as diffused light rather than as a grey box.
+ * Two levels only:
  *   `card`   — resting cards, list rows that want to float a little.
  *   `raised` — the hero surfaces (selected plan, welcome specimen, receipt) and
  *              the primary CTA; a longer, softer cast.
@@ -18,8 +25,10 @@ import { Platform, type ViewStyle } from 'react-native';
  * grey); we keep it minimal there. Spread as `...shadow.card` into a style.
  */
 
-/** The ink-family shadow color — a warm near-black so the cast stays warm. */
-const SHADOW_INK = '#20221A';
+/** The ink-family shadow colour — the label near-black, so the cast belongs to
+ * the same neutral family as the type (18 Aug 2026; it was warm `#20221A`,
+ * left over from the paper canvas §4.2 retired). */
+const SHADOW_INK = '#1C1C1E';
 
 type Shadow = Pick<
   ViewStyle,

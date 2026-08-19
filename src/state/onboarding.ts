@@ -36,10 +36,23 @@ export type AnswerKey =
   | 'bodyweight'
   /** Display unit; null = derive from the device locale (`lib/locale.ts`). */
   | 'weightUnit'
-  /** Commitment horizon ('2w' | '3m' | '1y' | 'forever') — context only; it
-   * personalises the flow's own copy and is never read as a target. */
+  /** Commitment horizon. The v3 flow has ONE horizon (12 weeks, the design's
+   * own constant) and the screen asks for a hold rather than a length, so this
+   * reads '12w' once the person has committed and stays null if they never
+   * did. Context only; never read as a target. */
   | 'commitment'
-  | 'notifications';
+  | 'notifications'
+  /** v3 screen 3 — what stops them logging today. A SET of option ids, joined
+   * by `serializeList`; it changes nothing deterministic and is kept so the
+   * answer can be read back in copy and counted in the funnel. */
+  | 'obstacles'
+  /** v3 screen 10 — the lifts Recore watches closest. A SET of exercise names
+   * (`serializeList`); the first of them becomes `primaryLift` at completion. */
+  | 'keyLifts'
+  /** v3 screen 10 — starting load per key lift, as a JSON map of name to a
+   * number IN THE DISPLAY UNIT (`parseLiftLoads`). The projection screen is its
+   * only reader; nothing is written to the record from it. */
+  | 'liftLoads';
 
 export type Answers = Record<AnswerKey, string | null>;
 
@@ -57,6 +70,9 @@ export const EMPTY_ANSWERS: Answers = {
   weightUnit: null,
   commitment: null,
   notifications: null,
+  obstacles: null,
+  keyLifts: null,
+  liftLoads: null,
 };
 
 interface OnboardingAnswersState {
@@ -96,9 +112,13 @@ export const useOnboardingAnswers = create<OnboardingAnswersState>()(
       // the flow grew to twenty config screens, so old positions mis-resume.
       // An old snapshot restarts the flow instead of mis-resuming with keys
       // the steps no longer read.
-      version: 5,
+      // v6: the v3 design import (18 Aug) — fourteen screens in a new order,
+      // three new answers (obstacles, key lifts, their loads), and questions
+      // the flow no longer asks (rest length, bodyweight). Every stored
+      // position is wrong against the new array, so an old snapshot restarts.
+      version: 6,
       migrate: (persisted, version) =>
-        version < 5
+        version < 6
           ? { answers: EMPTY_ANSWERS, currentStep: 1 }
           : (persisted as { answers: Answers; currentStep: number }),
       storage: createJSONStorage(() => sqliteStorage),

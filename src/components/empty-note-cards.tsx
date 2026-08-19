@@ -71,7 +71,6 @@ export function EmptyDayCards() {
           selectDay(last.day);
         }}
         style={styles.card}
-        pressedStyle={styles.pressed}
         accessibilityRole="button"
         accessibilityLabel={`Last session, ${labelForDay(last.day)}`}>
         <View style={styles.header}>
@@ -159,7 +158,6 @@ function FirstSessionCard() {
                 haptic="none"
                 activeScale={0.98}
                 style={styles.sample}
-                pressedStyle={styles.samplePressed}
                 accessibilityRole="button"
                 accessibilityLabel={`Write ${line} into the note`}>
                 <Text
@@ -238,14 +236,12 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: color.surface,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.divider,
     padding: spacing.lg,
     gap: spacing.sm,
     ...shadow.card,
-  },
-  pressed: {
-    backgroundColor: color.surfaceHigh,
   },
   header: {
     flexDirection: 'row',
@@ -307,7 +303,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ringCheck: {
-    color: color.bg,
+    color: color.onInk,
     fontSize: moderateScale(12),
     fontWeight: '700',
     lineHeight: lineFor(14),
@@ -348,11 +344,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-  },
-  samplePressed: {
-    backgroundColor: color.surfaceHigh,
   },
   sampleText: {
     flexShrink: 1,

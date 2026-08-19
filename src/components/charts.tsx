@@ -255,10 +255,16 @@ let fillSeq = 0;
  *
  * **Recore blue is the default hue** (product-direction §4.2/§10: "a blue
  * primary line or step chart with a soft contextual fill"). The wash under the
- * line is the SHAPE of the record, never a verdict on it: a lift that fell
- * draws in exactly the same blue as one that rose, and the words beside the
- * chart carry the direction. Ember stays reserved for the lift sheet's
- * single-series comparison.
+ * line is the SHAPE of the record, never a verdict on it, and Ember stays
+ * reserved for the lift sheet's single-series comparison.
+ *
+ * **The line itself still never judges** — but its END may (owner, 17 Aug 2026,
+ * Progression mockup). `lastTint` colours the terminal dot alone: green when
+ * the latest session beat the one before it, red only when it is truly
+ * regressing, ink when it held. The eight weeks of history behind it stay one
+ * neutral hue, so the chart shows the shape of the record and one dot answers
+ * "and now?". Direction is still spelled out in words beside every chart that
+ * passes this, so the colour is never the only carrier (§14).
  *
  * `best` is the all-time reference, drawn as ONE unlabeled neutral hairline and
  * folded into the domain so it can never clip — the same treatment
@@ -277,7 +283,9 @@ export function TrendChart({
   height = moderateScale(58),
   showPrevious = false,
   tint = color.trained,
+  lastTint,
   fill = true,
+  wash = 0.22,
   dots = false,
   axis = false,
   shape = 'linear',
@@ -291,8 +299,14 @@ export function TrendChart({
   shape?: SeriesShape;
   /** Line + wash hue. Blue by default; the caller never needs to pass it. */
   tint?: string;
+  /** The terminal dot's own hue, when the latest session should read
+   * differently from the eight weeks behind it. Defaults to `tint`. */
+  lastTint?: string;
   /** The gradient wash between the line and the baseline. */
   fill?: boolean;
+  /** Opacity at the TOP of that wash (it always fades to nothing at the floor).
+   * An ink line wants a lighter wash than a blue one to stay paper, not slab. */
+  wash?: number;
   /** A dot on every session, not only the last. */
   dots?: boolean;
   /** Min/max readings in a right gutter. */
@@ -334,7 +348,7 @@ export function TrendChart({
           <Svg width={w} height={height}>
             <Defs>
               <LinearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={tint} stopOpacity={0.22} />
+                <Stop offset="0" stopColor={tint} stopOpacity={wash} />
                 <Stop offset="1" stopColor={tint} stopOpacity={0.01} />
               </LinearGradient>
             </Defs>
@@ -366,8 +380,8 @@ export function TrendChart({
                     key={`${p.day}-${i}`}
                     cx={xOf(i)}
                     cy={yOf(p.value)}
-                    r={moderateScale(1.8)}
-                    fill={alpha(tint, 0.45)}
+                    r={moderateScale(2)}
+                    fill={alpha(tint, 0.6)}
                   />
                 ))
               : null}
@@ -385,7 +399,7 @@ export function TrendChart({
               cx={lastX}
               cy={lastY}
               r={moderateScale(3.5)}
-              fill={tint}
+              fill={lastTint ?? tint}
               stroke={color.surface}
               strokeWidth={1.5}
             />

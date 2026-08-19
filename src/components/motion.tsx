@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   Text,
-  View,
   type GestureResponderEvent,
   type PressableProps,
   type StyleProp,
@@ -14,22 +13,36 @@ import Animated, {
   useReducedMotion,
   useSharedValue,
   withDelay,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 
-import { tap, tapMedium } from '@/lib/haptics';
-import { DUR, EASE, SPRING, stagger } from '@/lib/motion';
-import { alpha, color, MAX_FONT_SCALE } from '@/lib/theme';
+import { selection, tap, tapMedium } from '@/lib/haptics';
+import { DUR, EASE, PRESS_SCALE, stagger } from '@/lib/motion';
+import { MAX_FONT_SCALE } from '@/lib/theme';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /**
  * The shared motion kit. Everything animated in the redesign routes through
  * these so the whole app moves with one hand: a tactile press-scale on every
- * tappable, a single fade-and-rise reveal, a staggered list entrance, the
- * onboarding progress bar, and a count-up numeral. All are reduceMotion-aware —
- * they resolve to the final state instantly when the user asks for less motion.
+ * tappable, a single fade-and-rise reveal, a staggered list entrance, and a
+ * count-up numeral. All are reduceMotion-aware — they resolve to the final
+ * state instantly when the user asks for less motion.
+ *
+ * ## Two things left this file on 19 August 2026
+ *
+ * `FadeSlideX` was the onboarding funnel's step-to-step transition: a
+ * horizontal slide-and-crossfade per zone, keyed off a module global that
+ * remembered which way the flow last moved. It is gone because the funnel is a
+ * NATIVE STACK — `slide_from_right` with `animationMatchesGesture`, configured
+ * in the route — and the platform already knows which direction it is going,
+ * reverses itself under the back-swipe, and runs off the main thread. The JS
+ * version was a second slide layered on top of the real one.
+ *
+ * `ProgressBar` animated `width` as a percentage, which is a layout pass per
+ * frame for the fill and its siblings. The one progress bar in the app is the
+ * onboarding rail, and it now lives in `ProgressRail` as a clipped track with a
+ * TRANSLATED fill — see that file for why translate rather than scale.
  */
 
 type PressableScaleProps = {
@@ -41,11 +54,24 @@ type PressableScaleProps = {
   pressedStyle?: StyleProp<ViewStyle>;
   /** How far the surface dips on press. Bigger surfaces dip less. */
   activeScale?: number;
-  /** Haptic tick on press. 'light' by default; 'medium' for committed actions. */
-  haptic?: 'light' | 'medium' | 'none';
+  /**
+   * Haptic tick. `light` by default; `medium` for a committed action.
+   *
+   * **`selection` fires on press-IN, the other two fire on press.** That is not
+   * an inconsistency, it is the distinction iOS draws. A selection tick is
+   * FEEDBACK — it says the finger landed on a choice — so it has to arrive in
+   * the same frame as the visual dip; a tick that trails its own animation by
+   * the length of a tap reads as a glitch rather than as touch. An impact tick
+   * belongs to the COMMIT, which is press-out, and firing it early would buzz
+   * for an action a finger slid off and cancelled.
+   */
+  haptic?: 'light' | 'medium' | 'selection' | 'none';
   disabled?: boolean;
   hitSlop?: PressableProps['hitSlop'];
   delayLongPress?: number;
+  /** Passed through so a caller can measure the control it just rendered — the
+   * paywall's plan cards, whose selection outline travels between them. */
+  onLayout?: PressableProps['onLayout'];
   accessibilityRole?: PressableProps['accessibilityRole'];
   accessibilityLabel?: string;
   accessibilityHint?: string;
@@ -60,31 +86,38 @@ export function PressableScale({
   onLongPress,
   style,
   pressedStyle,
-  activeScale = 0.97,
+  activeScale = PRESS_SCALE,
   haptic = 'light',
   disabled,
   hitSlop,
   delayLongPress,
+  onLayout,
   ...a11y
 }: PressableScaleProps) {
   const reduce = useReducedMotion();
   const scale = useSharedValue(1);
   const [pressed, setPressed] = useState(false);
 
-  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
 
   return (
     <AnimatedPressable
       disabled={disabled}
       hitSlop={hitSlop}
+      // A finger that drifts a few points must not cancel a press the person
+      // meant — the touch target is where the thumb landed, not where it ended.
+      pressRetentionOffset={PRESS_RETENTION}
       delayLongPress={delayLongPress}
+      onLayout={onLayout}
       onPressIn={() => {
         setPressed(true);
-        if (!reduce) scale.value = withSpring(activeScale, SPRING.press);
+        // Same frame as the dip. See the `haptic` prop's note.
+        if (haptic === 'selection') selection();
+        if (!reduce) scale.set(withTiming(activeScale, PRESS_TIMING));
       }}
       onPressOut={() => {
         setPressed(false);
-        if (!reduce) scale.value = withSpring(1, SPRING.press);
+        if (!reduce) scale.set(withTiming(1, PRESS_TIMING));
       }}
       onPress={(e) => {
         if (haptic === 'light') tap();
@@ -98,6 +131,20 @@ export function PressableScale({
     </AnimatedPressable>
   );
 }
+
+/**
+ * 120 ms on the emphasized ease, NOT a spring.
+ *
+ * This is the most frequent animation in the app, so it has to be
+ * near-imperceptible: at 120 ms the only part of a spring anyone can see is its
+ * settle, and `SPRING.press` is underdamped enough (dampingRatio ~0.58) that
+ * the settle is a small wobble on release. A curve this short cannot overshoot,
+ * and two shared-value writes per press is the whole cost — nothing re-renders,
+ * nothing runs per frame.
+ */
+const PRESS_TIMING = { duration: DUR.press, easing: EASE.emphasized } as const;
+
+const PRESS_RETENTION = 16;
 
 /** Fade + rise on mount — the one reveal used everywhere. `layout` (optional)
  * forwards a Reanimated layout transition so a list can also reflow smoothly
@@ -123,13 +170,13 @@ export function FadeSlideIn({
 
   useEffect(() => {
     if (reduce) return;
-    p.value = withDelay(delay, withTiming(1, { duration, easing: EASE.emphasized }));
+    p.set(withDelay(delay, withTiming(1, { duration, easing: EASE.emphasized })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    opacity: p.value,
-    transform: [{ translateY: (1 - p.value) * distance }],
+    opacity: p.get(),
+    transform: [{ translateY: (1 - p.get()) * distance }],
   }));
 
   return (
@@ -165,68 +212,16 @@ export function FadeScaleIn({
 
   useEffect(() => {
     if (reduce) return;
-    p.value = withDelay(delay, withTiming(1, { duration, easing: EASE.emphasized }));
+    p.set(withDelay(delay, withTiming(1, { duration, easing: EASE.emphasized })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    opacity: p.value,
-    transform: [{ scale: from + (1 - from) * p.value }],
+    opacity: p.get(),
+    transform: [{ scale: from + (1 - from) * p.get() }],
   }));
 
   return <Animated.View style={[animatedStyle, style]}>{children}</Animated.View>;
-}
-
-/**
- * The same reveal, on the X axis and with a direction — a step in a flow
- * arriving from the side it came from.
- *
- * It exists because a wizard that always slides in from the same side tells the
- * user nothing: going back looks exactly like going forward, so the motion is
- * decoration. Forward enters from the right, Back enters from the left, and the
- * screen suddenly reports where you are in the flow without a word of copy.
- *
- * Mount-only, so the caller keys it on the step. `distance` stays small — this
- * is a shift, not a carousel; the neighbouring screen is not rendered and
- * pretending otherwise would show empty paper.
- */
-export function FadeSlideX({
-  children,
-  direction = 1,
-  delay = 0,
-  distance = 22,
-  duration = DUR.base,
-  style,
-  layout,
-}: {
-  children: React.ReactNode;
-  /** 1 = arriving from the right (forward), -1 = from the left (back). */
-  direction?: 1 | -1;
-  delay?: number;
-  distance?: number;
-  duration?: number;
-  style?: StyleProp<ViewStyle>;
-  layout?: React.ComponentProps<typeof Animated.View>['layout'];
-}) {
-  const reduce = useReducedMotion();
-  const p = useSharedValue(reduce ? 1 : 0);
-
-  useEffect(() => {
-    if (reduce) return;
-    p.value = withDelay(delay, withTiming(1, { duration, easing: EASE.emphasized }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: p.value,
-    transform: [{ translateX: (1 - p.value) * distance * direction }],
-  }));
-
-  return (
-    <Animated.View layout={layout} style={[animatedStyle, style]}>
-      {children}
-    </Animated.View>
-  );
 }
 
 /**
@@ -257,11 +252,11 @@ export function FadeSwap({
     if (prev.current === swapKey) return;
     prev.current = swapKey;
     if (reduce) return;
-    opacity.value = 0.3;
-    opacity.value = withTiming(1, { duration: DUR.slow, easing: EASE.standard });
+    opacity.set(0.3);
+    opacity.set(withTiming(1, { duration: DUR.slow, easing: EASE.standard }));
   }, [swapKey, reduce, opacity]);
 
-  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.get() }));
   return <Animated.View style={[animatedStyle, style]}>{children}</Animated.View>;
 }
 
@@ -286,39 +281,6 @@ export function Stagger({
         </FadeSlideIn>
       ))}
     </>
-  );
-}
-
-/** A thin animated progress bar — the onboarding spine. */
-export function ProgressBar({
-  progress,
-  height = 3,
-  trackColor = alpha(color.accent, 0.1),
-  fillColor = color.accent,
-  style,
-}: {
-  progress: number;
-  height?: number;
-  trackColor?: string;
-  fillColor?: string;
-  style?: StyleProp<ViewStyle>;
-}) {
-  const reduce = useReducedMotion();
-  const w = useSharedValue(progress);
-
-  useEffect(() => {
-    w.value = reduce ? progress : withTiming(progress, { duration: DUR.slow, easing: EASE.emphasized });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progress]);
-
-  const fillStyle = useAnimatedStyle(() => ({
-    width: `${Math.max(0, Math.min(1, w.value)) * 100}%`,
-  }));
-
-  return (
-    <View style={[{ height, borderRadius: height, backgroundColor: trackColor, overflow: 'hidden' }, style]}>
-      <Animated.View style={[{ height, borderRadius: height, backgroundColor: fillColor }, fillStyle]} />
-    </View>
   );
 }
 

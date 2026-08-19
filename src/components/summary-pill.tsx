@@ -16,6 +16,20 @@ import { useSessionActive } from './use-session-active';
 import { SessionSummarySheet } from './session-summary-sheet';
 
 /**
+ * UNMOUNTED SINCE 18 AUGUST 2026 (owner). The resting pill is off Today: the
+ * floating capsule above the tab bar — the live "last set · Bench Press ·
+ * 82.5 kg × 5 · 1:30" and the settled "today · 14 sets · 9 840 kg" alike — was
+ * removed from `app/(tabs)/today.tsx`, so the bottom of the screen belongs to
+ * the keyboard alone. Kept on disk, unmounted; mounting it again is one line
+ * there.
+ *
+ * It took two things down with it, knowingly: `session-summary-sheet.tsx` (its
+ * only opener was this pill) and `save-split.tsx` inside it.
+ *
+ * Everything below describes the pill as it was mounted.
+ */
+
+/**
  * The resting-state pill ("Recore Light" frames 01/02): when the keyboard is
  * down, one mono pill sits above the safe area. It reads the same settled
  * receipt the ledger draws from, so it never disagrees with the record.
@@ -109,8 +123,7 @@ export function SummaryPill({ bottomInset = 0 }: { bottomInset?: number }) {
             tap();
             setOpen(true);
           }}
-          style={styles.pill}
-          pressedStyle={styles.pillPressed}>
+          style={styles.pill}>
           {lastSet ? (
             <>
               <Text style={styles.scope} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -214,9 +227,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
     ...shadow.card,
-  },
-  pillPressed: {
-    backgroundColor: color.surfaceHigh,
   },
   scope: {
     ...type.subhead,

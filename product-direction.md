@@ -107,14 +107,31 @@ charts must scan easily at a glance.
 
 ### 4.2 Colour
 
-Keep the warm-paper light theme. **Recore blue (#007AFF) is a visible product accent**, not a
-colour confined to a calendar. It may be used for selected onboarding choices, interactive
-focus, active controls, walkthrough emphasis, and recorded-progress charts. It is not a reward
-colour.
+**The canvas is white, and since 18 August it is white where white MEANS something** (owner —
+see §14.3). The warm-paper theme this document shipped with is retired, and the neutrals that
+leaned warm to belong to it are neutral — including the ink itself, which now sits on Apple's
+label ramp (`#1C1C1E` / `#6E6E73` / `#86868B`) at Recore's own measured contrast.
+
+Two canvases, and which one a screen gets is decided by what the screen IS:
+
+- **`surface` `#FFFFFF`** — the document. Today (the page you write on), onboarding, sign-in,
+  every sheet, and every card. If the screen is a thing you read or write rather than a list of
+  things, it is white.
+- **`bg` `#F2F2F7`** — the grouped canvas (iOS `systemGroupedBackground`). Progress, Next, You,
+  and the settings-shaped stacks. A white card on it is a card because the page behind it is
+  not white; this is how every grouped list on iOS is built, and it is why the hairline and the
+  shadow stop doing a job they were never meant to do alone.
+
+**Recore blue (#007AFF) is a visible product accent**, not a colour confined to a calendar. It
+may be used for selected onboarding choices, interactive focus, active controls, walkthrough
+emphasis, and recorded-progress charts. It is not a reward colour. **Since 18 August it is also
+the primary button** (`ctaFill`): Apple tints its prominent button rather than inking it, and
+an ink-black CTA was the last piece of chrome that read as a web habit. Ink keeps the borders,
+the badge fills and the selected-day marks; white on a fill is `onInk`, never the canvas token.
 
 | Colour role | Meaning and permitted use |
 |---|---|
-| Ink / warm neutrals | Copy, structure, primary actions, historical values, most UI chrome. |
+| Ink / neutrals | Copy, structure, primary actions, historical values, most UI chrome. |
 | Recore blue | Selected interaction, completed/trained state, recorded historical progress in charts. |
 | Planned green | A concrete future prescription only, always with its label and reason. |
 | Trend ember | Optional secondary comparison in a chart; never the sole indicator of good or bad. |
@@ -542,3 +559,12 @@ owner's instruction. Where they conflict with the text as first published, these
 | §4.2 named colour roles but set no contrast floor, and the muted ink measured 2.45:1 on the canvas. | **The ink ladder is a measured contract** (`theme/color.ts`): ink 16:1 for anything, `textSecondary` 4.7:1 — AA — for every number, comparison or label a person must READ, `textMuted` 3.3:1 for what the eye may skip (dates, placeholders, disabled, decoration). A value drawn in muted is a bug at the call site, not a reason to lighten the token. | 9 Aug 2026 |
 | §1.1 required Dynamic Type without saying how far; the app clamped every Text at 1.3×. | **The clamp is 1.5×.** 1.3 was where the layout broke, not a decision: line heights were hardcoded and could not grow with their glyphs (`lineFor` fixes that at the source). Text inside geometry that cannot grow — a day number in its circle, initials in an avatar, a ring's check — stops at `FIXED_FONT_SCALE` 1.2. Any new fixed `height:` around a label is a defect; use `minHeight`. | 9 Aug 2026 |
 | Nothing in §11 or §16 offered a display choice; text size was the OS setting or nothing. | You carries a **Display** section. Its first setting, "Set readings", prints each set as its own spelled-out line at accessibility size — for the person who wants their record readable without enlarging every app on their phone. It stores like every other pref (meta KV, so it exports and deletes with them) and changes the ledger on the tap. | 9 Aug 2026 |
+| §4.1/§4.2: "Keep the warm-paper light theme" — canvas `#F4F5EF`, raised paper `#FBFCF6`, warm neutrals throughout. | **The canvas is white.** `bg` and `surface` are both `#FFFFFF` everywhere in the app, including the splash; the hairline, divider and recessed greys are neutral (`#D5D5D5` / `#E9E9E9`); the Today canvas field is three near-whites within four units. Elevation changes with it — nothing can be lighter than white, so a card is white on white and its border and shadow ARE its edge; a surface with neither is invisible. The inks are unchanged and every one gained contrast (ink 17.7:1, `textSecondary` 5.1:1, `textMuted` 3.6:1) — the §14.3 ink ladder holds, it does not loosen. | 17 Aug 2026 |
+| §8.2 (itself the 6 Aug amendment): an empty Today opens with the session-start question. | **Removed.** The empty page carries no session-start affordance at all — no pill, no picker, no pre-answered split day. Today opens as a blank page with one sentence on it ("Write your training…"), because writing is the way into a session; the 12 Aug "furniture arrives with the record" ruling now has no exception. The checklist and picker code stays in the tree, unreachable, if the owner wants a way back in. | 17 Aug 2026 |
+| §8.1: "Offer a free-text field first, with optional lightweight prompts" — and the prompts were placeholders that never wrote anything. | **The check-in reads the session back, and asks about it.** "How did it go?" over the session's own line (lifts · volume · minutes, all from the record), then **the lifts first, the words second**: one row per lift still unrated, its last counted set beside the name, and three answers in plain words — Could do more · Just right · Nothing left. The field follows, and the three chips under it (Slept badly · Felt strong · Short on time) are **multi-select answers that get stored**, not placeholders — nothing preselected, every one togglable off, the app still never infers one. The four §8.1 prompts remain the vocabulary for any surface that suggests rather than answers. Everything else about §8.1 stands: optional, faster to skip than to complete, never blocking the save, never a health assessment. | 17 Aug 2026 |
+| §8: the read-only PLANNED strip stands beside the composer on Today, showing the declared day's movements and progressed loads. | **The plan is not on Today at all.** The strip is unmounted: the identical rows, off the identical `computePlanStrip` read, already open Next's brief ("Today · Push day"), so Today was printing the same prescription a tab away from its author — a list of what to do on the one page whose job is to record what happened. Today now holds nothing between the header and the note. The plan stays within reach while writing through the accessory bar's plan button, which writes the next prescribed line into the note on demand. `plan-strip.tsx` and `planned-checklist.tsx` stay in the tree, unmounted, if the owner wants a way back in. | 18 Aug 2026 |
+| §8: Today's resting state is a floating summary pill above the tab bar ("last set · Bench Press · 82.5 kg × 5 · 1:30" mid-session, "today · 14 sets · 9 840 kg" once settled). | **Removed.** Today has no resting bottom at all: the accessory bar while the keyboard is up, and nothing below the note otherwise. The owner accepted the cost with the decision — the pill was the only opener of the session summary sheet, so that sheet, its session share, and **"Save as a split day"** are unreachable from the app until a new door is built. The files stay in the tree, unmounted. | 18 Aug 2026 |
+| §4.2: "Every screen background and every surface on it is `#FFFFFF`" (itself the 17 Aug amendment). | **Two canvases.** `bg` becomes the grouped grey `#F2F2F7` (iOS `systemGroupedBackground`) and carries the LIST screens — Progress, Next, You, and the settings-shaped stacks; `surface` stays `#FFFFFF` and carries the DOCUMENTS — Today, onboarding, sign-in, every sheet and every card. White-on-white was the one structural difference left between this app and a native one: a grouped list is legible because the page behind the cards is not the card colour. The white-on-ink foreground gets its own token (`onInk`) so a label on a fill can never follow the canvas again. | 18 Aug 2026 |
+| §4.2: "Ink / neutrals — copy, structure, **primary actions**". | **The primary button is blue** (`ctaFill` `#007AFF`, pressed `#0062CC`), and the secondary is its tint wash. Apple's prominent button wears the app's tint; an ink-black fill is an Android/web habit, and it was the last piece of chrome that read as one. Ink keeps everything else it had: emphasized borders, badge fills, selected-day marks, and all copy. | 18 Aug 2026 |
+| §4.1 set no type sizes; `theme/type.ts` set body at 16pt with tracking 0.1–0.4pt tighter than the system at every size. | **Body is 17pt/1.5 and the tracking follows Apple's ramp** (34pt title −0.4, 26pt −0.5, 22pt −0.4, 20pt −0.3, 17pt −0.2, 13pt 0). Every native control the app is drawn beside — nav titles, list rows, the keyboard, share sheets — is set at 17; prose a notch under that is the tell that reads as "made for the web", and over-tightening on top of a face that already carries its optical tracking is the same mistake twice. Sizes Apple does not publish (44, 38, 30) are interpolated on that curve, not invented. | 18 Aug 2026 |
+| Nothing in this document mentioned corner shape. | **Every rounded rect is a squircle** (`borderCurve: 'continuous'`, iOS-only, a no-op elsewhere). iOS has not drawn a circular corner since iOS 7; a hand-built card with a circular radius sitting next to a system sheet is subtly wrong in a way nobody can name. Skip it only where the shape is already a circle or a pill. **Haptics gained the distinction Apple draws**: a segment, chip or tab change is `selection()` (the dry picker click), not an impact — impact stays for committing to an action. | 18 Aug 2026 |

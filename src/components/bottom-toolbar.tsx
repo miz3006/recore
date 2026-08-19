@@ -320,7 +320,7 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
           accessibilityRole="button"
           accessibilityLabel={recording ? 'Stop dictation' : 'Dictate'}>
           {recording ? null : <GlassSurface radius={ROUND / 2} />}
-          <Icon name="mic" size={moderateScale(18)} tint={recording ? color.bg : color.textSecondary} />
+          <Icon name="mic" size={moderateScale(18)} tint={recording ? color.onInk : color.textSecondary} />
         </PressableScale>
 
         {/* Sits immediately after the mic and BEFORE the plan button, which is
@@ -337,16 +337,27 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
           <Icon name="keyboard-hide" size={moderateScale(18)} tint={color.textSecondary} />
         </PressableScale>
 
+        {/* LABELLED, not a bare glyph (owner's spec §D.1, 13 Aug 2026). A list
+            icon on its own could mean the plan, the history, or the last
+            workout — three different promises — and the one thing it cannot do
+            is say which. The word costs a few points of a bar that has room
+            for it. */}
         {nextPlanLine ? (
           <PressableScale
             onPress={handlePlan}
             haptic="none"
             activeScale={0.92}
-            style={styles.round}
+            style={[styles.round, styles.roundLabelled, styles.planRow]}
             accessibilityRole="button"
             accessibilityLabel={`Write the next planned line: ${nextPlanLine}`}>
             <GlassSurface radius={ROUND / 2} />
-            <Icon name="plan" size={moderateScale(18)} tint={color.textSecondary} />
+            <Icon name="plan" size={moderateScale(16)} tint={color.textSecondary} />
+            <Text
+              style={styles.roundText}
+              numberOfLines={1}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              Plan
+            </Text>
           </PressableScale>
         ) : null}
 
@@ -524,6 +535,11 @@ const styles = StyleSheet.create({
   roundLabelled: {
     paddingHorizontal: spacing.md,
   },
+  /** Icon and word on one line, for the labelled plan button. */
+  planRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
   // Listening / finished = the app spoke: solid ink fill, paper glyph.
   roundActive: {
     backgroundColor: color.accent,
@@ -539,7 +555,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   roundTextGo: {
-    color: color.bg,
+    color: color.onInk,
     fontWeight: '700',
   },
   finish: {
@@ -547,20 +563,20 @@ const styles = StyleSheet.create({
     height: ROUND,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
-    backgroundColor: color.accent,
+    backgroundColor: color.ctaFill,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 1,
     ...shadow.raised,
   },
   finishPressed: {
-    backgroundColor: color.accentPressed,
+    backgroundColor: color.ctaFillPressed,
   },
   finishDisabled: {
     opacity: ink.disabled,
   },
   finishLabel: {
-    color: color.bg,
+    color: color.onInk,
     fontSize: type.subhead.fontSize,
     fontWeight: '600',
   },

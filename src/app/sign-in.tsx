@@ -87,7 +87,7 @@ export default function SignIn() {
               onPress={() => void run('apple', signInWithApple)}
               disabled={busy !== null}
               loading={busy === 'apple'}
-              leading={<Icon name="apple" size={moderateScale(18)} tint={color.bg} />}
+              leading={<Icon name="apple" size={moderateScale(18)} tint={color.onInk} />}
             />
           ) : null}
 
@@ -126,7 +126,7 @@ export default function SignIn() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     paddingHorizontal: spacing.xxl,
   },
   wordmark: {

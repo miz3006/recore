@@ -75,6 +75,15 @@ export interface PlanRow {
    * parsing it back out of `value` would re-introduce the display-collapse
    * class of bug (§7.7). */
   weightKg?: number | null;
+  /** The rep scheme ALONE — "5·5·5", or "3 sets" when no rep target resolved.
+   *
+   * Same rule as `weightKg`, for the same reason: Next's card sets the load at
+   * the top of the type scale and the scheme one step under it, which needs the
+   * two halves of `value` as two values. Splitting "82.5 × 5·5·5" back apart on
+   * the screen is exactly the display-collapse bug §7.7 keeps diagnosing, so
+   * the engine hands both over instead. Present only where `value` was composed
+   * here — never on the ghost path, which stores text and nothing else. */
+  scheme?: string | null;
 }
 
 /**
@@ -136,8 +145,15 @@ function distanceValue(m: number): string {
   return m >= 1000 ? `${m / 1000}k` : `${m}m`;
 }
 
+/** The rep half of a strength prescription, on its own. `strengthValue` and
+ * `PlanRow.scheme` both read it, so the string a card shows under the load is
+ * character-for-character the one inside `value`. */
+function schemeOf(p: Prescription): string {
+  return p.reps != null ? repScheme(p.sets, p.reps) : `${p.sets} sets`;
+}
+
 function strengthValue(p: Prescription): string {
-  const scheme = p.reps != null ? repScheme(p.sets, p.reps) : `${p.sets} sets`;
+  const scheme = schemeOf(p);
   return p.weightKg != null ? `${fmt(p.weightKg)} × ${scheme}` : scheme;
 }
 
@@ -170,6 +186,7 @@ export function buildPlanRow(
       why: whyFor(p.reason),
       move: moveFor(p.reason),
       weightKg: p.weightKg ?? null,
+      scheme: schemeOf(p),
     };
   }
   if (hasReps) {

@@ -121,8 +121,75 @@ export interface ProgressionView {
 }
 
 /** How the list is ordered. `gain` is the owner's default (4 Aug 2026): the
- * lifts that moved most, first. */
-export type LiftSort = 'gain' | 'recent' | 'name';
+ * lifts that moved most, first. `stalled` (17 Aug 2026) is its mirror — the
+ * lifts that stopped moving, first — because "what is stuck?" is the other
+ * half of "am I progressing?" and it should not require reading to the bottom
+ * of a list sorted the other way. */
+export type LiftSort = 'gain' | 'recent' | 'stalled' | 'name';
+
+/** What the END of a lift's series is doing, independent of where the whole
+ * range went. A lift can be up 12% over eight weeks and still have dropped its
+ * last two sessions, and only this says so. */
+export type StallKind = 'up' | 'flat' | 'down';
+
+export interface LiftStall {
+  kind: StallKind;
+  /**
+   * `down`: consecutive session-to-session drops at the end of the series.
+   * `flat`: consecutive sessions ending at the same value (always ≥ 2).
+   * `up`: 0 — the latest session beat the one before it, so nothing is stuck.
+   */
+  sessions: number;
+}
+
+/**
+ * Read the tail of a lift's series (owner, 17 Aug 2026).
+ *
+ * Deliberately about the LAST sessions, not the range: the range delta answers
+ * "where did this go since June", this answers "is it still going". They can
+ * disagree, and when they do the card shows both — that disagreement is the
+ * most useful thing the screen can tell someone.
+ */
+export function stallOf(points: ProgressionPoint[]): LiftStall {
+  const v = points.map((p) => p.value);
+  if (v.length < 2) return { kind: 'up', sessions: 0 };
+  const last = v[v.length - 1]!;
+  const prev = v[v.length - 2]!;
+  if (last > prev) return { kind: 'up', sessions: 0 };
+  if (last === prev) {
+    // How many sessions in a row ended on this exact value — "no change in 4".
+    let n = 1;
+    while (n < v.length && v[v.length - 1 - n] === last) n += 1;
+    return { kind: 'flat', sessions: n };
+  }
+  // How many consecutive STEPS went down — "down 2 sessions running" is two
+  // drops, so three plotted points.
+  let n = 0;
+  for (let i = v.length - 1; i > 0 && v[i]! < v[i - 1]!; i -= 1) n += 1;
+  return { kind: 'down', sessions: n };
+}
+
+/**
+ * Below this many consecutive drops, a lift had a session — not a trend. The
+ * owner's mockup captions the rule as "red only when truly regressing", and
+ * this constant is where "truly" is defined: one lighter day after a bad
+ * night's sleep must not repaint a card that gained 12% over eight weeks.
+ */
+export const STALL_RUN_MIN = 2;
+
+/**
+ * The stall as the words a card prints, or null when there is nothing to say —
+ * a lift still climbing, or one that dipped exactly once. Never a signed
+ * number: the word carries the direction, so the colour beside it is never the
+ * only thing carrying it (§14).
+ */
+export function describeStall(stall: LiftStall): string | null {
+  if (stall.kind === 'flat') return `no change in ${stall.sessions} sessions`;
+  if (stall.kind === 'down' && stall.sessions >= STALL_RUN_MIN) {
+    return `down ${stall.sessions} sessions running`;
+  }
+  return null;
+}
 
 /** Below this many sessions inside the range there is no trend to draw. */
 export const MIN_SESSIONS_FOR_CARD = 3;
@@ -296,11 +363,37 @@ export function median(values: number[]): number | null {
  * ranks where its number puts it, and the screen never colours it as failure.
  * Ties break on the deeper record, then the name, so the order is stable across
  * renders and metric switches.
+ *
+ * `stalled` (owner, 17 Aug 2026) reads the TAIL instead: lifts that are falling
+ * first, deepest fall first; then lifts that have held the same value, longest
+ * hold first; then everything still climbing, smallest climb first. It is a
+ * different question — "what needs attention?" — and it never re-labels a lift,
+ * only re-orders it.
  */
 export function sortLifts(lifts: LiftProgression[], sort: LiftSort): LiftProgression[] {
   const out = [...lifts];
   if (sort === 'name') {
     out.sort((a, b) => a.canonical.localeCompare(b.canonical));
+    return out;
+  }
+  if (sort === 'stalled') {
+    const rank = { down: 0, flat: 1, up: 2 } as const;
+    const stalls = new Map(out.map((l) => [l.key, stallOf(l.points)] as const));
+    out.sort((a, b) => {
+      const sa = stalls.get(a.key)!;
+      const sb = stalls.get(b.key)!;
+      if (rank[sa.kind] !== rank[sb.kind]) return rank[sa.kind] - rank[sb.kind];
+      // Held longest first inside the flat group; everywhere else the smaller
+      // percentage is the more stuck one, so ascending is correct for both.
+      if (sa.kind === 'flat') {
+        return (
+          sb.sessions - sa.sessions ||
+          a.percent - b.percent ||
+          a.canonical.localeCompare(b.canonical)
+        );
+      }
+      return a.percent - b.percent || b.sessions - a.sessions || a.canonical.localeCompare(b.canonical);
+    });
     return out;
   }
   if (sort === 'recent') {

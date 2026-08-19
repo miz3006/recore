@@ -1,6 +1,5 @@
 import { useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { tap } from '@/lib/haptics';
 import {
@@ -104,7 +103,6 @@ export function EntryActionsSheet({
    * the parent may open another sheet from inside this callback. */
   onSelect: (action: EntryAction) => void;
 }) {
-  const insets = useSafeAreaInsets();
   const pending = useRef<EntryAction | null>(null);
   const rows = rowsFor(hasNote);
 
@@ -123,7 +121,7 @@ export function EntryActionsSheet({
         pending.current = null;
         if (action) onSelect(action);
       }}
-      sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+      sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
       <Eyebrow tone="muted" style={styles.eyebrow}>
         This entry
       </Eyebrow>
@@ -143,11 +141,10 @@ export function EntryActionsSheet({
             <PressableScale
               onPress={() => choose(row.action)}
               haptic="none"
-              activeScale={0.99}
+              activeScale={0.98}
               accessibilityRole="button"
               accessibilityLabel={row.label}
-              style={styles.row}
-              pressedStyle={styles.rowPressed}>
+              style={styles.row}>
               <View style={styles.iconCol}>
                 <Icon name={row.icon} size={moderateScale(18)} tint={color.textSecondary} />
               </View>
@@ -171,11 +168,10 @@ export function EntryActionsSheet({
         <PressableScale
           onPress={() => choose('delete')}
           haptic="none"
-          activeScale={0.99}
+          activeScale={0.98}
           accessibilityRole="button"
           accessibilityLabel={`Delete ${target?.exercise ?? 'this entry'} from the note`}
-          style={styles.row}
-          pressedStyle={styles.rowPressed}>
+          style={styles.row}>
           <View style={styles.iconCol}>
             <Icon name="trash" size={moderateScale(18)} tint={color.error} />
           </View>
@@ -194,7 +190,7 @@ const ICON_COL_W = moderateScale(28);
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     paddingHorizontal: spacing.xl,
   },
   eyebrow: {
@@ -220,9 +216,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     minHeight: moderateScale(52),
     paddingVertical: spacing.sm,
-  },
-  rowPressed: {
-    backgroundColor: color.surfaceHigh,
   },
   // Inset past the icon column, the sibling-separator rule every list in the
   // app follows — the glyphs stay one clean vertical run.

@@ -5,10 +5,13 @@ import {
   buildProgression,
   daysBetween,
   describeDelta,
+  describeStall,
   median,
   metricValue,
   MIN_SESSIONS_FOR_CARD,
   sortLifts,
+  stallOf,
+  STALL_RUN_MIN,
   trainingSpread,
   type LiftSession,
 } from './progression.ts';
@@ -260,4 +263,63 @@ test('metricValue reads the right column, and volume of zero is nothing to plot'
   assert.equal(metricValue(row, 'e1rm'), 116.7);
   assert.equal(metricValue(row, 'volume'), 1500);
   assert.equal(metricValue(s({ day: '2026-06-02', volume: 0 }), 'volume'), null);
+});
+
+// --- the tail of a series (owner, 17 Aug 2026) --------------------------------
+
+/** Points straight from values, one a week apart — `stallOf` only reads order. */
+function pts(values: number[]) {
+  return values.map((value, i) => ({ day: `2026-06-${String(i + 1).padStart(2, '0')}`, value }));
+}
+
+test('stallOf reads the LAST sessions, not the whole range', () => {
+  // Up over the range, but the last two sessions dropped: both facts are true
+  // and the screen shows both, so neither reading may swallow the other.
+  assert.deepEqual(stallOf(pts([100, 120, 115, 110])), { kind: 'down', sessions: 2 });
+  assert.deepEqual(stallOf(pts([100, 105, 110])), { kind: 'up', sessions: 0 });
+  assert.deepEqual(stallOf(pts([40, 40, 40, 40])), { kind: 'flat', sessions: 4 });
+  // A dip then a hold is a hold — the flat run is what the eye sees at the end.
+  assert.deepEqual(stallOf(pts([50, 48, 48])), { kind: 'flat', sessions: 2 });
+  // Too short to have a tail at all.
+  assert.deepEqual(stallOf(pts([100])), { kind: 'up', sessions: 0 });
+});
+
+test('one lighter session is not a regression — "red only when truly regressing"', () => {
+  assert.equal(STALL_RUN_MIN, 2);
+  // One drop says nothing: the card keeps its session count and its ink.
+  assert.equal(describeStall(stallOf(pts([100, 120, 118]))), null);
+  assert.equal(describeStall(stallOf(pts([100, 110, 120]))), null);
+  // Two drops is a trend, and it is spelled out in words beside the colour.
+  assert.equal(describeStall(stallOf(pts([100, 120, 118, 115]))), 'down 2 sessions running');
+  assert.equal(describeStall(stallOf(pts([40, 40, 40, 40]))), 'no change in 4 sessions');
+});
+
+test('a stall is never a signed number, so a colour is never its only carrier', () => {
+  for (const values of [[100, 98, 96], [40, 40, 40], [100, 120, 130]]) {
+    const note = describeStall(stallOf(pts(values)));
+    if (note) assert.ok(!/[+\-−]/.test(note), `"${note}" must not carry a sign`);
+  }
+});
+
+test('the Stalled ordering puts falling first, then held longest, then climbing', () => {
+  const rows = [
+    // falling hardest: 120 → 100 over the range, last two sessions down
+    ...pts([120, 110, 100]).map((p) => s({ day: p.day, key: 'ohp', canonical: 'OHP', e1rm: p.value })),
+    // held for four sessions
+    ...pts([40, 40, 40, 40]).map((p) =>
+      s({ day: p.day, key: 'incline', canonical: 'Incline', e1rm: p.value }),
+    ),
+    // held for three
+    ...pts([70, 70, 70]).map((p) => s({ day: p.day, key: 'pulldown', canonical: 'Pulldown', e1rm: p.value })),
+    // still climbing
+    ...pts([90, 95, 101]).map((p) => s({ day: p.day, key: 'bench', canonical: 'Bench', e1rm: p.value })),
+  ];
+  const view = buildProgression(rows, 'e1rm', FROM);
+  assert.equal(view.lifts.length, 4);
+  assert.deepEqual(
+    sortLifts(view.lifts, 'stalled').map((l) => l.canonical),
+    ['OHP', 'Incline', 'Pulldown', 'Bench'],
+  );
+  // And it only RE-ORDERS: the same four lifts, none relabelled or dropped.
+  assert.equal(sortLifts(view.lifts, 'stalled').length, view.lifts.length);
 });

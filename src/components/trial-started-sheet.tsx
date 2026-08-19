@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   requestTrialNotificationPermission,
@@ -37,7 +36,6 @@ import { AppButton, Eyebrow } from './primitives';
  * when there is no trial, which is every state before billing lands.
  */
 export function TrialStartedSheet() {
-  const insets = useSafeAreaInsets();
   const [visible, setVisible] = useState(() => isTrialWelcomeDue());
   const [busy, setBusy] = useState(false);
   // Every fact here came from the store: the charge instant Apple reported and
@@ -78,7 +76,7 @@ export function TrialStartedSheet() {
     <BottomSheet
       visible={visible}
       onClose={close}
-      sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.xl) }]}>
+      sheetStyle={[styles.sheet, { paddingBottom: spacing.xl }]}>
       <Eyebrow tone="muted" style={styles.eyebrow}>
         Free trial
       </Eyebrow>
@@ -109,7 +107,7 @@ export function TrialStartedSheet() {
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     paddingHorizontal: spacing.xl,
   },
   eyebrow: {

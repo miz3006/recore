@@ -256,7 +256,7 @@ export function ReadOnlyLedger() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
   },
   content: {
     paddingHorizontal: spacing.lg,
@@ -267,6 +267,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.xl,
+    borderCurve: 'continuous',
     padding: spacing.xl,
   },
   // Neutral OUTLINED chip — never green, never a filled badge.
@@ -281,6 +282,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.sm - 5,
+    borderCurve: 'continuous',
     paddingVertical: 2,
     paddingHorizontal: 7,
     overflow: 'hidden',

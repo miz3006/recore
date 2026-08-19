@@ -6,11 +6,13 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { useAnimatedStyle } from 'react-native-reanimated';
 
 import { PressableScale } from '@/components/motion';
-import { lineFor, MAX_FONT_SCALE, radius, spacing, type } from '@/lib/theme';
+import { color, lineFor, MAX_FONT_SCALE, radius, spacing, type } from '@/lib/theme';
 
 import { BLUE, CTA_HEIGHT } from './tokens';
+import { useSelectFill } from './use-select-fill';
 
 /**
  * The funnel's primary button: full-width, fully rounded, filled Recore blue,
@@ -27,7 +29,21 @@ import { BLUE, CTA_HEIGHT } from './tokens';
  *
  * The glow is cast in the button's own blue at a whisper — the one coloured
  * shadow in the app, and the reason the CTA reads as the live thing on an
- * otherwise paper screen. Press dips to 0.97 with the shared spring.
+ * otherwise paper screen. Press dips to 0.97 on the shared 120 ms curve.
+ *
+ * ## The button WAKING UP is animated (19 August 2026)
+ *
+ * On the three required screens (tracker, goal, experience) Continue is inert
+ * until an answer exists, and the moment it becomes live is the most meaningful
+ * state change on the page: it is the screen confirming that what you just
+ * tapped counted. It was a hard cut from `opacity: 0.4` to 1 — a jump on the
+ * one element the eye is about to move to.
+ *
+ * On the same 160 ms as the row that enabled it, the two read as one event:
+ * the answer fills and the button comes up with it.
+ *
+ * The haptic is LIGHT, not medium. Medium is for something heavy landing or a
+ * destructive action; Continue is a page turn, and it happens thirteen times.
  */
 export function PrimaryCta({
   label,
@@ -43,19 +59,21 @@ export function PrimaryCta({
   style?: StyleProp<ViewStyle>;
 }) {
   const inactive = disabled || loading;
+  const off = useSelectFill(inactive);
+  const wakeStyle = useAnimatedStyle(() => ({ opacity: 1 - CTA_DIM * off.get() }));
+
   return (
     <PressableScale
       onPress={onPress}
       disabled={inactive}
-      haptic="medium"
-      activeScale={0.97}
+      haptic="light"
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: inactive }}
-      style={[styles.cta, inactive && styles.ctaOff, style]}
+      style={[styles.cta, wakeStyle, style]}
       pressedStyle={styles.ctaPressed}>
       {loading ? (
-        <ActivityIndicator color="#FFFFFF" />
+        <ActivityIndicator color={color.onInk} />
       ) : (
         <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           {label}
@@ -64,6 +82,9 @@ export function PrimaryCta({
     </PressableScale>
   );
 }
+
+/** How far an inert Continue drops. It was `opacity: 0.4` as a static style. */
+const CTA_DIM = 0.6;
 
 const styles = StyleSheet.create({
   cta: {
@@ -86,10 +107,7 @@ const styles = StyleSheet.create({
     }),
   },
   ctaPressed: {
-    backgroundColor: '#0069DB',
-  },
-  ctaOff: {
-    opacity: 0.4,
+    backgroundColor: color.ctaFillPressed,
   },
   label: {
     fontSize: type.headline.fontSize,
@@ -97,6 +115,6 @@ const styles = StyleSheet.create({
     // 700, not 600 — see the contrast note above.
     fontWeight: '700',
     letterSpacing: -0.2,
-    color: '#FFFFFF',
+    color: color.onInk,
   },
 });

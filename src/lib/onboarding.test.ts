@@ -4,7 +4,11 @@ import { test } from 'node:test';
 import { FOCUS_REP_RANGE } from './predict/engine.ts';
 import {
   ALL_DAYS_MASK,
+  COMMIT_WEEKS,
+  committedSessions,
   dayCount,
+  daysPerWeek,
+  DEFAULT_DAYS_PER_WEEK,
   DAY_LABELS,
   daysLabel,
   focusForGoal,
@@ -18,6 +22,13 @@ import {
   isTrainingStyle,
   normalizeDayMask,
   OB_SCREENS,
+  parseLiftLoads,
+  parseList,
+  projectedTarget,
+  projectionSeries,
+  serializeLiftLoads,
+  serializeList,
+  toggleInList,
   OB_STEP_COUNT,
   parseBodyHeight,
   parseBodyWeight,
@@ -214,4 +225,83 @@ test('row counts are reported as buckets, never as an exact count', () => {
   assert.equal(rowCountBucket(200), '200-999');
   assert.equal(rowCountBucket(1000), '1000-4999');
   assert.equal(rowCountBucket(50_000), '5000+');
+});
+
+// --- the v3 flow's derived numbers ------------------------------------------------------
+
+test('the commitment count is twelve weeks of the chosen days', () => {
+  // Mon, Tue, Thu, Fri — the design's four-day week.
+  const mask = 0b0011011;
+  assert.equal(dayCount(mask), 4);
+  assert.equal(committedSessions(mask), 48);
+});
+
+test('an empty week still counts, at the documented default', () => {
+  assert.equal(daysPerWeek(0), DEFAULT_DAYS_PER_WEEK);
+  assert.equal(committedSessions(0), COMMIT_WEEKS * DEFAULT_DAYS_PER_WEEK);
+});
+
+test('the projection reproduces the design board exactly', () => {
+  // 1-3 years lifting, the mock's own two lifts.
+  assert.equal(projectedTarget(60, 'building', 'kg'), 72.5);
+  assert.equal(projectedTarget(90, 'building', 'kg'), 107.5);
+});
+
+test('every projected target lands on a real plate jump', () => {
+  for (const experience of ['new', 'building', 'experienced'] as const) {
+    for (let start = 20; start <= 300; start += 2.5) {
+      const target = projectedTarget(start, experience, 'kg');
+      const gain = target - start;
+      assert.ok(
+        Math.abs(gain / 2.5 - Math.round(gain / 2.5)) < 1e-9,
+        `${start} kg at ${experience} gained ${gain}, which is not a plate`,
+      );
+    }
+  }
+});
+
+test('a longer training history projects a smaller gain', () => {
+  const beginner = projectedTarget(100, 'new', 'kg');
+  const middle = projectedTarget(100, 'building', 'kg');
+  const veteran = projectedTarget(100, 'experienced', 'kg');
+  assert.ok(beginner > middle && middle > veteran);
+});
+
+test('a projection of nothing is nothing, not a guess', () => {
+  assert.equal(projectedTarget(0, 'building', 'kg'), 0);
+  assert.equal(projectedTarget(Number.NaN, 'building', 'kg'), 0);
+});
+
+test('the series runs from the start to the target, straight', () => {
+  const series = projectionSeries(60, 72.5);
+  assert.equal(series.length, COMMIT_WEEKS);
+  assert.equal(series[0], 60);
+  assert.equal(series[series.length - 1], 72.5);
+  const first = series[1]! - series[0]!;
+  for (let i = 2; i < series.length; i++) {
+    assert.ok(Math.abs(series[i]! - series[i - 1]! - first) < 1e-9, 'the line bends');
+  }
+});
+
+test('a set answer survives a round trip, and a lift name with a comma in it', () => {
+  const lifts = ['Bench press, close grip', 'Squat'];
+  assert.deepEqual(parseList(serializeList(lifts)), lifts);
+  assert.deepEqual(parseList(null), []);
+  assert.deepEqual(parseList(''), []);
+});
+
+test('toggling a set member adds at the end and removes in place', () => {
+  const one = toggleInList(null, 'Squat');
+  assert.deepEqual(parseList(one), ['Squat']);
+  const two = toggleInList(one, 'Deadlift');
+  assert.deepEqual(parseList(two), ['Squat', 'Deadlift']);
+  assert.deepEqual(parseList(toggleInList(two, 'Squat')), ['Deadlift']);
+});
+
+test('lift loads round-trip, and rubbish degrades to nothing chosen', () => {
+  assert.deepEqual(parseLiftLoads(serializeLiftLoads({ Squat: 90 })), { Squat: 90 });
+  assert.deepEqual(parseLiftLoads('not json'), {});
+  assert.deepEqual(parseLiftLoads('[1,2,3]'), {});
+  // A zero or a negative load is not a load; it must not reach the projection.
+  assert.deepEqual(parseLiftLoads('{"Squat":0,"Bench":-5,"Row":40}'), { Row: 40 });
 });

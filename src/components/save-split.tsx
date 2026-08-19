@@ -23,6 +23,12 @@ import {
 import { useSession } from '@/state/session-store';
 
 /**
+ * UNREACHABLE SINCE 18 AUGUST 2026 — its only host is `session-summary-sheet.tsx`,
+ * whose only opener (the resting pill) left Today on the owner's call. Nothing
+ * about the split-day data path changed; there is currently no door to it.
+ */
+
+/**
  * SAVE THIS DAY AS A SPLIT DAY (owner, 13 Aug 2026).
  *
  * Until now a split day could only be authored by hand in You → Session types →
@@ -209,6 +215,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     padding: spacing.lg,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     borderWidth: hairline,
     borderColor: color.border,
     backgroundColor: color.surface,
@@ -221,7 +228,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: color.bg,
+    borderCurve: 'continuous',
+    backgroundColor: color.surface,
   },
   hint: {
     ...type.footnote,

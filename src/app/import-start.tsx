@@ -203,6 +203,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     backgroundColor: color.surface,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xs,

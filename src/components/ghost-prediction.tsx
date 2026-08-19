@@ -312,13 +312,14 @@ const styles = StyleSheet.create({
     marginHorizontal: -PRESS_BLEED,
     paddingHorizontal: PRESS_BLEED,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
   },
   rowSep: {
     height: 1,
     backgroundColor: color.divider,
   },
   rowPressed: {
-    backgroundColor: color.surfaceHigh,
+    opacity: 0.6,
   },
   rowBody: {
     flex: 1,
@@ -369,7 +370,7 @@ const styles = StyleSheet.create({
     borderColor: color.accent,
   },
   checkMark: {
-    color: color.bg,
+    color: color.onInk,
     fontSize: type.caption.fontSize,
     fontWeight: '700',
   },
@@ -403,13 +404,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.md,
-    backgroundColor: color.accent,
+    borderCurve: 'continuous',
+    backgroundColor: color.ctaFill,
   },
   acceptPressed: {
-    backgroundColor: color.accentPressed,
+    backgroundColor: color.ctaFillPressed,
   },
   acceptLabel: {
-    color: color.bg,
+    color: color.onInk,
     fontSize: moderateScale(16),
     fontWeight: '600',
   },
@@ -419,11 +421,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.border,
   },
   skipPressed: {
-    backgroundColor: color.surfaceHigh,
+    opacity: 0.6,
   },
   skipLabel: {
     color: color.textPrimary,

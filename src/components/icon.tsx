@@ -50,7 +50,10 @@ export type IconName =
   | 'wrench'
   // The settled card's ⋯ (entry-actions-sheet) and its Edit row.
   | 'ellipsis'
-  | 'pencil';
+  | 'pencil'
+  // Clear a field's text — filled, because it is a control on top of an input
+  // rather than a label beside one.
+  | 'close';
 
 type Glyph =
   | { set: 'ion'; name: ComponentProps<typeof Ionicons>['name'] }
@@ -109,6 +112,7 @@ const MAP: Record<IconName, Glyph> = {
   ellipsis: { set: 'ion', name: 'ellipsis-horizontal' },
   pencil: { set: 'ion', name: 'pencil-outline' },
   wrench: { set: 'ion', name: 'construct-outline' },
+  close: { set: 'ion', name: 'close-circle' },
 };
 
 /**

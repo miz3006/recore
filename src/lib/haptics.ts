@@ -22,3 +22,19 @@ export function success() {
   if (Platform.OS === 'web') return;
   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 }
+
+/**
+ * A DISCRETE VALUE CHANGED — a segment, a chip, a picker detent, a tab.
+ *
+ * iOS draws a hard line between the two feelings and so should we: `tap()` is
+ * an *impact* ("you hit something"), while this is *selection* — the light,
+ * dry click a picker wheel makes as a value passes under the line. Apple fires
+ * it on segmented-control and tab changes; using an impact there makes routine
+ * browsing feel heavier than committing to an action does (see the motion note
+ * in `design-md/fitness/apple-fitness/DESIGN.md` §6: "light selection on
+ * tab/segment change; medium impact on Start Workout").
+ */
+export function selection() {
+  if (Platform.OS === 'web') return;
+  Haptics.selectionAsync().catch(() => {});
+}

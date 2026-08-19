@@ -1,6 +1,7 @@
 import { ActivityIndicator, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 
 import {
+  alpha,
   color,
   CONTROL_HEIGHT,
   eyebrow,
@@ -127,18 +128,18 @@ export function AppButton({
         inactive && styles.btnDisabled,
         style,
       ]}
-      pressedStyle={
-        variant === 'primary' ? styles.btnPrimaryPressed : styles.btnQuietPressed
-      }>
+      pressedStyle={variant === 'primary' ? styles.btnPrimaryPressed : undefined}>
       {loading ? (
-        <ActivityIndicator color={variant === 'primary' ? color.bg : color.textPrimary} />
+        <ActivityIndicator color={variant === 'primary' ? color.onInk : color.textPrimary} />
       ) : (
         <View style={styles.btnRow}>
           {leading}
           <Text
             style={[
               styles.btnLabel,
-              variant === 'primary' ? styles.btnLabelPrimary : styles.btnLabelQuiet,
+              variant === 'primary' && styles.btnLabelPrimary,
+              variant === 'secondary' && styles.btnLabelTinted,
+              variant === 'ghost' && styles.btnLabelQuiet,
             ]}
             numberOfLines={1}
             maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -212,6 +213,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: color.surface,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.border,
     padding: spacing.lg,
@@ -221,6 +223,7 @@ const styles = StyleSheet.create({
   },
   cardRaised: {
     borderRadius: radius.xxl,
+    borderCurve: 'continuous',
     borderColor: color.divider,
   },
   eyebrow: {
@@ -240,6 +243,7 @@ const styles = StyleSheet.create({
     minHeight: CONTROL_HEIGHT,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
@@ -254,21 +258,23 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   btnPrimary: {
-    backgroundColor: color.accent,
+    // TINTED, NOT INKED (owner, 18 Aug 2026). Apple's prominent button wears the
+    // app's tint — an ink-black fill is an Android/web habit. `ctaFill` is the
+    // same blue as `trained`, so "the colour of the product" and "the colour of
+    // the thing you press" are one answer.
+    backgroundColor: color.ctaFill,
     ...shadow.card, // the CTA lifts off the page — the one control that should
   },
   btnPrimaryPressed: {
-    backgroundColor: color.accentPressed,
+    backgroundColor: color.ctaFillPressed,
   },
   btnSecondary: {
-    borderWidth: 1,
-    borderColor: color.accent,
+    // The tinted companion: blue text on a blue wash, Apple's second-rank
+    // button. It follows the primary so the pair reads as one family.
+    backgroundColor: alpha(color.ctaFill, 0.12),
   },
   btnGhost: {
     backgroundColor: 'transparent',
-  },
-  btnQuietPressed: {
-    backgroundColor: color.surfaceHigh,
   },
   btnDisabled: {
     opacity: 0.4,
@@ -279,10 +285,13 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   btnLabelPrimary: {
-    color: color.bg,
+    color: color.onInk,
   },
   btnLabelQuiet: {
     color: color.textPrimary,
+  },
+  btnLabelTinted: {
+    color: color.ctaFill,
   },
 
   // StatTile
@@ -314,6 +323,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     paddingVertical: 2,
     paddingHorizontal: spacing.sm,
   },
@@ -330,6 +340,6 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   badgeTextInk: {
-    color: color.bg,
+    color: color.onInk,
   },
 });

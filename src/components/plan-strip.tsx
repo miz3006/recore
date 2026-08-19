@@ -22,6 +22,17 @@ import { MonoTag } from './gutter-value';
 import { PressableScale } from './motion';
 
 /**
+ * UNMOUNTED SINCE 18 AUGUST 2026 (owner). Today no longer shows the plan at
+ * all: this strip stood between the header and the composer, and the same rows
+ * — same `computePlanStrip` read, same progressed loads — are already the head
+ * of Next's brief ("Today · Push day", `lib/db/brief.ts`). Two printings of one
+ * prescription, and the second one sat on the page whose whole job is to record
+ * what happened. Its dispatcher (`components/session-start.tsx`) is deleted;
+ * this file and `planned-checklist.tsx` stay so putting a `<PlanStrip />` back
+ * into `app/(tabs)/today.tsx` is one line.
+ *
+ * Everything below describes the strip as it was mounted.
+ *
  * The plan-in-view strip (pre-plan, Surface 1). Today's declared day is shown
  * as a READ-ONLY reference beside the note: the movement name + the engine's
  * progressed load in green (the app's only green — a future prescription
@@ -151,6 +162,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.divider,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     ...shadow.card,
@@ -188,7 +200,7 @@ const styles = StyleSheet.create({
     borderColor: color.accent,
   },
   ringMark: {
-    color: color.bg,
+    color: color.onInk,
     fontSize: type.footnote.fontSize,
     fontWeight: '700',
   },

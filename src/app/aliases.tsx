@@ -131,7 +131,7 @@ export default function Aliases() {
                     accessibilityRole="button"
                     accessibilityLabel={`Forget ${row.alias}`}
                     style={styles.deleteAction}>
-                    <Icon name="trash" size={moderateScale(18)} tint={color.bg} />
+                    <Icon name="trash" size={moderateScale(18)} tint={color.onInk} />
                   </PressableScale>
                 )}
                 overshootRight={false}>
@@ -217,6 +217,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: color.error,
     borderTopRightRadius: radius.lg,
+    borderCurve: 'continuous',
     borderBottomRightRadius: radius.lg,
   },
   empty: {

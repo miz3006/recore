@@ -26,8 +26,8 @@ import { color, lineFor, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing,
  *    frame full of numbers with no label is the fabricated-proof failure the
  *    paywall just finished closing.
  *
- * The bezel is ink (`accent`) on purpose: the app's own paper is `#F4F5EF` and
- * a paper bezel around a paper screenshot has no edge at all. No notch, no
+ * The bezel is ink (`accent`) on purpose: the app's own canvas is white and a
+ * white bezel around a white screenshot has no edge at all. No notch, no
  * speaker slit, no side buttons — a real capture already carries the status bar
  * and the home indicator, which is what sells it.
  */
@@ -107,13 +107,15 @@ const styles = StyleSheet.create({
     padding: BEZEL,
     backgroundColor: color.accent,
     borderRadius: radius.xxl + BEZEL,
+    borderCurve: 'continuous',
     ...shadow.raised,
   },
   screen: {
     aspectRatio: WINDOW_ASPECT,
     borderRadius: radius.xxl,
+    borderCurve: 'continuous',
     overflow: 'hidden',
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
   },
   shot: {
     position: 'absolute',

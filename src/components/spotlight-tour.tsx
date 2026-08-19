@@ -222,6 +222,7 @@ const styles = StyleSheet.create({
     right: spacing.xl,
     backgroundColor: color.surface,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.border,
     ...shadow.raised,

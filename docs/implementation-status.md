@@ -112,9 +112,50 @@ promise in product-direction §2/§6. None of them is a TODO.
 
 ## Section 5 — Personalised onboarding (14 screens)
 
-The flow is now the fourteen screens §5 specifies, nine of which ask a question, with a resumable
-high-water mark. **The order is asserted against the specification in `src/lib/onboarding.test.ts`
-rather than against itself** — the shape of drift this repository has actually suffered before.
+> **18 August 2026 — the v3 design import.** The owner's fourteen-screen board replaced the
+> twenty-one-screen build. The table below still describes the flow §5 SPECIFIES; what SHIPS is
+> the board, and the two now differ. §5 itself has not been amended — that is the owner's call
+> under CLAUDE.md §2 rule 8, and until they take it this note is the record of the gap.
+>
+> **The shipped flow** (`src/components/onboarding/config.ts`, one entry per screen):
+> welcome · current tracker · what stops you tracking (multi) · the parse demo · what gets
+> written gets stronger · main goal · how long lifting · name + gender · training days + how you
+> follow them · key lifts and their loads · gradual overload · 12-week commitment (hold) ·
+> weekly recap · your projection.
+>
+> **What changed, and why each one is defensible:**
+>
+> · **Nothing auto-advances.** Every question carries Continue; the tracker, goal and experience
+>   screens hold it inert until answered, because those three change what the app DOES. The rest
+>   are skippable, per §5's "skipping changes nothing essential".
+> · **Five screens left the flow** — the building checklist, the answers summary, the
+>   product-truth list, the founder note and the trial timeline. Their components stay in the
+>   tree, unmounted, the way every other rolled-back surface here does.
+> · **Two screens stopped being asked** — rest length and bodyweight. Their answer keys, their
+>   writers in `completeFlow` and their prefs setters are untouched, so the app keeps its
+>   defaults and either screen returns as one entry in `STEPS`.
+> · **Three new answers** — `obstacles`, `keyLifts`, `liftLoads` (store version 6; an older
+>   snapshot restarts the flow rather than mis-resuming).
+> · **Emoji appear on two screens** (goal, weekly recap), which is §12's own allowance:
+>   "sparingly as an onboarding choice label when they improve scanning". `tokens.ts` said "no
+>   emoji" and was the outdated document.
+> · **Two lines of the board's copy were NOT shipped as drawn.** The commitment screen's "Most
+>   people who log the first four sessions are still logging in month three" is a retention
+>   statistic about other people (§2 rule 2, §3) and was replaced with a claim about the
+>   person's own record. The recap preview's "Bench up 2.5 kg. Squat stalled twice." is a
+>   fabricated record shown to somebody who has logged nothing (§3 forbids it "anywhere,
+>   including placeholders"); the preview now describes what the message contains.
+> · **The projection screen is new and needs the owner's eye.** §5.1 says "Never show a fake
+>   progression chart before a session is logged." What ships is arithmetic on the loads the
+>   person typed two screens earlier (`projectedTarget`, `projectionSeries` — unit-tested, and
+>   they reproduce the board's 60 → 72.5 and 90 → 107.5 exactly), labelled YOUR PROJECTION with
+>   "An estimate from your answers, not a promise", never stored, and read by nothing else. With
+>   no load typed it shows no chart at all. That is a projection rather than fake history — but
+>   it sits close enough to the line that the owner should rule on it.
+
+The table below describes the §5 SPECIFICATION, not the shipped board. The order is asserted
+against the specification in `src/lib/onboarding.test.ts` rather than against itself — the shape
+of drift this repository has actually suffered before.
 
 | V5.1 screen | Status | Evidence | Notes |
 |---|---|---|---|
@@ -201,15 +242,16 @@ rather than against itself** — the shape of drift this repository has actually
 | Sets shown one per row under the exercise (owner, 4 Aug) | **done** | `src/lib/parse/summarize.ts` (`setTableOf`, + tests in `parse/receipt.test.ts`), `src/components/set-table.tsx`, `note-surface.tsx`, `session-receipt.tsx` | The compact reading (`setsLineText`) stayed exact but had to be decoded once a pyramid appeared: "120·100·90 kg × 10·15·8". The ledger card and the receipt now render a **mini table** — position · load · work · note, tabular mono, one hairline under the header. Warm-ups/drops/skipped stay visible and labelled instead of numbered; the counted totals are unchanged. A lone plain set keeps the one-liner. Compact surfaces (check-in, finish summary, live typing preview) still use `setText`. **Note: `session-receipt.tsx` has no importers — that half of the wiring is inert until the file is adopted or deleted.** |
 | App-wide accessibility pass (owner, 9 Aug) | **done** | `src/lib/theme/scale.ts` (`MAX_FONT_SCALE` 1.5, `FIXED_FONT_SCALE`, `lineFor`), `theme/type.ts`, `theme/color.ts`, 21 screens/components, `src/state/display.ts`, `app/(tabs)/you.tsx` | Three owner decisions, all measured rather than guessed. **(1) Contrast:** `textMuted` went #9AA093 → #82887B, 2.45:1 → 3.33:1, lifting 180+ uses at once; the ledger's informational text (comparison, alias echo, last-session reading, hints) moved to `textSecondary` (4.7:1, AA). The standing rule is in `color.ts` and product-direction §14.3. **(2) Dynamic Type 1.3 → 1.5:** the old cap was a layout limit, not a policy — every line height was hardcoded and could not grow with its glyph. `lineFor()` now scales them by the reader's own setting (all type tokens + 58 literals across 21 files), text-bearing boxes moved from `height` to `minHeight` (15 of them, incl. every `AppButton`), and text locked in geometry (calendar/history day numbers, avatar initials, ring checks) is clamped to `FIXED_FONT_SCALE` 1.2. **(3) In-app choice:** You → Display → "Set readings · Standard/Larger". **Not yet device-QA'd at 1.5 — that is the remaining risk.** |
 | Set table readable at low vision (owner, 9 Aug) | **done** | `src/components/set-table.tsx`, `src/state/display.ts` | Measured, not guessed: `textMuted` is **2.45:1** on the paper canvas — below AA (4.5) and below the 3:1 large-text floor — and it was carrying the set numbers and notes. Nothing in the table is muted now (counted work 16:1, everything else `textSecondary` 4.7:1); warm-ups/drops are told apart by their **word**, never by tone alone. Type up ~2 pt per cell; load and work grouped into one short scan instead of opposite edges; header rule moved from `tableRule` (1.11:1, invisible) to `border`. Past `fontScale` 1.2 (1.1 when a note column competes) the columns give way to one spelled-out line per set ("Set 1 · 100 kg · 10 reps"), which wraps instead of cropping and is allowed to grow to 1.6× — the app-wide 1.3 clamp exists to protect layouts that can break, and this one cannot. Live via `useWindowDimensions().fontScale`, so changing the OS text size needs no relaunch. |
-| **§8.1** End-of-session free-text reflection | **done** | `src/components/check-in-sheet.tsx`, `src/lib/reflection.ts` (+ test), `src/lib/db/workouts.ts` (`setReflection`) | A free-text field leading one sheet opened by Finish and re-openable from the receipt. Owner's ruling 29 Jul: **one sheet**, not two — the reflection leads and the existing per-line effort scale follows, so a finish never queues two sheets. |
-| **§8.1** Optional prompts ("How did that feel?" etc.) | **done** | `src/lib/reflection.ts` (`REFLECTION_PROMPTS`), `check-in-sheet.tsx` | All four, verbatim, asserted by test. They are **placeholders, never inserted text**: tapping one changes what the empty field suggests and nothing else, so every stored character is one the athlete typed. |
+| **§8.1** End-of-session free-text reflection | **done** | `src/components/check-in-sheet.tsx`, `src/lib/reflection.ts` (+ test), `src/lib/db/workouts.ts` (`setReflection`) | A free-text field on one sheet opened by Finish and re-openable from the receipt. Owner's ruling 29 Jul: **one sheet**, not two — so a finish never queues two sheets. **17 Aug: the reflection no longer LEADS it** — see the check-in redesign row below. |
+| **§8.1** Optional prompts ("How did that feel?" etc.) | **superseded** | `src/lib/reflection.ts` (`REFLECTION_PROMPTS`, still exported + asserted verbatim by test) | All four are still the spec'd vocabulary and still tested, but **the check-in no longer renders them**: the owner's 17 Aug ruling replaced the placeholder chips with three preset ANSWERS that write (`REFLECTION_TAGS`). The field's own placeholder is now "Anything about today…". Any future surface that suggests rather than answers should use the four prompts. |
+| **Check-in redesigned to read the session back** (owner ask + mockup, 17 Aug) | **done** | `src/components/check-in-sheet.tsx`, `src/lib/effort.ts` (`EFFORT_CHOICES`, `EFFORT_CHOICE_LABEL`, `effortChoiceOf` + tests), `src/lib/reflection.ts` (`REFLECTION_TAGS`, `composeReflection`, `splitReflection`, `reflectionRoomFor` + tests), `src/lib/parse/receipt.ts` (`lastSetTextOf` + tests) | "How did it go?" over the session's own line ("2 lifts · 9,840 kg · 48 min" — lifts and volume from the receipt, minutes from the workout row's timestamps under the receipt's own 10–360 min sanity rule; a run-only day totals in distance and an implausible span simply drops). Then **the lifts first, the words second**: one row per lift the sheet reads out of the record, its LAST counted set beside the name, and three answers — Could do more (rir 3) · Just right (rir 1) · Nothing left (rir 0), written into the line as an RPE token exactly as before. **Only unrated lifts are asked about**, and the question set is frozen when the sheet opens (or when a late parse lands) so answering a row cannot make it vanish mid-tap. Reversal of a July ruling, on the owner's say-so: the note chips (Slept badly · Felt strong · Short on time) are now **multi-select answers that are stored**, as the reflection's own first line — no new column, no migration, and `splitReflection` reads them back so the sheet re-opens armed. Nothing is preselected and the app still never infers one. Skip / × / swipe / Save session all commit exactly what is on the sheet. |
 | **§8.1** Reflections included in export and deletion | **done** | `src/lib/export-json.ts`, `src/lib/account/delete.ts`, `supabase/migrations/20260729000000_reflections.sql` | By construction rather than by remembering: the reflection is a **column on `workouts`**, so it inherits that row's RLS, its cascade delete, the local wipe and the JSON export. CSV stays a sets table — the JSON is the complete export and the privacy policy says so. |
 | **§8.1** Next may quote a reflection without inferring causation | **partial** | `src/lib/db/brief.ts` (`BriefNote`, `recentEntryNotes`), `src/app/(tabs)/next.tsx` | 4 Aug: the PER-ENTRY note is captured and quoted (see the section below). The session-level reflection from the check-in sheet is still not read by the brief — that half of step 4 stands. |
 | **Per-entry note on a ledger card** (owner ask, 4 Aug) | **done** | `src/lib/entry-note.ts` (+ test), `src/lib/db/entry-notes.ts`, `src/components/entry-note-sheet.tsx`, `src/components/note-surface.tsx` | One sheet carrying that entry's effort scale and a free-text note. Stored in `workouts.entry_notes` (schema v5), never in `raw_text`. **12 Aug: the speech bubble that opened it from every card is gone** — the standing per-card invitation became one end-of-session row (below), and this became a named row inside the ⋯ sheet. The written note still renders on its card; only the prompt moved. |
 | **Visible ⋯ actions on a settled card** (owner ask, 6 Aug) | **done** | `src/components/entry-actions-sheet.tsx`, `src/components/note-surface.tsx` (sideCol, `runEntryAction`), `src/components/icon.tsx` (`ellipsis`, `pencil`) | The card's hidden gestures are now one visible ⋯ (Mobbin-verified logger pattern: Hevy/Gymshark/Bevel per-exercise menu): a BottomSheet with Edit line · Show my words · Note & effort · History · Fix reading · Delete entry (`color.error`, last, own rule). The body's long-press → history was REMOVED — the menu owns it; tap-to-edit stays. Sequencing honours UIKit's one-modal rule: the chosen action fires from `onClosed`, so History/Fix can present their own sheet. Delete routes to the same `deleteNoteLine` the inline editor uses. **12 Aug: two rows added** (words, note) and the ⋯ became the card's only glyph. |
 | **The written line visible on its card** (owner ask, 12 Aug) | **done** | `src/components/note-surface.tsx` (`WordsFlip`, `wordsKey`), `entry-actions-sheet.tsx` (`words` action) | Long-press a settled card — or pick "Show my words" in its ⋯ — and the interpreted SET/KG/REPS table crossfades to the raw line, quoted in mono, exactly as typed. Tap or long-press again to flip back. Read-only display of `raw_text` (§3): no new data, no new column, nothing writable. Both faces are laid out and the words layer reports its height as the wrapper's floor, so flipping never moves the page. `DUR.fast`, instant under Reduce Motion; the hidden face is hidden from VoiceOver rather than merely transparent. |
 | **One reflection prompt per session, not per card** (owner ask, 12 Aug) | **done** | `src/lib/session-activity.ts` (+ test), `src/components/use-session-active.ts`, `note-surface.tsx` (`showReflectionRow`), `session-store.ts` (`finishSession`, `lastActivityAt`, `sessionFinished`), `bottom-toolbar.tsx` | §8.1 asks once, about the session; the note bubble asked once per exercise, five times a session. One quiet row now sits under the ledger — "Add a note about this session" — opening the check-in that already existed. It appears when the session has ENDED: Finish pressed, or 90 quiet minutes with work on the record (so the athlete who never presses Finish is still asked), and disappears once a reflection exists. Finish is remembered per workout in the meta KV (`session_done:<id>`), like receipt mode; writing another line re-opens the session. |
-| **§8.2** Session-start question on an empty Today (owner ask, 6 Aug) | **done** | `src/components/session-start.tsx`, `src/app/(tabs)/today.tsx`, `src/lib/db/plan.ts` (`getPlanDayChoice`/`setPlanDayChoice`, choice read in `resolveTodayPlanDay`), `src/lib/db/strip.ts` (`PlanStrip.dayId`), `src/state/session-store.ts` (`choosePlanDay`), `src/components/empty-note-cards.tsx` | Shows only with a split AND ≥1 logged session, on today, note empty, keyboard down; otherwise the plain `PlanStrip` renders as before. The chip answer is persisted day-keyed in the local meta KV and read inside `resolveTodayPlanDay`, so the strip, calendar sheet and Next brief agree with it by construction (deliberately not synced — a gym-device answer that expires at midnight). Start only calls `focusNote()`; nothing is written into `raw_text`. The empty-day LAST SESSION peek yields to the card's own last-session line in exactly the card's eligibility condition. Entirely deterministic — no model call, so no §9.4 evaluation needed. No §13 event exists for this surface; none was invented. |
+| **§8.2** Session-start question on an empty Today (owner ask, 6 Aug) | **done** | `src/components/session-start.tsx`, `src/app/(tabs)/today.tsx`, `src/lib/db/plan.ts` (`getPlanDayChoice`/`setPlanDayChoice`, choice read in `resolveTodayPlanDay`), `src/lib/db/strip.ts` (`PlanStrip.dayId`), `src/state/session-store.ts` (`choosePlanDay`), `src/components/empty-note-cards.tsx` | Shows only with a split AND ≥1 logged session, on today, note empty, keyboard down; otherwise the plain `PlanStrip` rendered as before — **both are gone: the card was removed 17 Aug and the strip 18 Aug (see the change log), so nothing from this row is on Today any more; `getPlanDayChoice`/`setPlanDayChoice` and `PlanStrip.dayId` survive because the calendar sheet and Next's brief still read them.** The chip answer is persisted day-keyed in the local meta KV and read inside `resolveTodayPlanDay`, so the strip, calendar sheet and Next brief agree with it by construction (deliberately not synced — a gym-device answer that expires at midnight). Start only calls `focusNote()`; nothing is written into `raw_text`. The empty-day LAST SESSION peek yields to the card's own last-session line in exactly the card's eligibility condition. Entirely deterministic — no model call, so no §9.4 evaluation needed. No §13 event exists for this surface; none was invented. |
 
 ---
 
@@ -255,7 +297,7 @@ rather than against itself** — the shape of drift this repository has actually
 | Leads with one composed briefing paragraph, not status cards | **done** | `src/app/(tabs)/next.tsx`, `src/lib/brief-prose.ts` (+ `brief-prose.test.ts`), `src/components/next/brief.tsx` | Deterministic, pure, tested. 30 Jul: composed in §9's own order — the paragraph OPENS with the week's sessions (`Brief.sessions7`) before the coming session. 13 Aug: the brief is no longer a card. `BriefLede` puts its one-or-two-line standfirst on bare paper under the title (that IS §9's "short briefing paragraph"); `BriefFooter` keeps the full paragraph and its provenance behind one disclosure at the foot of the page. Nothing was removed — the prose is still composed, guarded and model-upgraded. |
 | Page has a focal point | **done** | `src/components/next/session.tsx`, `src/components/next/signals.tsx` | 13 Aug rebuild. The page was four raised cards of equal weight with the load — the number the tab exists for — at 19 pt and third from the top. Now: exactly ONE raised surface (the first lift of the session), its load at 30 pt in the reading face, and the engine's lever above it as a filled pill. The rest of the session is plain rows on paper; "standing still" and "moving" (one table split in two, identical row shape) became a single horizontally-scrolling tile strip. |
 | Split preview: any day of the athlete's own split, not just the one due | **done** | `src/lib/db/strip.ts` (`planStripFor`), `src/lib/db/brief.ts` (`planDayLines`, `enrichLines`), `src/lib/next/sections.ts` (`sessionRowsOf`), `src/components/next/split-chips.tsx` | 13 Aug. `computePlanStrip` was split so ONE function progresses a named day-template; the preview therefore cannot state a load the real strip would not. Chips appear only with ≥2 plan days. **Selecting one writes nothing and does not move which day is due** — `setPlanDayChoice` stays the session-start card's job (§8.2) — and the due day carries a blue dot wherever it sits, so a preview can never be mistaken for the real thing. The ghost sentence is deliberately not passed to a preview (it belongs to the session actually due). A previewed day with no logged history says so instead of rendering an empty card. |
-| Save a session as a split day from Today | **done** | `src/components/save-split.tsx`, mounted in `src/components/session-summary-sheet.tsx`; `src/lib/funnel.ts` (`markSplitDaySaved`, `split_days_saved`) | 13 Aug. A split day could only be authored in a blank editor under You, which is the wrong end of the app — the session was already written and read back. The summary sheet (resting pill → tap) now offers "Save as a split day": `suggestSplitLabel` proposes the name, the field is editable, and **nothing is written until Save**. It stores the MOVEMENT NAMES only, one per line, in performed order — no loads, no reps, because `computePlanStrip` works those out from real history and a baked-in number would be a second, staler source. Below 2 movements it renders nothing; a session with ≥50 % exercise overlap with an existing plan day says "This is your Push day" and offers nothing, so the rotation cannot be corrupted by a duplicate. Keyed on the selected day so a saved-confirmation cannot follow a day-swipe. |
+| Save a session as a split day from Today | **done** | `src/components/save-split.tsx`, mounted in `src/components/session-summary-sheet.tsx`; `src/lib/funnel.ts` (`markSplitDaySaved`, `split_days_saved`) | 13 Aug. A split day could only be authored in a blank editor under You, which is the wrong end of the app — the session was already written and read back. The summary sheet (resting pill → tap **— the pill was removed 18 Aug, so this is currently unreachable; see the change log**) offers "Save as a split day": `suggestSplitLabel` proposes the name, the field is editable, and **nothing is written until Save**. It stores the MOVEMENT NAMES only, one per line, in performed order — no loads, no reps, because `computePlanStrip` works those out from real history and a baked-in number would be a second, staler source. Below 2 movements it renders nothing; a session with ≥50 % exercise overlap with an existing plan day says "This is your Push day" and offers nothing, so the rotation cannot be corrupted by a duplicate. Keyed on the selected day so a saved-confirmation cannot follow a day-swipe. |
 | Movement-pattern classifier (push / pull / legs) | **done, consumed by the capture block** | `src/lib/split/pattern.ts`, `src/lib/split/pattern.test.ts` (13 cases) | 13 Aug, step 1 of the owner's auto-split feature. Pure lexicon, zero I/O, `node --test`. Classifies by WORKING SET rather than by exercise (4 sets of bench vs 1 of curls is a push day, not an even split), and `unknown` sets stay in the denominator so a half-recognised session comes out LESS confident. **Contested movements — deadlift, RDL, upright row, pullover, olympic lifts, good morning — return `null` on purpose**; the ambiguity is real and gets resolved by the athlete at the confirm step, not by a cleverer lexicon. `suggestSplitLabel` returns `null` rather than a guess when the record does not support a name, and the capture field then opens empty. Consumed by `save-split.tsx`. **Still not offered automatically after Finish** — that ask, and its "two declines and never again" rule, is not built. |
 | Lever contrast on the filled pill | **measured** | `src/components/next/session.tsx` (`leverSignal`, `leverAttention`) | White on `signal` #547C00 = **4.93:1**; white on `attention` #B45309 = **5.02:1**. Both clear AA for normal text at the label's 10.5 pt bold. The August rejection of a filled chip was of green text on a green *wash* (4.33:1) — a different measurement. The load itself stays ink. |
 | Answers: what happened, what is improving/repeating, what is relevant next | **done** | `src/lib/db/brief.ts`, `src/app/(tabs)/next.tsx` | Blocks disappear when they have nothing true to say. "What happened" is now answered first, in the lede. |
@@ -771,8 +813,197 @@ owner's key, owner's run).
 
 ---
 
+## Onboarding polish + the Today session flow (13 Aug 2026) — what shipped, and what is not verified
+
+Against `docs/spec/onboarding-today-v2.md`, sections A–F.
+
+### Files
+
+| §  | What | Files |
+|----|------|-------|
+| A | Static, manifest-placed illustrations | `components/onboarding/illustration-layout.ts` (new), `illustrations.ts`, `IllustrationSlot.tsx`, `tokens.ts`, `config.ts`, `band.ts` (new), `app/paywall.tsx` |
+| B | Keyboard-driven band transition | `components/onboarding/band.ts` (new), `OnboardingScreen.tsx` |
+| C | The Today paper field | `lib/paper-field.ts` (new), `components/paper-field.tsx` (new), `app/(tabs)/today.tsx` |
+| D | Labelled start affordance + picker | `lib/session-options.ts` (new), `lib/db/planned.ts` (new), `components/session-picker-sheet.tsx` (new), `session-start.tsx`, `bottom-toolbar.tsx`, `app/(tabs)/today.tsx` |
+| E | Planned sets and progression | `lib/planned-session.ts` (new), `components/planned-checklist.tsx` (new), `state/session-store.ts`, `lib/db/planned.ts` |
+| F | Constraints | nothing under `lib/parse/`, `lib/plan/prescribe.ts`, `lib/predict/`, `app/(tabs)/next.tsx` or `components/next/` was touched |
+
+### Decisions recorded so they are not silently re-litigated
+
+- **The mascot does not move at all.** The float-and-breathe loop is deleted, its tokens with
+  it, and a `video` registry entry now renders its POSTER — an animated illustration is a loop
+  by another name. `no-loop.test.ts` fails the build if any looping primitive returns to the
+  onboarding directories.
+- **Every manifest value is neutral, and that is a finding** (corrected on the owner's screen
+  recording, 14 Aug 2026). Offsets are zero because the drawings are exported trimmed to their
+  own alpha bounding box, so the file's centre IS the artwork's centre. Scales are 1 because the
+  first pass scaled the two drawings wider than the band (`experience` 1.25, `key-lift` 1.33) up
+  to band height — and on a 430 pt device `key-lift`'s plates were **cut off flat by both screen
+  edges**: the cap had been derived on a 393 pt phone, and screen ÷ text column shrinks as
+  phones get wider (1.147 → 1.139 → 1.126). `MAX_SAFE_SCALE` now names that wall and the test
+  enforces it. The premise was also thin — those two frames hold three figures and a loaded bar,
+  so scaling the frame does not make the FIGURE match its neighbour.
+- **A screen that will never have artwork reserves nothing.** `building` and `founder-note`
+  shipped in the recording with the slot's "asset missing" placeholder — a large empty box with
+  their own slug printed in it — and a third of the window held above their content. The slot
+  now distinguishes "no illustration, ever" (`hasArtwork`) from "it has not landed yet", and the
+  band collapses to zero on the three typographic screens.
+- **The keyboard transition animates a layout property on purpose.** §4.3 bans it in general;
+  here the ban's own failure mode — a step change in layout — was the defect, and the band's
+  height now follows `useAnimatedKeyboard()` through one worklet, so it borrows the system's
+  duration and curve instead of guessing them.
+- **A worklet may call NOTHING this repository declares** (learned the hard way, 14 Aug 2026).
+  The first device run of the new onboarding screen threw `TypeError: clamp01 is not a
+  function`: `keyboardProgress` shared a `clamp01` helper, and a workletized declaration is not
+  initialised in the closure the UI runtime evaluates. `band.ts`'s three worklets are now
+  self-contained — the clamp is written out three times and the band's two heights are computed
+  on the render thread and passed in. Neither `tsc` nor Reanimated can catch this, so
+  `band.test.ts` reads the file and fails on any worklet that calls a module-scope function.
+- **Planned sets are excluded from every total structurally, not by filtering.** A planned row
+  has never been written into `raw_text`. Ticking a circle writes the line through `setNote`,
+  the path a typed line has always taken, so a tapped set and a written set are the same kind
+  of fact and no second ledger exists to disagree with the first.
+- **"Repeat last session" is not progressed.** The split days go through the engine; a repeat
+  repeats. A repeat that quietly adds 2.5 kg would be the app choosing a plan (§2 rule 3).
+- **The checklist writes kg**, the app's storage unit and the unit the plan strip already
+  displays. A lb-first note is a separate change to make everywhere at once.
+
+### Verified by the repository gates
+
+`npx tsc --noEmit` **pass** · `npm test` **387/387** (331 before; 56 new across six files) ·
+`npm run lint` **pass** · `/usr/bin/grep -rn withRepeat src/components/onboarding
+src/app/onboarding` → no matches.
+
+### What remains unverified
+
+- Nothing here has been rendered on a device. §A.4's "iPhone SE / 15 / Pro Max" is verified as
+  ARITHMETIC (`band.test.ts` runs all three window heights) — not as pixels, and not for
+  clipping or overlap at Dynamic Type 1.5×.
+- The paper field's "no visible banding" is a display property; the stops are asserted to be
+  warm paper a few units apart, but the ramp has not been looked at on hardware.
+- The keyboard transition's 60 fps claim is untested; the spec's fade fallback has not been
+  needed or built. The screen itself now RENDERS on device — the 14 Aug worklet crash above was
+  found and fixed there — but the transition has not been watched under a finger.
+- The picker and the checklist have not been exercised against a real split or a real
+  parse — only their pure decision layers have.
+- No prompt, schema or guard was touched, so no §9.4 evaluation is owed.
+
+---
+
 ## Change log
 
+- **18 Aug 2026** — **the resting pill is gone from Today** (owner, same pass as the plan
+  removal above). `SummaryPill` is unmounted from `app/(tabs)/today.tsx`: neither the live
+  "last set · Bench Press · 82.5 kg × 5 · 1:30" nor the settled "today · N sets · X kg" is
+  drawn any more, and the bottom of the screen belongs to the keyboard alone. **This is a
+  feature loss the owner accepted when choosing it, not an oversight:** the pill was the only
+  opener of `session-summary-sheet.tsx`, so the session summary, its share-card export, and
+  **"Save as a split day"** (`save-split.tsx`) are now unreachable from the app — the split-day
+  data path is untouched, it simply has no door. `summary-pill.tsx`, `session-summary-sheet.tsx`
+  and `save-split.tsx` stay in the tree with unmounted headers; restoring the pill restores all
+  three. Recorded as an amendment in product-direction §14.3. Gates: typecheck 0 · 404/404 ·
+  lint 0 on the touched files. **Unverified:** iOS export, device QA.
+- **18 Aug 2026 (second pass)** — **planned green comes back to Next** (owner:
+  *"add that planned somewhere near the top, and use green the way Progression does"*).
+  product-direction §4.2 has always said planned green is for *"a concrete future
+  prescription only, always with its label and reason"*, and Next — the screen that is
+  nothing but future prescriptions — was drawing all of them in ink. The fourth data
+  state (Planned) had been visible in the plan strip's green values on Today, and left
+  with it earlier the same day. Three changes, all inside §4.2 rather than amending it:
+  **(1)** a `Planned · Today · Push day` eyebrow in `signal` green above the card list,
+  replacing a muted eyebrow that only appeared when the split chips did NOT — so the
+  commonest case, a lifter with a split, had no statement anywhere that these loads are
+  unlifted; **(2)** the load itself in `signal` at 28 pt (4.93:1 — large text owes 3:1,
+  so it clears its floor and the normal-text 4.5:1 too), unit included, with the rep
+  scheme staying ink because it is how the load is arranged, not a second load;
+  **(3)** the lever drops its solid fill for **Progression's `shareChip`** — same
+  `radius.sm`, same 6/2 padding, same 11 pt reading face at 700. The TREATMENT travelled
+  from Progression, the HUE did not: `gain` may never stand in for `signal` (recorded is
+  not planned), so two new tokens carry it — `signalWash #F5F8EE` (**4.59:1**) and
+  `attentionWash #FBF5F0` (**4.64:1**). They are paler than the `gainWash`/`lossWash`
+  pair they echo because they have to be: `signal` and `attention` are lighter hues than
+  `gain`/`loss`, and at `gainWash` strength they measure **4.24:1** and fail §14.3.
+  Every figure above was computed, not estimated. Gates: typecheck **pass**, `npm test`
+  **404/404 pass**, lint **pass**. **Unverified:** device QA and the iOS export.
+- **18 Aug 2026** — **Next wears Progression's clothes** (owner: *"Next should be the same as
+  Progression, only performing its own function — I want the same consistency"*). The two tabs
+  had drifted into two design systems, and none of the six differences carried a meaning:
+  header (`title2` + right-hand dateline → `StubScreen` large title + ONE counted line), gutter
+  (`spacing.lg` → `spacing.xxl`), control (a horizontal ink-filled scroller → the wrapping
+  blue-wash pills), list (one 30 pt hero card + plain hairline rows → **one card per lift, all
+  equal**, staggered, single-open accordion, closing on a `Full history` opener), secondary
+  block (a horizontally-scrolling tile strip → eyebrow-with-count + hairline rows + one closing
+  line), and tail (a bordered card-shaped row → the quiet row + chevron). New shared control
+  `src/components/chip-row.tsx`, used by BOTH screens; `next/split-chips.tsx` and Progression's
+  inline sort row now only decide what goes in it. **A contrast fix rode along:** the selected
+  chip's label was `trained` blue on the 10% blue wash — **3.5:1**, under AA for a 13 pt caption
+  — and is now ink (15.6:1) with the wash and border carrying the blue, which as non-text marks
+  owe only 3:1. That changes Progression's chip too, deliberately: one control, one measurement.
+  The lever pill keeps its solid fill (white on `signal` 4.93:1, on `attention` 5.02:1) rather
+  than adopting Progression's washed chip, which at that wash strength would measure 4.24:1 and fail.
+  **Plumbing:** `PlanRow.scheme` (`plan/prescribe.ts`) and `BriefLine.loadKg`/`.scheme`
+  (`db/brief.ts`) carry the load and the rep scheme out as VALUES, so the card can set the
+  figure at 28 pt and the scheme under it without splitting `value` apart on screen (§7.7);
+  `SessionRow` gains `canonical`, `loadKg`, `scheme`, `beatsBest`. A line with no figure — a
+  ghost, cardio or bodyweight row — prints the whole prescription one size down rather than
+  guessing, and a line with no history at all drops to a counted "Also in this session" block.
+  Nothing a model touches changed, so no §9.4 evaluation is due. Gates: typecheck **pass**,
+  `npm test` **404/404 pass**, lint **pass**. **Unverified:** device QA (Dynamic Type ceiling,
+  VoiceOver order, Reduce Motion) and the iOS export.
+- **18 Aug 2026** — **the plan left Today** (owner). The read-only `PlanStrip` between the
+  header and the composer is unmounted: Next's brief already opens with the identical rows off
+  the identical `computePlanStrip` read (`Today · <day>`, `lib/db/brief.ts` → `lib/next/
+  sections.ts`), so Today was printing the same prescription its author lives one tab away —
+  and putting a list of what to DO on the page whose job is to record what happened. Today now
+  holds nothing between the header and the note. `components/session-start.tsx`, whose only job
+  was that slot (its other branch, the planned checklist, has been unreachable since the picker
+  went on 17 Aug), is **deleted**; `plan-strip.tsx` and `planned-checklist.tsx` stay in the tree
+  with unmounted headers so a way back is one line in `app/(tabs)/today.tsx`. The accessory
+  bar's plan button is untouched — the plan is still one tap into the note while writing.
+  Recorded as an amendment in product-direction §14.3. Gates: typecheck 0. **Unverified:**
+  device QA, and the full test/lint/export run.
+- **17 Aug 2026** — **the canvas is white** (owner). `color.bg` and `color.surface` are both
+  `#FFFFFF`, the hairline/divider/recessed greys lost their warm cast (`#D5D5D5`, `#E9E9E9`),
+  the Today canvas field is three neutral near-whites within four units of white
+  (`lib/paper-field.ts`: `PAPER` → `CANVAS`, `isPaperTone` → `isCanvasTone`), and the splash
+  background follows in `app.json` + the generated iOS colorset. The elevation model changed
+  with it and the comments say so: nothing is lighter than white, so a card is white on white
+  and its border and shadow are its whole edge — 55 of the 58 surface styles already carry a
+  border, and the three that do not (`aliases.tsx` alias rows, one `fix-sheet` pressed state,
+  the `WeightInput` selected segment) all still read on their separator or their recessed
+  container. Every ink was re-measured on the new canvas and every one GAINED contrast (ink
+  17.7:1, `textSecondary` 5.1:1, `textMuted` 3.6:1, `attention` 5.0:1, `gain` 5.4:1, `loss`
+  5.6:1, glyphs 3.9–6.4:1) — the ink-ladder contract holds unchanged. **Not touched:** the
+  Android adaptive-icon background and `scripts/build-icon.py` (brand art, not an app
+  background) and `scripts/build-legal-html.ts` (the hosted legal pages still render on paper).
+  Onboarding illustrations were checked rather than assumed — the bundled ones are transparent
+  PNGs, so nothing carries a baked paper rectangle onto the white flow. Gates: typecheck 0 ·
+  **404/404** · lint 0 · iOS export pass. **Unverified:** device QA — white on a real display,
+  and whether any surface the audit cleared still needs a stronger edge in daylight.
+- **17 Aug 2026** — **the "Start a session" pill is gone from Today** (owner), and with it the
+  one exception to "the furniture arrives with the record". An empty today is the blank page and
+  its placeholder, nothing else. `SessionStart` keeps only its two remaining states (planned
+  checklist / read-only plan strip); `session-picker-sheet.tsx` is now orphaned and
+  `plannedSession` is unreachable, both left in the tree rather than deleted so the owner can
+  decide. Recorded as an amendment in product-direction §14.3, which retires the 6 Aug §8.2
+  session-start question.
+- **14 Aug 2026** — the owner reports the onboarding animations not running on device. Rather
+  than chase it blind, the LAYOUT was made independent of them: the illustration band drops from
+  ~a third of the window to ~a quarter (0.36/0.33/0.28 → 0.26/0.24/0.20) and the keyboard band
+  gives up a third instead of well over half (0.42 → 0.68 of full), so every typed screen fits
+  with the keyboard up even if the transition never plays. The name field and the bodyweight
+  card were reworked in the same pass (focus wash, clear button, hint only while empty, kg/lb as
+  one segmented control). **Still unknown why the animations do not run** — the first thing to
+  rule out is Reduce Motion, which by design disables every entrance in the flow.
+- **14 Aug 2026** — device pass on the owner's screen recording of the funnel: `key-lift`
+  un-clipped and every manifest scale returned to 1 behind a `MAX_SAFE_SCALE` test, the
+  placeholder box removed from the three typographic screens (band collapsed with it), the
+  `clamp01` worklet crash fixed, and three subtexts rewritten (`gender`, `tracker`,
+  `bodyweight`) that read as fragments or wrong idiom on screen.
+- **13 Aug 2026** — `docs/spec/onboarding-today-v2.md` A–F: static manifest-placed onboarding
+  illustrations, the keyboard-driven band, the Today paper field, the labelled "Start a
+  session" pill with its picker sheet, and the planned-set checklist that writes into the note.
+  See the section above.
 - **29 Jul 2026** — first audit of the working tree against V5.1. Created this file.
 - **29 Jul 2026** — implementation-order step 1: real store billing, entitlement policy with
   offline grace, account attachment, purchase, restore, manage, store-sourced trial lifecycle,

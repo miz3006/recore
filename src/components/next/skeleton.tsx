@@ -22,11 +22,11 @@ import { color, moderateScale, radius, shadow, spacing } from '@/lib/theme';
  * as "nothing here"; the skeleton reads as "reading your record", which is
  * what is actually happening.
  *
- * It mirrors the REAL page's geometry (rebuilt 13 Aug with it): two lede lines
- * on bare paper, an eyebrow, then the hero card with a short label, a name, a
- * lever and one wide load bar. Nothing jumps when the content replaces it, and
- * it never mimics rows it cannot promise — a skeleton that draws five rows and
- * resolves into two has lied about the record.
+ * It mirrors the REAL page's geometry (rebuilt 18 Aug with it): two lede lines
+ * on bare paper, a row of chips, then TWO lift cards — a name, a lever, a
+ * reading and the card's floor line. Two, because a session with only one lift
+ * is rare and a skeleton that draws five rows and resolves into two has lied
+ * about the record; two is the fewest a list can be and still look like one.
  *
  * Reduce Motion holds the bars at their mid opacity. §1.1's rule is absolute
  * and a shimmer is exactly the kind of idle repetition it exists to stop.
@@ -53,15 +53,31 @@ export function NextSkeleton() {
 
       <View style={styles.gap} />
 
-      <Bar width="28%" height={11} p={p} />
-      <View style={styles.card}>
-        <Bar width="30%" height={10} p={p} />
-        <Bar width="58%" height={20} p={p} spaced />
-        <Bar width="34%" height={16} p={p} spaced />
-        {/* The load — the tallest bar on the page, because it is the tallest
-            thing on the page it stands in for. */}
-        <Bar width="76%" height={28} p={p} spaced />
+      {/* The chip row. */}
+      <Bar width="62%" height={34} p={p} />
+
+      {/* Two cards, in the shape a lift card actually resolves into: the name
+          and its lever on one line, the reading right of them, the floor line
+          under both. */}
+      <SkeletonCard p={p} />
+      <SkeletonCard p={p} />
+    </View>
+  );
+}
+
+function SkeletonCard({ p }: { p: SharedValue<number> }) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardTop}>
+        <View style={styles.cardName}>
+          <Bar width="72%" height={17} p={p} />
+          <Bar width="46%" height={11} p={p} spaced />
+        </View>
+        {/* The load — the tallest bar on the card, because it is the tallest
+            thing on the card it stands in for. */}
+        <Bar width={moderateScale(72)} height={28} p={p} />
       </View>
+      <Bar width="54%" height={11} p={p} spaced />
     </View>
   );
 }
@@ -93,15 +109,25 @@ function Bar({
 }
 
 const styles = StyleSheet.create({
+  // A real lift card's own metrics — Progression's, and now Next's.
   card: {
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.divider,
-    borderRadius: radius.xxl,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl,
-    ...shadow.raised,
+    borderRadius: radius.lg,
+    borderCurve: 'continuous',
+    padding: spacing.lg,
+    ...shadow.card,
+  },
+  cardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  cardName: {
+    flex: 1,
   },
   gap: {
     height: spacing.xl,

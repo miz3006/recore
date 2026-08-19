@@ -23,7 +23,7 @@ import {
   type,
 } from '@/lib/theme';
 
-import { BLUE, INK_CARD, ROW_RADIUS } from './tokens';
+import { BLUE, INK_CARD, RISE_PX, ROW_RADIUS } from './tokens';
 
 /**
  * The one animated promise in the funnel (Claude Design canvas, 13 Aug 2026 —
@@ -59,6 +59,17 @@ import { BLUE, INK_CARD, ROW_RADIUS } from './tokens';
  * UI thread, no layout property animated (§4.3). Reduce Motion shows the
  * finished record with no reveal at all, which is the whole point of the screen
  * anyway. Tapping replays it; it never loops on its own.
+ *
+ * This is the ONE animation in the funnel allowed past the 300 ms ceiling the
+ * rest of the flow keeps (the wipe alone is 500 ms, and the sequence runs about
+ * a second). The ceiling governs UI — feedback, state, arrival — and this is
+ * not UI: it is the CONTENT of the screen, a demonstration whose duration is
+ * the time it takes to read one line. Shortened to 250 ms there would be
+ * nothing to see, which is the same as deleting the screen.
+ *
+ * The cover's `scaleX` is safe here for the reason `ProgressRail`'s was not: it
+ * carries no radius of its own, the rounded clip belongs to `rowClip` around
+ * it, and a wipe's edge is meant to be a straight vertical line.
  */
 
 const QUOTE = 'bench 100kg 5,5,4';
@@ -89,22 +100,22 @@ function Reveal({ reduce }: { reduce: boolean }) {
 
   useEffect(() => {
     if (reduce) return;
-    quote.value = withTiming(1, { duration: DUR.slow, easing: EASE.emphasized });
-    arrow.value = withDelay(400, withTiming(1, { duration: DUR.base, easing: EASE.emphasized }));
-    wipe.value = withDelay(550, withTiming(1, { duration: 500, easing: EASE.emphasized }));
+    quote.set(withTiming(1, { duration: DUR.slow, easing: EASE.emphasized }));
+    arrow.set(withDelay(400, withTiming(1, { duration: DUR.base, easing: EASE.emphasized })));
+    wipe.set(withDelay(550, withTiming(1, { duration: 500, easing: EASE.emphasized })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const quoteStyle = useAnimatedStyle(() => ({
-    opacity: quote.value,
-    transform: [{ translateY: (1 - quote.value) * 12 }],
+    opacity: quote.get(),
+    transform: [{ translateY: (1 - quote.get()) * RISE_PX }],
   }));
-  const arrowStyle = useAnimatedStyle(() => ({ opacity: arrow.value }));
+  const arrowStyle = useAnimatedStyle(() => ({ opacity: arrow.get() }));
   // The cover retreats to its own right edge, so the record appears to be
   // written from the left rather than to fade in all at once.
   const coverStyle = useAnimatedStyle(() => ({
-    transform: [{ scaleX: 1 - wipe.value }],
-    opacity: wipe.value < 1 ? 1 : 0,
+    transform: [{ scaleX: 1 - wipe.get() }],
+    opacity: wipe.get() < 1 ? 1 : 0,
   }));
 
   return (
@@ -167,6 +178,7 @@ const styles = StyleSheet.create({
   },
   rowClip: {
     borderRadius: ROW_RADIUS,
+    borderCurve: 'continuous',
     overflow: 'hidden',
   },
   row: {
@@ -176,6 +188,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     backgroundColor: INK_CARD,
     borderRadius: ROW_RADIUS,
+    borderCurve: 'continuous',
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.lg,
   },
@@ -202,7 +215,7 @@ const styles = StyleSheet.create({
   },
   cover: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     transformOrigin: 'right',
   },
 });

@@ -79,6 +79,12 @@ export interface MoveLabel {
 export interface SessionRow {
   key: string;
   name: string;
+  /** The lift as the RECORD spells it, or null when the name never resolved.
+   * It is what the card's "Full history" opener hands to the exercise sheet —
+   * and a row that has no canonical name has no history to open, so it shows no
+   * opener rather than guessing at one (the same rule Progression's cards
+   * follow). */
+  canonical: string | null;
   /** Which lever the engine moved, in words. Null on the ghost path. */
   move: MoveLabel | null;
   bestKg: number | null;
@@ -86,6 +92,22 @@ export interface SessionRow {
   last: string | null;
   /** "3×12 120 kg" — the not-yet-lifted number. Green, and only here. */
   prescription: string | null;
+  /**
+   * The two halves of `prescription`, as VALUES rather than as a sentence —
+   * the load at the top of the card's type scale and the scheme one step under
+   * it, the way Progression sets a lift's latest reading and its delta.
+   *
+   * Both are null on the ghost path (which stores text and nothing else) and on
+   * cardio or bodyweight lines (which have no load). The card falls back to
+   * printing the whole of `prescription` there, one size down: a row that
+   * cannot fill the big slot honestly leaves it empty rather than inventing a
+   * figure to put in it.
+   */
+  loadKg: number | null;
+  scheme: string | null;
+  /** True when this load would out-lift the lift's own heaviest counted set.
+   * The stakes of the row, as arithmetic — never a badge, never a reward. */
+  beatsBest: boolean;
   /** The engine's reason, revealed on tap. */
   why: string | null;
   /** The plateau this lift is sitting on, when it has one. */
@@ -312,17 +334,27 @@ export function sessionRowsOf(
   stalls: Brief['stalls'],
   sentence: string | null,
 ): { rows: SessionRow[]; leftover: string | null } {
-  const rawRows: SessionRow[] = lines.map((l) => ({
-    key: keyOf(l.canonical ?? l.name),
-    name: l.name,
-    move: moveLabel(l.move),
-    bestKg: l.bestKg ?? null,
-    last: l.last ?? null,
-    prescription: l.value,
-    why: l.why,
-    watch: null,
-    note: l.note ?? null,
-  }));
+  const rawRows: SessionRow[] = lines.map((l) => {
+    const loadKg = l.loadKg ?? null;
+    const bestKg = l.bestKg ?? null;
+    return {
+      key: keyOf(l.canonical ?? l.name),
+      name: l.name,
+      canonical: l.canonical ?? null,
+      move: moveLabel(l.move),
+      bestKg,
+      last: l.last ?? null,
+      prescription: l.value,
+      loadKg,
+      scheme: l.scheme ?? null,
+      // Strictly greater: matching your best is not beating it, and a row that
+      // claimed it would be the screen flattering the record (§15).
+      beatsBest: loadKg != null && bestKg != null && loadKg > bestKg,
+      why: l.why,
+      watch: null,
+      note: l.note ?? null,
+    };
+  });
 
   // A plateau on a claimed lift becomes that row's WATCH line. A stall with no
   // backoff load has nothing to warn about, so it never becomes a WATCH.

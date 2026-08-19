@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { searchExercises } from '@/lib/db/exercises';
 import { tap, tapMedium } from '@/lib/haptics';
@@ -147,7 +146,6 @@ function setOf(d: SetDraft, unit: WeightUnit): ParsedSet {
 }
 
 export function FixSheet() {
-  const insets = useSafeAreaInsets();
   const userId = useSession((s) => s.userId);
   const fixTarget = useSession((s) => s.fixTarget);
   const closeFixSheet = useSession((s) => s.closeFixSheet);
@@ -376,7 +374,7 @@ export function FixSheet() {
     <BottomSheet
       visible={fixTarget !== null}
       onClose={close}
-      sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+      sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
       <Text style={styles.title} maxFontSizeMultiplier={MAX_FONT_SCALE}>
         Fix reading
       </Text>
@@ -861,10 +859,11 @@ const styles = StyleSheet.create({
   },
   quoteCard: {
     marginTop: spacing.sm + 2,
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 1,
   },
@@ -916,6 +915,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     paddingLeft: spacing.md + 2,
     paddingRight: spacing.sm,
     gap: spacing.sm,
@@ -942,6 +942,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 1,
   },
@@ -954,6 +955,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     paddingHorizontal: spacing.sm + 2,
     paddingVertical: spacing.sm,
     marginTop: spacing.sm,
@@ -977,6 +979,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.sm - 1,
+    borderCurve: 'continuous',
   },
   dropSetGlyph: {
     color: color.textMuted,
@@ -1008,6 +1011,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.sm - 1,
+    borderCurve: 'continuous',
     backgroundColor: color.surface,
     paddingHorizontal: spacing.xs + 1,
     paddingVertical: spacing.xs + 2,
@@ -1039,11 +1043,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.sm - 1,
+    borderCurve: 'continuous',
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepBtnPressed: {
-    backgroundColor: color.surface,
+    opacity: 0.6,
   },
   stepGlyph: {
     color: color.textPrimary,
@@ -1056,6 +1061,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.sm - 1,
+    borderCurve: 'continuous',
   },
   clearGlyph: {
     color: color.textMuted,
@@ -1073,6 +1079,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     minHeight: moderateScale(44),
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.border,
     borderStyle: 'dashed',
@@ -1080,7 +1087,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addSetPressed: {
-    backgroundColor: color.surfaceHigh,
+    opacity: 0.6,
   },
   addSetText: {
     ...type.caption,
@@ -1100,6 +1107,7 @@ const styles = StyleSheet.create({
     width: moderateScale(20),
     height: moderateScale(20),
     borderRadius: moderateScale(10),
+    borderCurve: 'continuous',
     borderWidth: 1.5,
     borderColor: color.textMuted,
     marginTop: 1,
@@ -1131,7 +1139,8 @@ const styles = StyleSheet.create({
     minHeight: CONTROL_HEIGHT,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: color.accent,
+    borderCurve: 'continuous',
+    backgroundColor: color.ctaFill,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1139,7 +1148,7 @@ const styles = StyleSheet.create({
     opacity: ink.disabled,
   },
   saveText: {
-    color: color.bg,
+    color: color.onInk,
     fontSize: moderateScale(16),
     fontWeight: '600',
   },
@@ -1148,6 +1157,7 @@ const styles = StyleSheet.create({
     minHeight: moderateScale(44),
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.border,
     alignItems: 'center',

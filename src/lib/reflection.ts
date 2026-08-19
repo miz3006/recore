@@ -45,8 +45,109 @@ export const REFLECTION_PROMPTS: readonly string[] = [
   'Anything that affected the session?',
 ] as const;
 
-/** The neutral placeholder before any prompt is chosen. */
-export const REFLECTION_PLACEHOLDER = REFLECTION_PROMPTS[0]!;
+/**
+ * The neutral placeholder in the check-in's own field.
+ *
+ * It used to be the first §8.1 prompt, and the chips under the field re-pointed
+ * it at the others. Since the owner's 17 Aug 2026 ruling those chips ANSWER
+ * instead of suggesting (see `REFLECTION_TAGS`), so the field asks the widest
+ * question it can and gets out of the way. The four prompts above stay the
+ * spec'd vocabulary for anywhere that still suggests rather than answers.
+ */
+export const REFLECTION_PLACEHOLDER = 'Anything about today…';
+
+/**
+ * THE PRESET ANSWERS (owner, 17 Aug 2026) — the chips under the field.
+ *
+ * This reverses the older ruling directly above `REFLECTION_PROMPTS`, and the
+ * reversal is the owner's: tapping one now WRITES that phrase into the stored
+ * reflection, multi-select, instead of merely re-pointing a placeholder. The
+ * reason is that a placeholder tap changed nothing a person could see, and the
+ * commonest three things worth remembering about a session are the three things
+ * nobody wants to type one-handed on the gym floor.
+ *
+ * What keeps it honest is what did NOT change: nothing is preselected, the app
+ * never infers one from the record, every chip is togglable off, and the text a
+ * chip contributes is visible on the sheet the whole time it is armed. The
+ * athlete still decides every word that gets stored — they just get three of
+ * them as buttons.
+ *
+ * They are stored INSIDE the reflection column, as its first line, rather than
+ * in a column of their own: a reflection is prose, and "Slept badly · Short on
+ * time" is prose the person chose. No migration, no second source of truth, and
+ * export/sync carry them for free. `splitReflection` reads them back out.
+ */
+export const REFLECTION_TAGS: readonly string[] = [
+  'Slept badly',
+  'Felt strong',
+  'Short on time',
+] as const;
+
+/** What joins two armed chips on the stored line. The app's own separator, so
+ * the split is unambiguous against ordinary prose. */
+const TAG_SEP = ' · ';
+
+/** The chosen chips in CANONICAL order (the order they appear on the sheet),
+ * ignoring anything not on the list. */
+export function reflectionTagLine(tags: readonly string[]): string {
+  return REFLECTION_TAGS.filter((t) => tags.includes(t)).join(TAG_SEP);
+}
+
+/**
+ * How many characters the free-text field may still take. The stored value is
+ * the tag line PLUS the typed words, and `MAX_REFLECTION_CHARS` is a promise
+ * about the whole thing, so arming a chip costs the field its own length.
+ */
+export function reflectionRoomFor(tags: readonly string[]): number {
+  const line = reflectionTagLine(tags);
+  return line.length === 0 ? MAX_REFLECTION_CHARS : MAX_REFLECTION_CHARS - line.length - 2;
+}
+
+/**
+ * One stored reflection from the two things the sheet holds: the armed chips
+ * and the typed words. Null when there is neither — skipping stays free.
+ */
+export function composeReflection(tags: readonly string[], text: string): string | null {
+  const line = reflectionTagLine(tags);
+  const body = text.trim();
+  if (line.length === 0) return normalizeReflection(body);
+  const composed = body.length > 0 ? `${line}\n\n${body}` : line;
+  if (composed.length <= MAX_REFLECTION_CHARS) return composed;
+  // Over the limit, one of the two has to go, and it is never the athlete's.
+  // The chips are the app's contribution; the words are the record.
+  return normalizeReflection(body);
+}
+
+/**
+ * The inverse, so re-opening the sheet shows the chips armed and the words
+ * intact. A first line made ENTIRELY of known tags is a tag line; anything else
+ * is prose and stays in the field untouched — including, deliberately, a
+ * reflection someone typed as literally "Felt strong", which round-trips to the
+ * identical stored value either way.
+ */
+export function splitReflection(stored: string | null | undefined): {
+  tags: string[];
+  text: string;
+} {
+  const value = typeof stored === 'string' ? stored : '';
+  if (value.trim().length === 0) return { tags: [], text: '' };
+
+  const nl = value.indexOf('\n');
+  const head = (nl === -1 ? value : value.slice(0, nl)).trim();
+  const parts = head
+    .split(TAG_SEP)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  const isTagLine = parts.length > 0 && parts.every((p) => REFLECTION_TAGS.includes(p));
+  if (!isTagLine) return { tags: [], text: value };
+
+  const rest = nl === -1 ? '' : value.slice(nl + 1);
+  return {
+    tags: REFLECTION_TAGS.filter((t) => parts.includes(t)),
+    text: rest.replace(/^\s+/, ''),
+  };
+}
 
 /**
  * Clean a typed reflection for storage, or return null when there is nothing to

@@ -3,8 +3,7 @@
 **Version 5.1 · 29 July 2026 · Supersedes V5 and V4 wherever they conflict.**
 
 Recore is an iOS-first, paid training companion for people who want to see and understand their
-progress. Android comes after the iOS product has proven retention and purchase flow. It is a
-calm, personal record that gets more useful as a person trains — not a generic AI fitness app.
+progress. It is a calm, personal record that gets more useful as a person trains — not a generic AI fitness app.
 
 ---
 
@@ -17,10 +16,6 @@ calm, personal record that gets more useful as a person trains — not a generic
 | **docs/implementation-status.md** | What is actually live. Update it in the same change as any feature work. |
 | **V4 document** | Repository inventory, data guarantees, and test gates only. Not a product authority. |
 
-When code, V4, and V5.1 disagree: implement V5.1, then update implementation-status in the same
-change. Do not treat this file or the product direction as a claim that a feature already exists
-in code — verify route, component, state, billing behaviour, and tests before calling anything
-complete.
 
 **Read the product direction section that matches your task before touching that surface:**
 
@@ -116,13 +111,3 @@ Do not redesign every surface in one change. Build and verify in this order:
 No step authorises an unrelated redesign. Each step updates implementation-status and passes the
 repository gates before the next begins.
 
-## 7. Change log
-
-- **5.1 (29 Jul 2026):** Split the monolithic V5 file into this agent guide plus
-  docs/product-direction.md. Added: lapsed-state screen spec (§2.2), tracker-import fast path in
-  the funnel (§2.1), honest annual preselection rules (§6), onboarding screen-removal criteria
-  (§5), guard monitoring thresholds (§9.3), owner-run evaluation definition (§9.4), weekly recap
-  as the single re-engagement mechanism (§12.1), measurable targets and action thresholds (§13),
-  rule 8 (ask before adding rules), and analytics as part of definition of done.
-- **5 (29 Jul 2026):** Product direction superseding V4 for intent; V4 demoted to repository
-  inventory.

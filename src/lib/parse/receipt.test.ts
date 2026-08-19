@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   buildReceipt,
   lastSetOf,
+  lastSetTextOf,
   matchPlanIndex,
   nameKey,
   namesMatch,
@@ -347,4 +348,39 @@ test('nothing counted, nothing to report', () => {
   );
   assert.equal(lastSetOf(warmupOnly), null);
   assert.equal(lastSetOf(buildReceipt(resultOf(), [])), null);
+});
+
+test('each lift carries its OWN last set, for the end-of-session check-in', () => {
+  const receipt = buildReceipt(
+    resultOf(
+      item('Incline DB Press', 0, [
+        set({ kind: 'warmup', reps: 10, weight_kg: 20 }),
+        set({ reps: 10, weight_kg: 40 }),
+        set({ reps: 8, weight_kg: 40 }),
+      ]),
+      item('Cable Fly', 1, [set({ reps: 12, weight_kg: 15 })]),
+    ),
+    [],
+  );
+  // The set the feeling belongs to is the LAST working one, not the top set
+  // and not an average.
+  assert.equal(lastSetTextOf(receipt.rows[0]!), '40 kg × 8');
+  assert.equal(lastSetTextOf(receipt.rows[1]!), '15 kg × 12');
+  // The session-wide reading is the same function, read from the bottom up.
+  assert.deepEqual(lastSetOf(receipt), { exercise: 'Cable Fly', reading: '15 kg × 12' });
+});
+
+test('a lift with nothing counted prints no last set at all', () => {
+  // Warm-ups only: the row is a record, but there is no working set for the
+  // check-in to ask about, so it prints nothing rather than a warm-up.
+  assert.equal(
+    lastSetTextOf({
+      line: 0,
+      exercise: 'Bench Press',
+      setText: '40 kg × 10',
+      table: setTableOf([set({ kind: 'warmup', reps: 10, weight_kg: 40 })]),
+      signal: null,
+    }),
+    null,
+  );
 });

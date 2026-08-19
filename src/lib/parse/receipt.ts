@@ -131,15 +131,34 @@ export interface LastSet {
   reading: string;
 }
 
+/**
+ * ONE row's last counted set, as text: "40 kg × 8", "16", "5 km", "1:30".
+ *
+ * The end-of-session check-in prints it beside each lift, because "how did that
+ * feel?" is unanswerable without the thing it is asking about, and the LAST set
+ * is the one the feeling belongs to — the eighth rep of the fourth set is what
+ * a person remembers, not the average of the four. Warm-ups and not-done sets
+ * are excluded here for the same reason they are excluded from the totals.
+ *
+ * Null when the row has nothing counted, or nothing readable to print.
+ */
+export function lastSetTextOf(row: ReceiptRow): string | null {
+  const counted = row.table.rows.filter((r) => r.counted);
+  const set = counted[counted.length - 1];
+  if (!set) return null;
+
+  const load =
+    set.load && set.load !== 'bw'
+      ? `${set.load}${row.table.loadHead === 'KG' ? ' kg' : ''}`
+      : '';
+  const reading = load && set.work ? `${load} × ${set.work}` : load || set.work;
+  return reading.length > 0 ? reading : null;
+}
+
 export function lastSetOf(receipt: ReceiptData): LastSet | null {
   for (let i = receipt.rows.length - 1; i >= 0; i--) {
     const row = receipt.rows[i]!;
-    const counted = row.table.rows.filter((r) => r.counted);
-    const set = counted[counted.length - 1];
-    if (!set) continue;
-
-    const load = set.load && set.load !== 'bw' ? `${set.load}${row.table.loadHead === 'KG' ? ' kg' : ''}` : '';
-    const reading = load && set.work ? `${load} × ${set.work}` : load || set.work;
+    const reading = lastSetTextOf(row);
     if (!reading) continue;
     return { exercise: row.exercise, reading };
   }

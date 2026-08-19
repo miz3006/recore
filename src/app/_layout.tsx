@@ -16,7 +16,8 @@ void SplashScreen.preventAutoHideAsync();
 
 /**
  * Root layout. Recore is a warm-paper, monochrome, light-only app ("Recore
- * Light"), so the canvas is painted `color.bg` everywhere and the status bar
+ * Light"), so the canvas is painted `color.bg` — the grouped grey — everywhere
+ * a screen does not override it with the white `surface`, and the status bar
  * carries dark content.
  *
  * FUNNEL (2026-07-23 conversion redesign): the account is NO LONGER the front

@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   getAllTimePRs,
@@ -53,7 +52,6 @@ function setValue(s: WorkoutSet): string {
 }
 
 export function SessionSheet() {
-  const insets = useSafeAreaInsets();
   const userId = useSession((s) => s.userId);
   const sheetSession = useSession((s) => s.sheetSession);
   const closeSessionSheet = useSession((s) => s.closeSessionSheet);
@@ -84,7 +82,7 @@ export function SessionSheet() {
     <BottomSheet
       visible={sheetSession !== null}
       onClose={close}
-      sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+      sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
       <View style={styles.header}>
         <View style={styles.namePill}>
           <Text style={styles.nameText} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -179,7 +177,7 @@ export function SessionSheet() {
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     paddingHorizontal: spacing.xl,
     maxHeight: '90%',
   },

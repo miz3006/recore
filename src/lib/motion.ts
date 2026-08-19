@@ -12,22 +12,58 @@ import { Easing, type WithSpringConfig, type WithTimingConfig } from 'react-nati
  * earn a flourish (PR, finish, timer).
  */
 
-/** Durations in ms. Reveals use `base`; micro-feedback uses `fast`. */
+/**
+ * Durations in ms.
+ *
+ * `press` is the ceiling for something touched dozens of times a session — the
+ * feedback has to be near-imperceptible or it becomes a tax on every tap.
+ * Reveals use `base`; a value changing in place uses `fast`.
+ */
 export const DUR = {
+  press: 120,
   fast: 160,
   base: 240,
   slow: 380,
   xslow: 560,
 } as const;
 
-/** Easings. `emphasized` is a smooth expo-out — the confident, expensive glide. */
+/**
+ * Easings.
+ *
+ * **`emphasized` is THE ease-out of the app** — a strong expo-out, and the
+ * curve every entrance, exit and press uses. It is deliberately steeper than
+ * `Easing.out(Easing.cubic)`: the built-in eases are weak enough that motion
+ * driven by them reads as sluggish rather than as calm.
+ *
+ * `standard` is the gentler cubic, kept for a value settling IN PLACE (a fill
+ * sweeping, a swap fading) where a steep curve would look like a snap.
+ *
+ * There is no ease-IN. It starts slow, which delays the exact moment the user
+ * is watching; `inOut` is for something moving ACROSS the screen, which is the
+ * only case where the deceleration at both ends is the truth.
+ */
 export const EASE = {
   standard: Easing.out(Easing.cubic),
   emphasized: Easing.bezier(0.16, 1, 0.3, 1),
   inOut: Easing.inOut(Easing.cubic),
 } as const;
 
-/** Springs. `press` for tactile scale, `soft` for sheets/large surfaces. */
+/**
+ * How far a pressable dips under a finger. Three per cent — enough that the
+ * label and icons travel with the surface (which is what makes it read as
+ * physical) and small enough that it never looks like a separate animation.
+ */
+export const PRESS_SCALE = 0.97;
+
+/**
+ * Springs — for anything a FINGER was on, because a spring carries velocity
+ * through an interruption and a timing curve restarts.
+ *
+ * `press` is no longer used for press feedback (that is `DUR.press` on the
+ * emphasized ease: at 120 ms a spring's settle is the only part you can see,
+ * and `press` is underdamped enough — dampingRatio ~0.58 — to wobble on
+ * release). It stays for callers that genuinely bounce.
+ */
 export const SPRING = {
   press: { mass: 0.5, damping: 16, stiffness: 380 } satisfies WithSpringConfig,
   snappy: { mass: 0.8, damping: 18, stiffness: 210 } satisfies WithSpringConfig,

@@ -337,3 +337,151 @@ export function rowCountBucket(rows: number): string {
   if (rows < 5000) return '1000-4999';
   return '5000+';
 }
+
+// --- the v3 flow's derived numbers (design import, 18 August 2026) ---------------------
+
+/**
+ * THE COMMITMENT HORIZON. Twelve weeks is a constant of the design, not an
+ * answer: the person chooses the DAYS and the horizon stays the same for
+ * everyone, which is what lets the commitment screen and the projection screen
+ * agree on one number without asking a second question.
+ */
+export const COMMIT_WEEKS = 12;
+
+/** Days a week assumed when the day picker was left empty. */
+export const DEFAULT_DAYS_PER_WEEK = 4;
+
+/** A week's shape as a count, with the fallback applied once, here. */
+export function daysPerWeek(mask: number): number {
+  const n = dayCount(mask);
+  return n > 0 ? n : DEFAULT_DAYS_PER_WEEK;
+}
+
+/**
+ * Sessions between now and the end of the horizon — the commitment screen's
+ * big number. Arithmetic on the person's own answer, never an estimate: §2
+ * rule 3 keeps every number in code, and this is the whole of it.
+ *
+ * IT IS NOT A TARGET (§11). Nothing downstream counts a missed one.
+ */
+export function committedSessions(mask: number): number {
+  return COMMIT_WEEKS * daysPerWeek(mask);
+}
+
+/**
+ * The share of a starting load a projection adds over `COMMIT_WEEKS`.
+ *
+ * These are the design's own numbers read back out of its mock: 60 kg to 72.5
+ * and 90 kg to 107.5 for a 1-3-year lifter is 20 % of the start, rounded to the
+ * plate. The ladder below keeps that case exact and says the one true thing
+ * about the other two — a beginner's first year moves faster than a fifth one.
+ *
+ * A PROJECTION IS NOT A PROMISE and nothing in the app may later read it as
+ * history: the screen labels it as an estimate from the person's own answers,
+ * and no session, chart or brief is ever seeded from it.
+ */
+const PROJECTION_RATE: Record<Experience, number> = {
+  new: 0.3,
+  building: 0.2,
+  experienced: 0.1,
+};
+
+export function projectionRate(experience: Experience | null): number {
+  return experience ? PROJECTION_RATE[experience] : PROJECTION_RATE.building;
+}
+
+/**
+ * The smallest jump a barbell can actually make in the person's unit. Every
+ * projected number lands on a multiple of it, because a target of 71.3 kg is a
+ * load nobody can load.
+ */
+export function loadStep(unit: 'kg' | 'lb'): number {
+  return unit === 'lb' ? 5 : 2.5;
+}
+
+/** Round to the nearest real plate jump. */
+export function toPlate(value: number, unit: 'kg' | 'lb'): number {
+  const step = loadStep(unit);
+  return Math.round(value / step) * step;
+}
+
+/**
+ * Where a starting load could stand after the horizon. Returns the START
+ * unchanged when the gain rounds to nothing — a projection that adds zero is
+ * an honest answer, and better than inventing half a plate.
+ */
+export function projectedTarget(
+  start: number,
+  experience: Experience | null,
+  unit: 'kg' | 'lb',
+): number {
+  if (!Number.isFinite(start) || start <= 0) return 0;
+  const gain = toPlate(start * projectionRate(experience), unit);
+  return start + gain;
+}
+
+/**
+ * The twelve weekly values between a start and its projected target, for the
+ * bar chart. A straight line: the chart is a shape, and any curve drawn here
+ * would be a claim about WHEN the load arrives that nothing supports.
+ */
+export function projectionSeries(start: number, end: number, weeks = COMMIT_WEEKS): number[] {
+  if (weeks < 2) return [end];
+  const out: number[] = [];
+  for (let i = 0; i < weeks; i++) out.push(start + ((end - start) * i) / (weeks - 1));
+  return out;
+}
+
+// --- multi-answer serialisation -------------------------------------------------------
+
+/**
+ * The answers store holds strings, and two of the v3 questions hold a SET (the
+ * obstacles, the key lifts). They are joined with the ASCII UNIT SEPARATOR:
+ * no option id and no exercise name contains one, so a lift called "Bench
+ * press, close grip" survives a round trip that a comma would have split in
+ * two. Every read is defensive — a persisted answer from an older build must
+ * degrade to "nothing chosen", never to a crash.
+ */
+const LIST_SEPARATOR = String.fromCharCode(31);
+
+export function serializeList(values: readonly string[]): string {
+  return values.filter((v) => v.trim().length > 0).join(LIST_SEPARATOR);
+}
+
+export function parseList(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw.split(LIST_SEPARATOR).filter((v) => v.trim().length > 0);
+}
+
+/** Flip one member of a stored set, preserving the order things were added. */
+export function toggleInList(raw: string | null | undefined, value: string): string {
+  const list = parseList(raw);
+  const i = list.indexOf(value);
+  if (i >= 0) return serializeList([...list.slice(0, i), ...list.slice(i + 1)]);
+  return serializeList([...list, value]);
+}
+
+/**
+ * The starting loads, keyed by lift name. Stored as JSON because it is the one
+ * answer that is a MAP rather than a list, and hand-rolling a second encoding
+ * for it would make three formats in one file.
+ */
+export function parseLiftLoads(raw: string | null | undefined): Record<string, number> {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, number> = {};
+    for (const [lift, value] of Object.entries(parsed as Record<string, unknown>)) {
+      const n = typeof value === 'number' ? value : Number.parseFloat(String(value));
+      if (Number.isFinite(n) && n > 0) out[lift] = n;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function serializeLiftLoads(loads: Record<string, number>): string {
+  return JSON.stringify(loads);
+}

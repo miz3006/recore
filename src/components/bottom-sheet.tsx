@@ -12,6 +12,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
   runOnJS,
@@ -21,7 +22,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { alpha, color, moderateScale, radius } from '@/lib/theme';
+import { alpha, color, hairline, moderateScale, radius, shadow, spacing } from '@/lib/theme';
 
 /**
  * The one bottom-sheet chrome for the whole app (CalendarSheet, ExerciseSheet,
@@ -31,6 +32,24 @@ import { alpha, color, moderateScale, radius } from '@/lib/theme';
  * `Easing.out(Easing.cubic)` (~300 ms), and a downward drag on the grabber
  * dismisses it (release under threshold springs back on the same quiet curve —
  * nothing bouncy). Everything is `reduceMotion`-gated to an instant show/hide.
+ *
+ * ## IT IS A DETACHED CARD, NOT A DRAWER (owner, 18 Aug 2026)
+ *
+ * Every sheet floats: a hairline gap of `SHEET_INSET` down both sides and a gap
+ * over the home indicator, all four corners rounded. It is the iOS date-picker card, and
+ * the reason it looks better than a drawer welded to the screen edge is that a
+ * card with air around it reads as an OBJECT laid on the app, while a drawer
+ * reads as the app growing a new bottom. The white surface also needs the gap:
+ * on white-on-white a sheet that touches the edges has nothing to prove it is a
+ * separate plane, so the inset does the job the tone can't (`color.ts` §"WHITE,
+ * NOT PAPER").
+ *
+ * Two consequences for callers:
+ * - **The sheet owns the bottom safe-area gap.** A child must NOT add
+ *   `insets.bottom` to its own `paddingBottom` — it would pay for the home
+ *   indicator twice. Pass a plain `spacing` value.
+ * - **Percentage heights resolve inside the inset box**, not the window, so a
+ *   `maxHeight: '90%'` sheet still clears the status bar.
  *
  * The sheet is a CONTROLLED component: the parent owns `visible`; flipping it to
  * false plays the exit before the Modal unmounts, so a programmatic close (Done,
@@ -48,6 +67,12 @@ import { alpha, color, moderateScale, radius } from '@/lib/theme';
  */
 
 const SCREEN_H = Dimensions.get('window').height;
+
+/** The air down both sides of the card — a HAIR of it (owner, 18 Aug 2026: the
+ * card should read as detached, not as a floating tile). Its radius is the
+ * screen's own corner minus this gap (~39 − 8), which is why the tighter the
+ * inset, the ROUNDER the card has to be: `radius.xxl`. */
+const SHEET_INSET = spacing.sm;
 
 /** Enter/settle share the decelerating curve; exit uses the accelerating one. */
 const IN = { duration: 300, easing: Easing.out(Easing.cubic) } as const;
@@ -71,16 +96,26 @@ export function BottomSheet({
   /** The native modal has actually gone. The only safe moment to open another. */
   onClosed?: () => void;
   children: ReactNode;
-  /** Parent-owned surface: background, horizontal padding, bottom inset, maxHeight. */
+  /** Parent-owned surface: background, horizontal padding, bottom padding, maxHeight.
+   * Do NOT add `insets.bottom` here — the sheet already floats clear of it. */
   sheetStyle?: StyleProp<ViewStyle>;
   scrimOpacity?: number;
 }) {
   const reduceMotion = useReducedMotion();
+  const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(visible);
+
+  // How far the card sits above the home indicator (or the screen edge on a
+  // device without one). It is also travel the exit has to cover.
+  //
+  // It is the safe area MINUS the side gap, not the safe area: the indicator
+  // lives in the bottom ~21 pt, so 34 − 8 still clears it completely while
+  // taking the drawer-like slab of empty white out from under the card.
+  const bottomGap = Math.max(insets.bottom - SHEET_INSET, spacing.sm);
 
   const translateY = useSharedValue(SCREEN_H);
   const progress = useSharedValue(0); // 0 closed → 1 open (drives the scrim)
-  const sheetH = useSharedValue(SCREEN_H);
+  const travel = useSharedValue(SCREEN_H); // sheet height + the bottom gap
   const openedRef = useRef(false);
 
   const finishClose = (notify: boolean) => {
@@ -100,7 +135,7 @@ export function BottomSheet({
       return;
     }
     progress.value = withTiming(0, OUT);
-    translateY.value = withTiming(sheetH.value || SCREEN_H, OUT, (finished) => {
+    translateY.value = withTiming(travel.value || SCREEN_H, OUT, (finished) => {
       if (finished) runOnJS(finishClose)(notify);
     });
   };
@@ -116,11 +151,13 @@ export function BottomSheet({
   }, [visible]);
 
   // First real layout: learn the sheet's height, park it exactly off-screen,
-  // then reveal. Later layouts keep sheetH fresh for the dismiss travel.
+  // then reveal. Later layouts keep `travel` fresh for the dismiss distance.
   const onSheetLayout = (e: LayoutChangeEvent) => {
     const h = e.nativeEvent.layout.height;
     if (h <= 0) return;
-    sheetH.value = h;
+    // A floating card is not gone at its own height — it still has the bottom
+    // gap to cross before the screen edge hides it.
+    travel.value = h + bottomGap;
     if (!openedRef.current) {
       openedRef.current = true;
       if (reduceMotion) {
@@ -128,7 +165,7 @@ export function BottomSheet({
         progress.value = 1;
         return;
       }
-      translateY.value = h;
+      translateY.value = h + bottomGap;
       progress.value = withTiming(1, IN);
       translateY.value = withTiming(0, IN);
     }
@@ -138,13 +175,13 @@ export function BottomSheet({
     .onChange((e) => {
       const next = Math.max(0, translateY.value + e.changeY);
       translateY.value = next;
-      progress.value = 1 - Math.min(1, next / (sheetH.value || SCREEN_H));
+      progress.value = 1 - Math.min(1, next / (travel.value || SCREEN_H));
     })
     .onEnd((e) => {
-      const h = sheetH.value || SCREEN_H;
-      if (translateY.value > h * DISMISS_FRACTION || e.velocityY > DISMISS_VELOCITY) {
+      const t = travel.value || SCREEN_H;
+      if (translateY.value > t * DISMISS_FRACTION || e.velocityY > DISMISS_VELOCITY) {
         progress.value = withTiming(0, OUT);
-        translateY.value = withTiming(h, OUT, (finished) => {
+        translateY.value = withTiming(t, OUT, (finished) => {
           if (finished) runOnJS(finishClose)(true);
         });
       } else {
@@ -172,20 +209,26 @@ export function BottomSheet({
 
         {/* box-none so empty space above the sheet still hits the catcher; the
             KeyboardAvoidingView lifts a sheet with inputs (FixSheet) clear of
-            the keyboard and is an inert no-op for the sheets without one. */}
+            the keyboard and is an inert no-op for the sheets without one.
+            Its paddingBottom is written by RN itself, which is why the inset
+            box below is a separate view rather than padding on this one. */}
         <KeyboardAvoidingView
           style={styles.anchor}
           pointerEvents="box-none"
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <Animated.View style={[styles.sheet, sheetStyle, sheetAnimStyle]} onLayout={onSheetLayout}>
-            {/* Only the grabber handle drags — leaves inner scroll views free. */}
-            <GestureDetector gesture={pan}>
-              <View style={styles.handle}>
-                <View style={styles.grabber} />
-              </View>
-            </GestureDetector>
-            {children}
-          </Animated.View>
+          <View style={[styles.inset, { paddingBottom: bottomGap }]} pointerEvents="box-none">
+            <Animated.View
+              style={[styles.sheet, sheetStyle, sheetAnimStyle]}
+              onLayout={onSheetLayout}>
+              {/* Only the grabber handle drags — leaves inner scroll views free. */}
+              <GestureDetector gesture={pan}>
+                <View style={styles.handle}>
+                  <View style={styles.grabber} />
+                </View>
+              </GestureDetector>
+              {children}
+            </Animated.View>
+          </View>
         </KeyboardAvoidingView>
       </GestureHandlerRootView>
     </Modal>
@@ -198,17 +241,25 @@ const styles = StyleSheet.create({
   },
   anchor: {
     flex: 1,
+  },
+  /** The box the card lives in: side air, bottom air, card pinned to its floor.
+   * Percentage heights on a sheet resolve against THIS, not the window. */
+  inset: {
+    flex: 1,
     justifyContent: 'flex-end',
+    paddingHorizontal: SHEET_INSET,
   },
   scrim: {
     ...StyleSheet.absoluteFillObject,
   },
   sheet: {
     backgroundColor: color.surface,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    borderTopWidth: 1,
-    borderTopColor: color.border,
+    borderRadius: radius.xxl,
+    borderCurve: 'continuous',
+    borderWidth: hairline,
+    borderColor: color.border,
+    // Detached means it has to look detached: the card casts, the canvas does not.
+    ...shadow.raised,
   },
   handle: {
     alignItems: 'center',

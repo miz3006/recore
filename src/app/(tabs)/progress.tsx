@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { TrendChart } from '@/components/charts';
+import { ChipRow } from '@/components/chip-row';
 import { Icon } from '@/components/icon';
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
 import { AppButton, Eyebrow } from '@/components/primitives';
@@ -10,23 +11,24 @@ import { StubScreen } from '@/components/stub-screen';
 import { shiftDayKey, todayKey, type DayKey } from '@/lib/db/dates';
 import { getWorkoutDetail, type WorkoutSet } from '@/lib/db/insights';
 import { getLiftSessions } from '@/lib/db/progression';
+import { mondayOf } from '@/lib/db/stats';
 import { markImportCompleted, markImported, markImportStarted } from '@/lib/funnel';
 import { tap } from '@/lib/haptics';
 import { pickAndImportCsv } from '@/lib/import/pick';
 import { rowCountBucket } from '@/lib/onboarding';
 import { recachePredictionFromLatest } from '@/lib/predict/cache';
-import { groupThousands } from '@/lib/parse/estimate';
 import { fmtNumber } from '@/lib/parse/summarize';
 import {
   buildProgression,
   daysBetween,
   describeDelta,
+  describeStall,
   sortLifts,
+  stallOf,
+  STALL_RUN_MIN,
   type LiftBrief,
   type LiftProgression,
   type LiftSort,
-  type ProgressionMetric,
-  type ProgressionView,
 } from '@/lib/progression';
 import {
   alpha,
@@ -43,60 +45,60 @@ import {
 import { labelForDay, useSession } from '@/state/session-store';
 
 /**
- * Progress (product-direction §10 — "Am I progressing, and what is the
+ * Progression (product-direction §10 — "Am I progressing, and what is the
  * evidence?"), the third tab.
  *
- * The screen is **one card per lift**, and progression is measured per lift:
+ * The screen is **one card per lift**, and it answers exactly one question at a
+ * time by re-ordering, never by re-labelling:
  *
- *   range (8W / 6M / 1Y)  →  metric (Est. 1RM / Heaviest / Volume)
- *   →  a summary of how the whole range went  →  ranked cards
+ *   a counted cadence line  →  four orderings  →  ranked cards
  *   →  the sets behind the latest point
  *
- * Three owner decisions, 4 Aug 2026, shape this version:
+ * ## The 17 August shape (owner mockup)
  *
- * 1. **Ranked by how far a lift moved**, biggest first (`sortLifts('gain')`),
- *    on the PERCENTAGE — kilos would rank a deadlift above a curl forever and
- *    call that a ranking. Recency and A–Z stay one tap away, because "what did
- *    I train last" is a different question and the ranking must not become the
- *    only way to find a lift.
- * 2. **A summary at the top** that says how the whole range went: how many
- *    lifts moved up, a bar showing the split, sessions, longest gap, new bests,
- *    and the single biggest move named with its number. Every one of those is
- *    counted from stored rows — no model, no adjectives (§2, rule 6).
- * 3. **Colour** (§4.2/§10): Recore blue carries active controls and the
- *    progression lines with their soft wash. A lift that fell draws in exactly
- *    the same blue as one that rose — direction is a word, never a hue, so the
- *    screen can rank without ever scolding a deload.
+ * 1. **One reading, no chrome.** The range picker (8W / 6M / 1Y) and the metric
+ *    tabs (Est. 1RM / Heaviest / Volume) are gone, and so is the summary card.
+ *    The screen is eight weeks of estimated 1RM, full stop, and the header's
+ *    one counted line stands in for the summary. Every figure a person reads
+ *    here is now about the same window, which is the thing three simultaneous
+ *    switches kept costing.
+ * 2. **A fourth ordering: Stalled.** "What is stuck?" is the other half of "am
+ *    I progressing?", and it should not require reading to the bottom of a list
+ *    sorted the other way. It re-orders on the TAIL of each series
+ *    (`stallOf`) — falling first, then held longest — and re-labels nothing.
+ * 3. **Direction is a colour now, as well as a word** — reversing the §10 rule
+ *    that a lift which fell drew in exactly the same blue as one that rose.
+ *    Gains are `color.gain`, regressions `color.loss`, and the mockup's own
+ *    caption is the guard rail: **red only when truly regressing**. A single
+ *    lighter session is ink; `STALL_RUN_MIN` consecutive drops is red. A lift
+ *    holding its load is ink and an em-dash, never red — maintenance is not
+ *    failure. The words ("up 12%", "down 5%", "no change in 4 sessions") say
+ *    the same thing beside every one of those colours, so colour is never the
+ *    only carrier (§14).
  *
- * A card carries a LINE chart — straight segments between real sessions, up
- * and down (owner, 4 Aug 2026, replacing the step shape §10 asks for; the
- * dots are the sessions, and `TrendChart`'s `shape` prop restores steps in one
- * word). The latest value sits beside it and how far it moved reads as a word.
- * Tapping one opens the set table of the session that made that last point. Lifts too shallow to chart are listed below the cards rather than
- * dropped, so nothing a person logged disappears from their own record.
+ * A card carries a LINE chart in one neutral ink — straight segments between
+ * real sessions, up and down (owner, 4 Aug 2026; `TrendChart`'s `shape` prop
+ * restores the §10 step in one word). Only the terminal dot takes a direction
+ * hue: the eight weeks behind it are the shape of the record, and one dot
+ * answers "and now?". Its two ends read `date · value`, so the chart's own
+ * numbers sit under the chart rather than in a gutter beside it.
+ *
+ * Tapping a card opens the set table of the session that made its last point.
+ * Lifts too shallow to chart are listed below the cards rather than dropped, so
+ * nothing a person logged disappears from their own record.
  *
  * Both sheets it opens (`ExerciseSheet`, `SessionSheet`) are mounted once in
  * `_layout.tsx`, so this file only dispatches.
  */
 
-/** Ranges, shortest first. The shortest is always offered; a longer one is
- * dimmed until the record actually reaches back that far — a chart that runs
- * out of history is a chart that lies about it. */
-const RANGES = [
-  { key: '8W', days: 56, ago: 'eight weeks ago', label: 'Eight weeks' },
-  { key: '6M', days: 182, ago: 'six months ago', label: 'Six months' },
-  { key: '1Y', days: 365, ago: 'a year ago', label: 'One year' },
-] as const;
-
-const METRICS: { key: ProgressionMetric; label: string; eyebrow: string }[] = [
-  { key: 'e1rm', label: 'Est. 1RM', eyebrow: 'estimated 1RM' },
-  { key: 'weight', label: 'Heaviest', eyebrow: 'heaviest set' },
-  { key: 'volume', label: 'Volume', eyebrow: 'volume' },
-];
+/** Eight weeks. One window, named once — the header, the cards and the cadence
+ * average all measure the same stretch because they all read this. */
+const RANGE_DAYS = 56;
 
 const SORTS: { key: LiftSort; label: string }[] = [
   { key: 'gain', label: 'Biggest gain' },
   { key: 'recent', label: 'Recent' },
+  { key: 'stalled', label: 'Stalled' },
   { key: 'name', label: 'A–Z' },
 ];
 
@@ -105,8 +107,8 @@ const CHART_H_OPEN = moderateScale(104);
 /** Beyond this the rep cap makes an Epley estimate dishonest (matches the
  * parser-side rule in `getE1rmSeries`). */
 const E1RM_REP_CAP = 12;
-/** Under this much history a sessions-per-week average is arithmetic noise, so
- * the tile drops its sub-line rather than dividing by a fortnight it never had. */
+/** Under two weeks of record a per-week average is arithmetic noise, so the
+ * cadence line drops it rather than dividing by a fortnight it never had. */
 const MIN_DAYS_FOR_RATE = 14;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -120,36 +122,25 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  */
 const PRESS_BLEED = spacing.sm;
 
+/** Which way a card reads. `flat` is the ink default — it is also what a single
+ * lighter session gets, because one session is not a trend (`STALL_RUN_MIN`). */
+type Tone = 'up' | 'down' | 'flat';
+
 /** "Jul 13" from a DayKey — a chart endpoint, never a full date. */
 function monthDay(day: DayKey): string {
   const [, m, d] = day.split('-').map(Number);
   return `${MONTHS[(m ?? 1) - 1]} ${d}`;
 }
 
-/** Volume runs to five figures and wants thousands grouping; a load wants its
- * half-kilo. Both are kilograms, so the unit never changes. */
-function formatValue(v: number, metric: ProgressionMetric): string {
-  return metric === 'volume' ? groupThousands(Math.round(v)) : fmtNumber(v);
-}
-
-/**
- * The same value for a chart's axis gutter, which is ~34pt wide: five-figure
- * volume gets one decimal and a `k` rather than being quietly clipped, and a
- * clipped number is a wrong number. Loads are short already and pass through.
- */
-function axisValue(v: number, metric: ProgressionMetric): string {
-  if (metric === 'volume' && v >= 10_000) return `${Math.round(v / 100) / 10}k`;
-  return formatValue(v, metric);
-}
-
 /**
  * The share a lift moved, as a WORD — the same ruling `describeDelta` keeps
- * (§5.1): never a leading minus, never a colour deciding whether the number is
- * good news. Sub-1% moves say so instead of rounding themselves to "same",
- * which would make a chip disagree with the chart above it.
+ * (§5.1): never a leading minus. Sub-1% moves say so instead of rounding
+ * themselves to "same", which would make a chip disagree with the chart above
+ * it. Returns null when nothing moved: the mockup shows no chip at all there,
+ * and an "up 0%" chip is noise pretending to be news.
  */
-function percentText(delta: number, percent: number): string {
-  if (delta === 0) return 'same';
+function percentText(delta: number, percent: number): string | null {
+  if (delta === 0) return null;
   const dir = delta > 0 ? 'up' : 'down';
   const size = Math.abs(percent);
   if (size === 0) return dir; // a move with no starting value to be a share of
@@ -158,30 +149,22 @@ function percentText(delta: number, percent: number): string {
 }
 
 /**
- * The one sentence at the top. Specific, backward-looking, and never a claim
- * about Recore or about the person (§2, rule 6) — it counts lifts and says the
- * number.
+ * The one counted line under the title. Two facts, both distinct training days
+ * off stored rows: this calendar week, and the average per week across as much
+ * of the window as the record actually reaches back (so a three-week-old
+ * account never reads "8-week average"). No model, no adjectives (§2, rule 6).
  */
-function verdictLine(
-  improved: number,
-  counted: number,
-  metric: ProgressionMetric,
-  ago: string,
-): string {
-  const subject = counted === 1 ? 'lift is' : 'lifts are';
-  const moved = metric === 'volume' ? 'moving more weight' : 'heavier';
-  const head = improved === 0 ? `None of ${counted}` : `${improved} of ${counted}`;
-  return `${head} ${subject} ${moved} than ${ago}.`;
-}
-
-/** "9 up · 2 same · 1 down" — the split under the bar, in words, so the bar's
- * colours are never the only thing carrying it (§14). */
-function splitLine(view: ProgressionView): string {
-  const parts: string[] = [];
-  if (view.improved > 0) parts.push(`${view.improved} up`);
-  if (view.unchanged > 0) parts.push(`${view.unchanged} same`);
-  if (view.declined > 0) parts.push(`${view.declined} down`);
-  return parts.join(' · ');
+function cadenceLine(days: string[], today: DayKey, historyDays: number): string | undefined {
+  if (days.length === 0) return undefined;
+  const monday = mondayOf(today);
+  const thisWeek = days.filter((d) => d >= monday).length;
+  const head =
+    thisWeek === 0
+      ? 'No sessions yet this week'
+      : `${thisWeek} ${thisWeek === 1 ? 'session' : 'sessions'} this week`;
+  if (historyDays < MIN_DAYS_FOR_RATE) return head;
+  const weeks = Math.min(8, Math.max(1, Math.round((historyDays + 1) / 7)));
+  return `${head} · ${weeks}-week average ${(days.length / weeks).toFixed(1)}`;
 }
 
 function setText(s: WorkoutSet): string {
@@ -214,8 +197,6 @@ export default function Progress() {
     }, []),
   );
 
-  const [metric, setMetric] = useState<ProgressionMetric>('e1rm');
-  const [rangeIndex, setRangeIndex] = useState(0);
   const [sort, setSort] = useState<LiftSort>('gain');
   /** The key of the ONE open card. An accordion, so the screen stays short. */
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -258,26 +239,25 @@ export default function Progress() {
   };
 
   /* eslint-disable react-hooks/exhaustive-deps */
-  // The whole aggregated history, once. Every metric and every range is derived
-  // from it in pure code, so switching a tab costs no query.
+  // The whole aggregated history, once. The window and every ordering are
+  // derived from it in pure code, so switching a chip costs no query.
   const rows = useMemo(() => (userId ? getLiftSessions(userId) : []), [userId, refresh]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   const today = todayKey();
-  const range = RANGES[rangeIndex]!;
-  const fromDay = shiftDayKey(today, -range.days);
+  const fromDay = shiftDayKey(today, -RANGE_DAYS);
   // Rows arrive oldest-first, so the first row is where the record begins.
   const historyDays = rows.length > 0 ? daysBetween(rows[0]!.day, today) : 0;
 
-  const view = useMemo(() => buildProgression(rows, metric, fromDay), [rows, metric, fromDay]);
+  const view = useMemo(() => buildProgression(rows, 'e1rm', fromDay), [rows, fromDay]);
   const ranked = useMemo(() => sortLifts(view.lifts, sort), [view.lifts, sort]);
-  // The summary's "moved most" is the biggest gainer, always — it answers a
-  // question about the range, not about whatever order the list is in.
-  const topMover = useMemo(() => {
-    const best = sortLifts(view.lifts, 'gain')[0];
-    return best && best.delta > 0 ? best : null;
-  }, [view.lifts]);
-  const metricLabel = METRICS.find((m) => m.key === metric)!.eyebrow;
+
+  // Distinct training days inside the window — the cadence line's only input.
+  const trainedDays = useMemo(
+    () => Array.from(new Set(rows.filter((r) => r.day >= fromDay).map((r) => r.day))),
+    [rows, fromDay],
+  );
+  const cadence = cadenceLine(trainedDays, today, Math.min(RANGE_DAYS, historyDays));
 
   // The open card's evidence: the counted sets of the session behind its latest
   // point. Read only while a card is open, never for the whole list.
@@ -297,10 +277,10 @@ export default function Progress() {
   // §12.1: an empty state says what will fill it and never reports a lack.
   if (rows.length === 0) {
     return (
-      <StubScreen title="Progress" back={false}>
+      <StubScreen title="Progression" back={false} large>
         <FadeSlideIn>
           <View style={styles.emptyCard}>
-            <Eyebrow>Progress</Eyebrow>
+            <Eyebrow>Progression</Eyebrow>
             <Text style={styles.emptyTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
               Your training, measured.
             </Text>
@@ -330,77 +310,23 @@ export default function Progress() {
   }
 
   return (
-    <StubScreen title="Progress" back={false}>
+    <StubScreen title="Progression" subtitle={cadence} back={false} large>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
-        {/* Range — the shortest is always live; a longer one waits for history. */}
-        <View style={styles.rangeRow}>
-          <View style={styles.seg}>
-            {RANGES.map((r, i) => {
-              const active = i === rangeIndex;
-              const reachable = i === 0 || historyDays >= r.days;
-              return (
-                <PressableScale
-                  key={r.key}
-                  haptic="none"
-                  activeScale={0.96}
-                  disabled={!reachable}
-                  onPress={() => {
-                    tap();
-                    setRangeIndex(i);
-                    setOpenKey(null);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active, disabled: !reachable }}
-                  accessibilityLabel={r.label}
-                  style={[styles.segItem, active && styles.segItemActive]}
-                  pressedStyle={active ? undefined : styles.pressed}>
-                  <Text
-                    style={[
-                      styles.segText,
-                      active && styles.segTextActive,
-                      !reachable && styles.segTextOff,
-                    ]}
-                    maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {r.key}
-                  </Text>
-                </PressableScale>
-              );
-            })}
-          </View>
-          <Text style={styles.since} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {`SINCE ${monthDay(fromDay).toUpperCase()}`}
-          </Text>
-        </View>
-
-        {/* Metric — switches what every card plots, at once. */}
-        <View style={styles.tabs}>
-          {METRICS.map((m) => {
-            const active = m.key === metric;
-            return (
-              <PressableScale
-                key={m.key}
-                haptic="none"
-                activeScale={0.96}
-                onPress={() => {
-                  tap();
-                  setMetric(m.key);
-                  setOpenKey(null);
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                style={[styles.tab, active && styles.tabActive]}>
-                <Text
-                  style={[styles.tabText, active && styles.tabTextActive]}
-                  maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {m.label}
-                </Text>
-              </PressableScale>
-            );
-          })}
-        </View>
+        {/* Order — the ranking is the default, never the only way in. The
+            control itself is `ChipRow`, shared with the Next tab's split days
+            since 18 Aug: one pill row in the app, not two that drifted. */}
+        <ChipRow
+          items={SORTS.map((s) => ({ key: s.key, label: s.label, spoken: `Sort by ${s.label}` }))}
+          activeKey={sort}
+          onSelect={(key) => {
+            setSort(key as LiftSort);
+            setOpenKey(null);
+          }}
+          hint="Re-orders the lifts below"
+        />
 
         {view.counted === 0 ? (
           <FadeSlideIn>
@@ -410,52 +336,12 @@ export default function Progress() {
           </FadeSlideIn>
         ) : (
           <Stagger step={55} initialDelay={60}>
-            <SummaryCard
-              view={view}
-              top={topMover}
-              metric={metric}
-              metricLabel={metricLabel}
-              rangeLabel={range.label}
-              rangeAgo={range.ago}
-              rangeDays={Math.min(range.days, historyDays + 1)}
-            />
-
-            {/* Order — the ranking is the default, never the only way in. */}
-            <View style={styles.sortRow}>
-              {SORTS.map((s) => {
-                const active = s.key === sort;
-                return (
-                  <PressableScale
-                    key={s.key}
-                    haptic="none"
-                    activeScale={0.96}
-                    onPress={() => {
-                      tap();
-                      setSort(s.key);
-                      setOpenKey(null);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    accessibilityLabel={`Sort by ${s.label}`}
-                    style={[styles.sortChip, active && styles.sortChipActive]}
-                    pressedStyle={active ? undefined : styles.pressed}>
-                    <Text
-                      style={[styles.sortText, active && styles.sortTextActive]}
-                      maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                      {s.label}
-                    </Text>
-                  </PressableScale>
-                );
-              })}
-            </View>
-
             {ranked.map((lift, i) => (
               <LiftCard
                 key={lift.key}
                 lift={lift}
-                metric={metric}
                 // The banner names what the sort just claimed, and only when the
-                // claim is true: a "top mover" that lost weight is flattery.
+                // claim is true: a "biggest gain" that lost weight is flattery.
                 leading={i === 0 && sort === 'gain' && lift.delta > 0}
                 open={openKey === lift.key}
                 sets={evidence && evidence.lift.key === lift.key ? evidence.sets : []}
@@ -484,7 +370,6 @@ export default function Progress() {
                 <BuildingRow
                   key={lift.key}
                   lift={lift}
-                  metric={metric}
                   onPress={() => {
                     tap();
                     openExerciseSheet(lift.canonical);
@@ -492,7 +377,7 @@ export default function Progress() {
                 />
               ))}
               <Text style={styles.buildingNote} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                Three sessions of the same lift inside this range and it gets its own chart.
+                Three sessions of the same lift inside eight weeks and it gets its own chart.
               </Text>
             </View>
           </FadeSlideIn>
@@ -507,8 +392,7 @@ export default function Progress() {
           }}
           accessibilityRole="button"
           accessibilityLabel="All lifts"
-          style={styles.allLiftsRow}
-          pressedStyle={styles.pressed}>
+          style={styles.allLiftsRow}>
           <Text style={styles.allLiftsLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             All lifts
           </Text>
@@ -519,115 +403,8 @@ export default function Progress() {
   );
 }
 
-/**
- * "How is it going?" — the whole range in one card, every figure counted from
- * stored sessions.
- *
- * The bar is the split (up / same / down) at a glance, and the line under it
- * says the same thing in words, because colour is never the only carrier of a
- * meaning (§14). Down segments draw in grey ink, not red: a deload is training,
- * and this screen does not grade a person.
- */
-function SummaryCard({
-  view,
-  top,
-  metric,
-  metricLabel,
-  rangeLabel,
-  rangeAgo,
-  rangeDays,
-}: {
-  view: ProgressionView;
-  /** The biggest gainer, or null when nothing gained. */
-  top: LiftProgression | null;
-  metric: ProgressionMetric;
-  metricLabel: string;
-  rangeLabel: string;
-  rangeAgo: string;
-  /** Days of range actually backed by record — the divisor for the rate. */
-  rangeDays: number;
-}) {
-  const perWeek =
-    rangeDays >= MIN_DAYS_FOR_RATE ? (view.sessions / (rangeDays / 7)).toFixed(1) : null;
-  const gap = view.longestGapDays;
-
-  return (
-    <View style={styles.summary}>
-      <Eyebrow>{`${rangeLabel} · ${metricLabel}`}</Eyebrow>
-      <Text style={styles.summaryLine} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {verdictLine(view.improved, view.counted, metric, rangeAgo)}
-      </Text>
-
-      <View
-        style={styles.bar}
-        accessible
-        accessibilityRole="image"
-        accessibilityLabel={splitLine(view)}>
-        {view.improved > 0 ? (
-          <View style={[styles.barSeg, styles.barUp, { flex: view.improved }]} />
-        ) : null}
-        {view.unchanged > 0 ? (
-          <View style={[styles.barSeg, styles.barSame, { flex: view.unchanged }]} />
-        ) : null}
-        {view.declined > 0 ? (
-          <View style={[styles.barSeg, styles.barDown, { flex: view.declined }]} />
-        ) : null}
-      </View>
-      <Text style={styles.summarySplit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {splitLine(view)}
-      </Text>
-
-      {top ? (
-        <Text style={styles.summaryTop} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          <Text style={styles.summaryTopName}>{top.canonical}</Text>
-          {` moved most — ${describeDelta(top.delta, 'kg', monthDay(top.firstDay), (n) =>
-            formatValue(n, metric),
-          )} since ${monthDay(top.firstDay)}.`}
-        </Text>
-      ) : null}
-
-      <View style={styles.statRow}>
-        <Stat
-          label="Sessions"
-          value={String(view.sessions)}
-          sub={perWeek ? `${perWeek} / week` : undefined}
-        />
-        <Stat
-          label="Longest gap"
-          value={gap == null ? '—' : String(gap)}
-          sub={gap == null ? undefined : gap === 1 ? 'day' : 'days'}
-        />
-        <Stat
-          label="New bests"
-          value={String(view.newBests)}
-          sub={view.newBests === 1 ? 'lift' : 'lifts'}
-        />
-      </View>
-    </View>
-  );
-}
-
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <View style={styles.stat}>
-      <Text style={styles.statLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {label.toUpperCase()}
-      </Text>
-      <Text style={styles.statValue} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {value}
-      </Text>
-      {sub ? (
-        <Text style={styles.statSub} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {sub}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
 function LiftCard({
   lift,
-  metric,
   leading,
   open,
   sets,
@@ -636,7 +413,6 @@ function LiftCard({
   onOpenHistory,
 }: {
   lift: LiftProgression;
-  metric: ProgressionMetric;
   leading: boolean;
   open: boolean;
   sets: WorkoutSet[];
@@ -644,27 +420,49 @@ function LiftCard({
   onOpenSession: () => void;
   onOpenHistory: () => void;
 }) {
-  const delta = describeDelta(lift.delta, 'kg', monthDay(lift.firstDay), (n) =>
-    formatValue(n, metric),
-  );
+  const spoken = describeDelta(lift.delta, 'kg', monthDay(lift.firstDay), fmtNumber);
   const share = percentText(lift.delta, lift.percent);
-  const value = formatValue(lift.latest, metric);
-  const up = lift.delta > 0;
+  const value = fmtNumber(lift.latest);
+
+  // Two readings, deliberately independent. `tone` is the WINDOW — where the
+  // lift went over eight weeks, which is what the chip and the delta report.
+  // `stall` is the TAIL — what the last sessions did, which is what the meta
+  // line and the terminal dot report. When they disagree ("up 12%" over a card
+  // that says "down 2 sessions running") that disagreement is the single most
+  // useful thing this screen can tell someone, so neither is allowed to
+  // overwrite the other.
+  const tone: Tone = lift.delta > 0 ? 'up' : lift.delta < 0 ? 'down' : 'flat';
+  const stall = stallOf(lift.points);
+  const stallNote = describeStall(stall);
+  const regressing = stall.kind === 'down' && stall.sessions >= STALL_RUN_MIN;
+  const dotTone: Tone = stall.kind === 'up' ? 'up' : regressing ? 'down' : 'flat';
 
   return (
     <View style={[styles.card, leading && styles.cardLeading]}>
       {leading ? (
         <Text style={styles.leadTag} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          BIGGEST GAIN
+          Biggest gain
         </Text>
       ) : null}
       <PressableScale
         haptic="none"
-        activeScale={0.99}
+        activeScale={0.98}
         onPress={onToggle}
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
-        accessibilityLabel={`${lift.canonical}, ${value} kilograms, ${delta}, ${share}, ${lift.sessions} sessions`}
+        // Spelled out in full, so VoiceOver never depends on the hue that the
+        // chip and the dot use to say the same thing (§14).
+        accessibilityLabel={[
+          lift.canonical,
+          `${value} kilograms`,
+          spoken,
+          share ?? 'no change',
+          stallNote ?? `${lift.sessions} sessions`,
+          `last ${labelForDay(lift.lastDay)}`,
+          lift.isBest ? 'personal record' : '',
+        ]
+          .filter(Boolean)
+          .join(', ')}
         style={styles.cardBody}>
         <View style={styles.cardTop}>
           <View style={styles.cardName}>
@@ -672,13 +470,15 @@ function LiftCard({
               <Text style={styles.liftName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 {lift.canonical}
               </Text>
-              <View style={[styles.shareChip, up && styles.shareChipUp]}>
-                <Text
-                  style={[styles.shareText, up && styles.shareTextUp]}
-                  maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {share}
-                </Text>
-              </View>
+              {share ? (
+                <View style={[styles.shareChip, styles[`chip_${tone}`]]}>
+                  <Text
+                    style={[styles.shareText, styles[`ink_${tone}`]]}
+                    maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    {share}
+                  </Text>
+                </View>
+              ) : null}
               {lift.isBest ? (
                 <View style={styles.prChip}>
                   <Text style={styles.prChipText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -688,7 +488,7 @@ function LiftCard({
               ) : null}
             </View>
             <Text style={styles.liftMeta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {`${lift.sessions} sessions · last ${labelForDay(lift.lastDay)}`}
+              {stallNote ?? `${lift.sessions} sessions · last ${labelForDay(lift.lastDay)}`}
             </Text>
           </View>
           <View style={styles.heroBox}>
@@ -696,8 +496,10 @@ function LiftCard({
               {value}
               <Text style={styles.heroUnit}> kg</Text>
             </Text>
-            <Text style={styles.heroDelta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {delta}
+            <Text
+              style={[styles.heroDelta, styles[`ink_${tone}`]]}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {lift.delta === 0 ? '—' : spoken}
             </Text>
           </View>
         </View>
@@ -708,16 +510,17 @@ function LiftCard({
           height={open ? CHART_H_OPEN : CHART_H}
           showPrevious={open}
           dots
-          axis
-          format={(n) => axisValue(n, metric)}
+          tint={color.accent}
+          lastTint={TONE_INK[dotTone]}
+          wash={0.1}
         />
 
         <View style={styles.ends}>
           <Text style={styles.endLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {monthDay(lift.firstDay)}
+            {`${monthDay(lift.firstDay)} · ${fmtNumber(lift.first)} kg`}
           </Text>
           <Text style={styles.endLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {monthDay(lift.lastDay)}
+            {`${monthDay(lift.lastDay)} · ${value} kg`}
           </Text>
         </View>
       </PressableScale>
@@ -727,12 +530,11 @@ function LiftCard({
           <View style={styles.cardRule} />
           <PressableScale
             haptic="none"
-            activeScale={0.99}
+            activeScale={0.98}
             onPress={onOpenSession}
             accessibilityRole="button"
             accessibilityLabel={`Open the full session from ${labelForDay(lift.lastDay)}`}
-            style={styles.evHead}
-            pressedStyle={styles.pressed}>
+            style={styles.evHead}>
             <Eyebrow>{`${monthDay(lift.lastDay)} · what made it`}</Eyebrow>
             <Icon name="chevron-forward" size={moderateScale(13)} tint={color.textMuted} />
           </PressableScale>
@@ -760,12 +562,11 @@ function LiftCard({
           <View style={styles.cardRule} />
           <PressableScale
             haptic="none"
-            activeScale={0.99}
+            activeScale={0.98}
             onPress={onOpenHistory}
             accessibilityRole="button"
             accessibilityLabel={`Full history for ${lift.canonical}`}
-            style={styles.opener}
-            pressedStyle={styles.pressed}>
+            style={styles.opener}>
             <Text style={styles.openerLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
               Full history
             </Text>
@@ -779,35 +580,33 @@ function LiftCard({
 
 /** A lift with one or two sessions in range: named, counted, and openable —
  * just not charted, because two points are a line and not yet a trend. */
-function BuildingRow({
-  lift,
-  metric,
-  onPress,
-}: {
-  lift: LiftBrief;
-  metric: ProgressionMetric;
-  onPress: () => void;
-}) {
+function BuildingRow({ lift, onPress }: { lift: LiftBrief; onPress: () => void }) {
   return (
     <PressableScale
       haptic="none"
-      activeScale={0.99}
+      activeScale={0.98}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${lift.canonical}, ${lift.sessions} ${
         lift.sessions === 1 ? 'session' : 'sessions'
-      }, latest ${formatValue(lift.latest, metric)} kilograms`}
-      style={styles.buildRow}
-      pressedStyle={styles.pressed}>
+      }, latest ${fmtNumber(lift.latest)} kilograms`}
+      style={styles.buildRow}>
       <Text style={styles.buildName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
         {lift.canonical}
       </Text>
       <Text style={styles.buildMeta} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {`${lift.sessions} · ${formatValue(lift.latest, metric)} kg`}
+        {`${lift.sessions} · ${fmtNumber(lift.latest)} kg`}
       </Text>
     </PressableScale>
   );
 }
+
+/** The terminal dot's fill per tone — SVG takes a colour, not a style. */
+const TONE_INK: Record<Tone, string> = {
+  up: color.gain,
+  down: color.loss,
+  flat: color.accent,
+};
 
 const styles = StyleSheet.create({
   scroll: {
@@ -822,186 +621,8 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
 
-  // --- range + metric chrome --------------------------------------------------
-  rangeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  seg: {
-    flexDirection: 'row',
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.border,
-    borderRadius: radius.pill,
-    padding: moderateScale(3),
-  },
-  segItem: {
-    paddingVertical: spacing.sm - 2,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-  },
-  // Blue is the active-control colour (§4.2), and the same blue draws the lines
-  // below — the control and what it controls read as one system.
-  segItemActive: {
-    backgroundColor: color.trained,
-  },
-  segText: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
-    fontSize: type.footnote.fontSize,
-    fontWeight: '600',
-    color: color.textSecondary,
-  },
-  segTextActive: {
-    color: '#FFFFFF',
-  },
-  segTextOff: {
-    color: color.textMuted,
-    opacity: 0.5,
-  },
-  since: {
-    fontFamily: fonts.reading,
-    fontSize: moderateScale(10),
-    letterSpacing: 1.2,
-    color: color.textMuted,
-    fontVariant: ['tabular-nums'],
-  },
-
-  tabs: {
-    flexDirection: 'row',
-    gap: spacing.xl,
-    borderBottomWidth: 1,
-    borderBottomColor: color.tableRule,
-  },
-  tab: {
-    paddingBottom: spacing.sm,
-    // minHeight, never height: the label has to grow at the Dynamic Type
-    // ceiling rather than be cropped by its own tab (§5.3).
-    minHeight: moderateScale(30),
-  },
-  tabActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: color.trained,
-  },
-  tabText: {
-    ...type.subhead,
-    color: color.textMuted,
-    fontWeight: '500',
-  },
-  tabTextActive: {
-    color: color.textPrimary,
-    fontWeight: '600',
-  },
-
-  // --- the summary ------------------------------------------------------------
-  summary: {
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: alpha(color.trained, 0.22),
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-    ...shadow.card,
-  },
-  summaryLine: {
-    ...type.lede,
-    color: color.textPrimary,
-  },
-  bar: {
-    flexDirection: 'row',
-    gap: 3,
-    marginTop: spacing.xs,
-  },
-  barSeg: {
-    height: moderateScale(7),
-    borderRadius: 4,
-  },
-  barUp: {
-    backgroundColor: color.trained,
-  },
-  barSame: {
-    backgroundColor: color.border,
-  },
-  // Grey ink, never red — a lift that fell is a fact, not a failure (§10).
-  barDown: {
-    backgroundColor: alpha(color.accent, 0.35),
-  },
-  summarySplit: {
-    fontFamily: fonts.reading,
-    fontSize: type.footnote.fontSize,
-    color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
-  summaryTop: {
-    ...type.footnote,
-    color: color.textSecondary,
-  },
-  summaryTopName: {
-    color: color.textPrimary,
-    fontWeight: '600',
-  },
-  statRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.xs,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: color.tableRule,
-  },
-  stat: {
-    flex: 1,
-    gap: 2,
-  },
-  statLabel: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
-    fontSize: moderateScale(9),
-    letterSpacing: 1,
-    color: color.textMuted,
-  },
-  statValue: {
-    fontFamily: fonts.reading,
-    fontSize: moderateScale(20),
-    color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  statSub: {
-    fontFamily: fonts.reading,
-    fontSize: moderateScale(10),
-    color: color.textMuted,
-    fontVariant: ['tabular-nums'],
-  },
-
-  // --- sort chips -------------------------------------------------------------
-  sortRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  sortChip: {
-    paddingVertical: spacing.sm - 3,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: color.border,
-    minHeight: moderateScale(30),
-    justifyContent: 'center',
-  },
-  sortChipActive: {
-    backgroundColor: alpha(color.trained, 0.12),
-    borderColor: alpha(color.trained, 0.45),
-  },
-  sortText: {
-    ...type.caption,
-    color: color.textSecondary,
-  },
-  sortTextActive: {
-    color: color.trained,
-    fontWeight: '600',
-  },
+  // The four orderings live in `components/chip-row.tsx` now — see the ChipRow
+  // call above. Nothing on this screen styles a chip any more.
 
   // --- lift card --------------------------------------------------------------
   card: {
@@ -1009,21 +630,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.divider,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     padding: spacing.lg,
-    marginBottom: spacing.md,
+    // No marginBottom: the content container's own `gap` separates the cards.
+    // Carrying both stacked 16 + 12 between every pair, which read as a list
+    // coming apart rather than as one stack.
     ...shadow.card,
   },
   cardLeading: {
-    borderColor: alpha(color.trained, 0.35),
+    borderColor: alpha(color.trained, 0.4),
   },
   leadTag: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
-    fontSize: moderateScale(9),
-    letterSpacing: 1.2,
+    ...type.footnote,
     fontWeight: '700',
     color: color.trained,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   cardBody: {
     gap: spacing.sm,
@@ -1044,38 +665,37 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   liftName: {
-    ...type.subhead,
+    ...type.headline,
     flexShrink: 1,
-    fontWeight: '600',
+    fontWeight: '700',
     color: color.textPrimary,
   },
-  // The ranking's own reading. Blue when a lift gained, neutral when it held or
-  // fell — the WORD carries the direction, so the chip never turns a deload red.
+  // The window's own reading. The WORD inside it carries the direction; the
+  // hue only repeats it, which is what keeps a colourblind reading complete.
   shareChip: {
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     paddingHorizontal: 6,
     paddingVertical: 2,
-    backgroundColor: color.surfaceHigh,
   },
-  shareChipUp: {
-    backgroundColor: alpha(color.trained, 0.12),
-  },
+  chip_up: { backgroundColor: color.gainWash },
+  chip_down: { backgroundColor: color.lossWash },
+  chip_flat: { backgroundColor: color.surfaceHigh },
+  ink_up: { color: color.gain },
+  ink_down: { color: color.loss },
+  ink_flat: { color: color.textSecondary },
   shareText: {
     fontFamily: fonts.reading,
-    fontSize: moderateScale(10.5),
-    fontWeight: '600',
-    color: color.textSecondary,
+    fontSize: moderateScale(11),
+    fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
-  shareTextUp: {
-    color: color.trained,
-  },
   // A PR is a SHAPE, never a colour (§5.1) — an outlined mono label, so it
-  // survives colourblindness and never competes with the green on Today.
+  // survives colourblindness and never competes with the green beside it.
   prChip: {
     borderWidth: 1,
-    borderColor: color.textPrimary,
-    borderRadius: 4,
+    borderColor: color.border,
+    borderRadius: 5,
     paddingHorizontal: 5,
     paddingVertical: 1,
   },
@@ -1089,9 +709,9 @@ const styles = StyleSheet.create({
   },
   liftMeta: {
     fontFamily: fonts.reading,
-    fontSize: moderateScale(10.5),
+    fontSize: moderateScale(11.5),
     marginTop: 3,
-    color: color.textMuted,
+    color: color.textSecondary,
     fontVariant: ['tabular-nums'],
   },
   heroBox: {
@@ -1100,27 +720,33 @@ const styles = StyleSheet.create({
   },
   hero: {
     fontFamily: fonts.reading,
-    fontSize: type.title2.fontSize,
+    fontSize: moderateScale(28),
+    fontWeight: '700',
+    letterSpacing: -0.5,
     color: color.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   heroUnit: {
     fontSize: type.caption.fontSize,
+    fontWeight: '400',
     color: color.textSecondary,
   },
   heroDelta: {
-    ...type.footnote,
-    marginTop: spacing.xs,
-    color: color.textMuted,
+    fontFamily: fonts.reading,
+    fontSize: moderateScale(12.5),
+    fontWeight: '600',
+    marginTop: 2,
+    fontVariant: ['tabular-nums'],
   },
   ends: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   endLabel: {
     fontFamily: fonts.reading,
-    fontSize: moderateScale(10),
-    color: color.textMuted,
+    fontSize: moderateScale(11),
+    color: color.textSecondary,
     fontVariant: ['tabular-nums'],
   },
 
@@ -1138,6 +764,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -PRESS_BLEED,
     paddingHorizontal: PRESS_BLEED,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
   },
   setRow: {
     flexDirection: 'row',
@@ -1175,6 +802,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -PRESS_BLEED,
     paddingHorizontal: PRESS_BLEED,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
   },
   openerLabel: {
     ...type.caption,
@@ -1194,6 +822,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -PRESS_BLEED,
     paddingHorizontal: PRESS_BLEED,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     borderBottomWidth: 1,
     borderBottomColor: color.tableRule,
   },
@@ -1223,6 +852,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -PRESS_BLEED,
     paddingHorizontal: PRESS_BLEED + spacing.xs,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
   },
   allLiftsLabel: {
     ...type.caption,
@@ -1233,14 +863,12 @@ const styles = StyleSheet.create({
     color: color.textMuted,
     paddingVertical: spacing.md,
   },
-  pressed: {
-    backgroundColor: color.surfaceHigh,
-  },
   emptyCard: {
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: color.border,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     padding: spacing.lg,
     gap: spacing.md,
   },

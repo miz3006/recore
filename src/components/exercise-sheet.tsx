@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
 
 import { PressableScale, Stagger } from '@/components/motion';
@@ -332,7 +331,6 @@ const METRIC_CHIP_LABEL: Record<ChartMetric, string> = {
 };
 
 export function ExerciseSheet() {
-  const insets = useSafeAreaInsets();
   const userId = useSession((s) => s.userId);
   const sheetExercise = useSession((s) => s.sheetExercise);
   const closeExerciseSheet = useSession((s) => s.closeExerciseSheet);
@@ -493,12 +491,11 @@ export function ExerciseSheet() {
     <BottomSheet
       visible={sheetExercise !== null}
       onClose={close}
-      sheetStyle={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+      sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
       {/* Header: chevron close · centered name pill · spacer. */}
       <View style={styles.header}>
             <PressableScale
               style={styles.chevron}
-              pressedStyle={styles.chevronPressed}
               onPress={close}
               haptic="none"
               activeScale={0.92}
@@ -622,7 +619,6 @@ export function ExerciseSheet() {
                             haptic="none"
                             activeScale={0.94}
                             style={[styles.metricChip, active && styles.metricChipActive]}
-                            pressedStyle={!active ? styles.metricChipPressed : undefined}
                             accessibilityRole="button"
                             accessibilityState={{ selected: active }}
                             accessibilityLabel={METRIC_CHIP_LABEL[mk]}>
@@ -753,7 +749,7 @@ export function ExerciseSheet() {
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: color.bg,
+    backgroundColor: color.surface,
     paddingHorizontal: spacing.xl,
     // Cap the sheet so a long history scrolls instead of pushing the header off
     // the top of the screen; the body below shrinks and scrolls within it.
@@ -775,6 +771,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     paddingVertical: spacing.lg,
   },
   statTile: {
@@ -824,6 +821,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     padding: spacing.xl,
   },
 
@@ -845,16 +843,13 @@ const styles = StyleSheet.create({
     backgroundColor: color.accent,
     borderColor: color.accent,
   },
-  metricChipPressed: {
-    backgroundColor: color.surfaceHigh,
-  },
   metricChipText: {
     fontSize: moderateScale(12),
     fontWeight: '600',
     color: color.textSecondary,
   },
   metricChipTextActive: {
-    color: color.bg,
+    color: color.onInk,
   },
 
   // Weight-progression step chart.
@@ -940,9 +935,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chevronPressed: {
-    backgroundColor: color.surfaceHigh,
-  },
   namePill: {
     paddingVertical: moderateScale(9),
     paddingHorizontal: spacing.xl,
@@ -977,7 +969,7 @@ const styles = StyleSheet.create({
   chipSelectedText: {
     fontSize: type.caption.fontSize,
     fontWeight: '600',
-    color: color.bg,
+    color: color.onInk,
   },
   step: {
     marginLeft: 'auto',
@@ -994,6 +986,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     padding: spacing.xl,
   },
   cardEyebrow: {
@@ -1041,6 +1034,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.xs / 2,
   },
@@ -1119,6 +1113,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: alpha(color.trend, 0.22),
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     padding: spacing.xl,
   },
   summaryText: {
@@ -1140,6 +1135,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: radius.md,
+    borderCurve: 'continuous',
     paddingHorizontal: spacing.md + 2,
     paddingVertical: spacing.md,
   },

@@ -7,6 +7,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
+import { selection } from '@/lib/haptics';
 import { SPRING } from '@/lib/motion';
 import {
   alpha,
@@ -63,9 +64,6 @@ function rowGlyphTint({ danger, warn }: { danger?: boolean; warn?: boolean }): s
 /** The leading glyph column, and the inset a separator starts at. */
 export const ROW_ICON = moderateScale(19);
 const ROW_ICON_SLOT = ROW_ICON + spacing.md;
-/** How far a pressed row's highlight bleeds past the card's own padding. */
-const PRESS_BLEED = spacing.sm;
-
 export function Section({
   label,
   footnote,
@@ -178,11 +176,10 @@ export function Row({
       disabled={disabled}
       onPress={onPress}
       haptic="none"
-      activeScale={0.99}
+      activeScale={0.98}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      style={styles.row}
-      pressedStyle={styles.rowPressed}>
+      style={styles.row}>
       {body}
     </PressableScale>
   );
@@ -241,12 +238,11 @@ export function AccordionRow({
       <PressableScale
         onPress={onToggle}
         haptic="none"
-        activeScale={0.99}
+        activeScale={0.98}
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityState={{ expanded: open }}
-        style={styles.row}
-        pressedStyle={styles.rowPressed}>
+        style={styles.row}>
         {icon ? (
           <View style={styles.rowIcon}>
             <Icon name={icon} size={ROW_ICON} tint={rowGlyphTint({})} />
@@ -312,7 +308,10 @@ export function Segmented<T extends string | number>({
         return (
           <PressableScale
             key={String(o.id)}
-            onPress={() => onSelect(o.id)}
+            onPress={() => {
+              selection();
+              onSelect(o.id);
+            }}
             haptic="none"
             activeScale={0.94}
             accessibilityRole="button"
@@ -349,19 +348,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.divider,
     borderRadius: radius.lg,
+    borderCurve: 'continuous',
     paddingHorizontal: spacing.lg + 2,
-    // A hair of vertical padding so the first and last row's pressed highlight
-    // (PRESS_BLEED) stays inside the card's own rounded corner instead of
-    // poking a square grey nub past it.
     paddingVertical: spacing.xs,
     ...shadow.card,
   },
   row: {
     minHeight: moderateScale(48),
     paddingVertical: spacing.md + 1,
-    marginHorizontal: -PRESS_BLEED,
-    paddingHorizontal: PRESS_BLEED,
-    borderRadius: radius.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
@@ -374,9 +368,6 @@ const styles = StyleSheet.create({
     height: hairline,
     marginLeft: ROW_ICON_SLOT,
     backgroundColor: color.divider,
-  },
-  rowPressed: {
-    backgroundColor: color.surfaceHigh,
   },
   rowLeft: {
     flex: 1,
@@ -438,6 +429,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: color.surfaceHigh,
     borderRadius: radius.sm,
+    borderCurve: 'continuous',
     padding: moderateScale(3),
     gap: moderateScale(3),
   },
@@ -445,6 +437,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: moderateScale(8),
     borderRadius: radius.sm - 3,
+    borderCurve: 'continuous',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: hairline,
