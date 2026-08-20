@@ -228,14 +228,17 @@ export const STEPS: readonly Step[] = [
     // reads — a demo of a syntax that did not work would be the worst possible
     // first impression.
     //
-    // The design's line reads "hold the mic"; the toolbar's mic is a TAP
-    // toggle (`bottom-toolbar.tsx`), so the copy says tap. A screen that
-    // teaches a gesture the app does not have is worse than one that says
-    // nothing.
+    // The design's line reads "hold the mic"; the mic here and on the Today
+    // toolbar is a TAP toggle, so the copy says tap. A screen that teaches a
+    // gesture the app does not have is worse than one that says nothing.
+    //
+    // The subtext asks for a LINE, not for a tap: the field on this screen is
+    // live now, and it is the person's own last session that the rest of the
+    // flow is built out of.
     slug: 'demo',
     kind: 'demo',
     headline: "Write it like you'd say it",
-    subtext: 'Tap the line. Or tap the mic in the app and say it out loud.',
+    subtext: 'Type a line from your last session. Or tap the mic.',
     cta: "That's the whole app",
   },
   {
@@ -376,11 +379,17 @@ export const STEPS: readonly Step[] = [
      * The design's paragraph opened "Most people who log the first four
      * sessions are still logging in month three." That is a retention
      * statistic about other people with nothing behind it, which CLAUDE.md §2
-     * rule 2 and §3 both forbid on a store-facing screen. The line below says
-     * the same thing about THIS person's own record, which is checkable.
+     * rule 2 and §3 both forbid on a store-facing screen. The lines below say
+     * something about THIS person's own record instead, which is checkable.
+     *
+     * "After four written sessions" is a FLOOR, not a threshold the app is
+     * holding something back until: `recachePrediction` runs on the first parse
+     * and Progress opens a lift's card at three sessions
+     * (`MIN_SESSIONS_FOR_CARD`). By four there is a prescription with real
+     * history behind it, which is the promise the sentence makes.
      */
     body: [
-      'Four written sessions is the point where the record starts answering questions instead of collecting them.',
+      'After four written sessions, Recore starts telling you what to lift.',
       'Hold the button and it stops being an intention.',
     ],
     cta: 'Hold to commit',
