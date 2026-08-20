@@ -10,6 +10,7 @@ import {
   overloadExample,
   PROGRESS_TOTAL,
   progressFilled,
+  relativeProjection,
   resolveWeightUnit,
   STEPS,
   stepBody,
@@ -31,7 +32,11 @@ import {
   StatCard,
 } from '@/components/onboarding/panels';
 import { ParseDemo } from '@/components/onboarding/ParseDemo';
-import { ProjectionCard, ProjectionRow } from '@/components/onboarding/ProjectionCard';
+import {
+  ProjectionCard,
+  ProjectionRow,
+  RelativeProjectionCard,
+} from '@/components/onboarding/ProjectionCard';
 import { SuggestionChips } from '@/components/onboarding/SuggestionChips';
 import { TextField } from '@/components/onboarding/TextField';
 import { PUSH_MS } from '@/components/onboarding/tokens';
@@ -313,6 +318,11 @@ export default function OnboardingStep() {
   const projections = useMemo(
     () => (step.kind === 'projection' ? liftProjections(answers) : []),
     [step.kind, answers],
+  );
+  /** No load anywhere to project FROM — the honest relative variant (§5.1). */
+  const relative = useMemo(
+    () => (step.kind === 'projection' && projections.length === 0 ? relativeProjection(answers) : null),
+    [step.kind, projections.length, answers],
   );
 
   const setLiftLoad = (lift: string, value: number) => {
@@ -673,6 +683,7 @@ export default function OnboardingStep() {
       <View style={styles.stack}>
         {lead ? (
           <>
+
             <Enter delay={contentDelay(0)}>
               <ProjectionCard
                 lift={lead.lift}
@@ -696,17 +707,25 @@ export default function OnboardingStep() {
               </Enter>
             ))}
           </>
+        ) : relative ? (
+          // A lift was named and no load was ever typed. The projection goes
+          // relative rather than absolute — the rate is real, the starting
+          // number would have to be invented, and §5.1 forbids inventing it.
+          <Enter delay={contentDelay(0)}>
+            <RelativeProjectionCard lift={relative.lift} percent={relative.percent} />
+          </Enter>
         ) : (
-          // No starting load was typed, so there is nothing to project FROM.
-          // The screen says that rather than inventing a lift and a number —
-          // §5.1: never a fake progression before a session is logged.
+          // Not even a lift was named, so there is nothing to project at all.
+          // The screen says that rather than inventing one.
           <Enter delay={contentDelay(0)}>
             <Paragraph>
               {`You skipped the starting numbers, so there is nothing to project from yet. Your first ${COMMIT_WEEKS} weeks will build it from what you actually lift.`}
             </Paragraph>
           </Enter>
         )}
-        {step.footnote && lead ? (
+        {/* The disclaimer belongs to BOTH variants: a relative projection is
+            just as much an estimate from answers as an absolute one. */}
+        {step.footnote && (lead || relative) ? (
           <Enter
             delay={contentDelay(1 + rest.length)}
 >

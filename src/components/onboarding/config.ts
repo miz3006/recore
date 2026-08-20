@@ -10,6 +10,7 @@ import {
   parseLiftLoads,
   parseList,
   projectedTarget,
+  projectionRate,
   toPlate,
 } from '@/lib/onboarding';
 import { defaultWeightUnit } from '@/lib/locale';
@@ -533,6 +534,48 @@ export function liftProjections(answers: Answers): LiftProjection[] {
     if (demo) out.push(demo);
   }
   return out;
+}
+
+/**
+ * THE PROJECTION WITH NO NUMBER TO START FROM.
+ *
+ * Someone can reach the last screen having named a lift and skipped every
+ * load — the footnote on the key-lift screen says they may. The old screen
+ * answered that with a paragraph of apology; the design's answer was a fake
+ * 65 kg, which §5.1 forbids outright ("never show a fake progression chart
+ * before a session is logged") and which would also be the first number in the
+ * app that nobody typed.
+ *
+ * So the projection goes RELATIVE: the rate itself, over the horizon, drawn as
+ * a shape with no axis. It is the same arithmetic the absolute card runs
+ * (`projectionRate` — the experience ladder), minus the one thing that is
+ * missing, and the caption says exactly what is missing and how it arrives.
+ *
+ * A PERCENTAGE AND NOT "+7.5 kg" ON PURPOSE. A kilogram delta is a share of a
+ * starting load, so printing one without a starting load means inventing the
+ * load and hiding it — which is the fabrication this whole variant exists to
+ * avoid (CLAUDE.md §2 rule 3). The number below is the only honest one the
+ * screen has.
+ */
+export type RelativeProjection = {
+  lift: string;
+  /** Whole percent added over `COMMIT_WEEKS`, from the experience ladder. */
+  percent: number;
+};
+
+export function relativeProjection(answers: Answers): RelativeProjection | null {
+  const lift =
+    parseList(answers.keyLifts)[0] ?? parseDemoEntry(answers.demoEntry)?.exerciseName ?? null;
+  if (!lift) return null;
+  const experience =
+    answers.experience === 'new' ||
+    answers.experience === 'building' ||
+    answers.experience === 'experienced'
+      ? answers.experience
+      : null;
+  const percent = Math.round(projectionRate(experience) * 100);
+  if (percent <= 0) return null;
+  return { lift, percent };
 }
 
 /** The demo line as a projection, or null when it carried no load. */

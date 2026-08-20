@@ -102,6 +102,58 @@ export function ProjectionCard({
   );
 }
 
+/**
+ * The projection when no starting load was ever typed: the RATE, over the same
+ * horizon, with no absolute number anywhere on the card.
+ *
+ * The bars are an index — 100 to 100 + percent — so the shape is the same shape
+ * the absolute card draws and the axis is still absent. Nothing here can be
+ * read as a weight, which is the point: the caption says where the weight comes
+ * from, and it comes from the person's first written session.
+ */
+export function RelativeProjectionCard({ lift, percent }: { lift: string; percent: number }) {
+  const series = projectionSeries(100, 100 + percent);
+  const floor = 100 * 0.82;
+  const ceiling = 100 + percent;
+
+  return (
+    <View
+      style={styles.card}
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`${lift}: a projected ${percent} per cent over ${COMMIT_WEEKS} weeks. Your first written session sets the baseline.`}>
+      <Text style={styles.label} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {lift.toUpperCase()}
+      </Text>
+
+      <View style={styles.headline}>
+        <Text style={styles.value} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {`+${percent}% in ${COMMIT_WEEKS} weeks`}
+        </Text>
+      </View>
+
+      <View style={styles.chart} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        {series.map((value, i) => (
+          <View
+            key={i}
+            style={[
+              styles.bar,
+              {
+                height: `${Math.max(8, ((value - floor) / (ceiling - floor)) * 100)}%`,
+                backgroundColor: alpha(color.brand, 0.35 + (0.65 * i) / (series.length - 1)),
+              },
+            ]}
+          />
+        ))}
+      </View>
+
+      <Text style={styles.baseline} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        Your first written session sets the baseline.
+      </Text>
+    </View>
+  );
+}
+
 /** The same projection without the chart — the second and third lifts, which
  * the design draws as a compact row so the first one keeps the page. */
 export function ProjectionRow({
@@ -209,5 +261,13 @@ const styles = StyleSheet.create({
   axisText: {
     ...type.caption,
     color: color.textMuted,
+  },
+  /** The relative card's own closing line, where the absolute one has an axis.
+   * `textSecondary`: it is the sentence that explains the whole card, so it
+   * clears 4.5:1 like anything else that has to be read (the 9 Aug ink ladder). */
+  baseline: {
+    ...type.subhead,
+    color: color.textSecondary,
+    marginTop: spacing.md,
   },
 });
