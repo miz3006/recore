@@ -23,9 +23,9 @@ import { alpha, blend, color, moderateScale } from '@/lib/theme';
  *
  * EMOJI are the one exception to "nothing else is coloured", and they are the
  * product authority's own (product-direction §12: "Emoji may appear sparingly
- * as an onboarding choice label when they improve scanning"). Two screens of
- * the v3 flow carry one per option row — the goal and the weekly recap.
- * Nowhere else in the app.
+ * as an onboarding choice label when they improve scanning"). Since 20 Aug 2026
+ * every screen that ASKS something carries one per option row — and no screen
+ * that reports anything carries one at all. Nowhere else in the app.
  *
  * This is inside product-direction §4.2: "Recore blue may be used for selected
  * onboarding choices, interactive focus, active controls." It is an accent, not

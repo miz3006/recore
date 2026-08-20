@@ -56,7 +56,8 @@ import { useSelectFill } from './use-select-fill';
  * `detail` is the design's quiet line under the label — what the answer means
  * for the app, in the person's own register. `emoji` is sanctioned by
  * product-direction §12 ("sparingly as an onboarding choice label when they
- * improve scanning") and appears on three screens of the flow. Neither is
+ * improve scanning") and appears on every screen of the flow that asks
+ * something — one per option, never where the app reports. Neither is
  * announced separately: VoiceOver reads label and detail as one string, because
  * two labels on one control is two stops for one decision.
  */

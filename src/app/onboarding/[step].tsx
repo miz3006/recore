@@ -411,6 +411,7 @@ export default function OnboardingStep() {
               multi
               label={option.label}
               detail={option.detail}
+              emoji={option.emoji}
               selected={chosen.includes(option.id)}
               onPress={() => toggleObstacle(option.id)}
             />
@@ -480,6 +481,7 @@ export default function OnboardingStep() {
 >
               <OptionRow
                 label={option.label}
+                emoji={option.emoji}
                 selected={answers[secondary.storeKey] === option.id}
                 onPress={() => setAnswer(secondary.storeKey, option.id)}
               />
@@ -530,6 +532,7 @@ export default function OnboardingStep() {
 >
               <OptionRow
                 label={option.label}
+                emoji={option.emoji}
                 selected={answers[secondary.storeKey] === option.id}
                 onPress={() => setAnswer(secondary.storeKey, option.id)}
               />

@@ -76,9 +76,14 @@ export type StepOption = {
   detail?: string;
   /**
    * A leading glyph. Sanctioned by product-direction §12 — "Emoji may appear
-   * sparingly as an onboarding choice label when they improve scanning" — and
-   * used on the three screens the design draws them on, never anywhere else in
-   * the app.
+   * sparingly as an onboarding choice label when they improve scanning".
+   *
+   * ONE PER OPTION, ON EVERY SCREEN THAT ASKS SOMETHING (owner, 20 Aug 2026),
+   * and nowhere the app REPORTS: not on the lesson screens, not on the day
+   * circles or the load steppers, not on the commitment, the projection or the
+   * paywall. The rule is the boundary between choosing and reading, and it is
+   * the whole rule — a flow where two of eight choice screens carry glyphs
+   * reads as an oversight rather than as restraint.
    */
   emoji?: string;
 };
@@ -192,11 +197,11 @@ export const STEPS: readonly Step[] = [
     headline: 'Where do you track today?',
     subtext: 'So Recore knows what you are switching from.',
     options: [
-      { id: 'strong', label: 'Strong' },
-      { id: 'hevy', label: 'Hevy' },
-      { id: 'notes', label: 'Notes or paper' },
-      { id: 'sheet', label: 'A spreadsheet' },
-      { id: 'none', label: 'Nowhere yet' },
+      { id: 'strong', emoji: '\u{1F4F1}', label: 'Strong' },
+      { id: 'hevy', emoji: '\u{1F4F2}', label: 'Hevy' },
+      { id: 'notes', emoji: '\u{1F4D3}', label: 'Notes or paper' },
+      { id: 'sheet', emoji: '\u{1F4CA}', label: 'A spreadsheet' },
+      { id: 'none', emoji: '\u{1F331}', label: 'Nowhere yet' },
     ],
     storeKey: 'tracker',
   },
@@ -209,11 +214,11 @@ export const STEPS: readonly Step[] = [
     headline: 'What stops you from tracking?',
     subtext: 'This decides what Recore fixes first.',
     options: [
-      { id: 'slow', label: 'The grid is too slow between sets' },
-      { id: 'forget', label: 'I forget to log it' },
-      { id: 'shapes', label: "Supersets and dropsets don't fit" },
-      { id: 'target', label: 'I never know what to beat' },
-      { id: 'none', label: "Nothing — I'm just starting" },
+      { id: 'slow', emoji: '\u{1F40C}', label: 'The grid is too slow between sets' },
+      { id: 'forget', emoji: '\u{1F4AD}', label: 'I forget to log it' },
+      { id: 'shapes', emoji: '\u{1F9E9}', label: "Supersets and dropsets don't fit" },
+      { id: 'target', emoji: '\u{1F3AF}', label: 'I never know what to beat' },
+      { id: 'none', emoji: '\u{1F463}', label: "Nothing — I'm just starting" },
     ],
     storeKey: 'obstacles',
   },
@@ -285,9 +290,19 @@ export const STEPS: readonly Step[] = [
     headline: 'How long have you been lifting?',
     subtext: 'This sets how fast Recore adds weight.',
     options: [
-      { id: 'new', label: 'Under a year', detail: 'still learning the lifts' },
-      { id: 'building', label: '1–3 years', detail: 'the numbers still move most months' },
-      { id: 'experienced', label: '3+ years', detail: 'progress is slower and earned' },
+      { id: 'new', emoji: '\u{23F3}', label: 'Under a year', detail: 'still learning the lifts' },
+      {
+        id: 'building',
+        emoji: '\u{1F4C8}',
+        label: '1–3 years',
+        detail: 'the numbers still move most months',
+      },
+      {
+        id: 'experienced',
+        emoji: '\u{1F9F1}',
+        label: '3+ years',
+        detail: 'progress is slower and earned',
+      },
     ],
     storeKey: 'experience',
   },
@@ -304,9 +319,9 @@ export const STEPS: readonly Step[] = [
       // §5: illustration variants and wording only. Never a different number,
       // never a different prescription.
       options: [
-        { id: 'female', label: 'Female' },
-        { id: 'male', label: 'Male' },
-        { id: 'other', label: 'Prefer not to say' },
+        { id: 'female', emoji: '\u{1F6BA}', label: 'Female' },
+        { id: 'male', emoji: '\u{1F6B9}', label: 'Male' },
+        { id: 'other', emoji: '\u{1F512}', label: 'Prefer not to say' },
       ],
       storeKey: 'gender',
     },
@@ -320,8 +335,8 @@ export const STEPS: readonly Step[] = [
     secondary: {
       label: 'HOW YOU FOLLOW IT',
       options: [
-        { id: 'structured', label: 'I follow a fixed plan' },
-        { id: 'flexible', label: 'I decide on the day' },
+        { id: 'structured', emoji: '\u{1F4CB}', label: 'I follow a fixed plan' },
+        { id: 'flexible', emoji: '\u{1F3B2}', label: 'I decide on the day' },
       ],
       storeKey: 'sessionFeel',
     },
