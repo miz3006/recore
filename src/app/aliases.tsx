@@ -15,12 +15,12 @@ import {
 import { tap, tapMedium } from '@/lib/haptics';
 import {
   color,
-  fonts,
   hairline,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
+  readingStyle,
   spacing,
   type,
 } from '@/lib/theme';
@@ -163,7 +163,7 @@ export default function Aliases() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.bg,
+    backgroundColor: color.canvas,
   },
   bar: {
     flexDirection: 'row',
@@ -199,11 +199,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   aliasText: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(15),
     lineHeight: lineFor(21),
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   arrow: {
     color: color.textMuted,

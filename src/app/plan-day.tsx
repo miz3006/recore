@@ -18,11 +18,11 @@ import { addPlanDay, deletePlanDay, getPlanDay, updatePlanDay } from '@/lib/db/p
 import { tap, tapMedium } from '@/lib/haptics';
 import {
   color,
-  fonts,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
+  readingStyle,
   spacing,
   type,
 } from '@/lib/theme';
@@ -202,7 +202,7 @@ export default function PlanDayEditor() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: color.bg },
+  root: { flex: 1, backgroundColor: color.canvas },
   flex: { flex: 1 },
   nav: {
     flexDirection: 'row',
@@ -234,12 +234,10 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
 
   caption: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('500'),
     fontSize: moderateScale(10),
     letterSpacing: 1.2,
     color: color.textMuted,
-    fontWeight: '500',
     marginBottom: spacing.sm,
   },
   captionSpaced: { marginTop: spacing.xl },
@@ -267,18 +265,15 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   previewCap: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('500'),
     fontSize: moderateScale(9.5),
     letterSpacing: 1.2,
     color: color.textMuted,
-    fontWeight: '500',
   },
   previewRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
   previewName: { flexShrink: 1, fontSize: moderateScale(14.5), color: color.textPrimary },
   previewTyped: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(11),
     color: color.textMuted,
   },

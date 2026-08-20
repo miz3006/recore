@@ -153,7 +153,7 @@ function Paragraph({ line, onOpenUrl }: { line: string; onOpenUrl: (url: string)
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.bg,
+    backgroundColor: color.canvas,
   },
   nav: {
     flexDirection: 'row',
@@ -233,7 +233,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    // A row, so `lg` 20 — `md` 14 is a button's radius.
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.divider,

@@ -126,7 +126,9 @@ export default function SignIn() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.surface,
+    // The canvas — this was the last full-screen `surface` in the app, and a
+    // white page beside a cream one is the seam v6 exists to remove.
+    backgroundColor: color.canvas,
     paddingHorizontal: spacing.xxl,
   },
   wordmark: {

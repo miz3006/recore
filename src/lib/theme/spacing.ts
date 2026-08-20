@@ -52,16 +52,15 @@ export const spacing = {
  * ARE the app's radii (skill §Decided-2).
  *
  * `lg` and `xl` each grew two points, which is what makes a 24 pt sheet and a
- * 20 pt row read as one family rather than as 18/22/28 read as three.
+ * 20 pt row read as one family rather than as 18/22/28 read as three. The 28 pt
+ * `xxl` band is gone — its alias was deleted on 20 Aug 2026 with the last of its
+ * call sites.
  */
 export const radius = {
   sm: 10,
   md: 14, // buttons
   lg: 20, // rows, fields, option rows
   xl: 24, // cards, sheets, hero surfaces
-  /** @deprecated the 28 pt hero band is gone — `xl` is the hero radius now. This
-   * alias holds its 6 call sites through Phase 2 and is then deleted. */
-  xxl: 24,
   pill: 999, // controls, chips, date pill
 } as const;
 

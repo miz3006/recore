@@ -892,6 +892,34 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — v6 Phase 3, the last eight files, and the migration's deprecated tokens are
+  DELETED.** `app/_layout.tsx`, `split.tsx`, `plan-day.tsx`, `legal.tsx`, `health.tsx`,
+  `import-start.tsx`, `aliases.tsx`, `sign-in.tsx`, plus the two theme files that lose their
+  aliases.
+  - **Every screen in the app now stands on `color.canvas`.** The root background and the
+    navigator card style in `_layout.tsx` moved off `color.bg`, and so did the six pushed
+    screens. **`sign-in.tsx` was the last full-screen white page in the app** — its root was
+    `color.surface`, which is a seam beside a cream one, and it is the canvas now.
+  - **The deprecated tokens are gone, not deprecated.** With their last call sites moved,
+    `color.bg`, `color.ctaFill`, `color.ctaFillPressed`, `color.trained` and `radius.xxl` are
+    **deleted from the theme**. There is one blue, one canvas and four radii, and none of them
+    has a second name. `MIGRATION.md` promised this for the end of Phase 3; this is the end of
+    Phase 3.
+  - **The `readingStyle()` sweep is finished app-wide.** The last seven inline
+    `fontFamily: fonts.reading` (three in `split`, three in `plan-day`, one in `aliases`) are
+    gone, and **`fonts.reading` now has zero call sites anywhere in `src/`.** Skill §Decided-5 is
+    true in the code.
+  - **Four radii and one height were wrong against the scale, and one of them mattered.**
+    `split`'s empty-state button is a **filled brand pill** — the primary action on that screen —
+    and it was `CONTROL_HEIGHT` 50 with no glow. It is `CTA_HEIGHT` 56 with `shadow.glow` now
+    (skill §Decided-1 and §Decided-3); the dashed "Add a day" beside it is a secondary control
+    and correctly keeps 50. The rest: `split`'s card `lg` → `xl`, its segmented container
+    `md` → `sm` (it is recessed, not a button — the same shape You's segmented editor takes),
+    `legal`'s row `md` → `lg`, `import-start`'s steps card `lg` → `xl`. The genuine buttons —
+    `split`'s Add a day, `plan-day`'s Delete — were checked and **kept at `md` 14**, which is the
+    point of auditing rather than sweeping.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified: device QA.**
 - **20 Aug 2026 — v6 Phase 3: the sheets, in one pass.** Eight files. Most of MIGRATION's sheet
   row was already spent in Phase 2b — the `readingStyle()` sweep (37 call sites across the
   sheets), `color.trained` → `color.brand` for every selected and active state, and the

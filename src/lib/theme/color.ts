@@ -34,8 +34,10 @@
  * `#007AFF` is retired: it measured 4.02:1 on white and 3.73:1 on the canvas and
  * failed text-sized use. Volt measures **5.97:1 on white, 5.53–5.69:1 across the
  * canvas tints**, and white-on-fill is the same ratio, so it also clears AA as a
- * filled button. `ctaFill` / `ctaFillPressed` / `trained` are deprecated aliases
- * of it for the duration of the migration and are deleted with Phase 3.
+ * filled button. `ctaFill`, `ctaFillPressed` and `trained` were deprecated
+ * aliases of it for the length of the migration and were **deleted on 20 Aug
+ * 2026** with the last screen; so was `bg`. There is one blue and one canvas,
+ * and neither has a second name any more.
  *
  * Primary CTAs are a filled brand pill with `shadow.glow`. The old "primary CTAs
  * are ink-fill — restraint IS the brand" ruling is retired (skill §Decided-1);
@@ -62,8 +64,6 @@ export const color = {
   canvas: '#FCF9F4', // THE WORLD: every screen, every sheet backdrop. Also the flat fill wherever the gradient cannot render.
   canvasTop: '#FDF6EE', // peach tint — top of the static diagonal gradient
   canvasBot: '#F9F5F9', // faint lavender-pink tint — bottom of it
-  /** @deprecated alias of `canvas` — kept only until Phase 2 has moved its 13 call sites. Use `canvas`. */
-  bg: '#FCF9F4',
   surface: '#FFFFFF', // pills, cards, sheets, chips, the input bar — a SURFACE on the canvas, never the canvas
   surfaceHigh: '#E5E5EA', // recessed only: segmented containers, hairline fills, pressed states
   onInk: '#FFFFFF', // a label, glyph or dot sitting ON `accent` / `brand` — always white, whatever the canvas does
@@ -72,12 +72,6 @@ export const color = {
   brand: '#0B5CD6', // THE ONE BLUE: primary CTA, selected states + checks, links, active controls, progress fill, chart lines
   brandPressed: '#0A4CB0', // the brand held down — a darker blue, never an opacity flash
   brandGlow: '#0B5CD6', // `shadow.glow`'s cast — the only coloured shadow in the app, primary CTA only
-  /** @deprecated → `brand`. Removed with Phase 3. */
-  ctaFill: '#0B5CD6',
-  /** @deprecated → `brandPressed`. Removed with Phase 3. */
-  ctaFillPressed: '#0A4CB0',
-  /** @deprecated → `brand`. Removed with Phase 3. */
-  trained: '#0B5CD6',
   signal: '#547C00', // PLANNED green: future prescription values ONLY
   /**
    * @deprecated NO CALL SITES since 20 Aug 2026. Ember was the lift sheet's

@@ -176,7 +176,7 @@ function Step({ index, text }: { index: string; text: string }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.bg,
+    backgroundColor: color.canvas,
   },
   scroll: {
     flex: 1,
@@ -202,7 +202,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.xxl,
     borderWidth: 1,
     borderColor: color.border,
-    borderRadius: radius.lg,
+    // A card, so `xl` 24.
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     backgroundColor: color.surface,
     paddingHorizontal: spacing.lg,

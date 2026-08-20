@@ -16,7 +16,7 @@ void SplashScreen.preventAutoHideAsync();
 
 /**
  * Root layout. Recore is a warm-paper, monochrome, light-only app ("Recore
- * Light"), so the canvas is painted `color.bg` — the grouped grey — everywhere
+ * Light"), so the canvas is painted `color.canvas` — the grouped grey — everywhere
  * a screen does not override it with the white `surface`, and the status bar
  * carries dark content.
  *
@@ -73,7 +73,7 @@ function RootNavigator() {
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: color.bg },
+          contentStyle: { backgroundColor: color.canvas },
           animation: 'default',
         }}>
         {/* The dispatcher + the pre-account funnel — reachable signed-out.
@@ -128,4 +128,4 @@ function RootNavigator() {
   );
 }
 
-const styles = { root: { flex: 1, backgroundColor: color.bg } } as const;
+const styles = { root: { flex: 1, backgroundColor: color.canvas } } as const;

@@ -19,12 +19,14 @@ import { getScheduleMode, setScheduleMode } from '@/lib/prefs';
 import {
   color,
   CONTROL_HEIGHT,
-  fonts,
+  CTA_HEIGHT,
   hairline,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
+  readingStyle,
+  shadow,
   spacing,
   type,
 } from '@/lib/theme';
@@ -280,7 +282,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: color.bg },
+  root: { flex: 1, backgroundColor: color.canvas },
   nav: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -310,7 +312,9 @@ const styles = StyleSheet.create({
   segments: {
     flexDirection: 'row',
     backgroundColor: color.surfaceHigh,
-    borderRadius: radius.md,
+    // A recessed segmented container, not a button — `sm` 10, the same shape
+    // You's segmented editor takes.
+    borderRadius: radius.sm,
     borderCurve: 'continuous',
     padding: moderateScale(3),
     gap: moderateScale(3),
@@ -331,8 +335,7 @@ const styles = StyleSheet.create({
   segmentLabelSelected: { color: color.textPrimary },
 
   todayLine: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(11.5),
     color: color.textMuted,
     marginBottom: spacing.md,
@@ -344,7 +347,8 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.border,
-    borderRadius: radius.lg,
+    // A card, so `xl` 24 — `lg` 20 is rows, fields and option rows.
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
@@ -355,8 +359,7 @@ const styles = StyleSheet.create({
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   cardLabel: { flex: 1, ...type.headline, color: color.textPrimary },
   cardMoves: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(11.5),
     lineHeight: lineFor(17),
     color: color.textSecondary,
@@ -384,10 +387,8 @@ const styles = StyleSheet.create({
   },
   weekChipOn: { backgroundColor: color.accent, borderColor: color.accent },
   weekChipText: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('600'),
     fontSize: moderateScale(12),
-    fontWeight: '600',
     color: color.textMuted,
   },
   weekChipTextOn: { color: color.onInk },
@@ -416,17 +417,24 @@ const styles = StyleSheet.create({
   empty: { paddingTop: spacing.xl, paddingHorizontal: spacing.xs, gap: spacing.md },
   emptyTitle: { ...type.title2, color: color.textPrimary },
   emptyBody: { ...type.subhead, lineHeight: lineFor(21), color: color.textSecondary },
+  /**
+   * THE PRIMARY BUTTON on this screen — a filled brand pill, so it takes the
+   * app-wide `CTA_HEIGHT` 56 and the app's one coloured shadow (skill
+   * §Decided-1 and §Decided-3). It was 50, which is the height for secondary,
+   * ghost and compact controls; `addDay` above is one of those and keeps it.
+   */
   emptyBtn: {
-    minHeight: CONTROL_HEIGHT,
+    minHeight: CTA_HEIGHT,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
     borderCurve: 'continuous',
-    backgroundColor: color.ctaFill,
+    backgroundColor: color.brand,
+    ...shadow.glow,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: spacing.sm,
   },
-  emptyBtnPressed: { backgroundColor: color.ctaFillPressed },
+  emptyBtnPressed: { backgroundColor: color.brandPressed },
   emptyBtnText: { ...type.headline, color: color.onInk },
   emptyHint: { ...type.footnote, color: color.textMuted },
 });
