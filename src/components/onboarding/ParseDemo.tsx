@@ -85,7 +85,7 @@ import { useSelectFill } from './use-select-fill';
  */
 
 /** The caption under a record the person did not write themselves. */
-const FALLBACK_CAPTION = 'Here’s how a line becomes a record.';
+const FALLBACK_CAPTION = "Here's how a line becomes a record.";
 
 /** Chip typing speed — fast enough to feel written, slow enough to read. */
 const TYPE_MS = 30;

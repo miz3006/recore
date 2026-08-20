@@ -1,4 +1,5 @@
 import { inWrittenUnit, parseDemoEntry, type DemoEntry } from '@/lib/demo-parse';
+import { projectionHeadline, recapSubtext, whyWrittenBody } from '@/lib/onboarding-copy';
 import {
   COMMIT_WEEKS,
   committedSessions,
@@ -128,8 +129,12 @@ export type Step = {
   kicker?: string;
   /** One or two muted lines under the headline. */
   subtext?: string | ((answers: Answers) => string);
-  /** Paragraphs in the content band — the two lesson screens. */
-  body?: readonly string[];
+  /**
+   * Paragraphs in the content band — the two lesson screens. A FUNCTION when an
+   * earlier answer changes one of them: the "what gets written" essay opens on
+   * the tracker the person actually uses (`lib/onboarding-copy.ts`).
+   */
+  body?: readonly string[] | ((answers: Answers) => readonly string[]);
   /** A last quiet line under the content band. */
   footnote?: string;
   options?: readonly StepOption[];
@@ -228,14 +233,14 @@ export const STEPS: readonly Step[] = [
     cta: "That's the whole app",
   },
   {
+    // THE TRACKER ANSWER LANDS HERE. Screen two asks what they are switching
+    // from and, until 20 Aug 2026, nothing ever said it back — which is the
+    // state §5 deletes a question for. The first paragraph is now addressed to
+    // the thing they actually use; the argument under it is unchanged.
     slug: 'why-written',
     kind: 'essay',
     headline: 'What gets written gets stronger.',
-    body: [
-      "You can't add weight to a number you can't remember. A written session turns last week's load into a fact instead of a guess.",
-      "Most people don't quit logging because of discipline. They quit because of the tapping — exercise, sets, reps, weight, one field at a time.",
-      'Recore takes a sentence instead.',
-    ],
+    body: (answers) => whyWrittenBody(answers.tracker),
     cta: 'Makes sense',
   },
   {
@@ -371,7 +376,10 @@ export const STEPS: readonly Step[] = [
     headline: 'Want a recap every Sunday?',
     // §5.1: no permission prompt belongs in onboarding. This answer is INTENT;
     // the OS prompt happens when the first recap actually exists (§12.1).
-    subtext: 'One short read on what moved and what stalled. Nothing daily.',
+    //
+    // THE OBSTACLES ANSWER LANDS HERE: someone who said they forget to log is
+    // told what the message is for, in their own words.
+    subtext: (answers) => recapSubtext(parseList(answers.obstacles)),
     options: [
       {
         id: 'yes',
@@ -393,12 +401,9 @@ export const STEPS: readonly Step[] = [
     kind: 'projection',
     eyebrow: 'YOUR PROJECTION',
     eyebrowTone: 'accent',
-    headline: (answers) => {
-      const name = answers.name?.trim();
-      return name
-        ? `${name} — your next ${COMMIT_WEEKS} weeks`
-        : `Your next ${COMMIT_WEEKS} weeks`;
-    },
+    // The name and the GOAL, in one line: "Marko — your next 12 weeks of load".
+    // One word class from the goal, never a rewrite (`projectionHeadline`).
+    headline: (answers) => projectionHeadline(answers.name, answers.goal),
     subtext: (answers) => projectionSummary(answers),
     footnote: 'An estimate from your answers, not a promise.',
     cta: 'See my plan',
@@ -434,6 +439,12 @@ export function stepHeadline(step: Step, answers: Answers): string {
 /** A step's subtext, resolved the same way. */
 export function stepSubtext(step: Step, answers: Answers): string | undefined {
   return typeof step.subtext === 'function' ? step.subtext(answers) : step.subtext;
+}
+
+/** A lesson screen's paragraphs, resolved the same way. */
+export function stepBody(step: Step, answers: Answers): readonly string[] {
+  if (typeof step.body === 'function') return step.body(answers);
+  return step.body ?? [];
 }
 
 /** One resolution for the display unit — the lift steppers, the projection and

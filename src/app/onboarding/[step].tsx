@@ -12,6 +12,7 @@ import {
   progressFilled,
   resolveWeightUnit,
   STEPS,
+  stepBody,
   stepHeadline,
   stepSubtext,
 } from '@/components/onboarding/config';
@@ -416,7 +417,7 @@ export default function OnboardingStep() {
       </Enter>
     );
   } else if (step.kind === 'essay') {
-    const body = step.body ?? [];
+    const body = stepBody(step, answers);
     contentCount = body.length;
     content = (
       <View style={styles.prose}>
@@ -564,7 +565,7 @@ export default function OnboardingStep() {
       </View>
     );
   } else if (step.kind === 'overload') {
-    const body = step.body ?? [];
+    const body = stepBody(step, answers);
     const example = overloadExample(answers);
     contentCount = body.length + 2;
     content = (
@@ -594,7 +595,7 @@ export default function OnboardingStep() {
       </View>
     );
   } else if (step.kind === 'commitment') {
-    const body = step.body ?? [];
+    const body = stepBody(step, answers);
     const sessions = commitmentCount(answers);
     contentCount = body.length + 1;
     content = (
