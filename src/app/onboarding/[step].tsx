@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearTransition, useReducedMotion } from 'react-native-reanimated';
 
@@ -33,6 +33,7 @@ import { ProjectionCard, ProjectionRow } from '@/components/onboarding/Projectio
 import { SuggestionChips } from '@/components/onboarding/SuggestionChips';
 import { TextField } from '@/components/onboarding/TextField';
 import { PUSH_MS } from '@/components/onboarding/tokens';
+import { serializeDemoEntry, type DemoEntry } from '@/lib/demo-parse';
 import { markObStepReached, markOnboardingCompleted, setObStepCount } from '@/lib/funnel';
 import { defaultLanguage } from '@/lib/locale';
 import { DUR } from '@/lib/motion';
@@ -195,6 +196,15 @@ export default function OnboardingStep() {
   const answers = useOnboardingAnswers((s) => s.answers);
   const setAnswer = useOnboardingAnswers((s) => s.setAnswer);
   const setStep = useOnboardingAnswers((s) => s.setStep);
+
+  /**
+   * The demo screen's button does not exist until a record has landed on it
+   * (`ParseDemo`), so "That's the whole app" reads as the consequence of the
+   * moment rather than as a way past it. Local, not stored: coming BACK to the
+   * demo means doing it again, which is the only honest state for a screen
+   * whose whole content is a thing you just did.
+   */
+  const [demoSettled, setDemoSettled] = useState(false);
 
   // Record the position so a killed app resumes on this step, and the funnel's
   // high-water mark (1-based in this flow) so drop-off is measurable.
@@ -359,9 +369,17 @@ export default function OnboardingStep() {
     );
   } else if (step.kind === 'demo') {
     contentCount = 2;
+    // The button waits for the record. The template still RESERVES the CTA
+    // band, so nothing on the page moves when it finally arrives.
+    cta = demoSettled ? { label: step.cta ?? 'Continue', onPress: goNext } : null;
     content = (
       <Enter delay={contentDelay(0)}>
-        <ParseDemo />
+        <ParseDemo
+          onResult={(entry: DemoEntry | null) =>
+            setAnswer('demoEntry', entry ? serializeDemoEntry(entry) : '')
+          }
+          onSettled={() => setDemoSettled(true)}
+        />
       </Enter>
     );
   } else if (step.kind === 'essay') {

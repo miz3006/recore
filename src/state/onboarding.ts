@@ -52,7 +52,21 @@ export type AnswerKey =
   /** v3 screen 10 — starting load per key lift, as a JSON map of name to a
    * number IN THE DISPLAY UNIT (`parseLiftLoads`). The projection screen is its
    * only reader; nothing is written to the record from it. */
-  | 'liftLoads';
+  | 'liftLoads'
+  /**
+   * THE LINE THE PERSON TYPED ON THE DEMO SCREEN, and the reading made of it —
+   * a `DemoEntry` as JSON (`lib/demo-parse.ts`).
+   *
+   * It is the one answer that is not an option id, and the one answer that
+   * leaves the flow: the key-lift screen pre-selects from it, the overload card
+   * and the projection are built out of it, and after signup its RAW TEXT is
+   * seeded as the first real session (`lib/onboarding-seed.ts`) so the app
+   * opens on the person's own writing rather than on an empty page.
+   *
+   * Null when the demo was never completed, or when all the person saw was the
+   * canned fallback — nothing the app invents is ever stored here.
+   */
+  | 'demoEntry';
 
 export type Answers = Record<AnswerKey, string | null>;
 
@@ -73,6 +87,7 @@ export const EMPTY_ANSWERS: Answers = {
   obstacles: null,
   keyLifts: null,
   liftLoads: null,
+  demoEntry: null,
 };
 
 interface OnboardingAnswersState {
@@ -123,6 +138,27 @@ export const useOnboardingAnswers = create<OnboardingAnswersState>()(
           : (persisted as { answers: Answers; currentStep: number }),
       storage: createJSONStorage(() => sqliteStorage),
       partialize: (s) => ({ answers: s.answers, currentStep: s.currentStep }),
+      /**
+       * EVERY KEY EXISTS AFTER A REHYDRATE, whatever the stored row is missing.
+       *
+       * `migrate` only runs when the version moves, so a key added WITHOUT a
+       * bump (the ordinary case — a new answer that mis-resumes nothing) would
+       * come back `undefined` on an old snapshot, and `undefined` is not a
+       * value `Answers` admits. Merging over `EMPTY_ANSWERS` on every rehydrate
+       * makes "unanswered" one thing instead of two, so every reader can keep
+       * checking for null alone.
+       */
+      merge: (persisted, current) => {
+        const stored = (persisted ?? {}) as Partial<{
+          answers: Partial<Answers>;
+          currentStep: number;
+        }>;
+        return {
+          ...current,
+          answers: { ...EMPTY_ANSWERS, ...(stored.answers ?? {}) },
+          currentStep: stored.currentStep ?? current.currentStep,
+        };
+      },
     },
   ),
 );
