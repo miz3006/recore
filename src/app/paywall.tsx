@@ -25,6 +25,7 @@ import Svg, { Path } from 'react-native-svg';
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
 import { IllustrationSlot } from '@/components/onboarding/IllustrationSlot';
 import { PrimaryCta } from '@/components/onboarding/PrimaryCta';
+import { ProjectionStrip } from '@/components/onboarding/ProjectionStrip';
 import {
   CARD_FILL,
   RISE_PX,
@@ -576,6 +577,14 @@ export default function Paywall() {
         </Stagger>
 
         <FadeSlideIn delay={PAYWALL_BOTTOM_DELAY_MS} style={styles.bottom}>
+          {/* THE PROJECTION, ONE LAST TIME. The screen before this one ended on
+              it; the decision is made here, so the reason for it is here too.
+              It draws nothing when there is no projection to reprise — the
+              person who skipped every number is exactly the person an invented
+              one would be aimed at. Its bars start after the block has arrived,
+              so the growth is not composited under a fade. */}
+          <ProjectionStrip delay={PAYWALL_BOTTOM_DELAY_MS + DUR.base} />
+
           <View style={styles.plans}>
             <PlanCard
               title="Annual"
