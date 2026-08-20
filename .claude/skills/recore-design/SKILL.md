@@ -91,9 +91,12 @@ becomes a CTA, a link or a selected state.
 
 Recorded semantics carry over untouched: `attention` `#B45309` (plateau / backoff / paused), `gain`
 `#1F7A33` / `loss` `#C62828` (recorded direction, red only when truly regressing — a lift holding
-load is ink), `trend` `#BF5B23` (one lift's line in the lift sheet only, never on a number),
-`warning` `#8A5613` / `error` `#A33D36`, inks `#1C1C1E` / `#6E6E73` / `#86868B`, borders `#D5D5D5` /
-`#E9E9E9`.
+load is ink), `warning` `#8A5613` / `error` `#A33D36`, inks `#1C1C1E` / `#6E6E73` / `#86868B`,
+borders `#D5D5D5` / `#E9E9E9`.
+
+**`trend` ember `#BF5B23` is retired** (owner, 20 August 2026). Its one home was the lift sheet's
+progression line, and that chart draws in `brand` now so the same lift reads the same way on both
+surfaces. The token has no call sites; nothing new may adopt it.
 
 Rules that hold everywhere:
 - **Colour marks, ink speaks.** A coloured letter or glyph may sit beside a value; the value itself

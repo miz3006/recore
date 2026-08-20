@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
 
-import { PressableScale, Stagger } from '@/components/motion';
+import { FadeSwap, PressableScale, Stagger } from '@/components/motion';
 import { Eyebrow } from '@/components/primitives';
 import { getCachedBriefSummary, refineBriefSummary } from '@/lib/brief-explain';
 import { type DayKey } from '@/lib/db/dates';
@@ -12,7 +12,6 @@ import { getAllTimePRs, getE1rmSeries } from '@/lib/db/insights';
 import { tap } from '@/lib/haptics';
 import { liftProse, type LiftBrief } from '@/lib/lift-prose';
 import {
-  alpha,
   color,
   eyebrow,
   lineFor,
@@ -30,6 +29,7 @@ import { labelForDay, useSession } from '@/state/session-store';
 import { BottomSheet } from './bottom-sheet';
 import { seriesPathD } from './charts';
 import { glyphTint, Icon, type IconName } from './icon';
+import { ThoughtProcessCard } from './thought-process';
 
 /**
  * Lift detail sheet (design frame 08 — "PR-first history"). Tap a gutter value
@@ -122,12 +122,23 @@ const FILL_ID = 'liftTrendFill';
  * A spline is still banned — it would bulge past loads nobody lifted, where a
  * straight run at least ends on two real sessions.
  *
- * **Ember is the one hue here** (`color.trend`, owner 29 Jul): the step line
- * and the wash fading out under it. The wash is the *shape of the record*, not
- * a value — every number around it, including the current reading and the axis,
- * stays ink or muted grey. A single UNLABELED dashed hairline marks the
- * all-time best, folded into the domain so it is always on-screen — neutral,
- * never a second "PR" caption; the outlined mono label owns that word.
+ * **The brand blue is the one hue here** (owner, 20 Aug 2026 — *"popravi da je
+ * tudi modra kot v Progression"*). It was ember `color.trend` from 29 Jul, and
+ * the reason it changes is the reason the ember existed: this chart and
+ * Progression's `TrendChart` draw the same lift the same way, so drawing them
+ * in two different hues made one lift look like two facts. It now takes the
+ * line, the wash and the terminal dot from the same values `TrendChart`
+ * defaults to (0.22 → 0.01 under the line), so the two are one chart in two
+ * places. **`color.trend` has no home in the app after this** — the token is
+ * left in `theme/color.ts` rather than deleted, because retiring a palette
+ * entry is the owner's call.
+ *
+ * The wash is the *shape of the record*, not a value — every number around it,
+ * including the current reading and the axis, stays ink or secondary grey. A
+ * single UNLABELED dashed hairline marks the all-time best, folded into the
+ * domain so it is always on-screen — never a second "PR" caption; the outlined
+ * mono label owns that word. It draws in `textMuted` rather than `border`,
+ * which measured 1.47:1 on this card and was not a line anyone could find.
  *
  * Axis readings are the domain's own ends, drawn at the exact y they sit at, so
  * the numbers cannot drift from the line. All series are real data; under two
@@ -192,8 +203,8 @@ function ProgressionChart({
             <Svg width={w} height={H}>
               <Defs>
                 <LinearGradient id={FILL_ID} x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor={color.trend} stopOpacity={0.26} />
-                  <Stop offset="1" stopColor={color.trend} stopOpacity={0.02} />
+                  <Stop offset="0" stopColor={color.brand} stopOpacity={0.22} />
+                  <Stop offset="1" stopColor={color.brand} stopOpacity={0.01} />
                 </LinearGradient>
               </Defs>
               {/* All-time-best reference — one unlabeled neutral hairline. */}
@@ -203,7 +214,7 @@ function ProgressionChart({
                   y1={prY}
                   x2={w - padR}
                   y2={prY}
-                  stroke={color.border}
+                  stroke={color.textMuted}
                   strokeWidth={1}
                   strokeDasharray="3 4"
                 />
@@ -212,7 +223,7 @@ function ProgressionChart({
               <Path
                 d={lineD}
                 fill="none"
-                stroke={color.trend}
+                stroke={color.brand}
                 strokeWidth={2}
                 strokeLinejoin="miter"
                 strokeLinecap="round"
@@ -221,7 +232,7 @@ function ProgressionChart({
                 cx={xOf(points.length - 1)}
                 cy={yOf(last.value)}
                 r={moderateScale(3.5)}
-                fill={color.trend}
+                fill={color.brand}
                 stroke={color.surface}
                 strokeWidth={1.5}
               />
@@ -701,25 +712,38 @@ export function ExerciseSheet() {
               </View>
 
               {/* The summary, at the bottom because it summarises everything
-                  above it. COMPOSED from this lift's own loads and rendered
-                  instantly; a validated rewrite swaps in if one ever lands
-                  (§8.5) — the foot says truthfully which one is on screen. */}
+                  above it — and it is `ThoughtProcessCard`, the same object
+                  Next closes with (owner, 20 Aug 2026). It was a bespoke ember
+                  card with its own eyebrow, wash and foot line, saying the same
+                  thing in a different voice one tab across.
+
+                  What it carries is unchanged: the paragraph is COMPOSED from
+                  this lift's own loads and rendered instantly, a validated
+                  rewrite swaps in if one ever lands (§8.5), and the provenance
+                  line still says truthfully which one is on screen. What it
+                  gains is the evidence ring — how many sessions of THIS lift
+                  the sentences stand on, which the card was already computing
+                  for the stat row above and never showed beside the words.
+
+                  `weeks={null}`: this count is every session of one lift, not a
+                  window, and printing "· 8 weeks" beside it would be a claim
+                  nobody computed. `FadeSwap` makes the rewrite visible when it
+                  lands, exactly as Next's does. */}
               {prose ? (
-                <View style={styles.summaryCard}>
-                  {/* The one glyph on this card, and chrome like the stat row's
-                      (§5.1): it labels the card, never the sentences. */}
-                  <View style={styles.summaryHead}>
-                    <Icon name="sparkle" size={moderateScale(13)} tint={glyphTint('sparkle')} />
-                    <Eyebrow tone="muted">Summary</Eyebrow>
-                  </View>
-                  <Text style={styles.summaryText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {summary ?? prose}
-                  </Text>
-                  <Text style={styles.summaryFoot} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {summary
-                      ? 'Phrased from your own sets — every number is read from this record.'
-                      : 'Read from your own sets — same history, same summary, offline.'}
-                  </Text>
+                <View style={styles.summarySlot}>
+                  <FadeSwap swapKey={summary ? 'model' : 'composed'}>
+                    <ThoughtProcessCard
+                      reasoning={summary ?? prose}
+                      sessions={stats.sessionCount}
+                      weeks={null}
+                      basisNote="what this summary reads"
+                      provenance={
+                        summary
+                          ? 'Phrased from your own sets — every number is read from this record.'
+                          : 'Read from your own sets — same history, same summary, offline.'
+                      }
+                    />
+                  </FadeSwap>
                 </View>
               ) : null}
 
@@ -770,7 +794,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.border,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     paddingVertical: spacing.lg,
   },
@@ -811,13 +835,23 @@ const styles = StyleSheet.create({
     color: color.textMuted,
   },
 
+  /**
+   * ## Every card in this sheet is `radius.xl` 24 (20 Aug 2026)
+   *
+   * They were 20, and one of them — the closing summary, now
+   * `ThoughtProcessCard` — arrived at the app's own card radius of 24, which
+   * would have left one section in a sheet rounded differently from its five
+   * neighbours. The skill settles it in the sheet's favour rather than the
+   * section's: `xl` 24 is *"cards, sheets, hero surfaces"* and `lg` 20 is
+   * *"rows, fields, option rows"*. These are cards.
+   */
   // The progression card — label, current reading, metric switch, chart.
   progressCard: {
     marginTop: spacing.lg,
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.border,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     padding: spacing.xl,
   },
@@ -981,7 +1015,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.border,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     padding: spacing.xl,
   },
@@ -1026,7 +1060,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.border,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.xs / 2,
@@ -1090,33 +1124,10 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
 
-  // The closing summary. A faint ember wash ties it to the chart it describes —
-  // chrome on a card, never on a value; the sentences themselves stay ink.
-  summaryHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs + 1,
-    marginBottom: spacing.md,
-  },
-  summaryCard: {
+  // The closing summary is `ThoughtProcessCard` now and brings its own surface;
+  // this is only the gap above it.
+  summarySlot: {
     marginTop: spacing.lg,
-    backgroundColor: alpha(color.trend, 0.05),
-    borderWidth: 1,
-    borderColor: alpha(color.trend, 0.22),
-    borderRadius: radius.lg,
-    borderCurve: 'continuous',
-    padding: spacing.xl,
-  },
-  summaryText: {
-    ...type.subhead,
-    lineHeight: lineFor(23),
-    color: color.textPrimary,
-  },
-  summaryFoot: {
-    marginTop: spacing.md,
-    fontSize: moderateScale(11),
-    lineHeight: lineFor(16),
-    color: color.textMuted,
   },
 
   // Alias card + footer
@@ -1125,7 +1136,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.border,
-    borderRadius: radius.md,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     paddingHorizontal: spacing.md + 2,
     paddingVertical: spacing.md,

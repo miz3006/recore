@@ -13,16 +13,23 @@ import {
   type,
 } from '@/lib/theme';
 
-import { PressableScale } from '../motion';
+import { PressableScale } from './motion';
 
 /**
- * THE THOUGHT-PROCESS CARD — Next's reasoning as a designed object (design
+ * THE THOUGHT-PROCESS CARD — the app's reasoning as a designed object (design
  * skill §Reuse; migration Phase 2).
  *
  * The engine prescribes a load and the brief prints it. What the page never
  * had was the sentence in between: *why this load, and how much record is it
  * standing on.* This is that sentence, given a shape — an evidence ring, one
- * paragraph of plain language, and a way to disagree with it.
+ * paragraph of plain language, where the words came from, and (where there is
+ * one) a way to disagree with it.
+ *
+ * **Two surfaces wear it** and that is why it lives here rather than under
+ * `next/`: the Next tab's closing block, and the lift sheet's own summary of a
+ * single lift (owner, 20 Aug 2026 — *"summary redizajniraj tako, da bo enak kot
+ * v Nextu"*). One paragraph about your record, with its provenance and the
+ * count it stands on, should be one object wherever it appears.
  *
  * ## It EXPLAINS a load. It never produces one.
  *
@@ -67,6 +74,7 @@ export function ThoughtProcessCard({
   reasoning,
   sessions,
   weeks = 8,
+  basisNote = 'what this is based on',
   provenance,
   onAdjust,
   adjustLabel = 'Adjust',
@@ -79,8 +87,15 @@ export function ThoughtProcessCard({
   reasoning: string;
   /** Sessions the reasoning stands on. The brief's own `sessions8w`. */
   sessions: number;
-  /** The window those sessions were counted over. */
-  weeks?: number;
+  /**
+   * The window those sessions were counted over. **Pass `null` when the count
+   * is not windowed** — the lift sheet counts every session of one lift, and
+   * printing "· 8 weeks" beside that would be a claim nobody computed.
+   */
+  weeks?: number | null;
+  /** The line under the count. It says what the count IS, so a surface that
+   * counts something else says so. */
+  basisNote?: string;
   /**
    * Where the words came from — "Every number read from your record." or its
    * phrased variant. It belongs INSIDE this card because it qualifies this
@@ -96,7 +111,10 @@ export function ThoughtProcessCard({
   const filled = Math.max(0, Math.min(1, sessions / FULL_RECORD));
   const r = (RING - RING_STROKE) / 2;
   const circumference = 2 * Math.PI * r;
-  const basis = `${sessions} ${sessions === 1 ? 'session' : 'sessions'} · ${weeks} weeks`;
+  const basis =
+    weeks == null
+      ? `${sessions} ${sessions === 1 ? 'session' : 'sessions'}`
+      : `${sessions} ${sessions === 1 ? 'session' : 'sessions'} · ${weeks} weeks`;
 
   return (
     <View style={styles.card}>
@@ -139,7 +157,7 @@ export function ThoughtProcessCard({
             {basis}
           </Text>
           <Text style={styles.basisNote} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            what this is based on
+            {basisNote}
           </Text>
         </View>
       </View>

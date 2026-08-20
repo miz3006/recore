@@ -892,6 +892,40 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — the lift sheet: one blue, one summary card** (owner, on device, pointing at
+  `ExerciseSheet` opened from Progression: *"popravi da je tudi modra kot v Progression … in tudi
+  summary redizajniraj tako, da bo enak kot v Nextu"*).
+  - **The progression chart is `brand`, and `trend` ember is retired.** The line, the wash under
+    it and the terminal dot were `color.trend` `#BF5B23` (owner, 29 Jul) — ember was this
+    chart's own hue and the lift sheet was its only sanctioned home. The reason it goes is the
+    reason it existed: this chart and Progression's `TrendChart` plot the same lift the same way,
+    and drawing them in two hues made one lift look like two facts. It now takes the same values
+    `TrendChart` defaults to — 0.22 fading to 0.01 under the line — so the two are one chart in
+    two places. The all-time-best hairline moved off `color.border` (**1.47:1 on this card**)
+    onto `textMuted` at 3.62, the same fix `charts.tsx` took.
+    - **`color.trend` now has zero call sites.** It is marked `@deprecated` in `theme/color.ts`
+      and recorded as retired in the design skill's §Colour, **but not deleted** — removing a
+      palette entry is the owner's call, and the note says so.
+  - **The closing summary is `ThoughtProcessCard`** — the same object Next closes with. It was a
+    bespoke card with its own ember wash, its own sparkle-and-eyebrow head and its own foot line,
+    saying the same kind of thing in a different voice one tab across. What it carries is
+    unchanged: the paragraph is still COMPOSED from this lift's own loads, still rendered
+    instantly, still swapped for a validated rewrite if one lands (§8.5), and the provenance line
+    still says truthfully which one is on screen. What it gains is the **evidence ring** — how
+    many sessions of this lift the sentences stand on, a number the sheet was already computing
+    for the stat row and never showed beside the words — and a `FadeSwap`, so the rewrite is
+    visible when it lands exactly as Next's is.
+    - The card gained two props for this: **`weeks={null}`**, because this count is every session
+      of one lift rather than a window and printing "· 8 weeks" beside it would be a claim nobody
+      computed; and `basisNote`, so the line under the count says what the count actually is.
+    - **It moved to `components/thought-process.tsx`.** Two surfaces wear it now, and a file
+      under `next/` imported by the lift sheet is the exact drift these docs keep diagnosing.
+  - **Every card in the sheet is `radius.xl` 24.** The five sections were 20 (one was 14), and
+    the new summary card arrives at the app's card radius — which would have left one section in
+    a sheet rounded differently from its neighbours. The skill settles it: `xl` is *"cards,
+    sheets, hero surfaces"*, `lg` 20 is *"rows, fields, option rows"*, and these are cards.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified: device QA.**
 - **20 Aug 2026 — v6 Phase 3, screen 3: Progression.** One file,
   `app/(tabs)/progress.tsx`. Nothing outside it.
   - **The progression line is brand blue.** It was one neutral ink, and the reasoning behind

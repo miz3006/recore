@@ -48,13 +48,15 @@
  * not yet lifted, always with its label and reason. It may never mean good,
  * done, recorded or success, it never becomes a CTA, a link or a selected state,
  * and `gain` green may never stand in for it: recorded is not planned. The
- * recorded semantics (`gain`/`loss`/`attention`/`trend`), the three inks, the
+ * recorded semantics (`gain`/`loss`/`attention`), the three inks, the
  * borders, the four washes, `glyph.*`, the `ink` ladder and `alpha()` all carry
  * over untouched.
  *
- * `trend` ember `#BF5B23` is an optional secondary comparison in the lift
- * sheet — one lift's progression line and the wash under it. It never touches a
- * NUMBER (4.11–4.22:1 on the canvas: a line, not a reading).
+ * `trend` ember `#BF5B23` is the one exception to that list: it is **retired**
+ * (owner, 20 Aug 2026). Its only sanctioned home was the lift sheet's
+ * progression line and the wash under it, and that chart draws in `brand` now
+ * so the same lift reads the same way there as on Progression. The token has no
+ * call sites — see its own note below.
  */
 export const color = {
   canvas: '#FCF9F4', // THE WORLD: every screen, every sheet backdrop. Also the flat fill wherever the gradient cannot render.
@@ -77,7 +79,15 @@ export const color = {
   /** @deprecated → `brand`. Removed with Phase 3. */
   trained: '#0B5CD6',
   signal: '#547C00', // PLANNED green: future prescription values ONLY
-  trend: '#BF5B23', // TREND ember: the progression line of ONE lift + its wash, in the lift sheet ONLY
+  /**
+   * @deprecated NO CALL SITES since 20 Aug 2026. Ember was the lift sheet's
+   * progression line and its wash — its only sanctioned home — and the owner
+   * moved that chart to `brand` so it draws the same as Progression's. The
+   * token is kept rather than deleted because retiring a palette entry is the
+   * owner's call; if it stays unused, delete it and the §Colour line that
+   * reserves it. Nothing new may adopt it.
+   */
+  trend: '#BF5B23', // TREND ember — unused
   textPrimary: '#1C1C1E', // what the USER typed; headings; ink
   textSecondary: '#6E6E73', // supporting copy, gutter readings, tags, labels
   textMuted: '#86868B', // dates, evidence lines, placeholders, disabled — see the contrast note below
