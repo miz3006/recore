@@ -202,8 +202,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: PRESS_BLEED,
     borderRadius: radius.sm,
     borderCurve: 'continuous',
-    borderBottomWidth: 1,
-    borderBottomColor: color.tableRule,
   },
   rowName: {
     flexShrink: 1,

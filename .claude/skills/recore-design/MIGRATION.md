@@ -72,7 +72,16 @@ end of Phase 3; none may gain a new call site.**
   than a Today-only surface. Its doc explicitly contrasts itself with "the `#F2F2F7` that LIST
   screens sit on"; that distinction is gone. `paper-field.test.ts` asserts on the old tones.
 
-## Phase 2 — shared components
+## Phase 2 — shared components — **DONE, 20 Aug 2026**
+
+Landed in two passes (2a: the owner's four named files plus the new `Row` primitive; 2b: every
+remaining component). What is NOT done and why is recorded in `docs/implementation-status.md`
+under those dates — chiefly the bare-row restyle of nine record components, three of which are
+**orphaned** (`empty-note-cards`, `ghost-prediction`, `session-receipt` — nothing imports them)
+and four of which are **unmounted by owner decision** (`summary-pill`, `session-summary-sheet`,
+`save-split`, `plan-strip`, `planned-checklist`).
+
+
 
 | File | Change |
 |---|---|
@@ -97,7 +106,20 @@ end of Phase 3; none may gain a new call site.**
 (7), `set-table.tsx` / `ghost-prediction.tsx` / `you.tsx` (6 each). All become `readingStyle(weight)`
 or `readingText`. Mechanical, no visual change, and it can run in parallel with the rest of Phase 2.
 
-## Phase 3 — screens
+## Phase 3 — screens — **DONE, 20 Aug 2026** (typecheck · 415/415 · lint · iOS export)
+
+Seven screens, one commit each, plus a sheets pass and a final pass over the eight small pushed
+screens. **Every deprecated token the migration created is deleted**: `color.bg`, `color.ctaFill`,
+`color.ctaFillPressed`, `color.trained`, `radius.xxl`, and the funnel's `BLUE` / `CARD_RADIUS` /
+`ROW_RADIUS` / re-exported `CTA_HEIGHT`. `fonts.reading` has zero call sites app-wide, so
+§Decided-5 holds in the code.
+
+**Three decisions are open and belong to the owner on device**, all recorded where they live:
+the funnel's option-row wash (`onboarding/tokens.ts`) versus v6's white-plus-shadow; whether the
+hairlines *inside* cards and sheets — 1.16:1 on white — should be strengthened or become air; and
+whether `summary-pill` and the session summary behind it come back.
+
+
 
 | Screen | Change |
 |---|---|

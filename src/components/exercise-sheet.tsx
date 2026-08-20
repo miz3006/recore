@@ -661,10 +661,9 @@ export function ExerciseSheet() {
                   const isPr =
                     pr != null && s.topWeight != null && s.day === pr.day && s.topWeight === pr.weightKg;
                   const subline = sessionSubline(s, ordered[i + 1]);
-                  const last = i === ordered.length - 1;
                   const hasNotes = s.notes.length > 0;
                   return (
-                    <View key={s.day} style={[!last && styles.rowRule]}>
+                    <View key={s.day}>
                     <View style={[styles.row, hasNotes && styles.rowTight]}>
                       <View style={styles.rowLeft}>
                         <View style={styles.rowDateLine}>
@@ -1074,16 +1073,16 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     marginBottom: spacing.xs,
   },
+  // A HISTORY row is the record, so it takes none of the record's chrome: the
+  // hairline that used to close each one is gone (skill §Structure) and the row
+  // breathes instead. Same treatment as `set-table`, the Lifts list and every
+  // other list of sessions in the app.
   row: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  rowRule: {
-    borderBottomWidth: 1,
-    borderBottomColor: color.tableRule,
+    paddingVertical: spacing.lg - 2,
   },
   /** The date/value line tightens up when quoted remarks follow it, so the row
    * and its words read as one entry rather than two. */

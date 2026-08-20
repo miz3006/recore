@@ -892,6 +892,22 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — the last two record dividers, and the migration is closed.** Two files, plus
+  `MIGRATION.md` marked done for Phases 2 and 3.
+  - **`next/signals.tsx`** — the "your other lifts" rows carried a `tableRule` hairline. It is
+    the same object as every other list of lifts in the app and it was missed in Next's own turn;
+    it is bare now.
+  - **The lift sheet's HISTORY rows** — the last list in the app still drawing rules between
+    records. The rule is gone and the row breathes instead (12 → 14 pt of vertical padding),
+    which is the treatment `set-table`, the Lifts list, Today's ledger, Next's and Progression's
+    building rows all carry.
+  - What is deliberately LEFT drawing a `tableRule`: the vertical divider between the lift
+    sheet's three stat tiles (it separates COLUMNS, not records, and without it three numbers run
+    together), the rule inside an open card on Next and Progression, and the session summary
+    sheet's own rules. All of them are card chrome rather than separators between records — and
+    all of them measure **1.16:1 on white**, which is the open question already on the list.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**.
 - **20 Aug 2026 — v6 Phase 3, the last eight files, and the migration's deprecated tokens are
   DELETED.** `app/_layout.tsx`, `split.tsx`, `plan-day.tsx`, `legal.tsx`, `health.tsx`,
   `import-start.tsx`, `aliases.tsx`, `sign-in.tsx`, plus the two theme files that lose their
