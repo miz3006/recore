@@ -7,11 +7,11 @@ import { nameKey, typedNameOf } from '@/lib/parse/receipt';
 import {
   color,
   FIXED_FONT_SCALE,
-  fonts,
   hairline,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
+  readingStyle,
   shadow,
   spacing,
   type,
@@ -209,10 +209,8 @@ const styles = StyleSheet.create({
   // THE ONLY GREEN: a future prescription value (record contract). A logged
   // row's value is no longer a future number, so it hands back the ink.
   val: {
-    fontFamily: fonts.reading,
+    ...readingStyle('500'),
     fontSize: type.caption.fontSize,
-    fontWeight: '500',
-    fontVariant: ['tabular-nums'],
     color: color.signal,
   },
   valDone: { color: color.textMuted, fontWeight: '400' },

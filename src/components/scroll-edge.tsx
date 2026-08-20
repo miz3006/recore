@@ -56,7 +56,7 @@ export function ScrollEdgeHeader({
       <View style={styles.solid} pointerEvents="none" />
       {children}
       <LinearGradient
-        colors={[color.bg, alpha(color.bg, 0)]}
+        colors={[color.canvas, alpha(color.canvas, 0)]}
         style={styles.fade}
         pointerEvents="none"
       />
@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
   },
   solid: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: color.bg,
+    backgroundColor: color.canvas,
   },
   fade: {
     position: 'absolute',

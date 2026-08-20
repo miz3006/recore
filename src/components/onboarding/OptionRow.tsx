@@ -9,7 +9,7 @@ import Svg, { Path } from 'react-native-svg';
 import { PressableScale } from '@/components/motion';
 import { color, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 
-import { BLUE, BLUE_WASH, INK_CARD, INK_RING, ROW_RADIUS, SELECT_BORDER } from './tokens';
+import { BRAND_WASH, INK_CARD, INK_RING, SELECT_BORDER } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 /**
@@ -79,8 +79,8 @@ export function OptionRow({
   const p = useSelectFill(selected);
 
   const rowStyle = useAnimatedStyle(() => ({
-    borderColor: interpolateColor(p.get(), [0, 1], [INK_CARD, BLUE]),
-    backgroundColor: interpolateColor(p.get(), [0, 1], [INK_CARD, BLUE_WASH]),
+    borderColor: interpolateColor(p.get(), [0, 1], [INK_CARD, color.brand]),
+    backgroundColor: interpolateColor(p.get(), [0, 1], [INK_CARD, BRAND_WASH]),
   }));
 
   return (
@@ -129,7 +129,7 @@ function SelectMark({ progress, square }: { progress: SharedValue<number>; squar
   const shape = square ? styles.markSquare : styles.markRound;
 
   const ringStyle = useAnimatedStyle(() => ({
-    borderColor: interpolateColor(progress.get(), [0, 1], [INK_RING, BLUE]),
+    borderColor: interpolateColor(progress.get(), [0, 1], [INK_RING, color.brand]),
   }));
   // Never from zero: nothing in the real world appears out of nothing, and 0.7
   // is small enough to read as arriving without reading as a bounce.
@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    borderRadius: ROW_RADIUS,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
     borderWidth: SELECT_BORDER,
     paddingVertical: spacing.md + 2,
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
   },
   markFill: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: BLUE,
+    backgroundColor: color.brand,
     alignItems: 'center',
     justifyContent: 'center',
   },

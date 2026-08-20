@@ -3,9 +3,9 @@ import { Pressable, StyleSheet, Text, TextInput } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
 import { Icon } from '@/components/icon';
-import { alpha, color, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { alpha, color, HIT, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 
-import { BLUE, INK_CARD, ROW_RADIUS, SELECT_BORDER } from './tokens';
+import { INK_CARD, SELECT_BORDER } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -73,7 +73,7 @@ export function TextField({
 
   const p = useSelectFill(focused);
   const fieldStyle = useAnimatedStyle(() => ({
-    borderColor: interpolateColor(p.get(), [0, 1], [INK_CARD, BLUE]),
+    borderColor: interpolateColor(p.get(), [0, 1], [INK_CARD, color.brand]),
     backgroundColor: interpolateColor(p.get(), [0, 1], [INK_CARD, BLUE_FOCUS_WASH]),
   }));
 
@@ -126,7 +126,7 @@ export function TextField({
 }
 
 /** The focus wash — blue at 5 %, the lightest tint that still reads as live. */
-const BLUE_FOCUS_WASH = alpha(BLUE, 0.05);
+const BLUE_FOCUS_WASH = alpha(color.brand, 0.05);
 
 const styles = StyleSheet.create({
   field: {
@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
     backgroundColor: INK_CARD,
     borderWidth: SELECT_BORDER,
     borderColor: INK_CARD,
-    borderRadius: ROW_RADIUS,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
     paddingHorizontal: spacing.xl,
   },

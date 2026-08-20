@@ -61,7 +61,7 @@ export function RowRule() {
 
 const TONE = StyleSheet.create({
   muted: { color: color.textMuted },
-  brand: { color: color.trained },
+  brand: { color: color.brand },
   attention: { color: color.attention },
 });
 
@@ -74,7 +74,10 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.divider,
-    borderRadius: radius.lg,
+    // 24, the app's card radius — `lg` 20 belongs to rows, fields and option
+    // rows (skill §Spacing). A section card and a bottom sheet are the same
+    // kind of object and now round the same.
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     paddingHorizontal: spacing.lg,
     ...shadow.card,

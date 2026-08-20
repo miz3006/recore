@@ -28,7 +28,7 @@ import {
   markCoachRingDone,
   markComposerHintDone,
 } from '@/lib/prefs';
-import { color, FIXED_FONT_SCALE, fonts, lineFor, MAX_FONT_SCALE, moderateScale, spacing } from '@/lib/theme';
+import { color, FIXED_FONT_SCALE, lineFor, MAX_FONT_SCALE, moderateScale, readingStyle, spacing } from '@/lib/theme';
 import { useCurrentNote, useSession } from '@/state/session-store';
 
 import { EntryActionsSheet, type EntryAction } from './entry-actions-sheet';
@@ -1048,10 +1048,9 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   exValue: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(14),
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   // The written face of the card, over the interpreted one.
   wordsLayer: {
@@ -1065,17 +1064,15 @@ const styles = StyleSheet.create({
   words: {
     // Quoted mono, at the reading's own size: these are the athlete's words,
     // shown exactly as typed — never re-cased, never re-spaced.
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(14),
     lineHeight: lineFor(20),
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   exSub: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(11.5),
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   // The athlete's own words under their entry. Prose, so it leaves the mono
   // voice the readings speak in — this is the one line on the card that Recore
@@ -1185,10 +1182,9 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   previewValue: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(13),
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   previewHint: {
     marginTop: 2,
@@ -1216,10 +1212,9 @@ const styles = StyleSheet.create({
   prefillReading: {
     // A memory of last session, not a result — quiet mono, a step below the
     // parse echo, and never green.
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(13),
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   previewPending: {
     flexDirection: 'row',

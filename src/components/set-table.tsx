@@ -1,7 +1,7 @@
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { type SetTable as SetTableData, type SetTableRow } from '@/lib/parse/summarize';
-import { color, fonts, MAX_FONT_SCALE, moderateScale, spacing } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, readingStyle, spacing } from '@/lib/theme';
 import { useDisplay } from '@/state/display';
 
 /**
@@ -48,9 +48,20 @@ import { useDisplay } from '@/state/display';
  * keeps text at AA is 1.04:1 against the canvas — invisible to the person it
  * was meant to help, and noise for everyone else.
  *
- * Structure otherwise comes from ONE rule under the header and from alignment,
- * not from a box: the card it sits in already has its own separators. No motion
- * — the card's own entrance is the only movement a settling record needs.
+ * Structure comes from ALIGNMENT AND AIR, not from lines (v6, 20 Aug 2026).
+ * The design skill's §Structure: *"The record has no cards and no dividers."*
+ * The table never had rules between its sets — the spacing already did that job
+ * — and the one rule it did have, under the column header, is gone with it.
+ *
+ * That rule was there for a reason and the reason is answered, not dropped. It
+ * was strengthened from `tableRule` to `border` on 9 Aug so a low-vision reader
+ * could find the boundary at all; on the warm canvas `border` measures
+ * **1.40:1**, so it was no longer finding anything. The boundary is now 12
+ * points of space — the largest gap in the table, three times a row's own — and
+ * space does not have a contrast ratio to fail.
+ *
+ * No motion — the card's own entrance is the only movement a settling record
+ * needs.
  */
 
 /** Above this OS text scale the columns give way to one spelled-out line per
@@ -246,15 +257,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: spacing.sm,
-    paddingBottom: spacing.xs,
-    // A rule the eye can actually find. `tableRule` measures 1.11:1 against the
-    // canvas — a boundary nobody with low vision will see.
-    borderBottomWidth: 1,
-    borderBottomColor: color.border,
+    // AIR, NOT A RULE (v6). The boundary between the header and the sets is 12
+    // points of space rather than a line — three times a row's own 6, so it is
+    // the largest gap in the table and reads as the top of it. See the note
+    // above for why the line went.
+    paddingBottom: spacing.md,
   },
   head: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(11),
     letterSpacing: 1,
     color: color.textSecondary,
@@ -280,23 +290,19 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   pos: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(13),
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   value: {
-    fontFamily: fonts.reading,
+    ...readingStyle('500'),
     fontSize: moderateScale(15),
-    fontWeight: '500',
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   note: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(12.5),
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   /**
    * Warm-ups, drops and skipped work. `textSecondary` clears AA (4.7:1) where
@@ -311,20 +317,17 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
   },
   stackLabel: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(12),
     letterSpacing: 0.6,
     color: color.textSecondary,
   },
   stackValue: {
     marginTop: 1,
-    fontFamily: fonts.reading,
+    ...readingStyle('500'),
     fontSize: moderateScale(16),
-    fontWeight: '500',
     // No fixed `lineHeight`: this line is allowed past the app clamp, and a
     // pinned line box would crop the very text that was enlarged to be read.
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
 });

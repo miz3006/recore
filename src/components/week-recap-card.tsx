@@ -12,7 +12,7 @@ import { tap } from '@/lib/haptics';
 import { groupThousands } from '@/lib/parse/estimate';
 import { getRecapIntent, isRecapEnabled } from '@/lib/prefs';
 import { enableRecap } from '@/lib/recap';
-import { color, fonts, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, radius, readingStyle, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 import { MonoTag, PrLabel } from './gutter-value';
@@ -228,10 +228,9 @@ const styles = StyleSheet.create({
   },
   meta: {
     marginTop: 2,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(10.5),
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
   // The archival comparison voice — words + figure, never lime.
   delta: {
@@ -248,10 +247,9 @@ const styles = StyleSheet.create({
   },
   prLine: {
     flexShrink: 1,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: type.caption.fontSize,
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   notifOffer: {
     marginTop: spacing.md,

@@ -8,11 +8,10 @@ import {
   type StyleProp,
 } from 'react-native';
 
-import { alpha, color, moderateScale, readingStyle } from '@/lib/theme';
+import { alpha, color, moderateScale, radius, readingStyle } from '@/lib/theme';
 
 import { hasArtwork, layoutFor } from './illustration-layout';
 import { illustrationFor } from './illustrations';
-import { CARD_RADIUS } from './tokens';
 
 /**
  * The mascot band of the onboarding flow.
@@ -121,7 +120,7 @@ const styles = StyleSheet.create({
     height: '100%',
     borderWidth: 1,
     borderColor: alpha(color.accent, 0.08),
-    borderRadius: CARD_RADIUS,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     alignItems: 'center',
     justifyContent: 'center',

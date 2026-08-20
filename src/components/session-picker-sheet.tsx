@@ -81,7 +81,7 @@ export function SessionPickerSheet({
                 <Icon
                   name={iconFor(option)}
                   size={moderateScale(18)}
-                  tint={option.due ? color.trained : color.textSecondary}
+                  tint={option.due ? color.brand : color.textSecondary}
                 />
               </View>
               <View style={styles.rowBody}>
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
   rowLabelDue: {
-    color: color.trained,
+    color: color.brand,
   },
   rowDetail: {
     ...type.caption,
@@ -182,12 +182,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: radius.pill,
-    backgroundColor: alpha(color.trained, 0.12),
+    backgroundColor: alpha(color.brand, 0.12),
   },
   dueText: {
     ...type.caption,
     fontWeight: '600',
-    color: color.trained,
+    color: color.brand,
   },
   footnote: {
     marginTop: spacing.lg,

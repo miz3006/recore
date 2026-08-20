@@ -4,7 +4,7 @@ import { COMMIT_WEEKS, projectionSeries } from '@/lib/onboarding';
 import { alpha, color, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 
 import { formatLoad } from './LiftLoadRow';
-import { BLUE, CARD_RADIUS, INK_CARD } from './tokens';
+import { INK_CARD } from './tokens';
 
 /**
  * The flow's last screen: what one lift could stand at after the commitment
@@ -83,7 +83,7 @@ export function ProjectionCard({
               styles.bar,
               {
                 height: `${Math.max(8, ((value - floor) / (ceiling - floor)) * 100)}%`,
-                backgroundColor: alpha(BLUE, 0.35 + (0.65 * i) / (series.length - 1)),
+                backgroundColor: alpha(color.brand, 0.35 + (0.65 * i) / (series.length - 1)),
               },
             ]}
           />
@@ -138,13 +138,13 @@ const CHART_HEIGHT = moderateScale(96);
 const styles = StyleSheet.create({
   card: {
     backgroundColor: INK_CARD,
-    borderRadius: CARD_RADIUS,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     padding: spacing.lg,
   },
   row: {
     backgroundColor: INK_CARD,
-    borderRadius: CARD_RADIUS,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
   gainPill: {
-    backgroundColor: BLUE,
+    backgroundColor: color.brand,
     borderRadius: radius.pill,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,

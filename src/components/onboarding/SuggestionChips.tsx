@@ -4,7 +4,7 @@ import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reani
 import { PressableScale } from '@/components/motion';
 import { color, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 
-import { BLUE, INK_CARD } from './tokens';
+import { INK_CARD } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 /**
@@ -77,7 +77,7 @@ function Chip({
   const off = useSelectFill(disabled);
 
   const chipStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(p.get(), [0, 1], [INK_CARD, BLUE]),
+    backgroundColor: interpolateColor(p.get(), [0, 1], [INK_CARD, color.brand]),
     opacity: 1 - CHIP_DIM * off.get(),
   }));
   const labelStyle = useAnimatedStyle(() => ({

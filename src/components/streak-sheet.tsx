@@ -5,7 +5,7 @@ import { shiftDayKey, todayKey } from '@/lib/db/dates';
 import { mondayOf } from '@/lib/db/stats';
 import { getLoggedDayKeys } from '@/lib/db/workouts';
 import { longestStreak } from '@/lib/streak';
-import { color, fonts, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, readingStyle, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
@@ -129,9 +129,8 @@ const styles = StyleSheet.create({
   },
   hero: {
     ...type.bigNumber,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   heroUnit: {
     ...type.subhead,
@@ -140,9 +139,8 @@ const styles = StyleSheet.create({
   sub: {
     marginTop: spacing.xs,
     ...type.caption,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
   week: {
     flexDirection: 'row',
@@ -154,8 +152,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   dow: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(11),
     color: color.textMuted,
   },
@@ -169,7 +166,7 @@ const styles = StyleSheet.create({
     borderRadius: DOT / 2,
   },
   dotLogged: {
-    backgroundColor: color.trained, // blue — a day trained (§5.1)
+    backgroundColor: color.brand, // blue — a day trained (§5.1)
   },
   dotRest: {
     backgroundColor: color.surfaceHigh, // recessed — a rest day, no judgment

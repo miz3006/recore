@@ -12,7 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { type GutterSignal } from '@/lib/parse/types';
-import { color, fonts, MAX_FONT_SCALE, moderateScale, spacing } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, readingStyle, spacing } from '@/lib/theme';
 
 import { NOTE_LINE_HEIGHT, READING_FONT_SIZE } from './note-metrics';
 
@@ -392,21 +392,17 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   signal: {
-    fontFamily: fonts.reading,
+    ...readingStyle('500'),
     fontSize: READING_FONT_SIZE, // a step below the written ink (frame 06)
     lineHeight: NOTE_LINE_HEIGHT, // shares the note's baseline grid
-    fontWeight: '500',
     letterSpacing: 0.2,
-    fontVariant: ['tabular-nums'],
     color: color.textSecondary,
   },
   hint: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: READING_FONT_SIZE,
     lineHeight: NOTE_LINE_HEIGHT,
-    fontWeight: '400',
     letterSpacing: 0.2,
-    fontVariant: ['tabular-nums'],
     color: color.textMuted, // a memory, not a result
   },
   pendingRow: {
@@ -427,8 +423,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   scanLabel: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(10.5),
     letterSpacing: 0.6,
     color: color.textMuted,
@@ -456,10 +451,8 @@ const styles = StyleSheet.create({
     paddingVertical: TAG_PAD_V,
   },
   tagText: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('500'),
     fontSize: moderateScale(9),
-    fontWeight: '500',
     letterSpacing: 1.2,
     color: color.textSecondary,
   },
@@ -472,10 +465,8 @@ const styles = StyleSheet.create({
     paddingVertical: TAG_PAD_V,
   },
   prLabelText: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('500'),
     fontSize: moderateScale(9),
-    fontWeight: '500',
     letterSpacing: 1,
     color: color.textPrimary,
   },

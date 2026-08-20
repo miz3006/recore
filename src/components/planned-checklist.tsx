@@ -15,13 +15,13 @@ import {
   color,
   CONTROL_HEIGHT,
   FIXED_FONT_SCALE,
-  fonts,
   hairline,
   HIT,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
+  readingStyle,
   shadow,
   spacing,
   type,
@@ -338,9 +338,8 @@ const styles = StyleSheet.create({
   },
   progress: {
     marginTop: spacing.xs,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: type.caption.fontSize,
-    fontVariant: ['tabular-nums'],
     color: color.textMuted,
   },
 
@@ -415,10 +414,8 @@ const styles = StyleSheet.create({
   },
   /** THE ONLY GREEN: a load nobody has lifted yet (record contract, §4.2). */
   value: {
-    fontFamily: fonts.reading,
+    ...readingStyle('500'),
     fontSize: type.footnote.fontSize,
-    fontWeight: '500',
-    fontVariant: ['tabular-nums'],
     color: color.signal,
   },
   /** Ticked: it is history now, and history is ink. */
@@ -460,9 +457,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderCurve: 'continuous',
     paddingHorizontal: spacing.md,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(17),
-    fontVariant: ['tabular-nums'],
     color: color.textPrimary,
     backgroundColor: color.surface,
   },
@@ -473,10 +469,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.md,
     borderCurve: 'continuous',
-    backgroundColor: color.ctaFill,
+    backgroundColor: color.brand,
   },
   savePressed: {
-    backgroundColor: color.ctaFillPressed,
+    backgroundColor: color.brandPressed,
   },
   saveLabel: {
     color: color.onInk,

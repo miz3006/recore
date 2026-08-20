@@ -19,7 +19,7 @@ import { groupThousands } from '@/lib/parse/estimate';
 import { namesMatch, typedNameOf, type ReceiptData, type ReceiptRow } from '@/lib/parse/receipt';
 import { formatDistanceTotal } from '@/lib/parse/summarize';
 import { type GutterSignal, type LineSignal } from '@/lib/parse/types';
-import { color, fonts, HIT, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { color, HIT, MAX_FONT_SCALE, moderateScale, radius, readingStyle, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 import { MonoTag, PrLabel, readingText } from './gutter-value';
@@ -457,10 +457,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   headerMeta: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(10.5),
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
   brand: {
     marginTop: spacing.md,
@@ -512,17 +511,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   value: {
-    fontFamily: fonts.reading,
+    ...readingStyle('500'),
     fontSize: type.caption.fontSize,
-    fontWeight: '500',
-    fontVariant: ['tabular-nums'],
     color: color.textPrimary,
   },
   compare: {
     marginTop: 2,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(10.5),
-    fontVariant: ['tabular-nums'],
     color: color.textMuted,
   },
   proseRow: {
@@ -537,8 +533,7 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   proseMeta: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(10.5),
     color: color.textMuted,
   },
@@ -562,11 +557,9 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.md,
   },
   statNum: {
-    fontFamily: fonts.reading,
+    ...readingStyle('600'),
     fontSize: moderateScale(22),
-    fontWeight: '600',
     letterSpacing: -0.4,
-    fontVariant: ['tabular-nums'],
     color: color.textPrimary,
   },
   statLabel: {

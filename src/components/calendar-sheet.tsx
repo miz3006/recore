@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
     // A CONTROL, so it wears Recore blue (§4.2 — active controls) the way the
     // system picker tints its own "Today". The record's blue is the dot below;
     // this one is a button and reads as one because it is the only tinted WORD.
-    color: color.trained,
+    color: color.brand,
   },
   doneLabel: {
     ...type.subhead,
@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
     marginTop: moderateScale(3),
   },
   dotRecorded: {
-    backgroundColor: color.trained, // blue — a day trained (§5.1)
+    backgroundColor: color.brand, // blue — a day trained (§5.1)
   },
   dotPlanned: {
     backgroundColor: color.signal, // green — a plan offered

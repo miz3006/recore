@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   disclosureLabel: {
     ...type.footnote,
     fontWeight: '600',
-    color: color.trained,
+    color: color.brand,
   },
   prose: {
     marginTop: spacing.xs,

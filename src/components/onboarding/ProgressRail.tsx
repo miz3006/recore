@@ -10,7 +10,8 @@ import Animated, {
 
 import { EASE } from '@/lib/motion';
 
-import { BLUE, INK_TRACK, RAIL_DELAY_MS, RAIL_MS } from './tokens';
+import { INK_TRACK, RAIL_DELAY_MS, RAIL_MS } from './tokens';
+import { color } from '@/lib/theme';
 
 /**
  * The onboarding progress bar: ONE continuous 4 pt track, blue fill on ink at
@@ -130,6 +131,6 @@ const styles = StyleSheet.create({
   fill: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: BAR_HEIGHT,
-    backgroundColor: BLUE,
+    backgroundColor: color.brand,
   },
 });

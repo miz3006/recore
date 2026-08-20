@@ -5,7 +5,7 @@ import { PressableScale } from '@/components/motion';
 import { DAY_LABELS, hasDay } from '@/lib/onboarding';
 import { color, MAX_FONT_SCALE, moderateScale, radius, type } from '@/lib/theme';
 
-import { BLUE, INK_CARD } from './tokens';
+import { INK_CARD } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 /**
@@ -62,7 +62,7 @@ function DayCircle({
   const p = useSelectFill(selected);
 
   const circleStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(p.get(), [0, 1], [INK_CARD, BLUE]),
+    backgroundColor: interpolateColor(p.get(), [0, 1], [INK_CARD, color.brand]),
   }));
   const labelStyle = useAnimatedStyle(() => ({
     color: interpolateColor(p.get(), [0, 1], [color.textPrimary, color.onInk]),

@@ -1,17 +1,9 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Eyebrow } from '@/components/primitives';
-import {
-  color,
-  hairline,
-  MAX_FONT_SCALE,
-  moderateScale,
-  shadow,
-  spacing,
-  type,
-} from '@/lib/theme';
+import { color, hairline, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 
-import { BLUE, BLUE_CARD, CARD_RADIUS, INK_CARD } from './tokens';
+import { BRAND_CARD, INK_CARD } from './tokens';
 
 /**
  * The v3 flow's flat panels — the pieces of the design that are pictures made
@@ -158,7 +150,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: INK_CARD,
-    borderRadius: CARD_RADIUS,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     padding: spacing.lg,
     gap: spacing.xs,
@@ -174,24 +166,24 @@ const styles = StyleSheet.create({
     marginVertical: spacing.md,
   },
   blueLabel: {
-    color: BLUE,
+    color: color.brand,
   },
   blueLine: {
-    color: BLUE,
+    color: color.brand,
   },
   statCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.lg,
-    backgroundColor: BLUE_CARD,
-    borderRadius: CARD_RADIUS,
+    backgroundColor: BRAND_CARD,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xl,
   },
   statNumber: {
     ...type.heroNumber,
-    color: BLUE,
+    color: color.brand,
   },
   statCaption: {
     flex: 1,
@@ -205,7 +197,7 @@ const styles = StyleSheet.create({
    */
   notification: {
     backgroundColor: color.surface,
-    borderRadius: CARD_RADIUS,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     borderWidth: hairline,
     borderColor: color.border,

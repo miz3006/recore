@@ -10,7 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { alpha, color, fonts, ink, MAX_FONT_SCALE, moderateScale, radius, spacing } from '@/lib/theme';
+import { alpha, color, ink, MAX_FONT_SCALE, moderateScale, radius, readingStyle, spacing } from '@/lib/theme';
 
 import { GutterPending } from './gutter-value';
 import { NOTE_FONT_SIZE, NOTE_LINE_HEIGHT } from './note-metrics';
@@ -229,11 +229,9 @@ const styles = StyleSheet.create({
     minWidth: moderateScale(64),
   },
   signal: {
-    fontFamily: fonts.reading,
+    ...readingStyle('500'),
     fontSize: moderateScale(15),
-    fontWeight: '500',
     letterSpacing: 0.2,
-    fontVariant: ['tabular-nums'],
     color: color.textPrimary,
   },
   // PR is a NEUTRAL outlined label (record contract) — no lime, no confetti.
@@ -245,10 +243,8 @@ const styles = StyleSheet.create({
     borderColor: alpha(color.accent, ink.pill),
   },
   prText: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('500'),
     fontSize: moderateScale(11),
-    fontWeight: '500',
     letterSpacing: 1,
     color: color.textPrimary,
   },

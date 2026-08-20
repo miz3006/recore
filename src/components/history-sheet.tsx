@@ -10,7 +10,7 @@ import {
 import { todayKey, type DayKey } from '@/lib/db/dates';
 import { getLoggedDayKeys, getWorkoutForDay } from '@/lib/db/workouts';
 import { tapMedium } from '@/lib/haptics';
-import { color, FIXED_FONT_SCALE, fonts, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { color, FIXED_FONT_SCALE, HIT, MAX_FONT_SCALE, moderateScale, readingStyle, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
@@ -339,9 +339,8 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
   monthCount: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(11),
-    fontVariant: ['tabular-nums'],
     color: color.textMuted,
   },
   grid: {
@@ -362,16 +361,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   trainedFill: {
-    backgroundColor: color.trained,
+    backgroundColor: color.brand,
   },
   todayRing: {
     borderWidth: 1.5,
     borderColor: color.accent,
   },
   dayNum: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(13),
-    fontVariant: ['tabular-nums'],
     color: color.textSecondary,
   },
   trainedNum: {

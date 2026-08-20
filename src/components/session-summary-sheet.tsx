@@ -11,7 +11,7 @@ import { getReflection } from '@/lib/db/workouts';
 import { groupThousands } from '@/lib/parse/estimate';
 import { formatDistanceTotal } from '@/lib/parse/summarize';
 import { tap } from '@/lib/haptics';
-import { color, fonts, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, readingStyle, spacing, type } from '@/lib/theme';
 import { labelForDay, useCurrentNote, useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
@@ -309,14 +309,12 @@ const styles = StyleSheet.create({
   },
   statNum: {
     ...type.statNumber,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   statLabel: {
     ...type.footnote,
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     color: color.textSecondary,
   },
   recordRow: {
@@ -360,10 +358,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   rowValue: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(14),
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   cta: {
     marginTop: spacing.lg,
@@ -397,8 +394,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   shareEyebrow: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: 11,
     letterSpacing: 1,
     color: color.textMuted,
@@ -411,11 +407,9 @@ const styles = StyleSheet.create({
   },
   shareTotals: {
     marginTop: spacing.md,
-    fontFamily: fonts.reading,
+    ...readingStyle('600'),
     fontSize: 17,
-    fontWeight: '600',
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   shareRows: {
     marginTop: spacing.md,
@@ -441,15 +435,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   shareValue: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: 12.5,
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   shareMore: {
     paddingTop: spacing.sm,
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: 11,
     color: color.textMuted,
   },

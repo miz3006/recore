@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { color, fonts, HIT, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
+import { color, HIT, MAX_FONT_SCALE, moderateScale, radius, readingStyle, shadow, spacing, type } from '@/lib/theme';
 import { labelForDay, useSession } from '@/state/session-store';
 
 import { CalendarSheet } from './calendar-sheet';
@@ -138,12 +138,10 @@ const styles = StyleSheet.create({
   // Mono and quiet: it is a reading, and it is the least important thing in the
   // row — the wordmark and the day are what the eye is here for.
   sessionCount: {
-    fontFamily: fonts.reading,
+    ...readingStyle('500'),
     color: color.textSecondary,
     fontSize: type.caption.fontSize,
-    fontWeight: '500',
     letterSpacing: 0.2,
-    fontVariant: ['tabular-nums'],
   },
   sessionUnit: {
     fontWeight: '400',

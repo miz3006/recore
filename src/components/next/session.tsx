@@ -18,7 +18,6 @@ import type { MoveLabel, SessionRow } from '@/lib/next/sections';
 import { fmtNumber } from '@/lib/parse/summarize';
 import {
   color,
-  fonts,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
@@ -37,7 +36,7 @@ import {
  * ## What changed, and why the old shape had to go
  *
  * The 13 August build gave this page exactly ONE raised surface: the first lift
- * of the session got a whole hero card at `radius.xxl` with its load at 30 pt,
+ * of the session got a whole hero card at `radius.xl` with its load at 30 pt,
  * and every other lift of the same session followed as a plain hairline row on
  * paper. That solved the problem it was built for — four cards of equal weight
  * and no focal point — by inventing a hierarchy the CONTENT does not have. The
@@ -479,11 +478,10 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
   liftMeta: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(11.5),
     marginTop: 3,
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   /** A plateau is the one meta line that earns a hue. Amber clears AA on
    * surface at 5.02:1, and the WORDS say "at this weight" beside it (§14). */
@@ -514,12 +512,10 @@ const styles = StyleSheet.create({
    * how the load is arranged, not a second load.
    */
   hero: {
-    fontFamily: fonts.reading,
+    ...readingStyle('700'),
     fontSize: moderateScale(28),
-    fontWeight: '700',
     letterSpacing: -0.5,
     color: color.signal,
-    fontVariant: ['tabular-nums'],
   },
   heroUnit: {
     fontSize: type.caption.fontSize,
@@ -527,12 +523,10 @@ const styles = StyleSheet.create({
     color: color.signal,
   },
   heroSub: {
-    fontFamily: fonts.reading,
+    ...readingStyle('600'),
     fontSize: moderateScale(12.5),
-    fontWeight: '600',
     marginTop: 2,
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   /** The whole prescription, for a line that carries no separate figure. */
   heroCompact: {
@@ -552,10 +546,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   endLabel: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(11),
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   /** A load that would out-lift the record. `signal` green is exactly this —
    * a value not yet lifted — and it is a WORD, never a digit (4.93:1). */
@@ -687,7 +680,7 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
   buildMeta: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(11),
     color: color.textMuted,
   },

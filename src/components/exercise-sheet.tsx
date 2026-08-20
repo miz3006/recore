@@ -15,11 +15,11 @@ import {
   alpha,
   color,
   eyebrow,
-  fonts,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
+  readingStyle,
   spacing,
   type,
 } from '@/lib/theme';
@@ -255,7 +255,7 @@ function ProgressionChart({
             {labelForDay(mid.day)}
           </Text>
         ) : (
-          <View style={styles.chartDateMid} />
+          <View style={styles.chartDateSpacer} />
         )}
         <Text style={[styles.chartDate, styles.chartDateRight]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           {labelForDay(last.day)}
@@ -799,17 +799,14 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   statFigure: {
-    fontFamily: fonts.reading,
+    ...readingStyle('600'),
     fontSize: moderateScale(22),
     lineHeight: lineFor(26),
-    fontWeight: '600',
     letterSpacing: -0.4,
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   statUnit: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(11),
     color: color.textMuted,
   },
@@ -863,11 +860,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   chartCurrent: {
-    fontFamily: fonts.reading,
+    ...readingStyle('600'),
     fontSize: moderateScale(15),
-    fontWeight: '600',
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   chartPlot: {
     marginTop: spacing.sm,
@@ -878,10 +873,9 @@ const styles = StyleSheet.create({
     left: 0,
     width: AXIS_W - moderateScale(6),
     textAlign: 'right',
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(10),
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
   chartFoot: {
     flexDirection: 'row',
@@ -890,21 +884,24 @@ const styles = StyleSheet.create({
     paddingLeft: AXIS_W,
   },
   chartDate: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(11),
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
   chartDateRight: {
     textAlign: 'right',
   },
+  /** The middle date's slot when there is no middle date — flex only, so it can
+   * sit on a View. */
+  chartDateSpacer: {
+    flex: 1,
+  },
   chartDateMid: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(11),
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
   chartNote: {
     marginTop: spacing.sm,
@@ -973,10 +970,9 @@ const styles = StyleSheet.create({
   },
   step: {
     marginLeft: 'auto',
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(12),
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
 
   // PR hero card
@@ -998,10 +994,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   prLabel: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('500'),
     fontSize: moderateScale(9),
-    fontWeight: '500',
     letterSpacing: 1,
     color: color.textPrimary,
     borderWidth: 1,
@@ -1023,9 +1017,8 @@ const styles = StyleSheet.create({
   },
   heroFigure: {
     ...type.statNumber,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   // History table card
   tableCard: {
@@ -1083,16 +1076,14 @@ const styles = StyleSheet.create({
   },
   rowSub: {
     marginTop: 3,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(11),
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
   rowValue: {
     ...type.caption,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   rowValuePr: {
     fontWeight: '600',

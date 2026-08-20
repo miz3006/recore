@@ -347,8 +347,8 @@ export function CheckInSheet() {
             maxLength={reflectionRoomFor(tags)}
             placeholder={REFLECTION_PLACEHOLDER}
             placeholderTextColor={color.textMuted}
-            selectionColor={color.trained}
-            cursorColor={color.trained}
+            selectionColor={color.brand}
+            cursorColor={color.brand}
             accessibilityLabel="Anything worth remembering about today. Optional."
             style={styles.input}
             maxFontSizeMultiplier={MAX_FONT_SCALE}
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
   },
   skip: {
     ...type.headline,
-    color: color.trained,
+    color: color.brand,
   },
   pressedDim: {
     opacity: 0.5,
@@ -494,8 +494,8 @@ const styles = StyleSheet.create({
   },
   // Chosen = Recore blue, the app's one colour for a selected answer (§4.2).
   choiceOn: {
-    backgroundColor: color.trained,
-    borderColor: color.trained,
+    backgroundColor: color.brand,
+    borderColor: color.brand,
   },
   choiceLabel: {
     ...type.caption,
@@ -542,8 +542,8 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
   },
   tagOn: {
-    backgroundColor: color.trained,
-    borderColor: color.trained,
+    backgroundColor: color.brand,
+    borderColor: color.brand,
   },
   tagText: {
     ...type.caption,

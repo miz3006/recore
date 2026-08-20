@@ -13,12 +13,12 @@ import { getLedgerSize } from '@/lib/db/ledger-size';
 import { getRecentSessions } from '@/lib/db/insights';
 import {
   color,
-  fonts,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   monoText,
   radius,
+  readingStyle,
   spacing,
   TAB_BAR_CLEARANCE,
   type,
@@ -274,9 +274,7 @@ const styles = StyleSheet.create({
   chip: {
     alignSelf: 'flex-start',
     ...type.footnote,
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '700',
+    ...readingStyle('700'),
     letterSpacing: 1,
     color: color.textSecondary,
     borderWidth: 1,
@@ -297,10 +295,9 @@ const styles = StyleSheet.create({
   },
   recordRange: {
     marginTop: 2,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: type.footnote.fontSize,
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
   bannerBody: {
     marginTop: spacing.sm + 2,

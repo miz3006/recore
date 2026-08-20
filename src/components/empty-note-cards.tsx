@@ -11,12 +11,12 @@ import { getObLanguage, getPrimaryLift, getWeightUnit, hasCoachRingDone } from '
 import {
   color,
   FIXED_FONT_SCALE,
-  fonts,
   HIT,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
+  readingStyle,
   shadow,
   spacing,
   type,
@@ -253,9 +253,8 @@ const styles = StyleSheet.create({
   },
   meta: {
     ...type.caption,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
   names: {
     ...type.subhead,
@@ -263,9 +262,7 @@ const styles = StyleSheet.create({
   },
   numbers: {
     ...type.caption,
-    fontFamily: fonts.reading,
-    fontWeight: '500',
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('500'),
     color: color.textSecondary,
   },
 
@@ -350,10 +347,9 @@ const styles = StyleSheet.create({
   },
   sampleText: {
     flexShrink: 1,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(14),
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   sampleHint: {
     fontSize: moderateScale(11),

@@ -39,10 +39,12 @@ import { alpha, color, hairline, moderateScale, radius, shadow, spacing } from '
  * over the home indicator, all four corners rounded. It is the iOS date-picker card, and
  * the reason it looks better than a drawer welded to the screen edge is that a
  * card with air around it reads as an OBJECT laid on the app, while a drawer
- * reads as the app growing a new bottom. The white surface also needs the gap:
- * on white-on-white a sheet that touches the edges has nothing to prove it is a
- * separate plane, so the inset does the job the tone can't (`color.ts` §"WHITE,
- * NOT PAPER").
+ * reads as the app growing a new bottom.
+ *
+ * On the v6 canvas the gap also SHOWS something: the sheet is white and the page
+ * under it is cream, so the eight points of air down each side are eight points
+ * of visible page, and the card reads as laid on the app rather than as part of
+ * it. It was doing that job blind for the three days the canvas was also white.
  *
  * Two consequences for callers:
  * - **The sheet owns the bottom safe-area gap.** A child must NOT add
@@ -71,7 +73,7 @@ const SCREEN_H = Dimensions.get('window').height;
 /** The air down both sides of the card — a HAIR of it (owner, 18 Aug 2026: the
  * card should read as detached, not as a floating tile). Its radius is the
  * screen's own corner minus this gap (~39 − 8), which is why the tighter the
- * inset, the ROUNDER the card has to be: `radius.xxl`. */
+ * inset, the ROUNDER the card has to be: `radius.xl`. */
 const SHEET_INSET = spacing.sm;
 
 /** Enter/settle share the decelerating curve; exit uses the accelerating one. */
@@ -254,7 +256,7 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: color.surface,
-    borderRadius: radius.xxl,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     borderWidth: hairline,
     borderColor: color.border,

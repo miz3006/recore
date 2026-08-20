@@ -30,8 +30,8 @@ import { CTA_HEIGHT, alpha, color, moderateScale, radius } from '@/lib/theme';
 /**
  * The brand blue — the one accent of the flow, and the app's one accent
  * everywhere else too (design skill §Colour, 20 Aug 2026). It was the funnel's
- * own reading of `color.trained`; there is no separate onboarding blue, so this
- * is now an alias of `color.brand` and the call sites move off it in Phase 2.
+ * own reading of the retired `trained` token; there is no separate onboarding
+ * blue, so this is an alias of `color.brand` and its call sites have moved.
  *
  * @deprecated import `color.brand` from `@/lib/theme`.
  */
@@ -72,9 +72,9 @@ export const INK_RING = alpha(color.accent, 0.22);
  * rather than by arithmetic — this wash carries no text, so there is no ratio
  * to clear, only a weight to match.
  */
-export const BLUE_WASH = alpha(color.brand, 0.08);
+export const BRAND_WASH = alpha(color.brand, 0.08);
 /** The commitment screen's stat card, one step lighter than a chosen row. */
-export const BLUE_CARD = alpha(color.brand, 0.06);
+export const BRAND_CARD = alpha(color.brand, 0.06);
 
 /**
  * ## The funnel's radii ARE the app's radii (skill §Decided-2)

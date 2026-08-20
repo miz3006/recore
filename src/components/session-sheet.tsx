@@ -8,7 +8,7 @@ import {
 } from '@/lib/db/insights';
 import { groupThousands } from '@/lib/parse/estimate';
 import { fmtNumber } from '@/lib/parse/summarize';
-import { color, fonts, lineFor, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { color, lineFor, MAX_FONT_SCALE, moderateScale, radius, readingStyle, spacing, type } from '@/lib/theme';
 import { labelForDay, useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
@@ -202,10 +202,9 @@ const styles = StyleSheet.create({
   },
   heroLine: {
     marginTop: spacing.lg,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(13),
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   scroll: {
     flexShrink: 1,
@@ -235,10 +234,8 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
   groupTag: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('700'),
     fontSize: moderateScale(9),
-    fontWeight: '700',
     letterSpacing: 0.6,
     color: color.textMuted,
     borderWidth: 1,
@@ -271,10 +268,8 @@ const styles = StyleSheet.create({
     color: color.textMuted,
   },
   prLabel: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('700'),
     fontSize: moderateScale(10),
-    fontWeight: '700',
     letterSpacing: 0.5,
     color: color.textPrimary,
     borderWidth: 1,
@@ -287,10 +282,9 @@ const styles = StyleSheet.create({
   setValue: {
     flexShrink: 1,
     textAlign: 'right',
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(13),
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   setValueMuted: {
     color: color.textMuted,

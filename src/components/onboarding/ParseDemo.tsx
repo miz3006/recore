@@ -18,12 +18,13 @@ import {
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
+  radius,
   readingStyle,
   spacing,
   type,
 } from '@/lib/theme';
 
-import { BLUE, INK_CARD, RISE_PX, ROW_RADIUS } from './tokens';
+import { INK_CARD, RISE_PX } from './tokens';
 
 /**
  * The one animated promise in the funnel (Claude Design canvas, 13 Aug 2026 —
@@ -177,7 +178,7 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.sm,
   },
   rowClip: {
-    borderRadius: ROW_RADIUS,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
     overflow: 'hidden',
   },
@@ -187,7 +188,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
     backgroundColor: INK_CARD,
-    borderRadius: ROW_RADIUS,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.lg,
@@ -207,7 +208,7 @@ const styles = StyleSheet.create({
     ...readingStyle('600'),
     fontSize: moderateScale(17),
     lineHeight: lineFor(22),
-    color: BLUE,
+    color: color.brand,
   },
   dot: {
     ...type.subhead,

@@ -13,10 +13,12 @@ import { color, shadow } from '@/lib/theme';
  * content. The same rule applies here, so nothing below passes `tintColor`.
  *
  * WHERE IT DOES NOT EXIST — iOS 25 and earlier, Android, Expo Go — it falls
- * back to the warm-paper surface the rest of the app is made of: `surface`
- * over `bg`, a hairline, and the raised shadow. That is not a degraded glass;
- * it is the app's own material, and the layout is identical either way, so a
- * screen designed on one reads correctly on the other.
+ * back to the material the rest of v6 is made of: a white `surface` on the warm
+ * canvas, a hairline, and `shadow.card`. That is not a degraded glass; it is
+ * the app's own material, and the layout is identical either way, so a screen
+ * designed on one reads correctly on the other. The shadow is load-bearing in
+ * the fallback: white on cream is 1.05:1 by tone, so without it the surface is
+ * simply not there.
  *
  * It renders as an absolutely-positioned LAYER behind its parent's children,
  * so callers keep ordinary flex layout and just add `<GlassSurface radius={…} />`

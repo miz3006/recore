@@ -19,12 +19,23 @@ import {
 } from '@/lib/prefs';
 import { fmtClock, useRestTimer } from '@/lib/rest-timer';
 import { maybeAskForReview } from '@/lib/review';
-import { color, fonts, HIT, ink, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
+import {
+  color,
+  HIT,
+  ink,
+  MAX_FONT_SCALE,
+  moderateScale,
+  radius,
+  readingStyle,
+  shadow,
+  spacing,
+  type,
+} from '@/lib/theme';
 import { startDictation, voiceAvailable, type DictationHandle } from '@/lib/voice';
 import { useCurrentNote, useSession } from '@/state/session-store';
 
 import { GlassSurface } from './glass';
-import { Icon } from './icon';
+import { Icon, glyphTint } from './icon';
 import { PressableScale } from './motion';
 import { revealReceipt } from './note-focus';
 
@@ -42,10 +53,21 @@ import { revealReceipt } from './note-focus';
  * reason §4 sets none on the tab bar: glass recolours itself against what is
  * behind it, and a fixed hex goes illegible over some content.
  *
- * What the reference had and this deliberately does NOT: colour and an emoji.
- * The mic is not blue, the timer is not purple, and the streak is a mono
- * numeral in the top bar, never a flame (§5.1, §5.7 — this is the app
- * reporting, and a record does not wink).
+ * ## Colour is on the GLYPHS now, and on nothing else (v6, 20 Aug 2026)
+ *
+ * The design skill's §Structure: *"Accessory buttons are coloured glyphs in
+ * white circles — the colour is on the glyph, never on the circle."* Each of
+ * the four takes its own hue from `icon.tsx`'s one glyph→colour map — timer
+ * orange, mic teal, plan indigo, hide-keyboard slate — so a glyph is the same
+ * colour here as it is on a settings row, and a bar of four grey circles is
+ * now four things you can tell apart before you read them.
+ *
+ * This reverses "the mic is not blue, the timer is not purple" (28 July), and
+ * only that. **The circles stay white and the record stays ink**: no fill is
+ * tinted, no number beside them changes, and the streak is still a reading in
+ * the top bar and never a flame (§5.1, §5.7 — this is the app reporting, and a
+ * record does not wink). Brand blue, planned green and red are not in the
+ * accessory set and may never be added to it.
  *
  * THE STATUS PILL is the live count and tonnage ("4 staged · 3 240 kg"; parsed
  * volume once the background parse lands, an instant text estimate before
@@ -320,7 +342,7 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
           accessibilityRole="button"
           accessibilityLabel={recording ? 'Stop dictation' : 'Dictate'}>
           {recording ? null : <GlassSurface radius={ROUND / 2} />}
-          <Icon name="mic" size={moderateScale(18)} tint={recording ? color.onInk : color.textSecondary} />
+          <Icon name="mic" size={moderateScale(18)} tint={recording ? color.onInk : glyphTint('mic')} />
         </PressableScale>
 
         {/* Sits immediately after the mic and BEFORE the plan button, which is
@@ -334,7 +356,7 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
           accessibilityRole="button"
           accessibilityLabel="Hide keyboard">
           <GlassSurface radius={ROUND / 2} />
-          <Icon name="keyboard-hide" size={moderateScale(18)} tint={color.textSecondary} />
+          <Icon name="keyboard-hide" size={moderateScale(18)} tint={glyphTint('keyboard-hide')} />
         </PressableScale>
 
         {/* LABELLED, not a bare glyph (owner's spec §D.1, 13 Aug 2026). A list
@@ -351,7 +373,7 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
             accessibilityRole="button"
             accessibilityLabel={`Write the next planned line: ${nextPlanLine}`}>
             <GlassSurface radius={ROUND / 2} />
-            <Icon name="plan" size={moderateScale(16)} tint={color.textSecondary} />
+            <Icon name="plan" size={moderateScale(16)} tint={glyphTint('plan')} />
             <Text
               style={styles.roundText}
               numberOfLines={1}
@@ -480,7 +502,7 @@ function RestTimer() {
           {label}
         </Text>
       ) : (
-        <Icon name="timer" size={moderateScale(18)} tint={color.textSecondary} />
+        <Icon name="timer" size={moderateScale(18)} tint={glyphTint('timer')} />
       )}
     </PressableScale>
   );
@@ -515,9 +537,8 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   statusText: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(11),
-    fontVariant: ['tabular-nums'],
     color: color.textSecondary,
   },
   row: {
@@ -545,11 +566,9 @@ const styles = StyleSheet.create({
     backgroundColor: color.accent,
   },
   roundText: {
-    fontFamily: fonts.reading,
+    ...readingStyle('600'),
     fontSize: type.caption.fontSize,
-    fontWeight: '600',
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   roundTextFirm: {
     fontWeight: '700',
@@ -563,14 +582,19 @@ const styles = StyleSheet.create({
     height: ROUND,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
-    backgroundColor: color.ctaFill,
+    backgroundColor: color.brand,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 1,
-    ...shadow.raised,
+    // The primary action on this screen, so it wears the app's one coloured
+    // shadow rather than the neutral sheet cast. It stays 44 tall rather than
+    // `CTA_HEIGHT` 56 because it sits IN the accessory row: the four circles
+    // beside it are 44 pt targets, and a 56 pt pill among them would be a
+    // second bar. This is the compact case the height rule leaves open.
+    ...shadow.glow,
   },
   finishPressed: {
-    backgroundColor: color.ctaFillPressed,
+    backgroundColor: color.brandPressed,
   },
   finishDisabled: {
     opacity: ink.disabled,

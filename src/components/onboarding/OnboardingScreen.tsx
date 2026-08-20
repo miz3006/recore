@@ -19,15 +19,7 @@ import { Enter, EntranceWindow } from './Enter';
 import { IllustrationSlot } from './IllustrationSlot';
 import { PrimaryCta } from './PrimaryCta';
 import { ProgressRail } from './ProgressRail';
-import {
-  BACK_DIAMETER,
-  BLUE,
-  INK_CHROME,
-  SLOT,
-  slotDelay,
-  STAGGER_CAP,
-  STAGGER_MS,
-} from './tokens';
+import { BACK_DIAMETER, INK_CHROME, SLOT, slotDelay, STAGGER_CAP, STAGGER_MS } from './tokens';
 
 /**
  * THE onboarding screen template (owner's mascot-led restyle, 12 Aug 2026).
@@ -399,7 +391,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   eyebrowAccent: {
-    color: BLUE,
+    color: color.brand,
   },
   /** The welcome's sentence-case line — `textSecondary`, because it is read. */
   kicker: {

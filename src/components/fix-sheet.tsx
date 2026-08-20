@@ -8,12 +8,12 @@ import { getWeightUnit } from '@/lib/prefs';
 import {
   color,
   CONTROL_HEIGHT,
-  fonts,
   ink,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
+  readingStyle,
   spacing,
   type,
 } from '@/lib/theme';
@@ -868,11 +868,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 1,
   },
   quote: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(12.5),
     lineHeight: lineFor(18),
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   quoteLine: {
     color: color.textMuted,
@@ -880,11 +879,10 @@ const styles = StyleSheet.create({
   // The same box the quote sits in, so switching modes swaps the CONTENT of
   // the card rather than replacing the card — the line never moves.
   wordsInput: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(12.5),
     lineHeight: lineFor(18),
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
     padding: 0,
     minHeight: lineFor(36),
   },
@@ -895,7 +893,7 @@ const styles = StyleSheet.create({
   wordsLink: {
     fontSize: type.caption.fontSize,
     fontWeight: '600',
-    color: color.trained,
+    color: color.brand,
   },
   wordsHint: {
     marginTop: spacing.xs,
@@ -967,8 +965,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   setKind: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(9.5),
     letterSpacing: 1,
     color: color.textSecondary,
@@ -1019,9 +1016,8 @@ const styles = StyleSheet.create({
   value: {
     textAlign: 'center',
     color: color.textPrimary,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: type.subhead.fontSize,
-    fontVariant: ['tabular-nums'],
   },
   valueEmpty: {
     minHeight: moderateScale(32),
@@ -1029,10 +1025,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   valuePlaceholder: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: type.subhead.fontSize,
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
   wideInput: {
     minWidth: moderateScale(96),
@@ -1140,7 +1135,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
     borderCurve: 'continuous',
-    backgroundColor: color.ctaFill,
+    backgroundColor: color.brand,
     alignItems: 'center',
     justifyContent: 'center',
   },

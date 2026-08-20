@@ -12,12 +12,12 @@ import { SPRING } from '@/lib/motion';
 import {
   alpha,
   color,
-  fonts,
   hairline,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
+  readingStyle,
   shadow,
   spacing,
   type,
@@ -406,9 +406,8 @@ const styles = StyleSheet.create({
   },
   rowReading: {
     flexShrink: 1,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: type.subhead.fontSize,
-    fontVariant: ['tabular-nums'],
     color: color.textSecondary,
     textAlign: 'right',
   },
@@ -417,8 +416,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   external: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(14),
     color: color.textMuted,
   },
@@ -453,9 +451,8 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   segmentReading: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     letterSpacing: 0.2,
-    fontVariant: ['tabular-nums'],
   },
   segmentLabelSelected: {
     color: color.textPrimary,

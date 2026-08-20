@@ -1,6 +1,5 @@
 import {
   ActivityIndicator,
-  Platform,
   StyleSheet,
   Text,
   type StyleProp,
@@ -9,27 +8,42 @@ import {
 import { useAnimatedStyle } from 'react-native-reanimated';
 
 import { PressableScale } from '@/components/motion';
-import { color, lineFor, MAX_FONT_SCALE, radius, spacing, type } from '@/lib/theme';
+import {
+  color,
+  CTA_HEIGHT,
+  lineFor,
+  MAX_FONT_SCALE,
+  radius,
+  shadow,
+  spacing,
+  type,
+} from '@/lib/theme';
 
-import { BLUE, CTA_HEIGHT } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 /**
- * The funnel's primary button: full-width, fully rounded, filled Recore blue,
- * a white label, and a soft blue glow underneath it (owner's restyle, 12 Aug
- * 2026). It is deliberately NOT `AppButton` — that one is the app's ink-filled
- * control and stays ink everywhere else; blue belongs to onboarding and the
- * paywall, which are one continuous surface.
+ * The funnel's primary button: full-width, fully rounded, filled brand blue, a
+ * white label, and the brand glow underneath it.
  *
- * **The label is 17 pt at 700 on purpose.** White on #007AFF measures 3.4:1,
- * which clears WCAG's 3:1 floor for LARGE text (≥14 pt bold) but not the 4.5:1
- * body-text rule. At semibold it would be a body-text weight failing that rule;
- * bold puts the label in the large-text class it actually needs to be in. Do
- * not lighten the fill or thin the label back down.
+ * It is the same object as `AppButton`'s primary now — v6 made the app-wide
+ * primary a filled brand pill with `shadow.glow` at `CTA_HEIGHT` (skill
+ * §Decided-1/3), which is what this control already was. What it still owns
+ * that `AppButton` does not is the pill radius and the WAKING-UP animation
+ * below; the fill, the glow, the height and the label are the theme's.
  *
- * The glow is cast in the button's own blue at a whisper — the one coloured
- * shadow in the app, and the reason the CTA reads as the live thing on an
- * otherwise paper screen. Press dips to 0.97 on the shared 120 ms curve.
+ * **The label is 17 pt at 600, and that changed with the blue** (20 Aug 2026).
+ * It was 700 because white on `#007AFF` measured **3.4:1** — under the 4.5:1 a
+ * body-weight label owes, so the weight had to push it into WCAG's large-text
+ * class to be legal at all. White on Volt `#0B5CD6` measures **5.97:1**, which
+ * clears the body-text rule outright, so the label is set at the app's own
+ * headline weight instead of at a weight contrast was forcing on it. **Do not
+ * lighten the fill** — that is what the 5.97 is bought with.
+ *
+ * The glow is `shadow.glow` — the one coloured shadow in the app, and the
+ * reason the CTA reads as the live thing on an otherwise paper screen. It is
+ * the theme's token rather than a hand-rolled `Platform.select` here, so the
+ * funnel's CTA and every other primary button cast the same light. Press dips
+ * to 0.97 on the shared 120 ms curve.
  *
  * ## The button WAKING UP is animated (19 August 2026)
  *
@@ -90,30 +104,22 @@ const styles = StyleSheet.create({
   cta: {
     minHeight: CTA_HEIGHT,
     borderRadius: radius.pill,
-    backgroundColor: BLUE,
+    backgroundColor: color.brand,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
-    ...Platform.select({
-      ios: {
-        shadowColor: BLUE,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.28,
-        shadowRadius: 18,
-      },
-      android: { elevation: 4, shadowColor: BLUE },
-      default: {},
-    }),
+    ...shadow.glow,
   },
   ctaPressed: {
-    backgroundColor: color.ctaFillPressed,
+    backgroundColor: color.brandPressed,
   },
   label: {
     fontSize: type.headline.fontSize,
     lineHeight: lineFor(22),
-    // 700, not 600 — see the contrast note above.
-    fontWeight: '700',
+    // 600, the app's headline weight. It was 700 only because #007AFF's 3.4:1
+    // needed the large-text class; Volt's 5.97:1 does not. See the note above.
+    fontWeight: '600',
     letterSpacing: -0.2,
     color: color.onInk,
   },

@@ -9,7 +9,7 @@ import { lastSetOf } from '@/lib/parse/receipt';
 import { formatDistanceTotal } from '@/lib/parse/summarize';
 import { groupThousands } from '@/lib/parse/estimate';
 import { fmtClock, useRestTimer } from '@/lib/rest-timer';
-import { color, fonts, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, radius, readingStyle, shadow, spacing, type } from '@/lib/theme';
 import { labelForDay, useCurrentNote, useSession } from '@/state/session-store';
 
 import { useSessionActive } from './use-session-active';
@@ -230,8 +230,7 @@ const styles = StyleSheet.create({
   },
   scope: {
     ...type.subhead,
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     color: color.textSecondary,
   },
   // The one thing in the pill that is a NAME rather than a reading, so it is
@@ -244,8 +243,7 @@ const styles = StyleSheet.create({
   },
   segment: {
     ...type.subhead,
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
   },
   value: {
     color: color.textPrimary,

@@ -95,7 +95,7 @@ export function StubScreen({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.bg,
+    backgroundColor: color.canvas,
   },
   header: {
     flexDirection: 'row',

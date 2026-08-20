@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { Platform, Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
@@ -11,9 +11,17 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { tapMedium } from '@/lib/haptics';
 import { EASE } from '@/lib/motion';
-import { lineFor, MAX_FONT_SCALE, radius, spacing, type, color } from '@/lib/theme';
+import {
+  color,
+  CTA_HEIGHT,
+  lineFor,
+  MAX_FONT_SCALE,
+  radius,
+  shadow,
+  spacing,
+  type,
+} from '@/lib/theme';
 
-import { BLUE, CTA_HEIGHT } from './tokens';
 
 /**
  * "Hold to commit" — the commitment screen's button (v3 design import, 18 Aug
@@ -134,36 +142,27 @@ const styles = StyleSheet.create({
   button: {
     minHeight: CTA_HEIGHT,
     borderRadius: radius.pill,
-    backgroundColor: BLUE,
+    backgroundColor: color.brand,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
-    ...Platform.select({
-      ios: {
-        shadowColor: BLUE,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.28,
-        shadowRadius: 18,
-      },
-      android: { elevation: 4, shadowColor: BLUE },
-      default: {},
-    }),
+    ...shadow.glow,
   },
   /** The sweep — the CTA's own pressed blue, so the button never introduces a
    * colour the rest of the flow does not already have. */
   fill: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: color.ctaFillPressed,
+    backgroundColor: color.brandPressed,
     transformOrigin: 'left',
   },
   label: {
     fontSize: type.headline.fontSize,
     lineHeight: lineFor(22),
-    // 700, not 600 — white on #007AFF needs the large-text weight class to
-    // clear the 3:1 floor. Same rule as `PrimaryCta`.
-    fontWeight: '700',
+    // 600, the app's headline weight: white on Volt is 5.97:1, so the label no
+    // longer has to be bold to be legal (it was 3.4:1 on #007AFF).
+    fontWeight: '600',
     letterSpacing: -0.2,
     color: color.onInk,
   },

@@ -106,13 +106,13 @@ const styles = StyleSheet.create({
   frame: {
     padding: BEZEL,
     backgroundColor: color.accent,
-    borderRadius: radius.xxl + BEZEL,
+    borderRadius: radius.xl + BEZEL,
     borderCurve: 'continuous',
     ...shadow.raised,
   },
   screen: {
     aspectRatio: WINDOW_ASPECT,
-    borderRadius: radius.xxl,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     overflow: 'hidden',
     backgroundColor: color.surface,

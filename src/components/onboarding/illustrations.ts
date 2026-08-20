@@ -25,7 +25,7 @@ export {
  * **EXPORT ON TRANSPARENCY, NOT ON A BACKGROUND.** Since 12 Aug 2026 the slot
  * draws its asset straight onto the paper canvas — no card, no border, no tint,
  * no rounded clip — and fits it with `contain`. An asset baked onto its own
- * off-white rectangle will show that rectangle as a seam against `color.bg`.
+ * off-white rectangle will show that rectangle as a seam against `color.canvas`.
  * Transparent PNG at 3× (or a Lottie) is the shape that belongs here.
  *
  * ## The manifest is two files

@@ -41,7 +41,7 @@ import { eyebrow as eyebrowToken } from '@/lib/theme/typography';
  *
  * ## What each colour is allowed to mean
  *
- * `attention` amber names a plateau and nothing else; `trained` blue names
+ * `attention` amber names a plateau and nothing else; the `brand` blue names
  * recorded progress, which is exactly what §4.2 permits it for, and it is the
  * sparkline's tint for the same reason. The READINGS stay ink on both — a
  * weight that has not moved is still just a weight, and a gain someone earned
@@ -170,7 +170,7 @@ function SignalRow({
 
       {series && series.length > 0 ? (
         <View style={styles.spark} pointerEvents="none" accessibilityElementsHidden>
-          <Sparkline values={series} width={SPARK_W} height={SPARK_H} tint={color.trained} />
+          <Sparkline values={series} width={SPARK_W} height={SPARK_H} tint={color.brand} />
         </View>
       ) : null}
 
@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
     color: color.attention,
   },
   stateMoving: {
-    color: color.trained,
+    color: color.brand,
   },
   reading: {
     ...readingStyle('700'),

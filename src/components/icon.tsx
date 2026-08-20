@@ -116,22 +116,46 @@ const MAP: Record<IconName, Glyph> = {
 };
 
 /**
- * Each settings glyph's own colour (owner, 28 July). The map is keyed by the
- * GLYPH, not by the row, so `sparkle` is the same gold wherever it appears and
- * a colour can never mean two things — the condition the palette in
- * `theme/color.ts` is allowed to exist under.
+ * Each glyph's own colour (owner, 28 July; extended to the accessory bar on
+ * 20 Aug 2026). The map is keyed by the GLYPH, not by the row, so `sparkle` is
+ * the same gold wherever it appears and a colour can never mean two things —
+ * the condition the palette in `theme/color.ts` is allowed to exist under.
  *
- * It is opt-in: `Icon` still defaults to quiet grey. Two surfaces ask for a
- * tint — You's settings rows, and (owner, 29 Jul) the lift sheet's three stat
- * LABELS plus its summary card's own label. In both places the glyph sits
- * beside a caption and never beside a value: Today, Next, Progress and every
- * record row stay uncoloured, because those report the record and the record
- * is ink (§5.1).
+ * It is opt-in: `Icon` still defaults to quiet grey. Three surfaces ask for a
+ * tint — You's settings rows, the lift sheet's three stat LABELS plus its
+ * summary card's own label (owner, 29 Jul), and the accessory bar's circular
+ * buttons (v6). In every one of them the glyph sits beside a caption or inside
+ * a control and never beside a value: **the record itself stays ink** (§5.1).
  *
- * `trash` is absent on purpose — a destructive row already draws in
- * `color.error`, and a second red would be a second meaning for red.
+ * ## The accessory tints (v6, design skill §Structure)
+ *
+ * "Accessory buttons are coloured glyphs in white circles — the colour is on
+ * the glyph, never on the circle." The four below join the existing families
+ * rather than inventing hues, which is the only way "one colour per glyph"
+ * survives adding a surface:
+ *
+ * · `timer` → orange, the family of what you aim at and what is counting.
+ * · `mic` → teal, the words-and-movement family (`language`, `refresh`).
+ * · `plan` → indigo, the structure family (`calendar`, `card`).
+ * · `keyboard-hide` → slate, the plumbing (`lock`, `document`, `wrench`).
+ *
+ * Measured on the white circle they sit in: indigo 5.85, slate 5.47, orange
+ * 4.03, teal 4.03 — every one past the 3:1 a non-text mark owes, and past it
+ * again on the canvas (5.42 / 5.07 / 3.73 / 3.74 on the deepest tint).
+ *
+ * **Brand blue, planned green and red are not in this set and may never be
+ * added to it**, and `trash` is absent for the same reason — a destructive row
+ * already draws in `color.error`, and a second red would be a second meaning
+ * for red.
  */
 const GLYPH_TINT: Partial<Record<IconName, string>> = {
+  // The accessory bar.
+  timer: glyphColor.orange,
+  mic: glyphColor.teal,
+  plan: glyphColor.indigo,
+  'keyboard-hide': glyphColor.slate,
+
+  // You's settings rows.
   bell: glyphColor.indigo,
   calendar: glyphColor.indigo,
   target: glyphColor.orange,

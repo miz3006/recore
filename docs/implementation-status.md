@@ -892,6 +892,79 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — v6 Phase 2b: every shared component inherits the tokens, and the reasoning
+  card exists.** 50 files touched, all under `src/components/`. **No screen was touched** —
+  `src/app/` is untouched by this pass, so the funnel's and the paywall's own call sites still
+  read the deprecated aliases.
+  - **The deprecated tokens are gone from the component layer.** `color.trained` (24 refs),
+    `color.ctaFill`/`ctaFillPressed`, `radius.xxl` and `color.bg` no longer appear anywhere in
+    `src/components/`; what remains of each lives in `src/app/` and dies with Phase 3.
+  - **The `readingStyle()` sweep is done for components — 86 call sites across 23 files**
+    (heaviest `exercise-sheet` 11, `session-summary-sheet` 7, `set-table`/`ghost-prediction` 6).
+    Each inline `fontFamily: fonts.reading` became `...readingStyle(w)` carrying the weight the
+    style already declared, and the now-redundant `fontWeight` / `fontVariant` lines went with
+    it. **It is not quite a no-op and the entry should say so:** a handful of these styles had
+    the reading family without `tabular-nums`, and they have it now, which is the point of the
+    token — digits that do not change width as a number changes. The screens' own inline fonts
+    (`progress` 10, `you` 6, `split` 3, `plan-day` 3, `lifts` 2, `paywall` 1, `aliases` 1) move
+    with their screens.
+  - **The funnel stopped declaring its own design system.** All thirteen onboarding components
+    now read `color.brand`, `radius.lg`/`radius.xl` and `CTA_HEIGHT` from `@/lib/theme`;
+    `BLUE_WASH`/`BLUE_CARD` were renamed `BRAND_WASH`/`BRAND_CARD` (they stay tokens rather than
+    inline `alpha()` calls because they are read inside `interpolateColor` worklets, and a
+    function call in a worklet crashes at runtime with no gate to catch it). `BLUE` and
+    `CARD_RADIUS` survive as deprecated aliases for `paywall.tsx` and `onboarding/[step].tsx`
+    only.
+  - **Both funnel CTAs moved onto `shadow.glow` and dropped to weight 600.** `PrimaryCta` and
+    `HoldToCommit` each carried a hand-rolled `Platform.select` glow; they now spread the
+    theme's token, so every primary button in the app casts the same light. The label was 700
+    **because of a contrast constraint that no longer exists**: white on `#007AFF` measured
+    3.4:1, under the 4.5:1 a body-weight label owes, so the weight had to push it into WCAG's
+    large-text class to be legal. White on Volt measures **5.97:1** and clears the body rule
+    outright, so the label is set at the app's own headline weight instead of at a weight
+    contrast was forcing on it.
+  - **The accessory bar has colour on its glyphs** (skill §Structure: *"coloured glyphs in white
+    circles — the colour is on the glyph, never on the circle"*). Four entries joined
+    `icon.tsx`'s one glyph→colour map rather than becoming a second palette, each in the family
+    it belongs to: timer → orange, mic → teal, plan → indigo, hide-keyboard → slate. Measured on
+    the white circle: 4.03 / 4.03 / 5.85 / 5.47, and 3.73–5.42 on the deepest canvas tint — all
+    past the 3:1 a non-text mark owes. **This reverses "the mic is not blue, the timer is not
+    purple" (28 July) and only that**: the circles stay white, no fill is tinted, and brand blue,
+    planned green and red are still barred from the set. `Finish` moved from `shadow.raised` to
+    `shadow.glow` — it is the primary action on Today — and stays 44 tall rather than 56 because
+    it sits IN the accessory row beside four 44 pt circles.
+  - **`set-table` lost its last line.** The rule under the column header is replaced by 12 points
+    of space — three times a row's own gap, so it is the largest gap in the table. It had been
+    strengthened from `tableRule` to `border` on 9 Aug so a low-vision reader could find the
+    boundary; on the warm canvas `border` measures **1.40:1**, so it had stopped finding
+    anything, and space has no contrast ratio to fail. The table never had rules between sets.
+  - **`ThoughtProcessCard` is built** (`components/next/thought-process.tsx`) and is **not
+    mounted yet** — `next.tsx` mounts it in Phase 3. Evidence ring, one paragraph, a brand
+    "adjust" link. **It deviates from the skill's wording on purpose and the owner should rule
+    on it:** the skill asks for a "circular confidence marker", and a confidence percentage is a
+    number nobody computes — the engine has no posterior, and printing one would be exactly the
+    fabricated personalisation CLAUDE.md §3 calls a release blocker. What is real is how much
+    record a prescription stands on, which the brief already computes as `sessions8w` and already
+    prints in words, so the ring fills against a stated scale of sessions and the figure inside
+    it is that count. Every string and number the component draws is a prop: it does no
+    arithmetic on training data and reads nothing, which is what makes it safe to put a model's
+    phrasing through (CLAUDE.md §4). It does not animate.
+  - Smaller, all inherited rather than designed: `next/section.tsx`'s card radius `lg` → `xl` 24
+    (a section card and a sheet are the same kind of object); `bottom-sheet` and `glass` doc
+    blocks rewritten off "WHITE, NOT PAPER"; `scroll-edge` and `stub-screen` re-keyed to
+    `color.canvas`; `exercise-sheet` gained a `chartDateSpacer` because a `TextStyle` on a
+    spacer `View` became a type error once the style went through `readingStyle`.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified: device QA** — the coloured accessory
+    glyphs, the 600-weight CTA label, the set table without its rule, and the funnel at the new
+    radii.
+  - **Deliberately deferred to the screens, NOT done:** the bare-row restyle of
+    `read-only-ledger`, `session-receipt`, `gutter-value`, `note-surface`, `ghost-prediction`,
+    `planned-checklist`, `plan-strip`, `empty-note-cards` and `summary-pill`. MIGRATION Phase 2
+    words it as *"drop card chrome where these are the record"*, and which chrome is doing work
+    is a question about the page they land on rather than about the file — four of the nine
+    (`plan-strip`, `planned-checklist`, `summary-pill`, and the split-day path behind it) are
+    unmounted right now and have been since 17–18 Aug. They are Today's and Next's own turns.
 - **20 Aug 2026 — v6 Phase 2a: the four shared components the owner named, and the bare row.**
   `MIGRATION.md` Phase 2, scoped to the owner's own list — `primitives.tsx`, `motion.tsx`,
   `chip-row.tsx`, `charts.tsx`, plus the record's missing list primitive. **The rest of Phase 2

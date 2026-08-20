@@ -7,7 +7,19 @@ import { tap, tapMedium } from '@/lib/haptics';
 import { matchPlanIndex, nameKey, typedNameOf } from '@/lib/parse/receipt';
 import { plateLine } from '@/lib/plates';
 import { getBarWeightKg, getSmallestPlateKg, hasSeenGhostHint, markGhostHintSeen } from '@/lib/prefs';
-import { color, CONTROL_HEIGHT, FIXED_FONT_SCALE, fonts, HIT, lineFor, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import {
+  color,
+  CONTROL_HEIGHT,
+  FIXED_FONT_SCALE,
+  HIT,
+  lineFor,
+  MAX_FONT_SCALE,
+  moderateScale,
+  radius,
+  readingStyle,
+  spacing,
+  type,
+} from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 import { MonoTag, repScheme } from './gutter-value';
@@ -291,16 +303,14 @@ const styles = StyleSheet.create({
   },
   tagline: {
     flex: 1,
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(10.5),
     color: color.textMuted,
   },
   headerMeta: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(10.5),
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
   row: {
     flexDirection: 'row',
@@ -337,10 +347,8 @@ const styles = StyleSheet.create({
   },
   // THE ONLY LIME IN THE APP: a future prescription value (record contract).
   rowValue: {
-    fontFamily: fonts.reading,
+    ...readingStyle('500'),
     fontSize: moderateScale(13.5),
-    fontWeight: '500',
-    fontVariant: ['tabular-nums'],
     color: color.signal,
   },
   rowValueDone: {
@@ -351,9 +359,8 @@ const styles = StyleSheet.create({
     color: color.textMuted, // done rows recede — the note carries them now
   },
   plates: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(10.5),
-    fontVariant: ['tabular-nums'],
     color: color.textMuted,
   },
   check: {
@@ -381,18 +388,16 @@ const styles = StyleSheet.create({
   },
   reason: {
     marginTop: spacing.md,
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(10.5),
     lineHeight: lineFor(15),
     color: color.textMuted,
   },
   evidence: {
     marginTop: spacing.sm,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(10.5),
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
   buttons: {
     gap: spacing.sm,
@@ -405,10 +410,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.md,
     borderCurve: 'continuous',
-    backgroundColor: color.ctaFill,
+    backgroundColor: color.brand,
   },
   acceptPressed: {
-    backgroundColor: color.ctaFillPressed,
+    backgroundColor: color.brandPressed,
   },
   acceptLabel: {
     color: color.onInk,

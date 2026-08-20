@@ -5,7 +5,7 @@ import { PressableScale } from '@/components/motion';
 import type { WeightUnit } from '@/lib/prefs';
 import { color, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
 
-import { BLUE, INK_CARD, ROW_RADIUS } from './tokens';
+import { INK_CARD } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 /**
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     backgroundColor: INK_CARD,
-    borderRadius: ROW_RADIUS,
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.lg,
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
   },
   discBlue: {
-    backgroundColor: BLUE,
+    backgroundColor: color.brand,
   },
   glyphQuiet: {
     fontSize: moderateScale(19),
