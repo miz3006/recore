@@ -3,11 +3,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
-import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
-import { BriefFooter, BriefLede } from '@/components/next/brief';
+import { FadeSlideIn, FadeSwap, PressableScale, Stagger } from '@/components/motion';
+import { BriefLede } from '@/components/next/brief';
 import { LiftCard, UnknownLifts } from '@/components/next/session';
 import { Signals } from '@/components/next/signals';
 import { NextSkeleton } from '@/components/next/skeleton';
+import { ThoughtProcessCard } from '@/components/next/thought-process';
 import { SplitChips } from '@/components/next/split-chips';
 import { AppButton, Eyebrow } from '@/components/primitives';
 import { StubScreen } from '@/components/stub-screen';
@@ -346,11 +347,39 @@ export default function Next() {
           </FadeSlideIn>
         ) : null}
 
-        <BriefFooter
-          prose={summary ?? prose}
-          proseKey={summary ? 'model' : 'composed'}
-          provenance={sections.provenance}
-        />
+        {/* THE REASONING, AS AN OBJECT (v6, skill §Reuse). The full paragraph
+            used to sit behind a "Read the full brief" disclosure, with the
+            provenance line as 11 pt grey under it — the page's own explanation
+            of itself, filed as a footnote. `ThoughtProcessCard` is that
+            explanation given a shape: the evidence ring, the paragraph, where
+            the words came from, and a way to disagree with it.
+
+            It stays at the BOTTOM of the page, which leaves the 13 Aug ruling
+            intact: the paragraph competed with the loads when it sat at the
+            top, and it is not going back there. What changed is that a reader
+            who scrolls to the end no longer has to ask for it.
+
+            `FadeSwap` keeps §9.1's promise that the model's rewrite is VISIBLE
+            when it lands — one dip, once, exactly as the disclosure did.
+
+            No paragraph, no card: `BriefFooter` returned null on the same test,
+            and an empty explanation is worse than none. `BriefFooter` itself
+            stays in `next/brief.tsx`, unmounted, so the disclosure is one line
+            away if the owner prefers it. */}
+        {(summary ?? prose) ? (
+          <FadeSwap swapKey={summary ? 'model' : 'composed'}>
+            <ThoughtProcessCard
+              reasoning={summary ?? prose}
+              sessions={brief.sessions8w}
+              provenance={sections.provenance}
+              adjustLabel="Adjust the plan"
+              onAdjust={() => {
+                tap();
+                router.push('/split');
+              }}
+            />
+          </FadeSwap>
+        ) : null}
 
         {/* Lifts moved out of the tab bar to make room for this screen. It is
             one tap away, not gone — and it is the same quiet row that closes
@@ -420,7 +449,10 @@ const styles = StyleSheet.create({
   },
   thin: {
     ...type.subhead,
-    color: color.textMuted,
+    // It CARRIES INFORMATION — what the page would need before it could say
+    // anything — so it is secondary ink, not muted (skill §Colour: "`textMuted`
+    // is for what the eye may skip").
+    color: color.textSecondary,
     paddingVertical: spacing.md,
   },
   allLiftsRow: {
@@ -441,7 +473,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: color.border,
-    borderRadius: radius.md,
+    // A card's radius, not a button's — `md` 14 belongs to controls.
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     padding: spacing.lg,
     gap: spacing.md,

@@ -892,6 +892,61 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — v6 Phase 3, screen 2: Next gets its reasoning back as an object.** Four files:
+  `app/(tabs)/next.tsx`, `components/next/session.tsx`, `components/next/thought-process.tsx`,
+  and one shared file called out below. **Planned green is untouched** — every `signal` value,
+  the PLANNED marker and its contract are exactly as they were.
+  - **`ThoughtProcessCard` is mounted, and it replaces `BriefFooter`.** The full composed (or
+    model-rewritten) paragraph used to sit behind a *"Read the full brief"* disclosure with the
+    provenance line as 11 pt grey under it — the page's own explanation of itself, filed as a
+    footnote. It is now the card: evidence ring, the paragraph, where the words came from, and
+    an **"Adjust the plan"** link to `/split`, which is the real screen where what is prescribed
+    is changed. Mounting the card *and* keeping the footer would print the same paragraph twice
+    on one page, which is the thing this codebase keeps ruling against.
+    - **The 13 Aug ruling is intact**: the paragraph competed with the loads when it sat at the
+      TOP of the page, and it is not going back there. The card sits where the footer sat, at the
+      bottom, after every lift. What changed is that a reader who scrolls to the end no longer
+      has to ask for it.
+    - **§9.1's promise that the rewrite is visible is kept**: the card is wrapped in `FadeSwap`
+      on the same `'model' | 'composed'` key the disclosure used, so the upgrade still lands as
+      one dip, once. `markBriefShown` is untouched, so §9.3's counters still count.
+    - No paragraph, no card — the same null test `BriefFooter` applied. `BriefFooter` stays in
+      `next/brief.tsx`, unmounted, so the disclosure is one line back.
+  - **Next's lever is `Badge tone="wash"`.** Three files were drawing the same object — Next's
+    lever, Progression's share chip and this badge — and there is one now. The tokens under it
+    are unchanged and still Next's (`signal` on `signalWash` 4.59:1, `attention` on
+    `attentionWash` 4.64:1); what used to be a comment promising that recorded green never
+    stands in for planned green is now enforced by `Badge`'s type. The chip keeps its entrance
+    spring; only the slot it animates in is left in `session.tsx`.
+  - **THE ONE EDIT OUTSIDE THIS SCREEN, and it is why:** `Badge` was 9.5 pt with 1.0 tracking —
+    a **third** size for an object two real screens already drew at 11 pt/700 with 6/2 padding
+    at `radius.sm`, and `color.ts`'s wash ratios were measured against an 11 pt label. Rather
+    than shrink both screens to the badge, the badge took their metrics. Nothing else in the app
+    draws a `Badge`, so this changes exactly the two chips it was made to unify.
+  - **Next's cards keep their surface, and the justification is now written down** rather than
+    assumed. Skill §Structure says a card must be justified against bare rows first: a `LiftCard`
+    is not a row of the record, it is an **accordion** — one tap opens the engine's WHY and WATCH
+    under it plus a "Full history" door — and a bare row that grows a paragraph has no edge to
+    grow inside of. Its radius moved `lg` 20 → `xl` 24, because a card and a sheet are the same
+    kind of object.
+  - **The lifts with no history are bare rows now.** `UnknownLifts`' hairline under every row is
+    gone and the row grew 40 → 52 so the air separates them (skill §Structure). The empty
+    state's dashed card moved off `radius.md` 14 — a button's radius — onto `xl`, and the
+    "One more session and there is something here to beat" line moved from `textMuted` to
+    `textSecondary`: it carries information, and muted is for what the eye may skip.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified: device QA** — whether the reasoning
+    card reads as the page's conclusion or as a second brief, and whether the ring's twelve-
+    session scale looks right on a real record.
+  - **Noticed on this screen and deliberately not fixed:**
+    - **Progression's `chip_flat` is below AA.** `progress.tsx:683` fills a share chip with
+      `surfaceHigh` and inks it `textSecondary` — **4.04:1** against an 11 pt label, under the
+      4.5 the other three pairings clear. It is a fifth pairing that is not in the sanctioned
+      wash set at all, so `Badge tone="wash"` cannot express it. Progression's own turn.
+    - **Two hairlines inside the open card do nothing on white.** `cardRule` and the note quote's
+      left rail are `tableRule` / `divider`, which measure **1.16:1** on `surface`. They were
+      invisible before the canvas changed and they are invisible now; whether they become air or
+      become visible is a call worth making with the card open on a device.
 - **20 Aug 2026 — v6 Phase 3, screen 1: Today stands on the canvas and the record loses its
   last line.** Three files: `app/(tabs)/today.tsx`, `components/note-surface.tsx`,
   `components/read-only-ledger.tsx`. Nothing outside Today was touched.

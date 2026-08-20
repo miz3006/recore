@@ -10,7 +10,7 @@ import Animated, {
 
 import { Icon } from '@/components/icon';
 import { FadeSlideIn, PressableScale } from '@/components/motion';
-import { Eyebrow } from '@/components/primitives';
+import { Badge, Eyebrow } from '@/components/primitives';
 import { whenLabel } from '@/lib/brief-prose';
 import { todayKey } from '@/lib/db/dates';
 import { DUR, EASE, SPRING } from '@/lib/motion';
@@ -298,21 +298,8 @@ function Lever({ move }: { move: MoveLabel }) {
   }));
 
   return (
-    <Animated.View
-      style={[
-        styles.lever,
-        move.tone === 'attention' ? styles.leverAttention : styles.leverSignal,
-        animatedStyle,
-      ]}>
-      <Text
-        style={[
-          styles.leverText,
-          move.tone === 'attention' ? styles.leverInkAttention : styles.leverInkSignal,
-        ]}
-        numberOfLines={1}
-        maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {move.label}
-      </Text>
+    <Animated.View style={[styles.lever, animatedStyle]}>
+      <Badge tone="wash" wash={move.tone === 'attention' ? 'attention' : 'signal'} label={move.label} />
     </Animated.View>
   );
 }
@@ -444,11 +431,21 @@ const styles = StyleSheet.create({
   // The card. Every value here is Progression's, deliberately: surface, one
   // hairline, `radius.lg`, `spacing.lg` of padding, the resting shadow. No
   // marginBottom — the page's own `gap` separates the cards.
+  /**
+   * A CARD, and it is justified against bare rows rather than assumed (skill
+   * §Structure). This is not a row of the record: it is an accordion — one tap
+   * opens the engine's WHY and WATCH under it and a "Full history" door — and
+   * a surface is what says where that disclosure begins and ends. A bare row
+   * that grows a paragraph under it has no edge to grow inside of.
+   *
+   * `radius.xl` 24: a card and a sheet are the same kind of object, and `lg` 20
+   * belongs to rows, fields and option rows.
+   */
   card: {
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.divider,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     padding: spacing.lg,
     ...shadow.card,
@@ -562,40 +559,18 @@ const styles = StyleSheet.create({
   },
 
   /**
-   * The lever — Progression's `shareChip`, to the pixel: same `radius.sm`, same
-   * 6/2 padding, same 11 pt reading face at 700, coloured ink on its own wash.
+   * The lever is `Badge tone="wash"` now — the app's ONE sanctioned filled chip
+   * (skill §Decided-4), which is exactly what this was and what Progression's
+   * share chip is. Three files were drawing the same object; there is one now,
+   * and this style is only the slot it animates in.
    *
-   * It was a SOLID pill with a white label until 18 Aug, which passed contrast
-   * but made the one thing both tabs do — say a state in a small tinted chip
-   * beside a lift's name — look like two different objects. The tokens under it
-   * are still Next's: `signal` on `signalWash` (4.59:1), `attention` on
-   * `attentionWash` (4.64:1). Recorded green never stands in for planned green,
-   * so the SHAPE travelled from Progression and the hue did not.
+   * The tokens under it are unchanged and still Next's: `signal` on
+   * `signalWash` (4.59:1), `attention` on `attentionWash` (4.64:1). **Recorded
+   * green never stands in for planned green** — the pairing is enforced by
+   * `Badge`'s type now rather than by this comment.
    */
   lever: {
     alignSelf: 'flex-start',
-    borderRadius: radius.sm,
-    borderCurve: 'continuous',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  leverSignal: {
-    backgroundColor: color.signalWash,
-  },
-  leverAttention: {
-    backgroundColor: color.attentionWash,
-  },
-  leverText: {
-    ...readingStyle('700'),
-    fontSize: moderateScale(11),
-    lineHeight: lineFor(14),
-    letterSpacing: 0.6,
-  },
-  leverInkSignal: {
-    color: color.signal,
-  },
-  leverInkAttention: {
-    color: color.attention,
   },
 
   // --- the evidence, inside an open card (Progression's own metrics) --------
@@ -665,14 +640,16 @@ const styles = StyleSheet.create({
   building: {
     gap: spacing.xs,
   },
+  // BARE ROWS. These are lifts the record simply has nothing on yet, so they
+  // are the record's own voice and take none of its chrome: the rule that used
+  // to close each one is gone (skill §Structure), and the row grew from 40 to
+  // 52 so the air does the separating the line was doing.
   buildRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
-    minHeight: moderateScale(40),
-    borderBottomWidth: 1,
-    borderBottomColor: color.tableRule,
+    minHeight: moderateScale(52),
   },
   buildName: {
     ...type.subhead,

@@ -67,6 +67,7 @@ export function ThoughtProcessCard({
   reasoning,
   sessions,
   weeks = 8,
+  provenance,
   onAdjust,
   adjustLabel = 'Adjust',
 }: {
@@ -80,6 +81,13 @@ export function ThoughtProcessCard({
   sessions: number;
   /** The window those sessions were counted over. */
   weeks?: number;
+  /**
+   * Where the words came from — "Every number read from your record." or its
+   * phrased variant. It belongs INSIDE this card because it qualifies this
+   * card's paragraph: a claim about provenance printed somewhere else on the
+   * page is a claim about nothing in particular (§9.1).
+   */
+  provenance?: string;
   /** Opens whatever lets the athlete disagree with the load. Omit it and no
    * link is drawn — a control that does nothing is worse than no control. */
   onAdjust?: () => void;
@@ -139,6 +147,12 @@ export function ThoughtProcessCard({
       <Text style={styles.reasoning} maxFontSizeMultiplier={MAX_FONT_SCALE}>
         {reasoning}
       </Text>
+
+      {provenance ? (
+        <Text style={styles.provenance} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {provenance}
+        </Text>
+      ) : null}
 
       {onAdjust ? (
         <PressableScale
@@ -207,6 +221,11 @@ const styles = StyleSheet.create({
   reasoning: {
     ...type.body,
     color: color.textPrimary,
+  },
+  provenance: {
+    ...type.caption,
+    fontSize: moderateScale(11),
+    color: color.textMuted,
   },
   /** A 44 pt target around a link that is only as tall as its own line. */
   adjustHit: {

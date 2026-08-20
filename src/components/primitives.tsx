@@ -6,6 +6,7 @@ import {
   CONTROL_HEIGHT,
   CTA_HEIGHT,
   eyebrow,
+  lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
@@ -560,16 +561,25 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     borderCurve: 'continuous',
     paddingVertical: 2,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: 6,
   },
   badgeInk: {
     backgroundColor: color.accent,
     borderColor: color.accent,
   },
+  /**
+   * ONE CHIP SIZE, and it is the one two screens already drew (20 Aug 2026):
+   * 11 pt at 700 in the reading face. Next's lever and Progression's share chip
+   * were built to the same 11/700 with 6/2 padding at `radius.sm`, and the
+   * wash ratios in `color.ts` were measured against an 11 pt label. This badge
+   * was 9.5 — a third size for the same object — so it moved to theirs rather
+   * than shrinking both of them to it.
+   */
   badgeText: {
     ...readingStyle('700'),
-    fontSize: moderateScale(9.5),
-    letterSpacing: 1,
+    fontSize: moderateScale(11),
+    lineHeight: lineFor(14),
+    letterSpacing: 0.6,
     color: color.textSecondary,
   },
   badgeTextInk: {
