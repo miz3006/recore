@@ -34,12 +34,13 @@ promise in product-direction §2/§6. None of them is a TODO.
 
 | # | Blocker | Where | Why it blocks |
 |---|---|---|---|
-| **B4** | **Fabricated 4.9 rating and testimonial components are still in the bundle.** `Rating` defaults to `score = 4.9`, `Testimonial` renders a five-star row for arbitrary quote/attribution. Currently unimported, but present and exportable. | `src/components/primitives.tsx:191–247` | CLAUDE.md §3: "No fabricated reviews, ratings, user counts, testimonials … **anywhere, including placeholders**. A hardcoded fake testimonial is a release blocker, not a TODO." The three call sites were correctly removed on 28 July; the components were not. **Still open: it is not an onboarding surface either.** It is a two-line deletion whenever the owner wants it taken. |
+| — | **None open.** B4, the last one, was cleared on 11 Aug 2026; the row below had gone stale and was corrected on 20 Aug during the conversion pass (re-checked in code, not in this document). | | |
 
 ### Cleared by steps 1–3
 
 | # | Was | Now |
 |---|---|---|
+| **B4** | `Rating` defaulted to `score = 4.9` and `Testimonial` rendered a five-star quote card for arbitrary attribution — unimported, but present and exportable. | **Deleted** on 11 Aug 2026 (`src/components/primitives.tsx` keeps the note where they were). Re-verified 20 Aug: nothing in `src/` fabricates a rating, a testimonial or a user count, and `paywall.tsx`'s proof slot is deliberately empty. |
 | **B5** | The onboarding "Building your ledger…" screen ran a 2,600 ms timer over a progress bar and five checkmarks, for work that had already happened. | **Deleted.** §4.3 bans fake loading and §5.2 names exactly this screen as the counter-example to useful personalisation. The reveal it delayed now arrives immediately. |
 | *(honesty note)* | `StepReady` echoed `Focus: hybrid · hyrox` for anyone who picked "Both" — a sport the user never mentioned. | The echo states the answer they actually gave (`GOAL_ECHO`), and every row appears only when the person answered it. |
 | **B1** | Trial, price, charge date and cancellation copy shipped with no store integration. | `react-native-purchases` 10.5.0 is installed and wired. **Every price on screen is `PurchasesStoreProduct.priceString`** — Apple's own localized string. There is no hardcoded price left anywhere in `src/`: the fallback constants were deleted rather than kept, so an unreachable store shows no amount at all. The charge instant comes from the entitlement's `expirationDateMillis`, not from local arithmetic. |
@@ -891,6 +892,150 @@ src/app/onboarding` → no matches.
 ---
 
 ## Change log
+
+- **20 Aug 2026 — the onboarding conversion pass** (owner ask, nine tasks). Fifteen files, six
+  new: `lib/demo-parse.ts` (+ test), `lib/demo-parse-remote.ts`, `lib/onboarding-copy.ts`
+  (+ test), `lib/onboarding-seed.ts`, `lib/analytics.ts`,
+  `components/onboarding/ProjectionStrip.tsx`.
+  - **The demo screen reads the person's OWN line.** It played a canned animation of
+    `bench 100kg 5,5,4`; now the field is live, the keyboard opens 350 ms after the push, a
+    "Try this one" chip types the example for anyone who would rather tap, and the mic on the
+    field's trailing edge is the same on-device dictation Today uses (hidden entirely where the
+    speech module is not linked — never a dead control). The record settles in underneath, the
+    success haptic fires on the frame it lands, and the CTA does not exist until then.
+  - **The parser is LOCAL, because there is no account yet.** `parse-workout` needs a user JWT
+    (§7.3), so `lib/demo-parse.ts` reads one line in the same tick:
+    `(exercise) (number)(kg|lb)? (reps , or x)`. The real parser is asked only when a session
+    happens to exist (a replay from You) with a hard 2.5 s ceiling. Neither path writes
+    anything. Gibberish, an empty line or a timeout produce the CANNED example under a caption
+    that says so — the demo has no error state and cannot dead-end.
+  - **The number travels.** The demo line pre-selects the key-lift chip and loads its stepper
+    (once, only on an untouched screen); the overload card is built from the person's own lift,
+    load and session shape (`5,5,4` reads back as "3 × 5"); the projection falls back to the
+    demo load when no key-lift load was typed; and after signup the RAW TEXT is written as the
+    first session (`lib/onboarding-seed.ts`), so the app opens on their own writing. Never the
+    grammar's reading — `raw_text` is the record and the real parser re-reads it.
+  - **Two questions that changed nothing now change something** (§5's own removal criterion).
+    The tracker answer rewrites the first paragraph of "What gets written gets stronger"; the
+    obstacles answer rewrites the recap screen's subtitle; the goal adds one word class to the
+    projection headline. All of it in `lib/onboarding-copy.ts` — pure, and its test holds the
+    §12 tone (no exclamation marks, no hype, sentence case) over every variant at once.
+  - **A projection with no load is RELATIVE, not invented.** Naming a lift and skipping every
+    weight used to produce a paragraph of apology; the design asked for a fake 65 kg. The
+    screen now draws the rate itself (`+20% in 12 weeks`, the experience ladder) as an index
+    with no axis, captioned "Your first written session sets the baseline." A kilogram delta
+    would require inventing the load it is a share of (§2 rule 3, §5.1).
+  - **One new screen: attribution**, immediately before the recap — after the commitment and
+    the projection, where the question reads as a company keeping its books rather than as
+    marketing. Six options, one emoji each, skippable, and an unanswered screen writes nothing
+    rather than "other". It fills `pref_ob_source`, which `getFunnelSnapshot` has been reading
+    and finding empty since July. The answers store moved to **v7** for the position shift.
+  - **The paywall reprises the projection** above the plan cards — the same arithmetic over the
+    same answers, with the "an estimate from your answers, not a promise" line travelling with
+    it, and nothing at all when there is no projection to show. Its bars grow once, left to
+    right, 600 ms, from their own base. The paywall still has no progress rail and no back
+    chevron; the progress rail is full on the projection, which is the flow's last screen.
+  - **Emoji on every screen that ASKS** (owner, 20 Aug): tracker, obstacles, experience, gender
+    and plan style join goal, recap and attribution. Still none where the app reports — lessons,
+    day circles, steppers, commitment, projection, paywall.
+  - **`lib/analytics.ts`**: `track(event, props)` over a union of event names, buffered in the
+    meta KV and written through on every call (the interesting events are the ones just before
+    someone closes the app). **`flush()` is a deliberate no-op and no SDK is installed** — §13
+    says measure locally, and wiring a provider is an owner decision plus a §12 privacy change,
+    not a follow-up commit. Nothing a person WROTE is ever a property: a name is
+    `written`/`empty`, the demo line is `parsed`/`none`, a failure reason is a category, and
+    days are counted rather than listed. Screen views are emitted from the one component every
+    screen of the flow is, so there is no per-screen boilerplate to forget.
+  - **Copy**: the commitment's first line is now "After four written sessions, Recore starts
+    telling you what to lift" (a floor, not a gate — `recachePrediction` runs on the first
+    parse); the demo subtitle asks for a line instead of a tap.
+  - **Verified by the gates**: typecheck **pass**, `npm test` **438/438 pass**, lint **pass**,
+    `npx expo export -p ios` **pass**.
+  - **Not verified**: nothing in this pass has run on a device. The autofocus timing, the
+    keyboard band under the live field, the chip's typing animation, the mic path, the demo's
+    haptic and the paywall strip's growth are all unwatched on hardware. No prompt, schema or
+    guard was touched, so no §9.4 evaluation is owed.
+  - **Found, not fixed (pre-existing):** `ensureLocalUser` wipes the whole `meta` table on the
+    FIRST sign-in (`current === null` is treated as an account switch), which takes
+    `onboarding_done` and every `pref_*` answer with it — so a fresh user meets the projection
+    screen once more after purchase, re-runs `completeFlow`, and only then lands on Today. It
+    costs nothing here (the demo seed reads the in-memory answers store, and the second
+    `completeFlow` re-writes the prefs), but it is a real defect and the fix — skip the wipe when
+    no account has ever claimed the device — is the owner's call, since it moves a data-isolation
+    boundary.
+
+- **20 Aug 2026 — the keyboard always has a way out** (owner ask: audit every text field). Seven
+  files, one new: `components/keyboard-done.tsx`.
+  - **What the audit found.** Every `TextInput` in the app, checked against three exits — a tap
+    outside the field, the keyboard's own return/done, and a scroll. The genuinely broken shape
+    was **the number pad**: iOS's `decimal-pad` and `number-pad` have *no return key at all*, so
+    a field using one can only be left by a gesture the user has to already know about. Six of
+    them are on `fix-sheet.tsx`'s steppers, two on You's body context, two more on the unmounted
+    `planned-checklist.tsx` — and that last sheet had no scroll view either, so it had **no exit
+    but the buttons**. The second finding was that five ScrollViews carrying inputs had no
+    `keyboardDismissMode`, so scrolling never put the keyboard away. The third was three places
+    on Today that opened a sheet **on top of a live keyboard** (the ⋯ sheet's Note row and both
+    reflection rows) — the FixSheet path had been dismissing first since 6 Aug; the others
+    hadn't.
+  - **`KeyboardDoneBar`** (new) — the standard iOS accessory bar with one `Done`, wired by
+    `inputAccessoryViewID={DONE_ACCESSORY}`. Mounted on You and **inside** the two sheets that
+    need it, because a `BottomSheet` is an RN `Modal` with its own window and a bar on the
+    screen behind it will not attach to a field in front of it. iOS only (Android's back button
+    already does this job); not for multiline fields, which UIKit does not attach an accessory
+    to.
+  - **`keyboardDismissMode="interactive"`** added to the five ScrollViews that were missing it:
+    `you.tsx`, `plan-day.tsx`, `check-in-sheet.tsx`, `entry-note-sheet.tsx`, `fix-sheet.tsx`.
+    (`note-surface.tsx`, `OnboardingScreen.tsx` already had it; `lifts.tsx` uses `on-drag`.)
+  - **The sheet heads dismiss on tap.** The four sheets whose field is MULTILINE or numeric —
+    check-in, entry note, fix reading, planned checklist — wrap their title block in a
+    `Pressable onPress={Keyboard.dismiss}`, `accessible={false}` so VoiceOver still reads the
+    lines instead of announcing a button. A multiline field's return key writes a newline; there
+    has to be something else to tap.
+  - **Three sheets no longer open over a live keyboard**: the ⋯ sheet's Note row and both
+    reflection rows on Today now `Keyboard.dismiss()` first, the way the Fix reading row already
+    did.
+  - **Left as they are, deliberately:** Today's composer keeps the keyboard on return (it is a
+    list being written, and the accessory bar carries a labelled hide-keyboard button) and
+    re-focuses on a page tap (the page IS the composer); `lifts.tsx` keeps RN's default
+    `keyboardShouldPersistTaps`, under which the first tap on a row dismisses the keyboard and
+    is consumed — that is the requested behaviour, at the cost of a second tap to open the row.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified:** device QA — the `Done` bar has
+    never been seen on a device, and `InputAccessoryView` inside an RN `Modal` is the one piece
+    of this that can only be confirmed there.
+
+- **20 Aug 2026 — Today reads the check-in back, and the accessory bar loses the plan.** Three
+  files: `note-surface.tsx`, `bottom-toolbar.tsx`, `icon.tsx` (+ the comment in
+  `app/(tabs)/today.tsx` the plan button had made false).
+  - **The session's reflection is printed under its lifts.** The check-in was write-only from
+    this page — the words went into `workouts.reflection`, the prompt row vanished, and no
+    screen printed them back, so the only way to re-read your own note was to re-open the sheet.
+    The day now prints it where the day's lifts end: the armed tags on one small semibold line
+    (`reflectionTagLine`), the prose under them, both `textSecondary` a step smaller than a
+    card, indented past the check column like the row that asked. It sits **above** the writing
+    line, with the settled record — the air under the last block is the page's one real
+    boundary and a written note belongs on the recorded side of it — while the invitation stays
+    below, unchanged and still gated on session-ended + no reflection. Tapping re-opens the same
+    check-in. Day-scoped by construction (`workoutId` follows the selected day), so swiping back
+    shows that day's own note. No new column, no new §13 event, no model.
+  - **The plan button is removed from the accessory bar** (owner). See the Section 8 row; the
+    short version is that the 18 Aug "the plan is not on this page" ruling had left one clause
+    open — the plan on demand, over the keyboard — and the clause was a fourth control standing
+    in the row all session. Today now carries no prescription at any depth. Next's brief is
+    where the plan lives.
+  - **The bar's three surviving glyphs draw as SF Symbols on iOS.** One opt-in map in
+    `icon.tsx`; `SymbolView`'s own `fallback` keeps the Ionicons/MCI outline everywhere else, so
+    there is no `Platform.OS` at a call site. The reason is the one that makes SF Pro the app's
+    face — Apple's set already carries the optical sizing, stroke weight and alignment a
+    third-party outline approximates — and these three float at 18 pt over the system keyboard,
+    where a foreign stroke reads as a foreign control. The mic fills while it listens. Weight is
+    one constant (`medium`), and `keyboard.chevron.compact.down` gets a 1.2× fitting box because
+    SF glyphs are laid out by their own metrics, not by a square. **That multiplier and the
+    weight are the two values in this change that can only be judged on device.**
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified:** device QA — the SF glyphs'
+    optical size against the Ionicons the rest of the app still draws, the mic's filled state,
+    and the reflection block at Dynamic Type 1.5 / under VoiceOver.
 
 - **20 Aug 2026 — the last two record dividers, and the migration is closed.** Two files, plus
   `MIGRATION.md` marked done for Phases 2 and 3.
