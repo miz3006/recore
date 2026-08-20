@@ -892,6 +892,42 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — v6 Phase 3, screen 3: Progression.** One file,
+  `app/(tabs)/progress.tsx`. Nothing outside it.
+  - **The progression line is brand blue.** It was one neutral ink, and the reasoning behind
+    that — the eight weeks of history must not judge — is **untouched**: only the terminal dot
+    takes a direction hue, and `lastTint` still carries it. What changed is that the SHAPE of a
+    recorded progression is the one place in the app where a hue earns a line (skill §Reuse:
+    *"`TrendChart` brand — never green"*), so the `tint={color.accent}` and `wash={0.1}`
+    overrides came off and the chart draws its own defaults. It also passes
+    **`ground={color.surface}`** — the white card it sits in — so the terminal dot is knocked
+    out of the line in the surface it actually stands on rather than in a hardcoded white.
+  - **The share chip is `Badge tone="wash"`** — the same object Next's lever became, so the two
+    tabs now draw one chip from one file. `shareChip` / `shareText` / `chip_up` / `chip_down`
+    are deleted from this screen.
+    - **The `chip_flat` finding from Next's entry was wrong and is withdrawn.** It fills with
+      `surfaceHigh` and inks `textSecondary` at 4.04:1, but it is **never drawn**: `percentText`
+      returns null on a zero delta, so a flat window has no chip at all. It was dead code, not a
+      live contrast failure, and it is deleted rather than fixed. The three `ink_*` entries stay
+      — they still colour the hero delta under the reading.
+  - **The record inside a card lost its rules.** The set list an open card reveals — the sets
+    behind the latest point — had a `tableRule` hairline under every row; it is gone and the
+    rows breathe instead, which is the treatment `set-table.tsx` already carries on Today. The
+    "still building a record" rows lost theirs too and grew 40 → 52, matching Next.
+  - **Three things in muted were carrying information**, which the skill calls a bug at the call
+    site: the set position ("Set 1"), the building rows' reading ("3 · 82.5 kg") and the "one
+    more session and there is something here to beat" line. All three are `textSecondary` now —
+    4.70:1 on the canvas, 5.07 on a card.
+  - **10 inline reading fonts became `readingStyle()`**, finishing the sweep for this screen.
+    `color.trained` → `color.brand` on the leading card's outline and its "Biggest gain" tag
+    (5.97:1 on the card, and the words carry the meaning anyway). The lift card moved to
+    `radius.xl` 24 like Next's, and the empty state's dashed card off `radius.md` 14 — a
+    button's radius — onto the same 24.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified: device QA** — chiefly whether a
+    blue line under a green or red terminal dot still reads as "the history does not judge, the
+    dot does", and whether the default 22 % wash under the line is too heavy inside a card at
+    the 64 pt closed height.
 - **20 Aug 2026 — v6 Phase 3, screen 2: Next gets its reasoning back as an object.** Four files:
   `app/(tabs)/next.tsx`, `components/next/session.tsx`, `components/next/thought-process.tsx`,
   and one shared file called out below. **Planned green is untouched** — every `signal` value,

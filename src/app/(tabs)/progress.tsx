@@ -6,7 +6,7 @@ import { TrendChart } from '@/components/charts';
 import { ChipRow } from '@/components/chip-row';
 import { Icon } from '@/components/icon';
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
-import { AppButton, Eyebrow } from '@/components/primitives';
+import { AppButton, Badge, Eyebrow } from '@/components/primitives';
 import { StubScreen } from '@/components/stub-screen';
 import { shiftDayKey, todayKey, type DayKey } from '@/lib/db/dates';
 import { getWorkoutDetail, type WorkoutSet } from '@/lib/db/insights';
@@ -33,10 +33,10 @@ import {
 import {
   alpha,
   color,
-  fonts,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
+  readingStyle,
   shadow,
   spacing,
   TAB_BAR_CLEARANCE,
@@ -76,12 +76,15 @@ import { labelForDay, useSession } from '@/state/session-store';
  *    the same thing beside every one of those colours, so colour is never the
  *    only carrier (§14).
  *
- * A card carries a LINE chart in one neutral ink — straight segments between
+ * A card carries a LINE chart in **the brand blue** — straight segments between
  * real sessions, up and down (owner, 4 Aug 2026; `TrendChart`'s `shape` prop
- * restores the §10 step in one word). Only the terminal dot takes a direction
- * hue: the eight weeks behind it are the shape of the record, and one dot
- * answers "and now?". Its two ends read `date · value`, so the chart's own
- * numbers sit under the chart rather than in a gutter beside it.
+ * restores the §10 step in one word). The line was one neutral ink until
+ * 20 Aug 2026; v6 gives a recorded progression the app's one blue, which is
+ * the single place a hue earns a LINE (design skill §Reuse). The rule the ink
+ * was protecting is untouched: **only the terminal dot takes a direction hue**,
+ * the eight weeks behind it are the shape of the record, and one dot answers
+ * "and now?". Its two ends read `date · value`, so the chart's own numbers sit
+ * under the chart rather than in a gutter beside it.
  *
  * Tapping a card opens the set table of the session that made its last point.
  * Lifts too shallow to chart are listed below the cards rather than dropped, so
@@ -470,15 +473,12 @@ function LiftCard({
               <Text style={styles.liftName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 {lift.canonical}
               </Text>
-              {share ? (
-                <View style={[styles.shareChip, styles[`chip_${tone}`]]}>
-                  <Text
-                    style={[styles.shareText, styles[`ink_${tone}`]]}
-                    maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {share}
-                  </Text>
-                </View>
-              ) : null}
+              {/* `Badge tone="wash"` — the app's one sanctioned filled chip
+                  (skill §Decided-4), the same object Next's lever is. `share`
+                  is null when the window is flat (`percentText` returns null on
+                  a zero delta), so this is only ever a gain or a loss and there
+                  is no third, unpaired fill to express. */}
+              {share ? <Badge tone="wash" wash={tone === 'up' ? 'gain' : 'loss'} label={share} /> : null}
               {lift.isBest ? (
                 <View style={styles.prChip}>
                   <Text style={styles.prChipText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -504,15 +504,24 @@ function LiftCard({
           </View>
         </View>
 
+        {/* THE LINE IS BRAND BLUE (v6, skill §Reuse: "`TrendChart` brand —
+            never green"). It was one neutral ink, on the 17 Aug reasoning that
+            the eight weeks of history should not judge; that reasoning is
+            intact and the terminal dot still carries the verdict alone. What
+            changed is that the SHAPE of a recorded progression is the one place
+            the app's blue earns a line, so the tint and its wash come off the
+            component's own defaults rather than being overridden here.
+
+            `ground` is the white card this sits in, so the dot is knocked out
+            of the line in the surface it actually stands on. */}
         <TrendChart
           points={lift.points}
           best={lift.best}
           height={open ? CHART_H_OPEN : CHART_H}
           showPrevious={open}
           dots
-          tint={color.accent}
+          ground={color.surface}
           lastTint={TONE_INK[dotTone]}
-          wash={0.1}
         />
 
         <View style={styles.ends}>
@@ -625,11 +634,14 @@ const styles = StyleSheet.create({
   // call above. Nothing on this screen styles a chip any more.
 
   // --- lift card --------------------------------------------------------------
+  // A card, and an accordion like Next's: it opens onto the sets behind the
+  // latest point, so the surface is what says where that disclosure begins and
+  // ends. `radius.xl` 24 — a card and a sheet are the same kind of object.
   card: {
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.divider,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     padding: spacing.lg,
     // No marginBottom: the content container's own `gap` separates the cards.
@@ -638,12 +650,15 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   cardLeading: {
-    borderColor: alpha(color.trained, 0.4),
+    borderColor: alpha(color.brand, 0.4),
   },
   leadTag: {
     ...type.footnote,
     fontWeight: '700',
-    color: color.trained,
+    // 5.97:1 on the card. The border above it is a soft outline and does not
+    // have to carry the meaning on its own — the words "Biggest gain" are
+    // printed inside it (skill §Colour: colour is never the only carrier).
+    color: color.brand,
     marginBottom: spacing.xs,
   },
   cardBody: {
@@ -670,26 +685,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: color.textPrimary,
   },
-  // The window's own reading. The WORD inside it carries the direction; the
-  // hue only repeats it, which is what keeps a colourblind reading complete.
-  shareChip: {
-    borderRadius: radius.sm,
-    borderCurve: 'continuous',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  chip_up: { backgroundColor: color.gainWash },
-  chip_down: { backgroundColor: color.lossWash },
-  chip_flat: { backgroundColor: color.surfaceHigh },
+  // The window's reading is `Badge tone="wash"` now — this screen styles no
+  // chip of its own. `chip_flat` went with it and was never drawn anyway:
+  // `percentText` returns null on a zero delta, so a flat window has no chip.
+  // The three `ink_*` entries stay — they still colour the HERO DELTA under the
+  // reading, where the word beside them carries the direction and the hue only
+  // repeats it, which is what keeps a colourblind reading complete.
   ink_up: { color: color.gain },
   ink_down: { color: color.loss },
   ink_flat: { color: color.textSecondary },
-  shareText: {
-    fontFamily: fonts.reading,
-    fontSize: moderateScale(11),
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
   // A PR is a SHAPE, never a colour (§5.1) — an outlined mono label, so it
   // survives colourblindness and never competes with the green beside it.
   prChip: {
@@ -700,31 +704,26 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   prChipText: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('700'),
     fontSize: moderateScale(11),
-    fontWeight: '700',
     letterSpacing: 0.5,
     color: color.textPrimary,
   },
   liftMeta: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(11.5),
     marginTop: 3,
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   heroBox: {
     alignItems: 'flex-end',
     flexShrink: 0,
   },
   hero: {
-    fontFamily: fonts.reading,
+    ...readingStyle('700'),
     fontSize: moderateScale(28),
-    fontWeight: '700',
     letterSpacing: -0.5,
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   heroUnit: {
     fontSize: type.caption.fontSize,
@@ -732,11 +731,9 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   heroDelta: {
-    fontFamily: fonts.reading,
+    ...readingStyle('600'),
     fontSize: moderateScale(12.5),
-    fontWeight: '600',
     marginTop: 2,
-    fontVariant: ['tabular-nums'],
   },
   ends: {
     flexDirection: 'row',
@@ -744,10 +741,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   endLabel: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(11),
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
 
   // --- the evidence, inside an open card --------------------------------------
@@ -766,33 +762,32 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     borderCurve: 'continuous',
   },
+  // THE RECORD, so it takes none of the record's chrome: the hairline under
+  // every set is gone (skill §Structure) and the row breathes instead. This is
+  // the same treatment `set-table.tsx` carries on Today.
   setRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: spacing.md,
-    paddingVertical: spacing.sm - 2,
-    borderBottomWidth: 1,
-    borderBottomColor: color.tableRule,
+    paddingVertical: spacing.sm,
   },
   setIndex: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: type.footnote.fontSize,
-    color: color.textMuted,
+    // Which set it is, is information — muted is for what the eye may skip.
+    color: color.textSecondary,
     width: moderateScale(42),
-    fontVariant: ['tabular-nums'],
   },
   setValue: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: type.footnote.fontSize,
     flex: 1,
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   setEstimate: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: type.footnote.fontSize,
     color: color.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   opener: {
     flexDirection: 'row',
@@ -818,13 +813,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
-    minHeight: moderateScale(40),
+    minHeight: moderateScale(52),
     marginHorizontal: -PRESS_BLEED,
     paddingHorizontal: PRESS_BLEED,
     borderRadius: radius.sm,
     borderCurve: 'continuous',
-    borderBottomWidth: 1,
-    borderBottomColor: color.tableRule,
   },
   buildName: {
     ...type.subhead,
@@ -832,10 +825,10 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
   buildMeta: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: moderateScale(11),
-    color: color.textMuted,
-    fontVariant: ['tabular-nums'],
+    // "3 · 82.5 kg" is a READING. A value in muted is a bug at the call site.
+    color: color.textSecondary,
   },
   buildingNote: {
     ...type.caption,
@@ -860,14 +853,16 @@ const styles = StyleSheet.create({
   },
   thin: {
     ...type.subhead,
-    color: color.textMuted,
+    // It carries information, so it is secondary ink rather than muted.
+    color: color.textSecondary,
     paddingVertical: spacing.md,
   },
   emptyCard: {
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: color.border,
-    borderRadius: radius.md,
+    // A card's radius, not a button's.
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     padding: spacing.lg,
     gap: spacing.md,
