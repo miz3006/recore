@@ -54,11 +54,12 @@
  * borders, the four washes, `glyph.*`, the `ink` ladder and `alpha()` all carry
  * over untouched.
  *
- * `trend` ember `#BF5B23` is the one exception to that list: it is **retired**
- * (owner, 20 Aug 2026). Its only sanctioned home was the lift sheet's
- * progression line and the wash under it, and that chart draws in `brand` now
- * so the same lift reads the same way there as on Progression. The token has no
- * call sites — see its own note below.
+ * `trend` ember `#BF5B23` was **deleted on 20 Aug 2026** (owner). Its only
+ * sanctioned home was the lift sheet's progression line and the wash under it,
+ * and that chart draws in `brand` now so the same lift reads the same way there
+ * as it does on Progression. A palette entry with no home is a hue the next
+ * surface reaches for by accident; it is in the git history if it is ever
+ * wanted back.
  */
 export const color = {
   canvas: '#FCF9F4', // THE WORLD: every screen, every sheet backdrop. Also the flat fill wherever the gradient cannot render.
@@ -73,21 +74,31 @@ export const color = {
   brandPressed: '#0A4CB0', // the brand held down — a darker blue, never an opacity flash
   brandGlow: '#0B5CD6', // `shadow.glow`'s cast — the only coloured shadow in the app, primary CTA only
   signal: '#547C00', // PLANNED green: future prescription values ONLY
-  /**
-   * @deprecated NO CALL SITES since 20 Aug 2026. Ember was the lift sheet's
-   * progression line and its wash — its only sanctioned home — and the owner
-   * moved that chart to `brand` so it draws the same as Progression's. The
-   * token is kept rather than deleted because retiring a palette entry is the
-   * owner's call; if it stays unused, delete it and the §Colour line that
-   * reserves it. Nothing new may adopt it.
-   */
-  trend: '#BF5B23', // TREND ember — unused
   textPrimary: '#1C1C1E', // what the USER typed; headings; ink
   textSecondary: '#6E6E73', // supporting copy, gutter readings, tags, labels
   textMuted: '#86868B', // dates, evidence lines, placeholders, disabled — see the contrast note below
-  border: '#D5D5D5', // 1px card + control borders (hairline rule)
-  divider: '#E9E9E9', // row dividers inside cards
-  tableRule: '#E9E9E9', // hairline rules between table/receipt rows
+  /**
+   * EVERY HAIRLINE THAT HAS TO BE FOUND (owner, on device, 20 Aug 2026).
+   *
+   * Card and control borders, and now every SEPARATOR inside a card or a sheet
+   * as well. Those were `divider` / `tableRule` at `#E9E9E9`, which measures
+   * **1.16:1 on white** — the line was there in the style sheet and not on the
+   * screen. At `#D5D5D5` it is **1.47:1**: still gentle, still quieter than
+   * iOS's own ~1.6:1 separators, and findable. `tableRule` is deleted with the
+   * change; one hairline, one token.
+   *
+   * (Between two RECORDS there is no hairline at all any more — the record is
+   * bare rows separated by air. This is for chrome INSIDE a surface: the column
+   * rule between three stat tiles, the rule that opens a card's evidence, a
+   * settings list's row separators.)
+   */
+  border: '#D5D5D5',
+  /**
+   * The softened border of a card that ALSO casts a shadow. The shadow carries
+   * the edge, so the rule is allowed to be almost nothing — this is the one
+   * place `#E9E9E9` still does a job, and it is a border, never a separator.
+   */
+  divider: '#E9E9E9',
   /**
    * ATTENTION (owner, 12 Aug 2026) — plateau / backoff / paused. Never for
    * chrome or CTAs.

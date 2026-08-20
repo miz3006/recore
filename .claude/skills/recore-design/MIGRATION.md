@@ -123,7 +123,7 @@ whether `summary-pill` and the session summary behind it come back.
 
 | Screen | Change |
 |---|---|
-| `app/(tabs)/today.tsx` | The largest change. `PaperField`'s three near-white tones become the app canvas; the record becomes bare rows on it; the date pill, summary pill and NL input bar float as white pills. `styles` at `:221` sets `backgroundColor: color.surface` for the whole screen — that is now the canvas. |
+| `app/(tabs)/today.tsx` | The largest change. `PaperField`'s three near-white tones become the app canvas; the record becomes bare rows on it; the date pill and the NL input bar float as white pills. (The summary pill stays unmounted — owner, 20 Aug 2026.) `styles` at `:221` sets `backgroundColor: color.surface` for the whole screen — that is now the canvas. |
 | `app/(tabs)/progress.tsx` | 10 inline reading fonts, 2 `trained`, 1 radius, 1 shadow. The share chips filled with `gainWash`/`lossWash` at `:675-681` become `Badge tone="wash"`. Charts re-tint to brand. |
 | `app/(tabs)/next.tsx` + `next/session.tsx` | Mount `ThoughtProcessCard`. `session.tsx:590` fills with `signalWash` → `Badge tone="wash"`; 5 inline fonts, 3 radius, 1 shadow. Planned green stays exactly as it is. |
 | `app/(tabs)/you.tsx` | 7 `color.surface` blocks, 6 inline fonts, 1 `color.bg`, 1 `trained`, 1 radius, 1 shadow. Settings rows keep their `glyph.*` tints. |

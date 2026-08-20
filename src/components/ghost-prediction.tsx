@@ -293,7 +293,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     marginBottom: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: color.divider,
+    borderBottomColor: color.border,
   },
   header: {
     flexDirection: 'row',
@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
   },
   rowSep: {
     height: 1,
-    backgroundColor: color.divider,
+    backgroundColor: color.border,
   },
   rowPressed: {
     opacity: 0.6,

@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
   },
   sep: {
     height: hairline,
-    backgroundColor: color.divider,
+    backgroundColor: color.border,
   },
   aliasBody: {
     minHeight: moderateScale(48),

@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
   rowSep: {
     height: hairline,
     marginLeft: ROW_ICON_SLOT,
-    backgroundColor: color.divider,
+    backgroundColor: color.border,
   },
   rowLeft: {
     flex: 1,

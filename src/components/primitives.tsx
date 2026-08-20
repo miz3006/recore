@@ -470,7 +470,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: color.divider,
+    backgroundColor: color.border,
   },
 
   // Button

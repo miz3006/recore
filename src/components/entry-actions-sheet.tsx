@@ -42,6 +42,21 @@ import { Eyebrow } from './primitives';
  */
 export type EntryAction = 'fix' | 'note' | 'history' | 'delete';
 
+/**
+ * "A", "A and B", "A, B and C" — the ONE voice for naming the entries that
+ * share a written line. The delete row's caption and the parent's confirm both
+ * speak it, so the warning before the tap and the warning after it are the
+ * same sentence about the same lifts.
+ */
+export function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/** A stable empty default — a fresh `[]` in the signature would be a new prop
+ * identity on every parent render. */
+const NO_SIBLINGS: string[] = [];
+
 interface ActionRow {
   action: EntryAction;
   icon: IconName;
@@ -89,6 +104,7 @@ export function EntryActionsSheet({
   visible,
   target,
   hasNote = false,
+  alsoOnLine = NO_SIBLINGS,
   onClose,
   onSelect,
 }: {
@@ -97,6 +113,17 @@ export function EntryActionsSheet({
   target: { exercise: string; setText: string } | null;
   /** That entry already carries the athlete's own remark. */
   hasNote?: boolean;
+  /**
+   * The OTHER entries the parser read from the SAME physical line, if any.
+   *
+   * A run-on — "bench 3x8, rows 3x10" — is one written line and two cards, and
+   * delete can only ever remove the LINE: the words are the record (§3) and
+   * nothing maps a single card back to its slice of the sentence. The row used
+   * to say "Delete entry" and quietly take the neighbour with it. Now it names
+   * the neighbour BEFORE the finger commits, and the parent's confirm names it
+   * again after.
+   */
+  alsoOnLine?: string[];
   /** Request close with no action (backdrop, swipe). */
   onClose: () => void;
   /** The chosen action, delivered ONLY after the native modal is fully gone —
@@ -105,6 +132,7 @@ export function EntryActionsSheet({
 }) {
   const pending = useRef<EntryAction | null>(null);
   const rows = rowsFor(hasNote);
+  const shared = alsoOnLine.length > 0;
 
   const choose = (action: EntryAction) => {
     tap();
@@ -170,7 +198,11 @@ export function EntryActionsSheet({
           haptic="none"
           activeScale={0.98}
           accessibilityRole="button"
-          accessibilityLabel={`Delete ${target?.exercise ?? 'this entry'} from the note`}
+          accessibilityLabel={
+            shared
+              ? `Delete ${target?.exercise ?? 'this entry'} — also removes ${joinNames(alsoOnLine)}, written on the same line`
+              : `Delete ${target?.exercise ?? 'this entry'} from the note`
+          }
           style={styles.row}>
           <View style={styles.iconCol}>
             <Icon name="trash" size={moderateScale(18)} tint={color.error} />
@@ -179,6 +211,11 @@ export function EntryActionsSheet({
             <Text style={[styles.rowLabel, styles.rowLabelDanger]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
               Delete entry
             </Text>
+            {shared ? (
+              <Text style={styles.rowCaption} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {`written on one line with ${joinNames(alsoOnLine)} — all of it goes`}
+              </Text>
+            ) : null}
           </View>
         </PressableScale>
       </View>
@@ -196,9 +233,12 @@ const styles = StyleSheet.create({
   eyebrow: {
     marginTop: spacing.sm,
   },
+  // `title` (27) is the screen-hero size; this is a header over a four-row
+  // menu, so it sits one notch down. `title2` matches the note sheet's header,
+  // which opens straight out of this one — the name must not resize mid-flow.
   title: {
     marginTop: spacing.xs,
-    ...type.title,
+    ...type.title2,
     color: color.textPrimary,
   },
   sets: {
@@ -222,7 +262,7 @@ const styles = StyleSheet.create({
   rowRule: {
     height: hairline,
     marginLeft: ICON_COL_W + spacing.sm,
-    backgroundColor: color.divider,
+    backgroundColor: color.border,
   },
   iconCol: {
     width: ICON_COL_W,
@@ -232,16 +272,21 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  // BODY IS 17 (owner, 18 Aug 2026) — and the ruling's own examples are "list
+  // rows, share sheets", which is exactly this. At `subhead`'s 15 the menu sat
+  // a notch under every native sheet beside it. `headline` IS 17/600.
   rowLabel: {
-    ...type.subhead,
-    fontWeight: '600',
+    ...type.headline,
     color: color.textPrimary,
   },
   rowLabelDanger: {
     color: color.error,
   },
+  // Muted is the 3.3:1 ink, and the measured scale reserves it for what may be
+  // skipped. These captions are the only sentence that says what an action
+  // does, and what the delete row takes with it — they are READ, so secondary.
   rowCaption: {
     ...type.caption,
-    color: color.textMuted,
+    color: color.textSecondary,
   },
 });

@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
   },
   cardRule: {
     height: hairline,
-    backgroundColor: color.divider,
+    backgroundColor: color.border,
     marginVertical: spacing.md,
   },
   blueLabel: {

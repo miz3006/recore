@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
   },
   rowRule: {
     borderBottomWidth: 1,
-    borderBottomColor: color.tableRule,
+    borderBottomColor: color.border,
   },
   rowName: {
     flexShrink: 1,
@@ -421,7 +421,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingVertical: spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: color.tableRule,
+    borderTopColor: color.border,
   },
   shareName: {
     flexShrink: 1,

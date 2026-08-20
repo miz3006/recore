@@ -195,9 +195,12 @@ const styles = StyleSheet.create({
   eyebrow: {
     marginTop: spacing.sm,
   },
+  // Same header, same size as the ⋯ sheet this opens out of (see its `title`):
+  // the two are one object's header shown back to back, and a 27 → 22 jump on
+  // the exercise name would read as the sheet re-titling itself.
   title: {
     marginTop: spacing.xs,
-    ...type.title,
+    ...type.title2,
     color: color.textPrimary,
   },
   sets: {

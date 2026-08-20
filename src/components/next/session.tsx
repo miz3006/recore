@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
   // --- the evidence, inside an open card (Progression's own metrics) --------
   cardRule: {
     height: 1,
-    backgroundColor: color.tableRule,
+    backgroundColor: color.border,
     marginVertical: spacing.md,
   },
   detail: {
@@ -623,7 +623,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingLeft: spacing.sm,
     borderLeftWidth: 2,
-    borderLeftColor: color.divider,
+    borderLeftColor: color.border,
     gap: 1,
   },
   quoteText: {

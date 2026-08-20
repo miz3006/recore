@@ -1,6 +1,6 @@
 import { GlassContainer } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
@@ -8,7 +8,6 @@ import { markFirstWorkoutFinished } from '@/lib/funnel';
 import { success, tap, tapMedium } from '@/lib/haptics';
 import { refreshRecapNotification } from '@/lib/recap';
 import { estimateVolume, groupThousands } from '@/lib/parse/estimate';
-import { matchPlanIndex, nameKey, typedNameOf } from '@/lib/parse/receipt';
 import { formatDistanceTotal } from '@/lib/parse/summarize';
 import {
   getRestSeconds,
@@ -46,7 +45,7 @@ import { revealReceipt } from './note-focus';
  * The shape is two rows and no bar:
  *
  *   [ 4 staged · 3 240 kg ]                          ← a glass pill, the number
- *   ( timer ) ( mic ) ( hide kb ) ( plan )  [ Finish ]
+ *   ( timer ) ( mic ) ( hide kb )            [ Finish ]
  *
  * The material is `GlassSurface` — the system's Liquid Glass where it exists,
  * the app's warm paper everywhere else, and **no tint either way** for the same
@@ -57,10 +56,23 @@ import { revealReceipt } from './note-focus';
  *
  * The design skill's §Structure: *"Accessory buttons are coloured glyphs in
  * white circles — the colour is on the glyph, never on the circle."* Each of
- * the four takes its own hue from `icon.tsx`'s one glyph→colour map — timer
- * orange, mic teal, plan indigo, hide-keyboard slate — so a glyph is the same
- * colour here as it is on a settings row, and a bar of four grey circles is
- * now four things you can tell apart before you read them.
+ * the three takes its own hue from `icon.tsx`'s one glyph→colour map — timer
+ * orange, mic teal, hide-keyboard slate — so a glyph is the same colour here as
+ * it is on a settings row, and a row of grey circles is now three things you
+ * can tell apart before you read them.
+ *
+ * ## The glyphs are SF SYMBOLS (owner, 20 Aug 2026)
+ *
+ * All three draw from Apple's own set on iOS (`timer`, `mic` / `mic.fill`,
+ * `keyboard.chevron.compact.down`), with the Ionicons/MCI outlines kept as the
+ * fallback everywhere else — one switch inside `icon.tsx`, no call site here
+ * knows the difference. The reason is the same one that makes SF Pro the app's
+ * face: **the platform's own set already carries the optical sizing, weight
+ * matching and alignment a third-party outline can only approximate**, and
+ * these three sit at 18 pt on glass over the system keyboard, where a stroke
+ * half a point off reads as a foreign control. The mic is the one that changes
+ * state — it fills while it is listening, the same outline→filled contract the
+ * ledger's note glyph already uses.
  *
  * This reverses "the mic is not blue, the timer is not purple" (28 July), and
  * only that. **The circles stay white and the record stays ink**: no fill is
@@ -87,11 +99,19 @@ import { revealReceipt } from './note-focus';
  * first. It can never be a dead control: the bar only exists while the keyboard
  * is up (§1.1 invariant 6).
  *
- * THE PLAN BUTTON writes the next prescribed line into the note as real text —
- * the one thing here the keyboard cannot do faster. It is rendered **only when
- * there is a prescription left to take**: no plan, or every line already
- * written, and it is not there at all (§1.1 invariant 6 — silence over a dead
- * control). It replaced a "+", which would have created nothing.
+ * THE PLAN BUTTON IS GONE (owner, 20 Aug 2026). The labelled round that wrote
+ * the next prescribed line into the note is removed from the bar. It was the
+ * last of the plan on Today: the 18 Aug ruling took the read-only PLANNED strip
+ * off this page and left the prescription reachable "on demand, over the
+ * keyboard" — and on demand turned out to mean a fourth control standing in the
+ * accessory row all session, wide enough to carry a word, for a line most days
+ * never have. What the athlete is doing while that bar is up is WRITING; the
+ * bar should hold the three things that help them write (time, voice, a way
+ * down) and nothing that tells them what to write.
+ *
+ * The prescription is not lost — it is where §8 put it, in Next's brief — and
+ * `checkGhostLine` (the store action this called) is untouched, because
+ * `ghost-prediction.tsx` still writes a planned line through it.
  *
  * FINISH keeps its words. It is the one committed action on this screen and
  * §15 says a button says exactly what happens, so it stays a labelled ink pill
@@ -105,10 +125,8 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
   const parsedSnapshot = useSession((s) => s.parsedSnapshot);
   const parsedVolume = useSession((s) => s.parsedVolume);
   const receipt = useSession((s) => s.receipt);
-  const ghost = useSession((s) => s.ghost);
   const userId = useSession((s) => s.userId);
   const workoutId = useSession((s) => s.workoutId);
-  const checkGhostLine = useSession((s) => s.checkGhostLine);
   const openCheckIn = useSession((s) => s.openCheckIn);
   const finishSession = useSession((s) => s.finishSession);
   const total = parsedSnapshot === note ? parsedVolume : estimateVolume(note);
@@ -177,44 +195,6 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
     } else {
       Alert.alert('Voice input', 'Microphone or speech permission was not granted.');
     }
-  };
-
-  /**
-   * The next prescribed line that is NOT already in the note — what the plan
-   * button writes. `null` hides the button entirely, which is most days: no
-   * prediction, or every line already taken.
-   *
-   * The source is the ghost's own text, because that is already the parseable
-   * form (`bench press 3×5  82.5 kg`) the note wants. The plan strip's rows are
-   * display values ("82.5 × 5·5·5") and would not survive a re-parse, so they
-   * are deliberately not used here.
-   *
-   * "Already in the note" is matched the same way `ghost-prediction.tsx` decides
-   * a row is done: verbatim, or by the exercise name resolving to that row.
-   */
-  const nextPlanLine = useMemo(() => {
-    if (!ghost) return null;
-    const planLines = ghost.ghostText.split('\n').filter((l) => l.trim().length > 0);
-    if (planLines.length === 0) return null;
-
-    const planKeys = planLines.map((l) => nameKey(typedNameOf(l)));
-    const noteLines = note.split('\n');
-    const taken = planLines.map((line) => noteLines.some((l) => l.trim() === line.trim()));
-    for (const raw of noteLines) {
-      // Mid-keystroke fragments and prose never check a row off.
-      if (!/\d/.test(raw) && raw.trim().split(/\s+/).length > 4) continue;
-      const i = matchPlanIndex(typedNameOf(raw), planKeys);
-      if (i !== null) taken[i] = true;
-    }
-
-    const next = planLines.findIndex((_, i) => !taken[i]);
-    return next === -1 ? null : planLines[next]!;
-  }, [ghost, note]);
-
-  const handlePlan = () => {
-    if (!nextPlanLine) return;
-    tapMedium();
-    checkGhostLine(nextPlanLine);
   };
 
   /**
@@ -342,12 +322,19 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
           accessibilityRole="button"
           accessibilityLabel={recording ? 'Stop dictation' : 'Dictate'}>
           {recording ? null : <GlassSurface radius={ROUND / 2} />}
-          <Icon name="mic" size={moderateScale(18)} tint={recording ? color.onInk : glyphTint('mic')} />
+          {/* Outline at rest, FILLED while it listens — the glyph carries the
+              state, not only the ink circle behind it (`note`/`note-on` set
+              the pattern). */}
+          <Icon
+            name={recording ? 'mic-on' : 'mic'}
+            size={moderateScale(18)}
+            tint={recording ? color.onInk : glyphTint('mic')}
+          />
         </PressableScale>
 
-        {/* Sits immediately after the mic and BEFORE the plan button, which is
-            the only round that comes and goes — so the two buttons that are
-            always there never move under the thumb. */}
+        {/* The last of the three, and the row no longer has a member that
+            comes and goes (the plan button did) — so nothing here ever moves
+            under the thumb mid-session. */}
         <PressableScale
           onPress={handleHideKeyboard}
           haptic="none"
@@ -358,30 +345,6 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
           <GlassSurface radius={ROUND / 2} />
           <Icon name="keyboard-hide" size={moderateScale(18)} tint={glyphTint('keyboard-hide')} />
         </PressableScale>
-
-        {/* LABELLED, not a bare glyph (owner's spec §D.1, 13 Aug 2026). A list
-            icon on its own could mean the plan, the history, or the last
-            workout — three different promises — and the one thing it cannot do
-            is say which. The word costs a few points of a bar that has room
-            for it. */}
-        {nextPlanLine ? (
-          <PressableScale
-            onPress={handlePlan}
-            haptic="none"
-            activeScale={0.92}
-            style={[styles.round, styles.roundLabelled, styles.planRow]}
-            accessibilityRole="button"
-            accessibilityLabel={`Write the next planned line: ${nextPlanLine}`}>
-            <GlassSurface radius={ROUND / 2} />
-            <Icon name="plan" size={moderateScale(16)} tint={glyphTint('plan')} />
-            <Text
-              style={styles.roundText}
-              numberOfLines={1}
-              maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              Plan
-            </Text>
-          </PressableScale>
-        ) : null}
 
         <PressableScale
           disabled={!canFinish}
@@ -555,11 +518,6 @@ const styles = StyleSheet.create({
   },
   roundLabelled: {
     paddingHorizontal: spacing.md,
-  },
-  /** Icon and word on one line, for the labelled plan button. */
-  planRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
   },
   // Listening / finished = the app spoke: solid ink fill, paper glyph.
   roundActive: {

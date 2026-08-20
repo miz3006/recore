@@ -57,9 +57,12 @@ Three layers and no more: **canvas (world) → ink text (the record) → white p
 - **A card is the exception, not the default.** The only sanctioned cards: bottom sheets and their
   inner sections, onboarding option rows and value cards, and the thought-process card. Anywhere
   else, a card must be justified against bare rows first.
-- **Everything interactive floats as a white pill** with a soft warm diffuse shadow: date pill,
-  summary pill, the NL input bar and its circular accessory buttons. Accessory buttons are
-  coloured glyphs in white circles — the colour is on the glyph, never on the circle.
+- **Everything interactive floats as a white pill** with a soft warm diffuse shadow: the date
+  pill, the NL input bar and its circular accessory buttons, chips, onboarding option rows and
+  fields. Accessory buttons are coloured glyphs in white circles — the colour is on the glyph,
+  never on the circle. (**There is no summary pill.** It was removed from Today on 18 August
+  2026 and the owner confirmed on 20 August that it stays out; the bottom of Today belongs to
+  the keyboard alone.)
 
 ## Colour
 
@@ -94,9 +97,9 @@ Recorded semantics carry over untouched: `attention` `#B45309` (plateau / backof
 load is ink), `warning` `#8A5613` / `error` `#A33D36`, inks `#1C1C1E` / `#6E6E73` / `#86868B`,
 borders `#D5D5D5` / `#E9E9E9`.
 
-**`trend` ember `#BF5B23` is retired** (owner, 20 August 2026). Its one home was the lift sheet's
+**`trend` ember `#BF5B23` is deleted** (owner, 20 August 2026). Its one home was the lift sheet's
 progression line, and that chart draws in `brand` now so the same lift reads the same way on both
-surfaces. The token has no call sites; nothing new may adopt it.
+surfaces. There is no ember token; nothing may reintroduce one without the owner.
 
 Rules that hold everywhere:
 - **Colour marks, ink speaks.** A coloured letter or glyph may sit beside a value; the value itself
@@ -135,6 +138,12 @@ pinned must clear it by hand.
 **`radius` is four values and a pill, and the funnel has no scale of its own:** sm 10 · md 14
 (buttons) · **lg 20** (rows, fields, option rows) · **xl 24** (cards, sheets, hero surfaces) · pill
 999. Set `borderCurve: 'continuous'` on the same style as any non-pill radius.
+
+**Hairlines are `border` `#D5D5D5`, not `divider`** (owner, 20 August 2026). A separator inside a
+card or a sheet — a column rule, a settings row's line, the rule that opens a card's evidence — is
+`border` at 1.47:1. `#E9E9E9` measured 1.16:1 and was a line only in the style sheet. `divider`
+survives for one job: the softened border of a card that also casts a shadow. **Between two records
+there is no hairline at all** — the record is bare rows separated by air.
 
 `hairline`, `HIT` 44, `ROUND_BUTTON` 40. **`CTA_HEIGHT` 56 is the height of every primary button
 app-wide** and lives in `spacing.ts`; `CONTROL_HEIGHT` 50 is for secondary, ghost and compact

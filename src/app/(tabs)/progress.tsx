@@ -749,7 +749,7 @@ const styles = StyleSheet.create({
   // --- the evidence, inside an open card --------------------------------------
   cardRule: {
     height: 1,
-    backgroundColor: color.tableRule,
+    backgroundColor: color.border,
     marginVertical: spacing.md,
   },
   evHead: {

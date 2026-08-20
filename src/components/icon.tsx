@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { SymbolView } from 'expo-symbols';
 import { type ComponentProps } from 'react';
 
 import { color, glyph as glyphColor } from '@/lib/theme';
@@ -10,6 +11,9 @@ export type IconName =
   | 'gear'
   | 'flame'
   | 'mic'
+  // Listening. Filled, like `note-on`: a control that is RUNNING says so with
+  // its shape, not only with the fill behind it.
+  | 'mic-on'
   | 'camera'
   | 'plus'
   | 'keyboard'
@@ -66,6 +70,7 @@ const MAP: Record<IconName, Glyph> = {
   gear: { set: 'ion', name: 'settings-outline' },
   flame: { set: 'ion', name: 'flame-outline' },
   mic: { set: 'ion', name: 'mic-outline' },
+  'mic-on': { set: 'ion', name: 'mic' },
   camera: { set: 'ion', name: 'camera-outline' },
   plus: { set: 'ion', name: 'add' },
   keyboard: { set: 'mci', name: 'keyboard-outline' },
@@ -116,6 +121,53 @@ const MAP: Record<IconName, Glyph> = {
 };
 
 /**
+ * THE PLATFORM'S OWN GLYPHS, WHERE THEY EXIST (owner, 20 Aug 2026).
+ *
+ * A name listed here draws as an **SF Symbol** on iOS and keeps its
+ * Ionicons/MCI outline everywhere else. `SymbolView` renders its `fallback`
+ * off-iOS by construction, so there is no platform branch at any call site and
+ * no way for the two to drift apart.
+ *
+ * The argument is the same one that makes SF Pro the app's face rather than a
+ * bundled webfont: **Apple's set already carries the optical sizing, stroke
+ * weight and alignment that a third-party outline can only approximate**, and
+ * it is the set every other control on an iPhone is drawn from. A glyph that is
+ * half a point heavier than the keyboard it floats over reads as a foreign
+ * control before it reads as anything else.
+ *
+ * IT IS A LIST, NOT A SWITCH. Only the three accessory-bar glyphs are on it —
+ * that bar is now entirely SF, so it is internally consistent, and no screen
+ * shows a mixed pair. Moving more of the app over is one line each, and should
+ * be done a surface at a time for exactly that reason.
+ *
+ * `box` widens the square the symbol is fitted into. SF Symbols are laid out by
+ * their own metrics, not by a square, so a wide glyph
+ * (`keyboard.chevron.compact.down`) fitted into an 18-point box comes out
+ * noticeably shorter than a narrow one beside it; the multiplier buys the wide
+ * ones back their height. Optical, not arithmetic — it is set by eye on device.
+ */
+type Symbol = {
+  name: ComponentProps<typeof SymbolView>['name'];
+  /** Multiplier on the fitting box — see above. Defaults to 1. */
+  box?: number;
+};
+
+const SF: Partial<Record<IconName, Symbol>> = {
+  timer: { name: 'timer' },
+  mic: { name: 'mic' },
+  'mic-on': { name: 'mic.fill' },
+  // Apple's own "put the keyboard away" glyph — the one iOS itself puts in an
+  // accessory bar, and the reason this button no longer needs the MCI set.
+  'keyboard-hide': { name: 'keyboard.chevron.compact.down', box: 1.2 },
+};
+
+/** The weight every SF glyph is drawn at. `regular` is a hair thin against the
+ * Ionicons outlines the rest of the app still uses; `medium` matches them and
+ * holds up over the system keyboard's own blur. One value, so the set can never
+ * disagree with itself. */
+const SF_WEIGHT = 'medium' as const;
+
+/**
  * Each glyph's own colour (owner, 28 July; extended to the accessory bar on
  * 20 Aug 2026). The map is keyed by the GLYPH, not by the row, so `sparkle` is
  * the same gold wherever it appears and a colour can never mean two things —
@@ -130,14 +182,18 @@ const MAP: Record<IconName, Glyph> = {
  * ## The accessory tints (v6, design skill §Structure)
  *
  * "Accessory buttons are coloured glyphs in white circles — the colour is on
- * the glyph, never on the circle." The four below join the existing families
+ * the glyph, never on the circle." The ones below join the existing families
  * rather than inventing hues, which is the only way "one colour per glyph"
  * survives adding a surface:
  *
  * · `timer` → orange, the family of what you aim at and what is counting.
- * · `mic` → teal, the words-and-movement family (`language`, `refresh`).
- * · `plan` → indigo, the structure family (`calendar`, `card`).
+ * · `mic` / `mic-on` → teal, the words-and-movement family (`language`,
+ *   `refresh`). One glyph in two states is one colour.
  * · `keyboard-hide` → slate, the plumbing (`lock`, `document`, `wrench`).
+ * · `plan` → indigo, the structure family (`calendar`, `card`) — **kept, but
+ *   the bar's plan button was removed on 20 Aug 2026 and nothing draws it
+ *   today.** The entry stands because the tint is a property of the glyph, not
+ *   of the call site that happened to want it.
  *
  * Measured on the white circle they sit in: indigo 5.85, slate 5.47, orange
  * 4.03, teal 4.03 — every one past the 3:1 a non-text mark owes, and past it
@@ -152,6 +208,7 @@ const GLYPH_TINT: Partial<Record<IconName, string>> = {
   // The accessory bar.
   timer: glyphColor.orange,
   mic: glyphColor.teal,
+  'mic-on': glyphColor.teal,
   plan: glyphColor.indigo,
   'keyboard-hide': glyphColor.slate,
 
@@ -190,8 +247,25 @@ type IconProps = {
 
 export function Icon({ name, size = 20, tint = color.textSecondary }: IconProps) {
   const g = MAP[name];
-  if (g.set === 'mci') {
-    return <MaterialCommunityIcons name={g.name} size={size} color={tint} />;
-  }
-  return <Ionicons name={g.name} size={size} color={tint} />;
+  const drawn =
+    g.set === 'mci' ? (
+      <MaterialCommunityIcons name={g.name} size={size} color={tint} />
+    ) : (
+      <Ionicons name={g.name} size={size} color={tint} />
+    );
+
+  // On iOS a listed glyph draws as the system symbol; `SymbolView` renders the
+  // outline above as its own fallback on every other platform, so this is one
+  // component with one call signature and no `Platform.OS` at any call site.
+  const sf = SF[name];
+  if (!sf) return drawn;
+  return (
+    <SymbolView
+      name={sf.name}
+      size={size * (sf.box ?? 1)}
+      weight={SF_WEIGHT}
+      tintColor={tint}
+      fallback={drawn}
+    />
+  );
 }

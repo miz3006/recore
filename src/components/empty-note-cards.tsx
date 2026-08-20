@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
   stepRule: {
     height: StyleSheet.hairlineWidth,
     marginLeft: RING_COL_W + spacing.sm,
-    backgroundColor: color.tableRule,
+    backgroundColor: color.border,
   },
   sample: {
     flexDirection: 'row',

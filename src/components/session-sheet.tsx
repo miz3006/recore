@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
   },
   exDivider: {
     borderTopWidth: 1,
-    borderTopColor: color.tableRule,
+    borderTopColor: color.border,
   },
   exHead: {
     flexDirection: 'row',

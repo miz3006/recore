@@ -455,7 +455,7 @@ const styles = StyleSheet.create({
   },
   liftDivided: {
     borderTopWidth: hairline,
-    borderTopColor: color.divider,
+    borderTopColor: color.border,
     paddingTop: spacing.lg,
     marginTop: spacing.md,
   },

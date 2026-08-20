@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   rowSep: {
     height: hairline,
     marginLeft: RING + spacing.md,
-    backgroundColor: color.divider,
+    backgroundColor: color.border,
   },
   ring: {
     width: RING,
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     paddingTop: spacing.sm,
     borderTopWidth: hairline,
-    borderTopColor: color.divider,
+    borderTopColor: color.border,
     ...type.footnote,
     color: color.textMuted,
   },

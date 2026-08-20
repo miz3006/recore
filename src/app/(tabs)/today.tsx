@@ -158,11 +158,15 @@ export default function Today() {
 
               With it goes the last thing between the header and the note: an
               untouched day is now the blank page and nothing else, which is
-              what the 17 Aug "no exception" ruling was reaching for. Writing
-              still has the plan within reach — the accessory bar's plan button
-              writes the next prescribed line into the note (§8, bottom-
-              toolbar.tsx) — but it does that on demand, over the keyboard,
-              instead of standing on the page unasked.
+              what the 17 Aug "no exception" ruling was reaching for.
+
+              20 Aug: the accessory bar's PLAN BUTTON is gone too, which is the
+              same ruling finished rather than a new one. That button was the
+              "still within reach" clause of this note — the plan on demand,
+              over the keyboard — and on demand meant a fourth control standing
+              in the row all session for a line most days never have. Today now
+              carries no prescription at any depth; the brief on Next is where
+              the plan lives (bottom-toolbar.tsx).
 
               `components/plan-strip.tsx` and `planned-checklist.tsx` stay on
               disk, unmounted, so a way back is one wire. */}

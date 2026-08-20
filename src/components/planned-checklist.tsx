@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
   rowRule: {
     height: hairline,
     marginLeft: RING_COL_W + spacing.sm,
-    backgroundColor: color.tableRule,
+    backgroundColor: color.border,
   },
   ringHit: {
     width: RING_COL_W,

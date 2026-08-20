@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
   },
   rule: {
     height: hairline,
-    backgroundColor: color.divider,
+    backgroundColor: color.border,
   },
 });
 

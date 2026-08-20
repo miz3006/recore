@@ -481,7 +481,7 @@ const styles = StyleSheet.create({
   },
   rowSep: {
     height: 1,
-    backgroundColor: color.tableRule,
+    backgroundColor: color.border,
   },
   rowPressed: {
     opacity: 0.6,

@@ -129,9 +129,9 @@ const FILL_ID = 'liftTrendFill';
  * in two different hues made one lift look like two facts. It now takes the
  * line, the wash and the terminal dot from the same values `TrendChart`
  * defaults to (0.22 → 0.01 under the line), so the two are one chart in two
- * places. **`color.trend` has no home in the app after this** — the token is
- * left in `theme/color.ts` rather than deleted, because retiring a palette
- * entry is the owner's call.
+ * places. **The `trend` token was deleted with this change** (owner, 20 Aug
+ * 2026): a palette entry with no home is a hue the next surface reaches for by
+ * accident.
  *
  * The wash is the *shape of the record*, not a value — every number around it,
  * including the current reading and the axis, stays ink or secondary grey. A
@@ -804,7 +804,7 @@ const styles = StyleSheet.create({
   },
   statRule: {
     width: 1,
-    backgroundColor: color.tableRule,
+    backgroundColor: color.border,
   },
   statHead: {
     flexDirection: 'row',

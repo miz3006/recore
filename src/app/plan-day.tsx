@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
   preview: {
     marginTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: color.divider,
+    borderTopColor: color.border,
     paddingTop: spacing.md,
     gap: spacing.sm,
   },

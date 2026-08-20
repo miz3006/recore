@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
   footer: {
     paddingTop: spacing.lg,
     borderTopWidth: hairline,
-    borderTopColor: color.divider,
+    borderTopColor: color.border,
   },
   disclosure: {
     alignSelf: 'flex-start',

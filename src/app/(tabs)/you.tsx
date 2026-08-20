@@ -1606,7 +1606,7 @@ const styles = StyleSheet.create({
   statRule: {
     width: hairline,
     alignSelf: 'stretch',
-    backgroundColor: color.divider,
+    backgroundColor: color.border,
   },
   // The usual week, inside its accordion. Ink when chosen — the trained-day
   // blue marks a day that happened, and an expected day is not one.
@@ -1752,7 +1752,7 @@ const styles = StyleSheet.create({
   rowSep: {
     height: hairline,
     marginLeft: ROW_ICON_SLOT,
-    backgroundColor: color.divider,
+    backgroundColor: color.border,
   },
   rowLeft: {
     flex: 1,

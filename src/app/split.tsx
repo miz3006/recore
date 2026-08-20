@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: color.divider,
+    borderTopColor: color.border,
   },
   weekChip: {
     flex: 1,

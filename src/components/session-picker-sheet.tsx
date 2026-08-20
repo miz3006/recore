@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   rowRule: {
     height: hairline,
     marginLeft: ICON_COL_W + spacing.sm,
-    backgroundColor: color.divider,
+    backgroundColor: color.border,
   },
   iconCol: {
     width: ICON_COL_W,

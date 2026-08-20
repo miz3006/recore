@@ -303,7 +303,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingBottom: spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: color.divider,
+    borderBottomColor: color.border,
   },
   weekday: {
     ...type.caption,
