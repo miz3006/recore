@@ -26,8 +26,6 @@ import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
 import { IllustrationSlot } from '@/components/onboarding/IllustrationSlot';
 import { PrimaryCta } from '@/components/onboarding/PrimaryCta';
 import {
-  BLUE,
-  CARD_RADIUS,
   INK_CARD,
   RISE_PX,
   SELECT_BORDER,
@@ -54,7 +52,6 @@ import type { Goal } from '@/lib/onboarding';
 import { getGoal, getName, getPrimaryLift } from '@/lib/prefs';
 import {
   color,
-  fonts,
   HIT,
   lineFor,
   MAX_FONT_SCALE,
@@ -782,7 +779,7 @@ function PlanCard({
 function PlanRadio({ selected }: { selected: boolean }) {
   const p = useSelectFill(selected);
   const ringStyle = useAnimatedStyle(() => ({
-    borderColor: interpolateColor(p.get(), [0, 1], [color.border, BLUE]),
+    borderColor: interpolateColor(p.get(), [0, 1], [color.border, color.brand]),
   }));
   const fillStyle = useAnimatedStyle(() => ({
     opacity: p.get(),
@@ -881,7 +878,8 @@ function LinkButton({ label, onPress }: { label: string; onPress: () => void }) 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.bg,
+    // The paywall stands on the same page as the funnel it continues.
+    backgroundColor: color.canvas,
   },
   topRow: {
     paddingHorizontal: spacing.xl,
@@ -921,10 +919,8 @@ const styles = StyleSheet.create({
     backgroundColor: color.surfaceHigh,
   },
   devChipText: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('600'),
     fontSize: moderateScale(11),
-    fontWeight: '600',
     letterSpacing: 0.8,
     color: color.textSecondary,
   },
@@ -1043,7 +1039,7 @@ const styles = StyleSheet.create({
   plan: {
     flex: 1,
     backgroundColor: INK_CARD,
-    borderRadius: CARD_RADIUS,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     borderWidth: SELECT_BORDER,
     // Invisible until chosen: the same colour as the fill it edges.
@@ -1063,10 +1059,10 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: 0,
-    borderRadius: CARD_RADIUS,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     borderWidth: SELECT_BORDER,
-    borderColor: BLUE,
+    borderColor: color.brand,
   },
   /** Height reserved on both cards so the two titles share a baseline. */
   planBadgeSlot: {
@@ -1076,7 +1072,7 @@ const styles = StyleSheet.create({
   },
   savePill: {
     borderRadius: radius.pill,
-    backgroundColor: BLUE,
+    backgroundColor: color.brand,
     paddingVertical: 3,
     paddingHorizontal: spacing.sm,
   },
@@ -1118,7 +1114,7 @@ const styles = StyleSheet.create({
   radioFilled: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: radius.pill,
-    backgroundColor: BLUE,
+    backgroundColor: color.brand,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1150,8 +1146,11 @@ const styles = StyleSheet.create({
   ctaGlow: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: radius.pill,
-    backgroundColor: BLUE,
-    shadowColor: BLUE,
+    backgroundColor: color.brand,
+    // Deliberately heavier than `shadow.glow`: this layer is the ARRIVAL, and
+    // it crossfades down to the button's own resting glow. Only its opacity
+    // animates, so the shadow rasterizes once.
+    shadowColor: color.brandGlow,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.55,
     shadowRadius: 30,
@@ -1177,7 +1176,10 @@ const styles = StyleSheet.create({
   },
   link: {
     ...type.footnote,
-    color: color.textMuted,
+    // Underlined and tappable — it carries information, so it is not muted.
+    // It stays ink-grey rather than going brand: these are the legal doors, and
+    // the one blue on this screen belongs to the thing you are buying.
+    color: color.textSecondary,
     textDecorationLine: 'underline',
   },
   linkSep: {

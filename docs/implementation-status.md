@@ -892,6 +892,31 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — v6 Phase 3, screen 6: the paywall.** One file, `app/paywall.tsx`. **No billing
+  copy changed** — not a price, not a date, not a sentence about what a subscription does.
+  - **It stands on the canvas** (`color.bg` → `color.canvas`), which is the same page the funnel
+    it continues stands on. The two screens were always meant to be one continuous surface and
+    now they literally are.
+  - **The last two funnel-token call sites are gone.** `BLUE` → `color.brand` (7 refs: the plan
+    cards' travelling selection edge, the SAVE pill, the radio fill, the CTA glow) and
+    `CARD_RADIUS` → `radius.xl` (3). `app/onboarding/[step].tsx` is the only file left reading
+    either, so the aliases die with the funnel's own turn.
+  - The arrival glow keeps its heavier values on purpose — 0.55 at radius 30 against
+    `shadow.glow`'s 0.28 at 20 — because it is the ARRIVAL and it crossfades down to the
+    button's own resting glow. It now casts `color.brandGlow` rather than naming a blue itself.
+  - **`Nothing due today` is untouched** — it is the sanctioned `signal` exception, the one green
+    line on this screen, and it stays exactly as it was (4.93:1 on white, AA at any size).
+  - The last inline reading font became `readingStyle()`. The legal links moved off `textMuted`:
+    they are underlined tap targets, so they carry information and cannot be what the eye skips.
+    **They stay ink-grey rather than going brand** — these are the legal doors, and the one blue
+    on this screen belongs to the thing being bought.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified: device QA.**
+  - **Noticed and not fixed:** the plan cards still fill with `INK_CARD` (ink at 5 %), which on
+    the warm canvas resolves to `#F1EEE9` — a warm grey a step down from the page. The token's
+    own note has been asking since Phase 1 whether the funnel's soft cards should become
+    `surface` + `shadow.card` like every other floating thing in v6. That is one decision for the
+    funnel and the paywall together, and it belongs to the funnel's turn.
 - **20 Aug 2026 — v6 Phase 3, screen 5: You.** One file, `app/(tabs)/you.tsx`.
   - **The screen stands on the canvas** — `color.bg` → `color.canvas` on the root — and its
     seven white surfaces (the settings cards, the avatar, the selected segment) become surfaces
