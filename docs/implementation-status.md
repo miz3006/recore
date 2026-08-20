@@ -892,6 +892,33 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — v6 Phase 3, screen 5: You.** One file, `app/(tabs)/you.tsx`.
+  - **The screen stands on the canvas** — `color.bg` → `color.canvas` on the root — and its
+    seven white surfaces (the settings cards, the avatar, the selected segment) become surfaces
+    for the first time rather than white-on-white. `shadow.card` was already warm from Phase 1
+    and is what gives the cards an edge now: `color.divider` measures **1.16:1** on white, so
+    the border never was one.
+  - **The one screen where a card is the DEFAULT, and the justification is now written into the
+    style.** Skill §Structure requires a card to be justified against bare rows first; this one
+    is justified by the platform. A grouped settings list is what iOS Settings *is*, every
+    reader already knows what the grouping means, and the `glyph.*` tints exist specifically so
+    a long one is scanned by shape and hue before it is read. **The rule it is an exception to
+    is about the RECORD** — a lift, a set, a session — and none of that is on this screen. The
+    card moved to `radius.xl` 24 with every other card in the app.
+  - **The activity grid's trained mark is `color.brand`.** The grid's own contract is untouched:
+    two marks and no more, no intensity ramp, a day that has not happened is nothing at all.
+  - **Two things in muted were carrying information.** The career numbers' labels under the
+    record card, and the unit beside the bodyweight the person typed. Both are `textSecondary`
+    now. The month labels on the activity grid, the hints, the footnotes and the version string
+    stay muted — dates and asides are exactly what muted is for.
+  - Six inline reading fonts became `readingStyle()`, which finishes the sweep for this screen.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified: device QA.**
+  - **Noticed and deliberately not fixed:** the separator between two settings rows inside a card
+    is `color.divider` at **1.16:1** on white. Every long horizontal separator on iOS is that
+    subtle by design — they read as lines because of their LENGTH, not their ratio — so whether
+    this one needs strengthening is a call to make with the screen in front of you rather than
+    from arithmetic. It is the same open question as the two hairlines inside Next's open card.
 - **20 Aug 2026 — v6 Phase 3, screen 4: Lifts.** One file, `app/lifts.tsx`, and it got shorter:
   **92 lines out, 37 in.**
   - **The list IS the `Row` primitive** — its second home after the lapsed ledger. The lift's

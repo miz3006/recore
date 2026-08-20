@@ -102,12 +102,12 @@ import { scheduleSync } from '@/lib/sync/index';
 import {
   color,
   FIXED_FONT_SCALE,
-  fonts,
   hairline,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
+  readingStyle,
   shadow,
   spacing,
   TAB_BAR_CLEARANCE,
@@ -1460,7 +1460,7 @@ const PRESS_BLEED = spacing.sm;
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.bg,
+    backgroundColor: color.canvas,
   },
   nav: {
     flexDirection: 'row',
@@ -1531,11 +1531,24 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm - 1,
     marginLeft: spacing.xs,
   },
+  /**
+   * ## The one screen where a card is the DEFAULT, and why that is allowed
+   *
+   * Skill §Structure says a card must be justified against bare rows first.
+   * This is the justification, and it is the platform's: a grouped settings
+   * list is what iOS Settings is, every reader already knows what the grouping
+   * MEANS, and the `glyph.*` tints exist specifically so a long one is scanned
+   * by shape and hue before it is read. The rule it is an exception to is about
+   * the RECORD — a lift, a set, a session — and none of that is on this screen.
+   *
+   * `radius.xl` 24, the app's card radius: a settings group, a sheet and a
+   * section card are the same kind of object.
+   */
   card: {
     backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.divider,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     borderCurve: 'continuous',
     paddingHorizontal: spacing.lg + 2,
     // A hair of vertical padding so the first and last row's pressed highlight
@@ -1655,13 +1668,14 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     padding: 0,
     color: color.textPrimary,
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     fontSize: type.subhead.fontSize,
-    fontVariant: ['tabular-nums'],
   },
   bodyUnit: {
     ...type.caption,
-    color: color.textMuted,
+    // The unit of a bodyweight the person typed — a step lighter than the
+    // number, never a step past readable.
+    color: color.textSecondary,
   },
   bodyHint: {
     ...type.footnote,
@@ -1671,16 +1685,16 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   statValue: {
-    fontFamily: fonts.reading,
+    ...readingStyle('600'),
     fontSize: moderateScale(24),
-    fontWeight: '600',
     letterSpacing: -0.4,
-    fontVariant: ['tabular-nums'],
     color: color.textPrimary,
   },
   statLabel: {
     ...type.footnote,
-    color: color.textMuted,
+    // It names the career number above it — a label on a value is information,
+    // and muted is for what the eye may skip (skill §Colour).
+    color: color.textSecondary,
   },
 
   // The activity grid.
@@ -1693,8 +1707,7 @@ const styles = StyleSheet.create({
     width: DOT,
   },
   gridMonth: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(8.5),
     letterSpacing: 0.4,
     color: color.textMuted,
@@ -1713,7 +1726,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.surfaceHigh,
   },
   gridDotOn: {
-    backgroundColor: color.trained,
+    backgroundColor: color.brand,
   },
   // Not yet lived. Invisible, never drawn as a missed day.
   gridDotFuture: {
@@ -1778,8 +1791,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   external: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: moderateScale(14),
     color: color.textMuted,
   },
@@ -1816,9 +1828,8 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   segmentMono: {
-    fontFamily: fonts.reading,
+    ...readingStyle('400'),
     letterSpacing: 0.2,
-    fontVariant: ['tabular-nums'],
   },
   segmentLabelSelected: {
     color: color.textPrimary,
@@ -1842,8 +1853,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   versionNum: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     color: color.textMuted,
   },
 });
