@@ -25,7 +25,7 @@ import Svg, { Path } from 'react-native-svg';
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
 import { IllustrationSlot } from '@/components/onboarding/IllustrationSlot';
 import { PrimaryCta } from '@/components/onboarding/PrimaryCta';
-import { ProjectionStrip } from '@/components/onboarding/ProjectionStrip';
+import { hasProjection, ProjectionStrip } from '@/components/onboarding/ProjectionStrip';
 import {
   CARD_FILL,
   RISE_PX,
@@ -45,6 +45,7 @@ import {
   type StorePlan,
 } from '@/lib/billing/store';
 import { formatChargeDate } from '@/lib/billing/trial';
+import { track } from '@/lib/analytics';
 import { markPaywallShown, markPlanSelected } from '@/lib/funnel';
 import { tap } from '@/lib/haptics';
 import { DUR, EASE } from '@/lib/motion';
@@ -266,6 +267,10 @@ export default function Paywall() {
   // to backfill once the first installs have happened.
   useEffect(() => {
     markPaywallShown();
+    // Split by whether the person arrived with a projection to be reminded of:
+    // it is the one thing about this screen that differs person to person, so
+    // it is the one thing worth knowing before its headline is rewritten.
+    track('paywall_view', { has_projection: hasProjection() });
   }, []);
 
   /**
@@ -386,6 +391,7 @@ export default function Paywall() {
   const handleCta = () => {
     tap();
     markPlanSelected(plan);
+    track('paywall_cta_tap', { plan, trial_days: trialDays, signed_in: session !== null });
     if (session === null) {
       setPendingPurchase(true);
       router.push('/sign-in');

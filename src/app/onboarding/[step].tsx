@@ -40,6 +40,7 @@ import {
 import { SuggestionChips } from '@/components/onboarding/SuggestionChips';
 import { TextField } from '@/components/onboarding/TextField';
 import { PUSH_MS } from '@/components/onboarding/tokens';
+import { setUserProperty, track } from '@/lib/analytics';
 import {
   inWrittenUnit,
   matchKeyLift,
@@ -87,7 +88,7 @@ import {
   spacing,
   type,
 } from '@/lib/theme';
-import { useOnboardingAnswers } from '@/state/onboarding';
+import { useOnboardingAnswers, type AnswerKey } from '@/state/onboarding';
 
 /**
  * The onboarding renderer — ONE screen for every entry of
@@ -225,12 +226,19 @@ export default function OnboardingStep() {
    */
   const [demoSettled, setDemoSettled] = useState(false);
 
-  // Record the position so a killed app resumes on this step, and the funnel's
-  // high-water mark (1-based in this flow) so drop-off is measurable.
+  // Record the position so a killed app resumes on this step, the funnel's
+  // high-water mark (1-based in this flow) so drop-off is measurable, and the
+  // §13 screen view.
+  //
+  // THE VIEW IS EMITTED HERE AND NOWHERE ELSE. Every screen of the flow is this
+  // one component, so the one place that knows which screen is on the glass is
+  // also the only place that has to say so — no per-screen boilerplate to
+  // forget on the next screen somebody adds.
   useEffect(() => {
     setStep(stepNumber);
     markObStepReached(stepNumber);
-  }, [stepNumber, setStep]);
+    track('onboarding_screen_view', { step_id: step.slug, step_index: stepNumber });
+  }, [stepNumber, setStep, step.slug]);
 
   // Adding a lift row pushes the ones under it down; the layout transition
   // turns that jump into a glide. Reduce Motion keeps the instant reflow.
@@ -268,6 +276,7 @@ export default function OnboardingStep() {
   );
 
   const goNext = useCallback(() => {
+    track('onboarding_screen_complete', { step_id: step.slug, step_index: stepNumber });
     if (stepNumber < STEPS.length) {
       router.push(`/onboarding/${stepNumber + 1}`);
       return;
@@ -278,7 +287,7 @@ export default function OnboardingStep() {
     // being asked to buy again.
     completeFlow();
     router.replace('/');
-  }, [stepNumber, router]);
+  }, [stepNumber, router, step.slug]);
 
   const goBack = () => {
     // After a cold-start resume there is no history behind this screen —
@@ -332,6 +341,30 @@ export default function OnboardingStep() {
     [step.kind, projections.length, answers],
   );
 
+  /**
+   * Store an answer AND count it (§13).
+   *
+   * `answerValue` is the guard that matters: an event queued today may be sent
+   * tomorrow, so nothing a person WROTE goes into one — a name is recorded as
+   * written-or-not and the demo line as parsed-or-not, never as its text
+   * (§7.3, §12). Everything else here is an option id.
+   */
+  const answer = (key: AnswerKey, value: string, stepId: string) => {
+    setAnswer(key, value);
+    track('onboarding_answer', { step_id: stepId, value: answerValue(key, value) });
+  };
+
+  /** A single-select answer. The attribution screen also lands as its own
+   * event and as a user property — it is the only answer that describes the
+   * PERSON's arrival rather than a moment in the flow. */
+  const chooseOption = (key: AnswerKey, id: string) => {
+    answer(key, id, step.slug);
+    if (step.slug === 'attribution') {
+      track('onboarding_attribution', { value: id });
+      setUserProperty('attribution', id);
+    }
+  };
+
   const setLiftLoad = (lift: string, value: number) => {
     setAnswer('liftLoads', serializeLiftLoads({ ...liftLoads, [lift]: value }));
   };
@@ -339,16 +372,16 @@ export default function OnboardingStep() {
   const toggleObstacle = (id: string) => {
     const current = parseList(answers.obstacles);
     if (id === EXCLUSIVE_OBSTACLE) {
-      setAnswer('obstacles', current.includes(id) ? '' : id);
+      answer('obstacles', current.includes(id) ? '' : id, 'obstacles');
       return;
     }
     const withoutExclusive = serializeList(current.filter((v) => v !== EXCLUSIVE_OBSTACLE));
-    setAnswer('obstacles', toggleInList(withoutExclusive, id));
+    answer('obstacles', toggleInList(withoutExclusive, id), 'obstacles');
   };
 
   const toggleLift = (lift: string) => {
     const next = toggleInList(answers.keyLifts, lift);
-    setAnswer('keyLifts', next);
+    answer('keyLifts', next, 'key-lifts');
     // A lift dropped from the set takes its load with it: leaving an orphaned
     // number in the map would put a lift nobody chose on the projection screen.
     if (!parseList(next).includes(lift) && liftLoads[lift] != null) {
@@ -394,7 +427,7 @@ export default function OnboardingStep() {
               detail={option.detail}
               emoji={option.emoji}
               selected={selected === option.id}
-              onPress={() => step.storeKey && setAnswer(step.storeKey, option.id)}
+              onPress={() => step.storeKey && chooseOption(step.storeKey, option.id)}
             />
           </Enter>
         ))}
@@ -483,7 +516,9 @@ export default function OnboardingStep() {
                 label={option.label}
                 emoji={option.emoji}
                 selected={answers[secondary.storeKey] === option.id}
-                onPress={() => setAnswer(secondary.storeKey, option.id)}
+                onPress={() =>
+                  answer(secondary.storeKey, option.id, `${step.slug}.${secondary.storeKey}`)
+                }
               />
             </Enter>
           ))}
@@ -499,7 +534,13 @@ export default function OnboardingStep() {
         <Enter delay={contentDelay(0)}>
           <DayPicker
             mask={dayMask}
-            onToggle={(day) => setAnswer('trainingDays', String(toggleDay(dayMask, day)))}
+            onToggle={(day) => {
+              const next = toggleDay(dayMask, day);
+              setAnswer('trainingDays', String(next));
+              // The COUNT, never the days themselves: how many times a week is
+              // the number the funnel reads, and which days is the person's.
+              track('onboarding_answer', { step_id: 'days', value: dayCount(next) });
+            }}
           />
         </Enter>
         <Enter delay={contentDelay(1)}>
@@ -534,7 +575,9 @@ export default function OnboardingStep() {
                 label={option.label}
                 emoji={option.emoji}
                 selected={answers[secondary.storeKey] === option.id}
-                onPress={() => setAnswer(secondary.storeKey, option.id)}
+                onPress={() =>
+                  answer(secondary.storeKey, option.id, `${step.slug}.${secondary.storeKey}`)
+                }
               />
             </Enter>
           ))}
@@ -641,6 +684,7 @@ export default function OnboardingStep() {
           label={step.cta ?? 'Hold to commit'}
           onComplete={() => {
             setAnswer('commitment', `${COMMIT_WEEKS}w`);
+            track('onboarding_commit_held', { weeks: COMMIT_WEEKS, sessions });
             goNext();
           }}
         />
@@ -654,6 +698,7 @@ export default function OnboardingStep() {
     const recap = selected ?? 'yes';
     cta = { label: step.cta ?? 'Continue', onPress: () => {
       setAnswer('notifications', recap);
+      track('onboarding_notifications_choice', { value: recap });
       goNext();
     } };
     contentCount = 1 + step.options.length;
@@ -769,6 +814,20 @@ export default function OnboardingStep() {
       </OnboardingScreen>
     </>
   );
+}
+
+/**
+ * An answer as an EVENT sees it.
+ *
+ * The two answers that are the person's own words never travel as text: a name
+ * is written-or-not and the demo line is parsed-or-not. Everything else is an
+ * option id, or a list of them with the store's unit separator swapped for a
+ * comma so the value is readable wherever it ends up.
+ */
+function answerValue(key: AnswerKey, value: string): string {
+  if (key === 'name') return value.trim().length > 0 ? 'written' : 'empty';
+  if (key === 'demoEntry') return value.length > 0 ? 'parsed' : 'none';
+  return serializeList(parseList(value)).split(String.fromCharCode(31)).join(',') || 'none';
 }
 
 const styles = StyleSheet.create({

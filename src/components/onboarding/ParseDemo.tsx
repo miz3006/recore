@@ -11,6 +11,7 @@ import Animated, {
 
 import { Icon } from '@/components/icon';
 import { PressableScale } from '@/components/motion';
+import { track } from '@/lib/analytics';
 import {
   DEMO_EXAMPLE,
   parseDemoLine,
@@ -105,15 +106,12 @@ type Landed = { reading: DemoReading; canned: boolean };
 export function ParseDemo({
   onResult,
   onSettled,
-  onFailed,
 }: {
   /** The last SUCCESSFUL reading of the person's own line — null when all they
    * ever saw was the canned example, which is never stored as their answer. */
   onResult: (entry: DemoEntry | null) => void;
   /** A record has landed: the screen may show its button. */
   onSettled: () => void;
-  /** Nothing could be read, so the canned example was shown instead. */
-  onFailed?: (reason: 'empty' | 'unreadable') => void;
 }) {
   const reduce = useReducedMotion();
   const input = useRef<TextInput>(null);
@@ -128,6 +126,9 @@ export function ParseDemo({
   const [mic] = useState(() => voiceAvailable());
 
   const dictation = useRef<DictationHandle | null>(null);
+  /** How many times this person asked the screen to read something. The number
+   * that says whether the demo is a moment or a fight (§13). */
+  const attempts = useRef(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const typing = useRef<ReturnType<typeof setInterval> | null>(null);
   /** The words dictation started from — the same base-note shape the Today
@@ -200,8 +201,9 @@ export function ParseDemo({
   const run = useCallback(
     async (source: DemoSource, value: string) => {
       const line = value.trim();
+      attempts.current += 1;
       if (!line) {
-        onFailed?.('empty');
+        track('onboarding_demo_failed', { reason: 'empty', attempts: attempts.current });
         const canned = parseDemoLine(DEMO_EXAMPLE);
         if (canned) land(canned, true);
         onResult(null);
@@ -212,6 +214,11 @@ export function ParseDemo({
       if (local) {
         land(local, false);
         onResult(toDemoEntry(line, local, source, true));
+        track('onboarding_demo_parsed', {
+          source,
+          parsed_locally: true,
+          attempts: attempts.current,
+        });
         return;
       }
 
@@ -219,18 +226,25 @@ export function ParseDemo({
       if (remote) {
         land(remote, false);
         onResult(toDemoEntry(line, remote, source, false));
+        track('onboarding_demo_parsed', {
+          source,
+          parsed_locally: false,
+          attempts: attempts.current,
+        });
         return;
       }
 
       // Nothing readable — and still no error. The canned example runs, the
       // caption says what it is, and the person keeps their own words in the
       // field to try again.
-      onFailed?.('unreadable');
+      // The reason is a CATEGORY, never the line itself: what a person wrote
+      // does not leave the device (§7.3), not even to explain a miss.
+      track('onboarding_demo_failed', { reason: 'unreadable', attempts: attempts.current });
       const canned = parseDemoLine(DEMO_EXAMPLE);
       if (canned) land(canned, true);
       onResult(null);
     },
-    [land, onFailed, onResult],
+    [land, onResult],
   );
 
   /** The zero-effort path: the example types itself, then reads itself. */
