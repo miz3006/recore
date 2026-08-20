@@ -892,6 +892,70 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — v6 Phase 2a: the four shared components the owner named, and the bare row.**
+  `MIGRATION.md` Phase 2, scoped to the owner's own list — `primitives.tsx`, `motion.tsx`,
+  `chip-row.tsx`, `charts.tsx`, plus the record's missing list primitive. **The rest of Phase 2
+  is untouched and listed at the end of this entry**; none of it is done and no screen changed.
+  - **`Row` — the bare-row list primitive** (`primitives.tsx`, new). The record drawn the way
+    skill §Structure describes it: name left in ink, reading right in the reading face, unit a
+    step smaller and a step lighter, `minHeight` 68 so it grows at the Dynamic Type ceiling, and
+    **no card, no fill, no border and no rule between rows** — the air is the separator. Its
+    `tone` reaches only the four semantic inks (`signal` planned-only, `gain`/`loss` recorded,
+    `attention` plateau), each of which clears AA on the canvas, and the doc restates that colour
+    is never the only carrier. VoiceOver reads a row as one utterance rather than four stops.
+    **Nothing mounts it yet** — the surfaces it replaces (`read-only-ledger`, `session-receipt`,
+    `set-table`, `plan-strip`, `note-surface`, `ghost-prediction`) move onto it in Phase 3.
+  - **`AppButton`** — primary is now a filled `brand` pill at **`CTA_HEIGHT` 56** wearing
+    `shadow.glow`, pressed goes to `brandPressed` (a darker blue, never an opacity flash, which
+    would take the glow down with the fill). Secondary is `brand` at 12 % with a brand label:
+    measured **4.98:1 on the wash over white, 4.75:1 over the canvas** — past AA for a 17 pt/600
+    label, which `#007AFF` could not have carried. Secondary and ghost stay at 50; `compact`
+    stays 44 and now beats the variant in the style array rather than losing to it, which was a
+    latent bug the height change would have surfaced. The ink-fill doc is rewritten.
+  - **`Badge` gains `tone="wash"`** — the app's one sanctioned filled chip (skill §Decided-4).
+    The wash/ink pairing is a **discriminated union**, so an unpaired combination is a type
+    error rather than a review comment: `signal`↔`signalWash` (4.59:1), `attention` (4.64),
+    `gain` (4.69), `loss` (4.69). `Card`'s doc now says it is the exception rather than the
+    default and names its four remaining sanctioned homes; its radius moved 20 → `radius.xl` 24
+    and `cardRaised` off the deprecated `radius.xxl`. The badge label moved off an inline
+    `fonts.reading` onto `readingStyle('700')`.
+  - **`chip-row.tsx`** — selected wash and border are `brand`, the due-dot is `brand`, and the
+    stale `#007AFF` arithmetic is replaced by Volt's: the selected border went from `trained` at
+    50 % (**2.27:1**, a state the eye had to hunt for) to brand at 70 % (**3.34:1 on white,
+    3.18:1 on the canvas**), past the 3:1 a non-text mark owes. **The label stays ink by choice
+    now rather than by force** — Volt on the 10 % wash measures 5.16:1 where `#007AFF` measured
+    3.5, so tinting it is available and deliberately not taken: the wash, the border and the
+    weight already say "this one" three times. **Every chip gained `shadow.card`**, because on
+    cream a white pill is 1.05:1 by tone and its `#D5D5D5` hairline is 1.40:1 — without the
+    shadow the row reads as loose text rather than as four controls.
+  - **`charts.tsx`** — `TrendChart`'s default tint is `brand`; `WeekBars`/`MicroBars` stay
+    monochrome ink. Two fixes for drawing on cream: the `best` reference line moved off
+    `color.border` (**1.40:1 on the canvas — not a line**) onto `textMuted` at **3.45:1**, and
+    the terminal dot's knockout stroke and the hollow previous-session dot moved off a hardcoded
+    `color.surface` onto a new **`ground` prop, defaulting to `color.canvas`**; a chart inside
+    one of the sanctioned white cards passes `color.surface`. Both inline reading fonts became
+    `readingStyle()`. The header now states plainly why green never appears in a chart at all:
+    every point a chart plots has already been lifted, so `signal` would be a lie about the data.
+  - **`motion.tsx` needed no change and none was made.** It carries no colour, radius or
+    elevation token — only `MAX_FONT_SCALE` — so it had nothing to inherit. Checked against the
+    skill's §Motion rather than assumed: durations 120/160/240/380/560, `PRESS_SCALE` 0.97 with
+    0.98 on big surfaces, `stagger(i, 55, cap 8)`, `SPRING_OVERSHOOT` as the only bounce,
+    `selection()` on press-in and `tap()` on press-out, and every animation gated on
+    `useReducedMotion()`. All already correct.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified: device QA** — the glow under the
+    primary CTA, the chip shadows on cream, and whether the 70 % selected border reads as
+    selection rather than as a second button.
+  - **Still open in Phase 2, and NOT started:** `next/thought-process.tsx` (does not exist),
+    `top-bar`, `bottom-toolbar`, `summary-pill` (still unmounted), `bottom-sheet` (backdrop is
+    still the old grouped grey and its radius is still `radius.xxl`), `set-table`,
+    `read-only-ledger`, `session-receipt`, `gutter-value`, `note-surface`, `ghost-prediction`,
+    `planned-checklist`, `plan-strip`, `empty-note-cards`, `glass`, `scroll-edge`, `stub-screen`,
+    `icon`, `spotlight-tour`, `device-frame`, `settings-rows`, `next/*`, `week-recap-card`,
+    `insight-header`, `sign-in-demo` and all thirteen onboarding components. Concretely, what is
+    left to move: **24 `color.trained` refs in 12 files**, **`color.ctaFill` in 7 files**,
+    **`radius.xxl` in 3**, **`color.bg` in 12**, and the `readingStyle()` sweep across
+    **30 files** (heaviest: `exercise-sheet` 11, `progress` 10, `session-summary-sheet` 7).
 - **20 Aug 2026 — v6 Phase 1: the warm canvas comes back, and one blue replaces three.**
   Design skill `recore-design` + its `MIGRATION.md`; the owner picked **Volt `#0B5CD6`** on
   device, which unblocks everything the migration marked *blocked by Phase 0*. **Tokens only —

@@ -6,11 +6,11 @@ import { groupThousands } from '@/lib/parse/estimate';
 import {
   alpha,
   color,
-  fonts,
   ink,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
+  readingStyle,
   spacing,
   type,
 } from '@/lib/theme';
@@ -18,15 +18,29 @@ import {
 /**
  * Chart primitives.
  *
- * The bar charts here stay monochrome (they are ledger furniture — history at
- * low-alpha paper, the current week at full `accent`). **`TrendChart` is
- * coloured**: product-direction §10 asks recorded progression to draw as a blue
- * line with a soft fill, and v5.1 §4.2 makes Recore blue the product accent, so
- * a lift's own trend is the one place a hue earns its keep. Green still belongs
- * to PLANNED prescription values only and never appears in a chart, and no
- * chart ever uses red/green to judge a person — direction is carried by the
- * words beside it. No gridlines, no legends, no decoration. Everything is sized
- * in moderateScale so charts stay proportional across devices.
+ * **`WeekBars` and `MicroBars` stay monochrome ink** — they are ledger
+ * furniture, history at low-alpha ink and the current week at full `accent`.
+ * **`TrendChart` draws in the brand blue** (skill §Reuse: "`TrendChart` brand —
+ * never green"), because a lift's own recorded progression is the one place in
+ * the app where a hue earns its keep on a shape.
+ *
+ * **Green never appears in a chart at all.** `signal` is a load NOT YET LIFTED;
+ * every point a chart plots has already been lifted, so the hue would be a lie
+ * about the data whatever it looked like. `gain`/`loss` may colour the TERMINAL
+ * DOT alone (`lastTint`), never the line and never the wash, and never without
+ * the words beside the chart saying the same thing.
+ *
+ * ## Everything here is drawn on cream now (v6)
+ *
+ * Two things follow from the canvas, and both are props rather than constants:
+ * `ground` is the colour a chart is sitting ON — it knocks the terminal dot out
+ * of its own line, and it has to be the page, not a hardcoded white — and the
+ * `best` reference line moved off `color.border` (**1.40:1 on the canvas**,
+ * which is not a line) onto `textMuted` at **3.45:1**, past the 3:1 a non-text
+ * mark that carries information owes.
+ *
+ * No legends and no decoration. Everything is sized in `moderateScale` so charts
+ * stay proportional across devices.
  */
 
 const BAR_RADIUS = 3;
@@ -172,8 +186,8 @@ export function Sparkline({
   values,
   width,
   height = moderateScale(44),
-  /** Ink by default. The Next tab's climbing tiles pass `color.trained`, which
-   * §4.2 permits: a line of recorded progress is exactly what blue is for. */
+  /** Ink by default. The Next tab's climbing tiles pass `color.brand`, which the
+   * skill permits: a line of recorded progress is exactly what the blue is for. */
   tint = color.accent,
 }: {
   values: number[];
@@ -253,10 +267,11 @@ let fillSeq = 0;
  * loads nobody lifted, and the vertices have to stay exactly on their sessions.
  * Pass `shape="step"` to restore the held-then-jumped reading of §10.
  *
- * **Recore blue is the default hue** (product-direction §4.2/§10: "a blue
- * primary line or step chart with a soft contextual fill"). The wash under the
- * line is the SHAPE of the record, never a verdict on it, and Ember stays
- * reserved for the lift sheet's single-series comparison.
+ * **The brand blue is the default hue** (product-direction §4.2/§10: "a blue
+ * primary line or step chart with a soft contextual fill"; skill §Reuse:
+ * "`TrendChart` brand — never green"). The wash under the line is the SHAPE of
+ * the record, never a verdict on it, and Ember stays reserved for the lift
+ * sheet's single-series comparison.
  *
  * **The line itself still never judges** — but its END may (owner, 17 Aug 2026,
  * Progression mockup). `lastTint` colours the terminal dot alone: green when
@@ -282,8 +297,9 @@ export function TrendChart({
   best,
   height = moderateScale(58),
   showPrevious = false,
-  tint = color.trained,
+  tint = color.brand,
   lastTint,
+  ground = color.canvas,
   fill = true,
   wash = 0.22,
   dots = false,
@@ -302,6 +318,18 @@ export function TrendChart({
   /** The terminal dot's own hue, when the latest session should read
    * differently from the eight weeks behind it. Defaults to `tint`. */
   lastTint?: string;
+  /**
+   * The colour the chart is SITTING ON — it knocks the terminal dot out of its
+   * own line and fills the hollow previous-session dot, so both read as holes
+   * in the series rather than as white marks floating over it.
+   *
+   * The canvas by default, because that is what a chart sits on in v6. A chart
+   * inside one of the sanctioned white cards (a sheet section) passes
+   * `color.surface`. Getting it wrong costs 1.05:1, so this is craft rather
+   * than a legibility risk — but a warm dot on cream and a white dot on cream
+   * are exactly the difference between a drawn chart and a pasted one.
+   */
+  ground?: string;
   /** The gradient wash between the line and the baseline. */
   fill?: boolean;
   /** Opacity at the TOP of that wash (it always fades to nothing at the floor).
@@ -358,7 +386,10 @@ export function TrendChart({
                 y1={yOf(best)}
                 x2={w - padX - gutter}
                 y2={yOf(best)}
-                stroke={color.border}
+                // `textMuted`, not `border`: the all-time best is information,
+                // and #D5D5D5 measures 1.40:1 on the canvas — a line nobody can
+                // see is not a reference. 3.45:1 clears the non-text floor.
+                stroke={color.textMuted}
                 strokeWidth={1}
                 strokeDasharray="3 4"
               />
@@ -390,7 +421,7 @@ export function TrendChart({
                 cx={xOf(prevIndex)}
                 cy={yOf(values[prevIndex]!)}
                 r={moderateScale(3)}
-                fill={color.surface}
+                fill={ground}
                 stroke={tint}
                 strokeWidth={1.6}
               />
@@ -400,7 +431,7 @@ export function TrendChart({
               cy={lastY}
               r={moderateScale(3.5)}
               fill={lastTint ?? tint}
-              stroke={color.surface}
+              stroke={ground}
               strokeWidth={1.5}
             />
           </Svg>
@@ -432,11 +463,10 @@ const styles = StyleSheet.create({
   currentValue: {
     position: 'absolute',
     top: 0,
+    ...readingStyle('600'),
     fontSize: type.caption.fontSize,
     lineHeight: type.caption.lineHeight,
-    fontWeight: '600',
     color: color.textPrimary,
-    fontVariant: ['tabular-nums'],
   },
   axis: {
     flexDirection: 'row',
@@ -474,10 +504,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
     textAlign: 'right',
-    fontFamily: fonts.reading,
+    ...readingStyle('500'),
     fontSize: moderateScale(9.5),
     lineHeight: lineFor(14),
     color: color.textMuted,
-    fontVariant: ['tabular-nums'],
   },
 });

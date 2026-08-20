@@ -7,6 +7,7 @@ import {
   MAX_FONT_SCALE,
   moderateScale,
   radius,
+  shadow,
   spacing,
   type,
 } from '@/lib/theme';
@@ -37,13 +38,26 @@ import { PressableScale } from './motion';
  * rather than be cropped by its own chip (§5.3).
  *
  * **The selected chip is a WASH, a stronger border, and a heavier label — and
- * the label stays INK.** The wash + border carry the blue; those are non-text
- * marks and only owe 3:1, which `trained` blue on white clears at 4.02:1. The
- * LABEL does not go blue, because `#007AFF` on the 10% blue wash measures
- * **3.5:1** and a 13 pt caption owes 4.5:1 (§14.3's AA contract). Ink on that
- * same wash is 15.6:1. This is the one place the shared control corrects what
- * both originals were doing — Progression tinted the label, Next filled the
- * whole chip with ink to dodge the same problem.
+ * the label stays INK.** Re-measured against Volt `#0B5CD6` (20 Aug 2026): the
+ * wash is brand at 10 % (`#E7EFFB` over the chip's white), the border is brand
+ * at 70 %, which lands at **3.34:1 on white and 3.18:1 on the canvas** — past
+ * the 3:1 a non-text mark owes, where the old `#007AFF` at 50 % sat at 2.3 and
+ * asked the eye to find a state it could barely see. Ink on the wash is
+ * **14.70:1**.
+ *
+ * The label stays ink by CHOICE now rather than by force. It was ink because
+ * `#007AFF` on that wash measured 3.5:1 against a 13 pt caption's 4.5:1 —
+ * Volt clears it at **5.16:1**, so tinting the label is available if the owner
+ * ever wants it. It is not taken, because the wash, the border and the weight
+ * already say "this one" three times, and a blue label would make the row of
+ * chips read as four links.
+ *
+ * ## v6: the chip is a floating pill (skill §Structure)
+ *
+ * Every chip carries `shadow.card`. On the warm canvas a white pill is
+ * **1.05:1 by tone** and its `#D5D5D5` hairline is 1.40:1 — neither is an edge,
+ * so without the shadow the row reads as loose text rather than as four
+ * controls. The shadow is what makes it a thing you can press.
  */
 export interface ChipItem {
   key: string;
@@ -127,10 +141,11 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
     minHeight: moderateScale(34),
     justifyContent: 'center',
+    ...shadow.card,
   },
   chipActive: {
-    backgroundColor: alpha(color.trained, 0.1),
-    borderColor: alpha(color.trained, 0.5),
+    backgroundColor: alpha(color.brand, 0.1),
+    borderColor: alpha(color.brand, 0.7),
   },
   label: {
     ...type.caption,
@@ -140,15 +155,15 @@ const styles = StyleSheet.create({
   labelActive: {
     fontWeight: '700',
   },
-  /** "This is the one you're due for." The only blue that is not a wash. */
+  /** "This is the one you're due for." The only brand fill that is not a wash. */
   dot: {
     width: DOT,
     height: DOT,
     borderRadius: DOT,
     borderCurve: 'continuous',
-    backgroundColor: color.trained,
+    backgroundColor: color.brand,
   },
   dotActive: {
-    backgroundColor: color.trained,
+    backgroundColor: color.brand,
   },
 });
