@@ -334,7 +334,13 @@ export function contentDelay(i: number): number {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.surface,
+    // THE CANVAS, not a surface (v6, skill §Canvas: one canvas runs the whole
+    // app — "Today, list screens, sheets' backdrop, settings, every onboarding
+    // step"). The funnel was white, which made the page and the white things on
+    // it the same object; the paywall it hands off to now stands on the same
+    // cream, so the two read as one continuous surface rather than as two
+    // screens that happen to follow each other.
+    backgroundColor: color.canvas,
   },
   flex: {
     flex: 1,

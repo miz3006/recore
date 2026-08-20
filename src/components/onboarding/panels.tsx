@@ -192,8 +192,10 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
   /**
-   * A notification is a white card on a white page, so its edge IS its border
-   * and shadow (§14.3, 17 Aug: "nothing can be lighter than white").
+   * A notification preview is a white card, and on the cream canvas it is one of
+   * the few things in the funnel that genuinely FLOATS — which is what a
+   * notification does. Its border and shadow are still its edge; the page just
+   * stopped being the same colour as it.
    */
   notification: {
     backgroundColor: color.surface,

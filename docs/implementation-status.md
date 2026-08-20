@@ -892,6 +892,44 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — v6 Phase 3, screen 7: the onboarding funnel.** Five files under
+  `app/onboarding/` and `components/onboarding/`.
+  - **The funnel stands on the canvas.** `OnboardingScreen`'s root was `color.surface` — white —
+    and every one of the fourteen steps drew on it. It is `color.canvas` now, which is what the
+    skill has been asking for since Phase 1 (*"one canvas runs the whole app … every onboarding
+    step"*) and what makes the hand-off to the paywall continuous: the two screens were always
+    meant to be one surface and are now literally the same one.
+  - **The funnel's private design system is deleted, not deprecated.** `BLUE`, `CARD_RADIUS`,
+    `ROW_RADIUS` and the re-exported `CTA_HEIGHT` are **gone from `onboarding/tokens.ts`** — the
+    last call site (`[step].tsx`'s one link colour) moved to `color.brand` in this pass, and the
+    paywall's ten moved in the last one. What is left in that file is only what is genuinely the
+    FLOW's: its washes, its stagger, its rail timing, its geometry. Skill §Decided-2 and
+    §Decided-3 are now true in the code, not just in the document.
+  - **One real defect the canvas exposed, found and fixed.** `ParseDemo`'s wipe — the cover that
+    hides the parsed reading and slides away — was painted `color.surface`. It sits on top of a
+    row filled with `INK_CARD` (ink at 5 %), so it was always about 1.1:1 off the thing it was
+    covering; on a white page that was a lightness mismatch nobody could see, and on cream it
+    becomes a mismatch of HUE, which the eye does see. It is now built the way the row is built —
+    the page colour with the same ink wash over it — so it is exact by construction and cannot
+    drift if either token moves.
+  - **The mascot rule was already satisfied and nothing was changed for it.** Checked rather than
+    assumed: `illustrations.ts` carries **a different drawing for every step** (`welcome`,
+    `tracker`, `obstacles`, `why-written`, `goal`, `experience`, `about-you`, `days`,
+    `key-lifts`, `overload`, `commitment`, `recap`, `projection`, plus `paywall`), and the one
+    step with none — the parse demo — is deliberately blank rather than waiting on art. The
+    mascot never appears on a data screen at all, so the skill's "≤32 pt or absent" half is met
+    by absence. An earlier note in this log claiming only `welcome` had an asset was wrong.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified: device QA** — the whole funnel on
+    cream, and the parse demo's wipe in motion.
+  - **THE ONE OPEN DECISION IN THE FUNNEL, for the owner on device:** the option rows, value
+    cards and the notification preview still fill with `INK_CARD`, which RECESSES about **1.1:1
+    from the page**. v6 says everything interactive floats as a white pill with `shadow.card`,
+    and names onboarding option rows among the sanctioned cards — so the v6 answer is white plus
+    a shadow. It was not taken blind, for two reasons: the ratio is unchanged by the canvas (ink
+    at 5 % was 1.1:1 from white too, so this is a look that has always been this quiet, not a
+    regression), and switching it moves what `OptionRow`'s selection animation interpolates
+    FROM across thirteen screens. The note now lives on the token itself.
 - **20 Aug 2026 — v6 Phase 3, screen 6: the paywall.** One file, `app/paywall.tsx`. **No billing
   copy changed** — not a price, not a date, not a sentence about what a subscription does.
   - **It stands on the canvas** (`color.bg` → `color.canvas`), which is the same page the funnel

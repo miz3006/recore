@@ -157,7 +157,15 @@ function Reveal({ reduce }: { reduce: boolean }) {
             </Text>
           </View>
         </View>
-        <Animated.View style={[styles.cover, coverStyle]} pointerEvents="none" />
+        {/* The wipe is the ROW's own colour, built the way the row is built:
+            the page underneath, and the same ink wash over it. Painting it as
+            one flat fill meant naming a blended hex, and it was `surface` white
+            — which was 1.1:1 off the row on the old white page and is 1.1:1 off
+            it in the wrong HUE now that the page is cream. Two views cost
+            nothing and cannot drift. */}
+        <Animated.View style={[styles.cover, coverStyle]} pointerEvents="none">
+          <View style={styles.coverWash} />
+        </Animated.View>
       </View>
     </>
   );
@@ -216,7 +224,11 @@ const styles = StyleSheet.create({
   },
   cover: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: color.surface,
+    backgroundColor: color.canvas,
     transformOrigin: 'right',
+  },
+  coverWash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: INK_CARD,
   },
 });

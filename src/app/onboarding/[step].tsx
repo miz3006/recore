@@ -32,7 +32,7 @@ import { ParseDemo } from '@/components/onboarding/ParseDemo';
 import { ProjectionCard, ProjectionRow } from '@/components/onboarding/ProjectionCard';
 import { SuggestionChips } from '@/components/onboarding/SuggestionChips';
 import { TextField } from '@/components/onboarding/TextField';
-import { BLUE, PUSH_MS } from '@/components/onboarding/tokens';
+import { PUSH_MS } from '@/components/onboarding/tokens';
 import { markObStepReached, markOnboardingCompleted, setObStepCount } from '@/lib/funnel';
 import { defaultLanguage } from '@/lib/locale';
 import { DUR } from '@/lib/motion';
@@ -67,7 +67,12 @@ import {
   setUsualDays,
   setWeightUnit,
 } from '@/lib/prefs';
-import { color, MAX_FONT_SCALE, spacing, type } from '@/lib/theme';
+import {
+  color,
+  MAX_FONT_SCALE,
+  spacing,
+  type,
+} from '@/lib/theme';
 import { useOnboardingAnswers } from '@/state/onboarding';
 
 /**
@@ -733,7 +738,7 @@ const styles = StyleSheet.create({
   },
   signInLink: {
     fontWeight: '600',
-    color: BLUE,
+    color: color.brand,
   },
   pressed: {
     opacity: 0.6,
