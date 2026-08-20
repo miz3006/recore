@@ -1,8 +1,10 @@
+import { inWrittenUnit, parseDemoEntry, type DemoEntry } from '@/lib/demo-parse';
 import {
   COMMIT_WEEKS,
   committedSessions,
   dayCount,
   daysPerWeek,
+  loadStep,
   normalizeDayMask,
   parseLiftLoads,
   parseList,
@@ -510,5 +512,87 @@ export function liftProjections(answers: Answers): LiftProjection[] {
     const target = projectedTarget(start, experience, unit);
     out.push({ lift, start, target, gain: toPlate(target - start, unit), unit });
   }
+
+  // Nothing typed on the key-lift screen, but a load WAS written on the demo
+  // screen — a movement the chips do not offer, most often ("incline db press
+  // 30kg 12,12"). It is the person's own number either way, so the last screen
+  // of the flow uses it rather than showing them nothing.
+  if (out.length === 0) {
+    const demo = demoProjection(answers, experience, unit);
+    if (demo) out.push(demo);
+  }
   return out;
+}
+
+/** The demo line as a projection, or null when it carried no load. */
+function demoProjection(
+  answers: Answers,
+  experience: 'new' | 'building' | 'experienced' | null,
+  unit: WeightUnit,
+): LiftProjection | null {
+  const demo = parseDemoEntry(answers.demoEntry);
+  if (!demo || demo.weightKg == null || demo.weightKg <= 0) return null;
+  const start = inWrittenUnit(demo.weightKg, unit);
+  if (start <= 0) return null;
+  const target = projectedTarget(start, experience, unit);
+  return { lift: demo.exerciseName, start, target, gain: toPlate(target - start, unit), unit };
+}
+
+/**
+ * THE OVERLOAD LESSON'S TWO LINES, built out of what the person has already
+ * told the app.
+ *
+ * In order of preference: the key lift they set a load for two screens ago, the
+ * line they wrote on the demo screen, and only then a named example. The FIRST
+ * two are their own training; the third is a barbell fact (a 2.5 kg jump on a
+ * 60 kg bench) and never a claim about anybody.
+ *
+ * The sets and reps come from the demo line when there is one — "3 × 5" for
+ * `bench 100kg 5,5,4` — because that line is what they said they last did. With
+ * no line to read, the card keeps the generic 3 × 8.
+ */
+export type OverloadExample = {
+  lift: string;
+  sets: number;
+  reps: number;
+  start: number;
+  next: number;
+  unit: WeightUnit;
+};
+
+export function overloadExample(answers: Answers): OverloadExample {
+  const unit = resolveWeightUnit(answers);
+  const step = loadStep(unit);
+  const demo = parseDemoEntry(answers.demoEntry);
+
+  const chosen = parseList(answers.keyLifts)[0];
+  const loads = parseLiftLoads(answers.liftLoads);
+  const chosenLoad = chosen ? loads[chosen] : undefined;
+
+  const demoLoad =
+    demo?.weightKg != null && demo.weightKg > 0 ? inWrittenUnit(demo.weightKg, unit) : null;
+
+  const fallbackLoad = unit === 'lb' ? 135 : 60;
+  const start =
+    chosenLoad != null && chosenLoad > 0 ? chosenLoad : demoLoad != null ? demoLoad : fallbackLoad;
+  const lift = chosen ?? demo?.exerciseName ?? 'Bench press';
+  const shape = demoShape(demo);
+
+  return { lift, sets: shape.sets, reps: shape.reps, start, next: start + step, unit };
+}
+
+/** A written line's shape — how many sets, and the reps it kept coming back to.
+ * The MODE rather than the maximum: `5,5,4` is a three-by-five session with a
+ * last set that dropped, and that is how a person would say it back. */
+function demoShape(demo: DemoEntry | null): { sets: number; reps: number } {
+  const reps = demo?.reps ?? [];
+  if (reps.length === 0) return { sets: 3, reps: 8 };
+  const counts = new Map<number, number>();
+  for (const r of reps) counts.set(r, (counts.get(r) ?? 0) + 1);
+  let best = reps[0]!;
+  for (const [value, count] of counts) {
+    const bestCount = counts.get(best) ?? 0;
+    if (count > bestCount || (count === bestCount && value > best)) best = value;
+  }
+  return { sets: reps.length, reps: best };
 }

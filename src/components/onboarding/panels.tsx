@@ -46,19 +46,24 @@ export function Paragraph({ children }: { children: string }) {
  * The overload lesson's card: the same lift on two weeks, the second one 2.5 kg
  * heavier and drawn in blue.
  *
- * The lift and the loads are the PERSON'S OWN when they typed one two screens
- * earlier — which is the whole reason the key-lift screen comes before this
- * one. With nothing typed it falls back to the named example, and the example
- * is a barbell fact (a 2.5 kg jump on a 60 kg bench), not a claim about
- * anybody's training.
+ * The lift, the loads AND the shape of the session are the PERSON'S OWN when
+ * they have given them — the key-lift load they set two screens earlier, or
+ * else the line they wrote on the demo screen (`overloadExample`). With nothing
+ * written it falls back to the named example, and the example is a barbell fact
+ * (a 2.5 kg jump on a 60 kg bench), not a claim about anybody's training.
  */
 export function OverloadCard({
   lift,
+  sets,
+  reps,
   last,
   next,
   unit,
 }: {
   lift: string;
+  /** The shape of the session — the demo line's own when there was one. */
+  sets: number;
+  reps: number;
   last: string;
   next: string;
   unit: string;
@@ -67,14 +72,14 @@ export function OverloadCard({
     <View style={styles.card}>
       <Eyebrow tone="muted">LAST WEEK</Eyebrow>
       <Text style={styles.cardLine} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {`${lift} — 3 × 8 @ ${last} ${unit}`}
+        {`${lift} — ${sets} × ${reps} @ ${last} ${unit}`}
       </Text>
       <View style={styles.cardRule} />
       <Eyebrow tone="muted" style={styles.blueLabel}>
         THIS WEEK
       </Eyebrow>
       <Text style={[styles.cardLine, styles.blueLine]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {`${lift} — 3 × 8 @ ${next} ${unit}`}
+        {`${lift} — ${sets} × ${reps} @ ${next} ${unit}`}
       </Text>
     </View>
   );

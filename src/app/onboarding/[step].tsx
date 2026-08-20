@@ -7,6 +7,7 @@ import {
   commitmentCount,
   liftProjections,
   MAX_KEY_LIFTS,
+  overloadExample,
   PROGRESS_TOTAL,
   progressFilled,
   resolveWeightUnit,
@@ -33,7 +34,13 @@ import { ProjectionCard, ProjectionRow } from '@/components/onboarding/Projectio
 import { SuggestionChips } from '@/components/onboarding/SuggestionChips';
 import { TextField } from '@/components/onboarding/TextField';
 import { PUSH_MS } from '@/components/onboarding/tokens';
-import { serializeDemoEntry, type DemoEntry } from '@/lib/demo-parse';
+import {
+  inWrittenUnit,
+  matchKeyLift,
+  parseDemoEntry,
+  serializeDemoEntry,
+  type DemoEntry,
+} from '@/lib/demo-parse';
 import { markObStepReached, markOnboardingCompleted, setObStepCount } from '@/lib/funnel';
 import { defaultLanguage } from '@/lib/locale';
 import { DUR } from '@/lib/motion';
@@ -43,7 +50,6 @@ import {
   isExperience,
   isGoal,
   isSessionFeel,
-  loadStep,
   normalizeDayMask,
   parseBodyWeight,
   parseLiftLoads,
@@ -273,6 +279,33 @@ export default function OnboardingStep() {
   const selected = step.storeKey ? answers[step.storeKey] : null;
   const headline = stepHeadline(step, answers);
   const subtext = stepSubtext(step, answers);
+
+  const demoEntry = useMemo(() => parseDemoEntry(answers.demoEntry), [answers.demoEntry]);
+
+  /**
+   * THE DEMO LINE ARRIVES ON THE KEY-LIFT SCREEN.
+   *
+   * Somebody who wrote `deadlift 140kg 5,5,5` four screens ago has already
+   * answered "which lifts matter most" and "what do you work with now" — asking
+   * again is the questionnaire the flow is trying to stop being. So the chip is
+   * lit and the stepper is loaded when the screen opens, and every part of it is
+   * still theirs to change.
+   *
+   * ONCE, and only on an untouched screen: `keyLifts` is null until the person
+   * has been here, and the seed writes it, so this cannot fight a choice — not
+   * even the choice to clear the screen (which leaves an empty string, not null).
+   */
+  useEffect(() => {
+    if (step.kind !== 'lifts' || answers.keyLifts != null || !demoEntry) return;
+    const lift = matchKeyLift(demoEntry.exerciseName, step.suggestions ?? []);
+    if (!lift) return;
+    setAnswer('keyLifts', serializeList([lift]));
+    if (demoEntry.weightKg != null && demoEntry.weightKg > 0) {
+      const unitNow = resolveWeightUnit(answers);
+      setAnswer('liftLoads', serializeLiftLoads({ [lift]: inWrittenUnit(demoEntry.weightKg, unitNow) }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step.kind, answers.keyLifts, demoEntry]);
 
   const chosenLifts = useMemo(() => parseList(answers.keyLifts), [answers.keyLifts]);
   const liftLoads = useMemo(() => parseLiftLoads(answers.liftLoads), [answers.liftLoads]);
@@ -532,7 +565,7 @@ export default function OnboardingStep() {
     );
   } else if (step.kind === 'overload') {
     const body = step.body ?? [];
-    const example = overloadExample(chosenLifts[0], liftLoads[chosenLifts[0] ?? ''], unit);
+    const example = overloadExample(answers);
     contentCount = body.length + 2;
     content = (
       <View style={styles.prose}>
@@ -544,9 +577,11 @@ export default function OnboardingStep() {
         <Enter delay={contentDelay(body.length)}>
           <OverloadCard
             lift={example.lift}
-            last={example.last}
-            next={example.next}
-            unit={unit}
+            sets={example.sets}
+            reps={example.reps}
+            last={formatLoad(example.start)}
+            next={formatLoad(example.next)}
+            unit={example.unit}
           />
         </Enter>
         {step.footnote ? (
@@ -704,28 +739,6 @@ export default function OnboardingStep() {
       </OnboardingScreen>
     </>
   );
-}
-
-/**
- * The overload card's two lines. It uses the person's OWN first key lift and
- * the load they set for it whenever both exist — which is why the key-lift
- * screen comes two screens earlier — and otherwise falls back to a named
- * example. The jump is always `loadStep`, the smallest real plate change, which
- * is the fact the whole screen is about.
- */
-function overloadExample(
-  lift: string | undefined,
-  load: number | undefined,
-  unit: 'kg' | 'lb',
-): { lift: string; last: string; next: string } {
-  const step = loadStep(unit);
-  const fallbackLoad = unit === 'lb' ? 135 : 60;
-  const start = load != null && load > 0 ? load : fallbackLoad;
-  return {
-    lift: lift ?? 'Bench press',
-    last: formatLoad(start),
-    next: formatLoad(start + step),
-  };
 }
 
 const styles = StyleSheet.create({

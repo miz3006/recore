@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { releaseEntitlement, resolveEntitlement } from '@/lib/billing/state';
 import { ensureLocalUser } from '@/lib/db/index';
 import { markFirstOpen } from '@/lib/funnel';
+import { seedOnboardingDemo } from '@/lib/onboarding-seed';
 import { startSync, stopSync } from '@/lib/sync/index';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/state/session-store';
@@ -58,6 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (userId) {
       ensureLocalUser(userId);
+      // The line they wrote on the demo screen becomes their first session —
+      // between scoping the database and hydrating the store, so Today opens on
+      // it instead of on an empty page (`lib/onboarding-seed.ts`).
+      seedOnboardingDemo(userId);
       hydrate(userId);
       // ONCE PER SESSION, here and nowhere else (product-direction §2). An
       // entitlement check that runs mid-set or on a write would be a network
