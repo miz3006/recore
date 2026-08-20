@@ -257,15 +257,18 @@ export function NoteSurface() {
   // unresolved line is pending, prose is a quiet note.
   const blocks: React.ReactNode[] = [];
   /**
-   * One exercise per block, separated by a hairline rule — the list reads as a
-   * ledger instead of a stack of floating paragraphs, which is what tells the
-   * eye that each line is now a separate RECORD. The rule is inset past the
-   * check column (the platform list convention) so the marks stay a clean
-   * vertical run, and it is a SEPARATOR, never a border: the first block has no
-   * rule above it and nothing is boxed.
+   * One exercise per block, and **nothing is drawn between two of them** (v6,
+   * design skill §Structure: *"The record has no cards and no dividers."*).
+   *
+   * There was a hairline here, inset past the check column, and it was doing
+   * two jobs: telling the eye that each line is a separate RECORD, and giving
+   * the list a ledger's rhythm. The first job is done by the check marks — they
+   * are a vertical run of one mark per record — and by the 24 points of air
+   * between two blocks. The second job stopped being possible on the warm
+   * canvas: `tableRule` measures **1.16:1** there, so the line was no longer a
+   * line, it was a rumour of one.
    */
   const pushBlock = (node: React.ReactNode) => {
-    if (blocks.length > 0) blocks.push(<View key={`rule:${blocks.length}`} style={styles.rule} />);
     blocks.push(node);
   };
 
@@ -424,9 +427,12 @@ export function NoteSurface() {
       <Pressable style={styles.fill} onPress={focusInput}>
         {blocks}
 
-        {/* The same rule closes the record and opens the line being written —
-            what is above it is settled, what is below it is not yet. */}
-        {blocks.length > 0 ? <View style={styles.rule} /> : null}
+        {/* WHAT IS SETTLED AND WHAT IS BEING WRITTEN are separated by AIR, not
+            by a line (v6). A rule used to close the record here and it is the
+            one boundary on this page that genuinely means something, so it is
+            not simply dropped: the active line takes a larger top gap than any
+            record-to-record gap, and the largest space on the page is the one
+            that says "everything above this is written down". */}
 
         {/* The active line — where you write. A hollow marker until it settles;
             on a blank canvas there is no marker AND no rail at all, because a
@@ -439,7 +445,11 @@ export function NoteSurface() {
             into its indentation instead of snapping — the same beat in which
             the canvas becomes the ledger. */}
         <Animated.View
-          style={[styles.activeRow, canvas && styles.activeRowCanvas]}
+          style={[
+            styles.activeRow,
+            blocks.length > 0 && styles.activeRowAfterRecord,
+            canvas && styles.activeRowCanvas,
+          ]}
           layout={reduceMotion ? undefined : LinearTransition.duration(DUR.slow)}>
           {canvas ? null : (
             <View style={styles.rail}>
@@ -964,13 +974,6 @@ const styles = StyleSheet.create({
   cardPressed: {
     opacity: 0.6,
   },
-  // The separator between two records. Inset past the check column so the marks
-  // read as one vertical run; `tableRule` is the token for exactly this (§5.1).
-  rule: {
-    height: StyleSheet.hairlineWidth,
-    marginLeft: RAIL_W + spacing.sm,
-    backgroundColor: color.tableRule,
-  },
   rail: {
     width: RAIL_W,
     alignItems: 'center',
@@ -1127,6 +1130,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     paddingVertical: spacing.md,
+  },
+  /** The boundary the hairline used to draw: the gap above the line being
+   * written is larger than any gap between two settled records, so the page
+   * still says where the record stops. */
+  activeRowAfterRecord: {
+    paddingTop: spacing.xxl,
   },
   /** The blank page opens like a new note: the line at the TOP, hard against
    * the body's own left margin — no rail column to indent past, no gap to sit

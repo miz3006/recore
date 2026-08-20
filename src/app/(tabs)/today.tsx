@@ -25,14 +25,24 @@ import { useHasEntries, useSession } from '@/state/session-store';
 /**
  * Today — the default tab and 85% of the time spent in Recore (CLAUDE.md §5.1).
  *
- * "Recore Light" frames 01–03: a warm paper canvas — the nav row (wordmark ·
- * day pill · settings), a blank page you write your workout into, and a bottom
- * that belongs to the keyboard alone (the accessory bar while composing, and
- * nothing at all at rest — see the 18 Aug ruling below).
+ * A warm paper canvas: the nav row with its floating day pill, a blank page you
+ * write your workout into, and a bottom that belongs to the keyboard alone (the
+ * accessory bar while composing, and nothing at all at rest — see the 18 Aug
+ * ruling below).
+ *
+ * ## The three layers, and nothing else (v6, design skill §Structure)
+ *
+ * **canvas (the world) → ink text (the record) → white pills (the controls).**
+ * The screen's own background is `color.canvas` — it was `surface` white for
+ * the three days the app had no canvas, which made the page and the pills on it
+ * the same object. Everything that floats above the page is a white pill with
+ * the warm `shadow.card`: the day pill, the accessory circles, the Finish
+ * button. **Everything that IS the record is bare** — no card, no fill, no
+ * border, and since this pass no rule between two entries either
+ * (`note-surface.tsx`). What separates one record from the next is air.
  *
  * This used to be `app/index.tsx`, which was Home *and* the funnel dispatcher.
- * The dispatcher stayed behind at `/`; everything below is unchanged except for
- * the tab bar's clearance at the bottom.
+ * The dispatcher stayed behind at `/`.
  */
 export default function Today() {
   const insets = useSafeAreaInsets();
@@ -92,9 +102,15 @@ export default function Today() {
 
   return (
     <View style={styles.root}>
-      {/* The canvas is a surface, not a flat fill (§C): three near-white tones
-          a couple of units apart, drifting over forty-two seconds, behind
-          everything and still under Reduce Motion. */}
+      {/* The canvas is a surface, not a flat fill: three tones a fraction apart
+          on the page diagonal — peach at the top-left, lavender-pink at the
+          bottom-right. It is STATIC (skill §Canvas: "diagonal, subtle, static,
+          and never animates"), so there is nothing here for Reduce Motion to
+          turn off. It renders behind everything and takes no touches.
+
+          Today is still the only screen that mounts it; every other screen
+          draws the flat `color.canvas`, which is the middle stop of this very
+          gradient, so the two never disagree by more than 1.007:1. */}
       <PaperField />
 
       <SafeAreaView
@@ -218,7 +234,10 @@ export default function Today() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.surface,
+    // THE PAGE. `PaperField` draws the gradient over it; this is what shows
+    // wherever the gradient cannot render, and what the lapsed branch above
+    // (which mounts no field) sits on.
+    backgroundColor: color.canvas,
   },
   flex: {
     flex: 1,

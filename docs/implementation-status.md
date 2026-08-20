@@ -892,6 +892,55 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — v6 Phase 3, screen 1: Today stands on the canvas and the record loses its
+  last line.** Three files: `app/(tabs)/today.tsx`, `components/note-surface.tsx`,
+  `components/read-only-ledger.tsx`. Nothing outside Today was touched.
+  - **The screen's own background was `color.surface` — white — and is now `color.canvas`.**
+    That one line is most of what the eye will notice: for the three days the app had no canvas,
+    the page and the white pills on it were the same object, so the day pill, the accessory
+    circles and the Finish button had nothing to float above. They do now, and the warm
+    `shadow.card` they already carry is suddenly doing the job it was written for. `PaperField`
+    draws the static diagonal gradient over the fill; the flat value under it is the gradient's
+    own middle stop, so the two can never disagree by more than **1.007:1**.
+  - **The record has no dividers any more** (`note-surface.tsx`, skill §Structure). Two hairlines
+    went. The first sat between every pair of settled exercises; it was doing two jobs, and the
+    first — telling the eye that each line is a separate RECORD — is already done by the column
+    of check marks and by the 24 points of air between blocks. The second job stopped being
+    possible: `tableRule` measures **1.16:1** on the warm canvas, so the line was not a line, it
+    was a rumour of one. The second hairline closed the record and opened the line being
+    written, and that boundary genuinely means something, so it is **not dropped but re-drawn in
+    air**: the active line now takes a 24 pt top gap — larger than any record-to-record gap — so
+    the biggest space on the page is still the one that says "everything above this is written
+    down". A settled entry block measures 64–72 pt, which is the row height the skill asks for,
+    and it got there without changing a single font or padding.
+  - **The lapsed record is the first surface on the `Row` primitive.** `read-only-ledger.tsx`'s
+    session list was a hand-rolled row with its own title/meta/volume styles and a
+    `borderBottomColor` rule under every session; it is now `<Row name detail value unit />` —
+    the day in ink on the left, "3 exercises · 12 sets" under it, the tonnage on the right in the
+    reading face with **`kg` as its own smaller, lighter word**, and nothing drawn between two
+    sessions. Five styles were deleted rather than restyled. The screen's background moved to the
+    canvas with Today's, and its **one card** — the entitlement banner, which is a statement with
+    two buttons in it rather than a row of the record — gained `shadow.card`, because on cream
+    its `#D5D5D5` hairline measures 1.40:1 and was no longer an edge.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified: device QA** — cream behind a live
+    composer, whether the record still reads as a ledger with no rules in it, and whether the
+    24 pt settled/live boundary is legible without its line.
+  - **Noticed on this screen and deliberately not fixed:**
+    - **`summary-pill.tsx` stays unmounted.** MIGRATION's Today row expects "the date pill,
+      summary pill and NL input bar float as white pills", but the pill was removed by the owner
+      on 18 Aug and with it the only door to `session-summary-sheet` and to **"Save as a split
+      day"** (`save-split.tsx`). Remounting it is a feature decision, not a restyle, so it waits
+      for the owner. Both files are styled for v6 and ready if it comes back.
+    - **Three components are orphaned** — nothing in the app imports `empty-note-cards.tsx`,
+      `ghost-prediction.tsx` or `session-receipt.tsx`. They carry v6 tokens now but no screen
+      draws them, so their bare-row restyle would be work against a surface nobody sees.
+    - **Today's six sheets are untouched** (`fix`, `check-in`, `entry-note`, `entry-actions`,
+      `trial-reminder`, `trial-started`). MIGRATION groups every sheet in one row of its own and
+      they share one chrome, so they are one pass rather than six screens' worth of fragments.
+    - **`PaperField` is still mounted only by Today.** Every other screen draws the flat
+      `color.canvas`. Whether the gradient becomes app-wide is a `_layout.tsx` decision and it
+      changes what `scroll-edge`'s fade has to match.
 - **20 Aug 2026 — v6 Phase 2b: every shared component inherits the tokens, and the reasoning
   card exists.** 50 files touched, all under `src/components/`. **No screen was touched** —
   `src/app/` is untouched by this pass, so the funnel's and the paywall's own call sites still

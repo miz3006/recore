@@ -16,16 +16,16 @@ import {
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
-  monoText,
   radius,
   readingStyle,
+  shadow,
   spacing,
   TAB_BAR_CLEARANCE,
   type,
 } from '@/lib/theme';
 import { labelForDay, useSession } from '@/state/session-store';
 
-import { AppButton } from './primitives';
+import { AppButton, Row } from './primitives';
 
 /**
  * The lapsed surface (CLAUDE.md §12.2, PLAN B4) — what Today becomes when the
@@ -219,27 +219,23 @@ export function ReadOnlyLedger() {
         ) : null}
       </View>
 
-      {/* The record itself — browsable, exportable, never hostage. */}
+      {/* The record itself — browsable, exportable, never hostage, and drawn as
+          the app's bare `Row`: the day in ink on the left, what it held under
+          it, the tonnage on the right in the reading face with `kg` a step
+          smaller and lighter beside it. No card and no rule between two
+          sessions — this is the record, and the record is typography on the
+          canvas (skill §Structure). */}
       <View style={styles.list}>
-        {sessions.map((s, i) => (
-          <View
+        {sessions.map((s) => (
+          <Row
             key={s.workoutId}
-            style={[styles.sessionRow, i < sessions.length - 1 && styles.sessionRule]}>
-            <View style={styles.sessionText}>
-              <Text style={styles.sessionTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {labelForDay(s.day)}
-              </Text>
-              <Text style={styles.sessionMeta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {s.exercises} {s.exercises === 1 ? 'exercise' : 'exercises'} · {s.sets}{' '}
-                {s.sets === 1 ? 'set' : 'sets'}
-              </Text>
-            </View>
-            {s.volume > 0 ? (
-              <Text style={styles.sessionVolume} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {s.volume.toLocaleString('en-US')} kg
-              </Text>
-            ) : null}
-          </View>
+            name={labelForDay(s.day)}
+            detail={`${s.exercises} ${s.exercises === 1 ? 'exercise' : 'exercises'} · ${s.sets} ${
+              s.sets === 1 ? 'set' : 'sets'
+            }`}
+            value={s.volume > 0 ? s.volume.toLocaleString('en-US') : undefined}
+            unit={s.volume > 0 ? 'kg' : undefined}
+          />
         ))}
       </View>
 
@@ -256,12 +252,17 @@ export function ReadOnlyLedger() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.surface,
+    // The page, not a surface: this branch replaces the whole of Today, so it
+    // stands on the same canvas Today does.
+    backgroundColor: color.canvas,
   },
   content: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
   },
+  // The one card on this screen, and it earns it: it is a STATEMENT with two
+  // buttons in it, not a row of the record. On cream its `#D5D5D5` hairline is
+  // 1.40:1, so the shadow is what actually gives it an edge.
   banner: {
     backgroundColor: color.surface,
     borderWidth: 1,
@@ -269,6 +270,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     borderCurve: 'continuous',
     padding: spacing.xl,
+    ...shadow.card,
   },
   // Neutral OUTLINED chip — never green, never a filled badge.
   chip: {
@@ -321,34 +323,6 @@ const styles = StyleSheet.create({
   list: {
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.lg,
-  },
-  sessionRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: spacing.lg,
-    paddingVertical: spacing.md + 2,
-  },
-  sessionRule: {
-    borderBottomWidth: 1,
-    borderBottomColor: color.tableRule,
-  },
-  sessionText: {
-    flex: 1,
-  },
-  sessionTitle: {
-    ...type.headline,
-    fontWeight: '600',
-    color: color.textPrimary,
-  },
-  sessionMeta: {
-    marginTop: spacing.xs,
-    ...type.caption,
-    color: color.textSecondary,
-  },
-  sessionVolume: {
-    ...monoText,
-    color: color.textSecondary,
   },
   composer: {
     marginTop: spacing.xl,
