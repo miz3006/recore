@@ -892,6 +892,29 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — v6 Phase 3, screen 4: Lifts.** One file, `app/lifts.tsx`, and it got shorter:
+  **92 lines out, 37 in.**
+  - **The list IS the `Row` primitive** — its second home after the lapsed ledger. The lift's
+    name in ink on the left, "Jul 21 · 14 sessions" under it, the top set of that session on the
+    right in the reading face. Six styles (`row`, `rowSep`, `rowText`, `name`, `meta`, `value`)
+    and the `PRESS_BLEED` constant are **deleted rather than restyled**, along with the
+    `Fragment` wrapper the separator needed.
+  - **No rule between two lifts.** The hairline sibling measured **1.16:1** on the warm canvas,
+    so it was not separating anything; what separates one lift from the next is the air a 68 pt
+    row leaves around it (up from 56). §11.2's density ask is answered by the row being one
+    object rather than by squeezing it.
+  - **Three things came out of muted.** The meta line ("Jul 21 · 14 sessions") is `Row`'s
+    `detail`, which is `textSecondary`; the empty state's invitation and the "Nothing matches X"
+    line moved there too. All three are read, not skipped.
+  - The two inline reading fonts became `readingStyle()`, and the reading itself gained the
+    weight `Row` gives a value — it was `textSecondary` at 400, and the thing the row exists to
+    report now looks like it.
+  - **The press-bleed highlight was vestigial and went with the rest**: the row carried a
+    negative margin, a radius and a comment about a pressed fill, but no `pressedStyle` — there
+    was no highlight to bleed. `Row`'s press-scale is the whole feedback now.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified: device QA** — chiefly whether a long
+    list still reads as a list with no rules in it at sixty rows.
 - **20 Aug 2026 — the lift sheet: one blue, one summary card** (owner, on device, pointing at
   `ExerciseSheet` opened from Progression: *"popravi da je tudi modra kot v Progression … in tudi
   summary redizajniraj tako, da bo enak kot v Nextu"*).

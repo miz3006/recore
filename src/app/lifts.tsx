@@ -1,33 +1,33 @@
 import { useFocusEffect } from 'expo-router';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { FadeSlideIn, PressableScale } from '@/components/motion';
+import { FadeSlideIn } from '@/components/motion';
+import { Row } from '@/components/primitives';
 import { StubScreen } from '@/components/stub-screen';
 import { listLifts, type LiftRow } from '@/lib/db/lifts';
 import { tap } from '@/lib/haptics';
 import { getPrimaryLift, hasPinnedPrimaryLift, markPrimaryLiftPinned } from '@/lib/prefs';
 import { fmtNumber } from '@/lib/parse/summarize';
-import {
-  color,
-  fonts,
-  hairline,
-  MAX_FONT_SCALE,
-  moderateScale,
-  radius,
-  spacing,
-  type,
-} from '@/lib/theme';
+import { color, MAX_FONT_SCALE, radius, readingStyle, spacing, type } from '@/lib/theme';
 import { labelForDay, useSession } from '@/state/session-store';
 
 /**
  * Lifts (CLAUDE.md §5.1 — "How is my bench going?"), the second tab.
  *
  * There is no exercise library to browse (§1.1), so this list IS the library:
- * every exercise the user has ever named, most recent first. §11.2 asks for
- * density — a lifter with 60 exercises should see twelve rows, not five — so a
- * row is one line of name plus one muted line of when and what, and nothing is
- * a card.
+ * every exercise the user has ever named, most recent first.
+ *
+ * **It is the app's `Row`** (design skill §Structure): the lift's name in ink
+ * on the left, when it was last done and how deep the record goes under it, the
+ * top set of that session on the right in the reading face. No card, no fill,
+ * and — since 20 Aug 2026 — **no rule between two lifts**. The hairline that
+ * used to sit between them measured 1.16:1 on the warm canvas, and what
+ * separates one lift from the next is the air a 68 pt row leaves around it.
+ *
+ * §11.2's density ask is answered by the row being ONE object rather than by
+ * squeezing it: a lifter with sixty exercises still scans a single column of
+ * names with a single column of readings beside it.
  *
  * Tapping a row opens the Lift detail sheet that already exists (the same one
  * the composer's gutter opens), which is where the e1RM curve, the PR and the
@@ -36,9 +36,6 @@ import { labelForDay, useSession } from '@/state/session-store';
 
 /** Below this many lifts a search field is furniture, not a tool. */
 const SEARCH_FLOOR = 7;
-
-/** How far a pressed row's highlight bleeds past its content (see `row`). */
-const PRESS_BLEED = spacing.sm;
 
 /** The right-aligned mono reading — the top set of the last session. */
 function topSetText(l: LiftRow): string {
@@ -142,36 +139,18 @@ export default function Lifts() {
           // One reveal for the whole list, not one per row: a sixty-row stagger
           // is entertainment, and §8 only allows motion that explains.
           <FadeSlideIn>
-            {shown.map((l, i) => (
-              // The rule is a SIBLING, not a border on the row (the You screen's
-              // pattern): a bordered row cannot take a corner radius without the
-              // hairline curving with it, and without a radius the pressed fill
-              // is a hard grey rectangle.
-              <Fragment key={l.key}>
-                {i > 0 ? <View style={styles.rowSep} /> : null}
-                <PressableScale
-                  haptic="none"
-                  activeScale={0.98}
-                  onPress={() => {
-                    tap();
-                    openExerciseSheet(l.canonical);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${l.canonical}, ${topSetText(l)}, ${metaText(l)}`}
-                  style={styles.row}>
-                  <View style={styles.rowText}>
-                    <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                      {l.canonical}
-                    </Text>
-                    <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                      {metaText(l)}
-                    </Text>
-                  </View>
-                  <Text style={styles.value} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {topSetText(l)}
-                  </Text>
-                </PressableScale>
-              </Fragment>
+            {shown.map((l) => (
+              <Row
+                key={l.key}
+                name={l.canonical}
+                detail={metaText(l)}
+                value={topSetText(l)}
+                spoken={`${l.canonical}, ${topSetText(l)}, ${metaText(l)}`}
+                onPress={() => {
+                  tap();
+                  openExerciseSheet(l.canonical);
+                }}
+              />
             ))}
           </FadeSlideIn>
         )}
@@ -200,48 +179,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
-  row: {
-    // minHeight, never height: a name at accessibilityLarge has to be able to
-    // grow the row instead of being cropped by it.
-    minHeight: moderateScale(56),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.lg,
-    paddingVertical: spacing.md,
-    // The press highlight bleeds toward the screen edge and is rounded, so a
-    // tap lights the row up instead of drawing a hard grey box inside the
-    // list's padding. Content stays put: the margin is paid back as padding.
-    marginHorizontal: -PRESS_BLEED,
-    paddingHorizontal: PRESS_BLEED,
-    borderRadius: radius.sm,
-    borderCurve: 'continuous',
-  },
-  rowSep: {
-    height: hairline,
-    backgroundColor: color.tableRule,
-  },
-  rowText: {
-    flexShrink: 1,
-  },
-  name: {
-    ...type.body,
-    color: color.textPrimary,
-  },
-  meta: {
-    ...type.caption,
-    color: color.textMuted,
-  },
-  value: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
-    fontSize: type.subhead.fontSize,
-    color: color.textSecondary,
-    flexShrink: 0,
-  },
+  // The row, the rule between two of them, the name, the meta line and the
+  // reading all live in `Row` now (`components/primitives.tsx`) — six styles
+  // deleted rather than restyled, and the list is the primitive's second home
+  // after the lapsed ledger.
   emptyNote: {
     ...type.subhead,
-    color: color.textMuted,
+    // An empty state INVITES an action; it is read, not skipped.
+    color: color.textSecondary,
   },
   emptyExample: {
     marginTop: spacing.md,
@@ -253,14 +198,14 @@ const styles = StyleSheet.create({
     backgroundColor: color.surfaceHigh,
   },
   emptyExampleText: {
-    fontFamily: fonts.reading,
-    fontVariant: ['tabular-nums'],
+    ...readingStyle('400'),
     fontSize: type.subhead.fontSize,
     color: color.textSecondary,
   },
   noMatch: {
     ...type.subhead,
-    color: color.textMuted,
+    // It reports the result of a search someone just ran — information.
+    color: color.textSecondary,
     paddingTop: spacing.lg,
   },
 });
