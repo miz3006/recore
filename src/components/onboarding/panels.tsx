@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Eyebrow } from '@/components/primitives';
 import { color, hairline, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 
-import { BRAND_CARD, INK_CARD } from './tokens';
+import { BRAND_CARD, CARD_FILL } from './tokens';
 
 /**
  * The v3 flow's flat panels — the pieces of the design that are pictures made
@@ -149,11 +149,14 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   card: {
-    backgroundColor: INK_CARD,
+    backgroundColor: CARD_FILL,
     borderRadius: radius.xl,
     borderCurve: 'continuous',
     padding: spacing.lg,
     gap: spacing.xs,
+    // A white surface on the canvas needs an edge to exist: it is 1.05:1 by
+    // tone (skill §Spacing, radii, elevation).
+    ...shadow.card,
   },
   cardLine: {
     ...type.headline,

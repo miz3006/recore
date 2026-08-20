@@ -20,11 +20,12 @@ import {
   moderateScale,
   radius,
   readingStyle,
+  shadow,
   spacing,
   type,
 } from '@/lib/theme';
 
-import { INK_CARD, RISE_PX } from './tokens';
+import { CARD_FILL, RISE_PX } from './tokens';
 
 /**
  * The one animated promise in the funnel (Claude Design canvas, 13 Aug 2026 —
@@ -157,15 +158,12 @@ function Reveal({ reduce }: { reduce: boolean }) {
             </Text>
           </View>
         </View>
-        {/* The wipe is the ROW's own colour, built the way the row is built:
-            the page underneath, and the same ink wash over it. Painting it as
-            one flat fill meant naming a blended hex, and it was `surface` white
-            — which was 1.1:1 off the row on the old white page and is 1.1:1 off
-            it in the wrong HUE now that the page is cream. Two views cost
-            nothing and cannot drift. */}
-        <Animated.View style={[styles.cover, coverStyle]} pointerEvents="none">
-          <View style={styles.coverWash} />
-        </Animated.View>
+        {/* The wipe is the row's own colour. That used to take two stacked views
+            — the page, then the ink wash over it — because the row was a 5 %
+            wash and no single flat fill matched it without naming a blended
+            hex. The row is a white surface now, so the cover is one view again
+            and matches by construction. */}
+        <Animated.View style={[styles.cover, coverStyle]} pointerEvents="none" />
       </View>
     </>
   );
@@ -195,11 +193,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
-    backgroundColor: INK_CARD,
+    backgroundColor: CARD_FILL,
     borderRadius: radius.lg,
     borderCurve: 'continuous',
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.lg,
+    // A white surface on the canvas needs an edge to exist: it is 1.05:1 by
+    // tone (skill §Spacing, radii, elevation).
+    ...shadow.card,
   },
   exercise: {
     ...type.headline,
@@ -224,11 +225,7 @@ const styles = StyleSheet.create({
   },
   cover: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: color.canvas,
+    backgroundColor: CARD_FILL,
     transformOrigin: 'right',
-  },
-  coverWash: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: INK_CARD,
   },
 });

@@ -1,10 +1,10 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { COMMIT_WEEKS, projectionSeries } from '@/lib/onboarding';
-import { alpha, color, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { alpha, color, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 
 import { formatLoad } from './LiftLoadRow';
-import { INK_CARD } from './tokens';
+import { CARD_FILL } from './tokens';
 
 /**
  * The flow's last screen: what one lift could stand at after the commitment
@@ -137,18 +137,24 @@ const CHART_HEIGHT = moderateScale(96);
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: INK_CARD,
+    backgroundColor: CARD_FILL,
     borderRadius: radius.xl,
     borderCurve: 'continuous',
     padding: spacing.lg,
+    // A white surface on the canvas needs an edge to exist: it is 1.05:1 by
+    // tone (skill §Spacing, radii, elevation).
+    ...shadow.card,
   },
   row: {
-    backgroundColor: INK_CARD,
+    backgroundColor: CARD_FILL,
     borderRadius: radius.xl,
     borderCurve: 'continuous',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     gap: 2,
+    // A white surface on the canvas needs an edge to exist: it is 1.05:1 by
+    // tone (skill §Spacing, radii, elevation).
+    ...shadow.card,
   },
   label: {
     ...type.footnote,

@@ -1,4 +1,4 @@
-import { alpha, color, moderateScale } from '@/lib/theme';
+import { alpha, blend, color, moderateScale } from '@/lib/theme';
 
 /**
  * The onboarding surface's own tokens — the mascot-led restyle (owner's spec,
@@ -38,28 +38,22 @@ import { alpha, color, moderateScale } from '@/lib/theme';
  */
 
 /**
- * Soft card fill: option rows, the value cards, the notification preview.
+ * THE FUNNEL'S CARD IS A WHITE SURFACE (owner, on device, 20 Aug 2026).
  *
- * Five per cent of ink used to land on exactly the system's grouped canvas
- * (#F2F2F7) — the grey the design drew these rows in. That canvas is gone: on
- * the warm `canvas` the same wash resolves to **#F1EEE9**, a warm grey a step
- * down from the page, which is still the row the design asks for.
+ * It was `INK_CARD` — ink at 5 % — which RECESSED about 1.1:1 from the page,
+ * first from white and then from the cream canvas. v6 says the opposite: every
+ * interactive thing floats as a white pill with `shadow.card`, and onboarding
+ * option rows are named among the sanctioned cards. So an option row, a value
+ * card, a field, a chip and the notification preview are all `color.surface`
+ * plus the warm shadow now, and the funnel finally reads like the rest of the
+ * app instead of like a screen that recesses where everything else lifts.
  *
- * ## THE ONE OPEN QUESTION IN THE FUNNEL (owner, on device)
- *
- * v6 says everything interactive floats as a white pill with `shadow.card`, and
- * names onboarding option rows among the sanctioned cards. These rows do the
- * opposite: they RECESS, at about **1.1:1 from the page**. That ratio is
- * unchanged by the canvas — ink at 5 % was 1.1:1 from white too — so this is
- * not a regression, it is a look that has always been this quiet, and it is why
- * the change was not made blind.
- *
- * Switching them to `surface` + `shadow.card` is a real change across thirteen
- * screens and it also moves what `OptionRow`'s selection animation interpolates
- * FROM, so it wants to be one decision taken with the flow in hand rather than
- * arithmetic. Until it is taken, the wash stays.
+ * The name stays `CARD_FILL` rather than `color.surface` at each call site
+ * because the row's UNSELECTED BORDER is drawn in it too — a border in the
+ * card's own fill is how the row reads as a plain card until it is chosen, and
+ * that only stays true if the two are one name.
  */
-export const INK_CARD = alpha(color.accent, 0.05);
+export const CARD_FILL = color.surface;
 /** Chrome circle: the back button. */
 export const INK_CHROME = alpha(color.accent, 0.06);
 /** Empty track: the progress bar, the idle switch. */
@@ -73,17 +67,22 @@ export const INK_RING = alpha(color.accent, 0.22);
 
 /**
  * The wash behind a CHOSEN option row — brand at 8 %, which is the lightest
- * tint that still reads as "this one" beside four grey rows without competing
+ * tint that still reads as "this one" beside four white rows without competing
  * with the filled CTA underneath them.
  *
- * The strength was set against `#007AFF`; Volt `#0B5CD6` is a deeper blue, so
- * 8 % of it is a fraction stronger at the same number. Re-judge on device
- * rather than by arithmetic — this wash carries no text, so there is no ratio
- * to clear, only a weight to match.
+ * **`blend`, not `alpha`.** The row's background ANIMATES to this value, and a
+ * translucent 8 % would composite against the page rather than against the
+ * white card it is drawn on — so the card's own white would silently drop out
+ * at the end of the transition. Resolved over `surface` it is `#EBF2FC`, which
+ * is what the eye was supposed to get either way.
+ *
+ * The strength was set against `#007AFF`; Volt is a deeper blue, so 8 % of it
+ * is a fraction stronger at the same number. It carries no text, so there is no
+ * ratio to clear — only a weight to judge on device.
  */
-export const BRAND_WASH = alpha(color.brand, 0.08);
+export const BRAND_WASH = blend(color.brand, 0.08, color.surface);
 /** The commitment screen's stat card, one step lighter than a chosen row. */
-export const BRAND_CARD = alpha(color.brand, 0.06);
+export const BRAND_CARD = blend(color.brand, 0.06, color.surface);
 
 /** Selected-state border. Constant width, animated colour: a border that grows
  * would move the label under it, and product-direction §4.3 bans animating a

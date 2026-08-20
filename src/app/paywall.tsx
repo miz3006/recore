@@ -26,7 +26,7 @@ import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
 import { IllustrationSlot } from '@/components/onboarding/IllustrationSlot';
 import { PrimaryCta } from '@/components/onboarding/PrimaryCta';
 import {
-  INK_CARD,
+  CARD_FILL,
   RISE_PX,
   SELECT_BORDER,
   STAGGER_MS,
@@ -58,6 +58,7 @@ import {
   moderateScale,
   radius,
   readingStyle,
+  shadow,
   spacing,
   type,
 } from '@/lib/theme';
@@ -1038,16 +1039,19 @@ const styles = StyleSheet.create({
   },
   plan: {
     flex: 1,
-    backgroundColor: INK_CARD,
+    backgroundColor: CARD_FILL,
     borderRadius: radius.xl,
     borderCurve: 'continuous',
     borderWidth: SELECT_BORDER,
     // Invisible until chosen: the same colour as the fill it edges.
-    borderColor: INK_CARD,
+    borderColor: CARD_FILL,
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.md,
     alignItems: 'center',
     gap: 3,
+    // A white surface on the canvas needs an edge to exist: it is 1.05:1 by
+    // tone (skill §Spacing, radii, elevation).
+    ...shadow.card,
   },
   /**
    * The travelling selection edge. Absolutely positioned with no children, so

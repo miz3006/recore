@@ -3,9 +3,9 @@ import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reani
 
 import { PressableScale } from '@/components/motion';
 import { DAY_LABELS, hasDay } from '@/lib/onboarding';
-import { color, MAX_FONT_SCALE, moderateScale, radius, type } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, radius, shadow, type } from '@/lib/theme';
 
-import { INK_CARD } from './tokens';
+import { CARD_FILL } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 /**
@@ -62,7 +62,7 @@ function DayCircle({
   const p = useSelectFill(selected);
 
   const circleStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(p.get(), [0, 1], [INK_CARD, color.brand]),
+    backgroundColor: interpolateColor(p.get(), [0, 1], [CARD_FILL, color.brand]),
   }));
   const labelStyle = useAnimatedStyle(() => ({
     color: interpolateColor(p.get(), [0, 1], [color.textPrimary, color.onInk]),
@@ -100,6 +100,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
+    // A white surface on the canvas needs an edge to exist: it is 1.05:1 by
+    // tone (skill §Spacing, radii, elevation).
+    ...shadow.card,
   },
   label: {
     ...type.caption,

@@ -7,9 +7,9 @@ import Animated, {
 import Svg, { Path } from 'react-native-svg';
 
 import { PressableScale } from '@/components/motion';
-import { color, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 
-import { BRAND_WASH, INK_CARD, INK_RING, SELECT_BORDER } from './tokens';
+import { BRAND_WASH, CARD_FILL, INK_RING, SELECT_BORDER } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 /**
@@ -79,8 +79,8 @@ export function OptionRow({
   const p = useSelectFill(selected);
 
   const rowStyle = useAnimatedStyle(() => ({
-    borderColor: interpolateColor(p.get(), [0, 1], [INK_CARD, color.brand]),
-    backgroundColor: interpolateColor(p.get(), [0, 1], [INK_CARD, BRAND_WASH]),
+    borderColor: interpolateColor(p.get(), [0, 1], [CARD_FILL, color.brand]),
+    backgroundColor: interpolateColor(p.get(), [0, 1], [CARD_FILL, BRAND_WASH]),
   }));
 
   return (
@@ -171,6 +171,9 @@ const styles = StyleSheet.create({
     // A 44 pt target even at the smallest type size, without a fixed height
     // (§14.3, 9 Aug: a fixed `height:` around a label is a defect).
     minHeight: moderateScale(56),
+    // A white surface on the canvas needs an edge to exist: it is 1.05:1 by
+    // tone (skill §Spacing, radii, elevation).
+    ...shadow.card,
   },
   emoji: {
     fontSize: moderateScale(19),

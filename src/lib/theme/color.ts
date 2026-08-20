@@ -279,6 +279,27 @@ export const ink = {
 } as const;
 
 /**
+ * The same colour `alpha()` describes, resolved to an OPAQUE hex over a given
+ * background (20 Aug 2026).
+ *
+ * `alpha()` returns a translucent colour, which is right whenever what is
+ * behind it should show through. It is wrong in two places, and both of them
+ * bit this codebase:
+ *
+ * 1. **A fill that has to HIDE what is under it** — the onboarding parse demo's
+ *    wipe was painted white because a 5 % wash cannot cover anything.
+ * 2. **A value an animation interpolates TO on a stacked view.** A row whose
+ *    background animates to `alpha(brand, .08)` composites that 8 % against the
+ *    PAGE, not against the white card it is drawn on, so the card's own white
+ *    silently drops out at the end of the transition.
+ *
+ * Both need the resolved colour rather than the recipe. Both arguments must be
+ * `#RRGGBB`; there is no alpha in the output by construction.
+ *
+ * **Never call this inside a worklet** — same rule as `alpha()` below, and for
+ * the same reason. Precompute it into a module constant.
+ */
+/**
  * Apply an alpha to a hex color. Used to let readings recede — e.g. parsed
  * gutter numbers sit at ~70% opacity so they stay quiet until looked at.
  *
@@ -286,6 +307,18 @@ export const ink = {
  * it from `useAnimatedStyle` crashes on the UI thread at runtime — no gate
  * catches it. Precompute the string outside the hook and close over it.
  */
+export function blend(hex: string, opacity: number, over: string): string {
+  const a = Math.max(0, Math.min(1, opacity));
+  const parse = (h: string): [number, number, number] => {
+    const n = parseInt(h.slice(1), 16);
+    return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+  };
+  const f = parse(hex);
+  const b = parse(over);
+  const out = f.map((v, i) => Math.round(a * v + (1 - a) * b[i]!));
+  return `#${out.map((v) => v.toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+}
+
 export function alpha(hex: string, opacity: number): string {
   const a = Math.round(Math.max(0, Math.min(1, opacity)) * 255)
     .toString(16)

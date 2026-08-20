@@ -3,9 +3,9 @@ import { useAnimatedStyle } from 'react-native-reanimated';
 
 import { PressableScale } from '@/components/motion';
 import type { WeightUnit } from '@/lib/prefs';
-import { color, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 
-import { INK_CARD } from './tokens';
+import { CARD_FILL } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 /**
@@ -156,12 +156,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: INK_CARD,
+    backgroundColor: CARD_FILL,
     borderRadius: radius.lg,
     borderCurve: 'continuous',
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.lg,
     minHeight: moderateScale(56),
+    // A white surface on the canvas needs an edge to exist: it is 1.05:1 by
+    // tone (skill §Spacing, radii, elevation).
+    ...shadow.card,
   },
   lift: {
     flex: 1,

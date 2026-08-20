@@ -2,9 +2,9 @@ import { StyleSheet, View } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
 import { PressableScale } from '@/components/motion';
-import { color, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 
-import { INK_CARD } from './tokens';
+import { CARD_FILL } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 /**
@@ -77,7 +77,7 @@ function Chip({
   const off = useSelectFill(disabled);
 
   const chipStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(p.get(), [0, 1], [INK_CARD, color.brand]),
+    backgroundColor: interpolateColor(p.get(), [0, 1], [CARD_FILL, color.brand]),
     opacity: 1 - CHIP_DIM * off.get(),
   }));
   const labelStyle = useAnimatedStyle(() => ({
@@ -111,12 +111,15 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   chip: {
-    backgroundColor: INK_CARD,
+    backgroundColor: CARD_FILL,
     borderRadius: radius.pill,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.lg,
     minHeight: moderateScale(40),
     justifyContent: 'center',
+    // A white surface on the canvas needs an edge to exist: it is 1.05:1 by
+    // tone (skill §Spacing, radii, elevation).
+    ...shadow.card,
   },
   label: {
     ...type.subhead,

@@ -3,9 +3,9 @@ import { Pressable, StyleSheet, Text, TextInput } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle } from 'react-native-reanimated';
 
 import { Icon } from '@/components/icon';
-import { alpha, color, HIT, MAX_FONT_SCALE, moderateScale, radius, spacing, type } from '@/lib/theme';
+import { blend, color, HIT, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 
-import { INK_CARD, SELECT_BORDER } from './tokens';
+import { CARD_FILL, SELECT_BORDER } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -73,8 +73,8 @@ export function TextField({
 
   const p = useSelectFill(focused);
   const fieldStyle = useAnimatedStyle(() => ({
-    borderColor: interpolateColor(p.get(), [0, 1], [INK_CARD, color.brand]),
-    backgroundColor: interpolateColor(p.get(), [0, 1], [INK_CARD, BLUE_FOCUS_WASH]),
+    borderColor: interpolateColor(p.get(), [0, 1], [CARD_FILL, color.brand]),
+    backgroundColor: interpolateColor(p.get(), [0, 1], [CARD_FILL, BRAND_FOCUS_WASH]),
   }));
 
   return (
@@ -126,7 +126,10 @@ export function TextField({
 }
 
 /** The focus wash — blue at 5 %, the lightest tint that still reads as live. */
-const BLUE_FOCUS_WASH = alpha(color.brand, 0.05);
+// `blend`, not `alpha`: the field's background ANIMATES to this, and 5 % of
+// brand drawn translucently would composite against the page instead of
+// against the white field it belongs to.
+const BRAND_FOCUS_WASH = blend(color.brand, 0.05, color.surface);
 
 const styles = StyleSheet.create({
   field: {
@@ -134,12 +137,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     minHeight: moderateScale(58),
-    backgroundColor: INK_CARD,
+    backgroundColor: CARD_FILL,
     borderWidth: SELECT_BORDER,
-    borderColor: INK_CARD,
+    borderColor: CARD_FILL,
     borderRadius: radius.lg,
     borderCurve: 'continuous',
     paddingHorizontal: spacing.xl,
+    // A white surface on the canvas needs an edge to exist: it is 1.05:1 by
+    // tone (skill §Spacing, radii, elevation).
+    ...shadow.card,
   },
   input: {
     flex: 1,
