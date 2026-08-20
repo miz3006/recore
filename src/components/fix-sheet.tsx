@@ -912,7 +912,8 @@ const styles = StyleSheet.create({
     backgroundColor: color.surfaceHigh,
     borderWidth: 1,
     borderColor: color.border,
-    borderRadius: radius.md,
+    // A ROW, so `radius.lg` 20 (skill §Spacing) — `md` 14 is a button's.
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
     paddingLeft: spacing.md + 2,
     paddingRight: spacing.sm,
@@ -952,7 +953,8 @@ const styles = StyleSheet.create({
     backgroundColor: color.surfaceHigh,
     borderWidth: 1,
     borderColor: color.border,
-    borderRadius: radius.md,
+    // A ROW, so `radius.lg` 20 (skill §Spacing) — `md` 14 is a button's.
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
     paddingHorizontal: spacing.sm + 2,
     paddingVertical: spacing.sm,

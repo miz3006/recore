@@ -237,7 +237,9 @@ const styles = StyleSheet.create({
     ...readingStyle('700'),
     fontSize: moderateScale(9),
     letterSpacing: 0.6,
-    color: color.textMuted,
+    // WARM-UP / DROP — it says what a set IS, which is the only thing that
+    // tells warm-ups apart from counted work (§1.1 invariant 5).
+    color: color.textSecondary,
     borderWidth: 1,
     borderColor: color.border,
     borderRadius: 5,

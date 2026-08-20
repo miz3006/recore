@@ -892,6 +892,33 @@ src/app/onboarding` → no matches.
 
 ## Change log
 
+- **20 Aug 2026 — v6 Phase 3: the sheets, in one pass.** Eight files. Most of MIGRATION's sheet
+  row was already spent in Phase 2b — the `readingStyle()` sweep (37 call sites across the
+  sheets), `color.trained` → `color.brand` for every selected and active state, and the
+  `radius.xxl` remap all landed there. What was left is below.
+  - **Five radii were a button's on something that is not a button.** `radius.md` 14 is the
+    button token; `lg` 20 is rows, fields and option rows (skill §Spacing). The check-in note
+    field, the entry-note sheet's option cell and its note field, and the fix sheet's edit row
+    and set row all moved to 20. The fix sheet's three actual buttons — Add set, Save, Cancel —
+    **stay at 14**, which is the point of checking rather than sweeping.
+  - **Nine muted readings became `textSecondary`.** Each one was a number or the label a number
+    depends on, and the skill is explicit that a value in muted is a bug at the call site:
+    the lift sheet's stat units ("kg" beside 163.5), its chart axis (122.5 / 67.5), its
+    "step +2.5 kg", and its history sublines ("same load · Aug 18"); the history sheet's
+    per-month session count; the session sheet's WARM-UP / DROP tag — the only thing that tells
+    a warm-up from counted work; the share card's "+3 more"; and the streak sheet's weekday
+    letters and its "Best · 42". Dates, placeholders and hints stay muted, which is what muted
+    is for.
+  - **The sheets stay WHITE, and that is a deliberate reading of MIGRATION rather than an
+    oversight.** The sheets row says "canvas backdrop", and read as *the sheet's own surface*
+    that would make a cream card float over a cream page separated by nothing but a shadow and a
+    1.4:1 hairline — destroying the detached-card reading the 18 Aug ruling was built on
+    (`bottom-sheet.tsx`: eight points of air down each side, and now eight points of visible
+    PAGE). Read as *the backdrop behind the sheet*, it is the scrim, which `bottom-sheet.tsx`
+    already handles. The second reading is the one that survives contact with the canvas, so
+    sheets are white surfaces on the cream page and their inner cards keep their borders.
+  - Gates: typecheck **pass** · `npm test` **415/415 pass** · lint **pass** ·
+    `npx expo export --platform ios` **pass**. **Unverified: device QA.**
 - **20 Aug 2026 — v6 Phase 3, screen 7: the onboarding funnel.** Five files under
   `app/onboarding/` and `components/onboarding/`.
   - **The funnel stands on the canvas.** `OnboardingScreen`'s root was `color.surface` — white —

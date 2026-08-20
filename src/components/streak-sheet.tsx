@@ -140,7 +140,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     ...type.caption,
     ...readingStyle('400'),
-    color: color.textMuted,
+    // It carries "Best · 42" — a number, so it is not what the eye may skip.
+    color: color.textSecondary,
   },
   week: {
     flexDirection: 'row',
@@ -154,7 +155,9 @@ const styles = StyleSheet.create({
   dow: {
     ...readingStyle('400'),
     fontSize: moderateScale(11),
-    color: color.textMuted,
+    // The weekday letters that label the grid's columns — without them the
+    // grid cannot be read at all.
+    color: color.textSecondary,
   },
   dowToday: {
     color: color.textPrimary,

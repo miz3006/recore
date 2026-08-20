@@ -239,7 +239,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 2,
     paddingHorizontal: spacing.xs,
-    borderRadius: radius.md,
+    // A ROW, so `radius.lg` 20 (skill §Spacing) — `md` 14 is a button's.
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
     borderWidth: hairline,
     borderColor: color.border,
@@ -274,7 +275,8 @@ const styles = StyleSheet.create({
     minHeight: moderateScale(84),
     borderWidth: 1,
     borderColor: color.border,
-    borderRadius: radius.md,
+    // A FIELD, so `radius.lg` 20 (skill §Spacing) — `md` 14 is a button's.
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
     backgroundColor: color.surface,
     paddingHorizontal: spacing.md,

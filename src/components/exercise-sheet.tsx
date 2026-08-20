@@ -832,7 +832,9 @@ const styles = StyleSheet.create({
   statUnit: {
     ...readingStyle('400'),
     fontSize: moderateScale(11),
-    color: color.textMuted,
+    // The unit of a stat a person reads — a step lighter than the number,
+    // never a step past readable (skill §Colour).
+    color: color.textSecondary,
   },
 
   /**
@@ -909,7 +911,9 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     ...readingStyle('400'),
     fontSize: moderateScale(10),
-    color: color.textMuted,
+    // The chart's own domain, printed. It is a NUMBER, and a number in muted
+    // is a bug at the call site.
+    color: color.textSecondary,
   },
   chartFoot: {
     flexDirection: 'row',
@@ -1006,7 +1010,8 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
     ...readingStyle('400'),
     fontSize: moderateScale(12),
-    color: color.textMuted,
+    // "step +2.5 kg" — the increment this lift progresses by. A reading.
+    color: color.textSecondary,
   },
 
   // PR hero card
@@ -1112,7 +1117,9 @@ const styles = StyleSheet.create({
     marginTop: 3,
     ...readingStyle('400'),
     fontSize: moderateScale(11),
-    color: color.textMuted,
+    // "same load · Aug 18" — a comparison AND a date. The comparison is
+    // information, so the line is secondary ink rather than muted.
+    color: color.textSecondary,
   },
   rowValue: {
     ...type.caption,

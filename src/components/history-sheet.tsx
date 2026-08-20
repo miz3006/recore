@@ -341,7 +341,8 @@ const styles = StyleSheet.create({
   monthCount: {
     ...readingStyle('400'),
     fontSize: moderateScale(11),
-    color: color.textMuted,
+    // How many sessions that month holds — a count, so it is read.
+    color: color.textSecondary,
   },
   grid: {
     flexDirection: 'row',

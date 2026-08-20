@@ -443,6 +443,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     ...readingStyle('400'),
     fontSize: 11,
-    color: color.textMuted,
+    // "+3 more" — it says the card is not the whole session.
+    color: color.textSecondary,
   },
 });

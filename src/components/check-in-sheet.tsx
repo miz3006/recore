@@ -515,7 +515,8 @@ const styles = StyleSheet.create({
   // --- anything worth remembering ---
   input: {
     minHeight: moderateScale(96),
-    borderRadius: radius.md,
+    // A FIELD, so `radius.lg` 20 (skill §Spacing) — `md` 14 is a button's.
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
     backgroundColor: color.surfaceHigh,
     paddingHorizontal: spacing.md,
