@@ -288,7 +288,15 @@ export interface FunnelSnapshot {
   onboarding_step_max: number;
   onboarding_steps_total: number;
   onboarding_completed_at: string | null;
-  /** Step 11's answer — the only attribution signal ASO-first distribution has. */
+  /**
+   * The attribution screen's answer (`pref_ob_source`, written by
+   * `completeFlow`) — the only signal ASO-first distribution has for the
+   * difference between a keyword, a video and a friend.
+   *
+   * Read by key rather than through `lib/prefs.ts`, which imports THIS module:
+   * one of the two directions has to stay a string, and a snapshot reading a
+   * key it does not own is the cheaper of the two.
+   */
   source: string | null;
   paywall_shown: number;
   plan_selected: string | null;

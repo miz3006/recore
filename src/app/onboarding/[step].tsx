@@ -72,6 +72,7 @@ import {
   setGoal,
   setName,
   setObLanguage,
+  setObSource,
   setObTracker,
   setPrimaryLift,
   setRecapIntent,
@@ -173,6 +174,12 @@ function completeFlow() {
 
   const notif = answers.notifications;
   if (notif === 'yes' || notif === 'no') setRecapIntent(notif);
+
+  // Where they found Recore — an option id or nothing at all. A skipped screen
+  // writes NOTHING rather than "other": the funnel's denominator has to be able
+  // to tell "did not say" from "somewhere else".
+  const source = answers.attribution?.trim();
+  if (source) setObSource(source);
   setObLanguage(defaultLanguage());
 
   setObStepCount(STEPS.length);

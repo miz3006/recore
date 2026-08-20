@@ -372,6 +372,40 @@ export const STEPS: readonly Step[] = [
     storeKey: 'commitment',
   },
   {
+    /**
+     * WHERE THEY FOUND RECORE — the one question in the flow that changes
+     * nothing the person will see.
+     *
+     * It was deleted on 29 July 2026 for exactly that reason, and it is back on
+     * the owner's ruling of 20 August with the two things that were missing:
+     * a POSITION that earns it — after the commitment and the projection, where
+     * a question reads as a company keeping its own books rather than as
+     * marketing — and a CONSUMER, `pref_ob_source`, which the funnel snapshot
+     * has been reading (and finding empty) ever since.
+     *
+     * Distribution is ASO-first: the store shows which keyword was searched and
+     * nothing at all about the video, the thread or the friend behind an
+     * install. This answer is the only place that difference exists.
+     *
+     * Skippable, and never required — Continue does not wait for it, and an
+     * unanswered screen stores null rather than "other".
+     */
+    slug: 'attribution',
+    kind: 'choice',
+    headline: 'Where did you find Recore?',
+    subtext: "One tap. It helps us know what's working.",
+    options: [
+      { id: 'appstore', emoji: '\u{1F50D}', label: 'App Store search' },
+      { id: 'video', emoji: '\u{1F4F1}', label: 'TikTok / Reels / Shorts' },
+      { id: 'x', emoji: '\u{1F4AC}', label: 'X / Twitter' },
+      { id: 'reddit', emoji: '\u{1F465}', label: 'Reddit' },
+      { id: 'friend', emoji: '\u{1F91D}', label: 'A friend' },
+      { id: 'other', emoji: '\u{1F30D}', label: 'Somewhere else' },
+    ],
+    storeKey: 'attribution',
+    cta: 'Continue',
+  },
+  {
     slug: 'recap',
     kind: 'recap',
     headline: 'Want a recap every Sunday?',

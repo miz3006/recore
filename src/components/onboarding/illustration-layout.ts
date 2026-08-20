@@ -85,6 +85,7 @@ export const ONBOARDING_SLUGS = [
   'key-lifts',
   'overload',
   'commitment',
+  'attribution',
   'recap',
   'projection',
 ] as const;
@@ -169,6 +170,7 @@ export const ILLUSTRATION_LAYOUT: Record<IllustrationSlug, IllustrationLayout> =
   'key-lifts': NEUTRAL,
   overload: NEUTRAL,
   commitment: NEUTRAL,
+  attribution: NEUTRAL,
   recap: NEUTRAL,
   projection: NEUTRAL,
   paywall: NEUTRAL,

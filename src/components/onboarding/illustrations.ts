@@ -89,6 +89,10 @@ export const ILLUSTRATIONS: Partial<Record<IllustrationSlug, Illustration>> = {
   'key-lifts': { kind: 'image', source: require('../../../assets/onboarding/key-lift.png') },
   overload: { kind: 'image', source: require('../../../assets/onboarding/overload.png') },
   commitment: { kind: 'image', source: require('../../../assets/onboarding/commitment.png') },
+  // The drawing the deleted social-proof screen used to carry. It is a room of
+  // people, which is what "where did you find Recore" is a question about — and
+  // it is the one owner drawing that had lost its screen and fit a new one.
+  attribution: { kind: 'image', source: require('../../../assets/onboarding/social-proof.png') },
   recap: { kind: 'image', source: require('../../../assets/onboarding/notifications.png') },
   projection: { kind: 'image', source: require('../../../assets/onboarding/summary.png') },
   // Not a step of `STEPS` — the paywall is its own route, and it reads this

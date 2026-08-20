@@ -51,6 +51,8 @@ const KEYS = {
   barWeight: 'pref_bar_weight_kg',
   obStep: 'pref_ob_step',
   obTracker: 'pref_ob_tracker',
+  /** The attribution screen's answer — read by `getFunnelSnapshot` as `source`. */
+  obSource: 'pref_ob_source',
   obLanguage: 'pref_ob_language',
   weightUnit: 'pref_weight_unit',
   firstAction: 'pref_first_action',
@@ -313,10 +315,26 @@ export function markPrimaryLiftPinned() {
   setMeta(KEYS.liftsPinned, '1');
 }
 
-// The install-source question was DELETED on 29 July 2026 (owner's ruling).
-// Its own comment admitted it was "the one question in the flow that changes
-// nothing the user will see", which is exactly the criterion §5 uses to remove
-// a screen. Attribution is not worth a screen of a stranger's attention.
+/**
+ * WHERE THEY FOUND RECORE (owner's ruling, 20 August 2026).
+ *
+ * The question was deleted on 29 July because it "changes nothing the user will
+ * see" — true, and the reason it now sits AFTER the projection rather than
+ * among a stranger's first taps. What changed is that distribution is ASO-first
+ * and the store's own attribution cannot see the difference between a keyword,
+ * a video and a friend. `getFunnelSnapshot` has been reading this exact key for
+ * that split since July and finding it empty.
+ *
+ * An option id from the attribution screen (`config.ts`), never free text.
+ */
+export function setObSource(source: string) {
+  setMeta(KEYS.obSource, source.trim().slice(0, 40));
+}
+
+export function getObSource(): string | null {
+  const v = getMeta(KEYS.obSource)?.trim();
+  return v ? v : null;
+}
 
 // --- Weekly split (pre-plan) — the schedule model. Default ROTATION ("do the
 // --- next one when you train"); WEEKDAY pins days to the calendar (opt-in).

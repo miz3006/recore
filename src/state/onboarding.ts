@@ -66,7 +66,21 @@ export type AnswerKey =
    * Null when the demo was never completed, or when all the person saw was the
    * canned fallback — nothing the app invents is ever stored here.
    */
-  | 'demoEntry';
+  | 'demoEntry'
+  /**
+   * WHERE THEY FOUND RECORE — one tap, late in the flow, and skippable.
+   *
+   * Distribution is ASO-first, and the store's own attribution stops at the
+   * channel it can see. This is the only signal that separates "found us by
+   * searching" from "came from a video" from "a friend told them", which is the
+   * difference between a keyword to defend and a post to make more of.
+   *
+   * It is the one question in the flow that changes nothing the person will
+   * see, and it is kept anyway — asked AFTER the projection has been earned,
+   * where it reads as a company asking a question rather than as marketing.
+   * Null is a first-class answer: Continue never waits for it.
+   */
+  | 'attribution';
 
 export type Answers = Record<AnswerKey, string | null>;
 
@@ -88,6 +102,7 @@ export const EMPTY_ANSWERS: Answers = {
   keyLifts: null,
   liftLoads: null,
   demoEntry: null,
+  attribution: null,
 };
 
 interface OnboardingAnswersState {
@@ -101,6 +116,17 @@ interface OnboardingAnswersState {
 }
 
 const STORAGE_KEY = 'pref_ob_illustrated';
+
+/**
+ * The attribution screen's 1-based position in the flow (`config.ts`), spelled
+ * out here for the v6 → v7 migration alone.
+ *
+ * A number rather than an import: `config.ts` imports this module for its
+ * answer types, and a store that imported the config back would be a cycle —
+ * and the config only loads inside Metro anyway. If the screen ever moves, this
+ * migration is finished with; it only ever ran once.
+ */
+const ATTRIBUTION_STEP = 13;
 
 const sqliteStorage = {
   getItem: (name: string) => getMeta(name),
@@ -131,11 +157,22 @@ export const useOnboardingAnswers = create<OnboardingAnswersState>()(
       // three new answers (obstacles, key lifts, their loads), and questions
       // the flow no longer asks (rest length, bodyweight). Every stored
       // position is wrong against the new array, so an old snapshot restarts.
-      version: 6,
-      migrate: (persisted, version) =>
-        version < 6
-          ? { answers: EMPTY_ANSWERS, currentStep: 1 }
-          : (persisted as { answers: Answers; currentStep: number }),
+      // v7: the attribution screen (20 Aug 2026) is inserted BEFORE the recap,
+      // so every stored position from there on names a different screen than it
+      // used to. Answers keep — they are keyed by name, not by index — and only
+      // a position inside the shifted tail is moved, onto the new screen itself.
+      version: 7,
+      migrate: (persisted, version) => {
+        if (version < 6) return { answers: EMPTY_ANSWERS, currentStep: 1 };
+        const prior = persisted as { answers: Answers; currentStep: number };
+        if (version < 7) {
+          return {
+            answers: prior.answers,
+            currentStep: prior.currentStep >= ATTRIBUTION_STEP ? ATTRIBUTION_STEP : prior.currentStep,
+          };
+        }
+        return prior;
+      },
       storage: createJSONStorage(() => sqliteStorage),
       partialize: (s) => ({ answers: s.answers, currentStep: s.currentStep }),
       /**
