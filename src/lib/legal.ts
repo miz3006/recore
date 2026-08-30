@@ -16,6 +16,12 @@
  * (§2.1), and account deletion really does delete (PLAN D1). If any of that
  * changes, this file changes in the same commit.
  *
+ * That rule was exercised on 21 August 2026: crash reporting was installed, so
+ * "If Recore crashes" was written the same day. Every fence it describes is a
+ * line of `lib/crash.ts` — no identity, no console breadcrumbs, no session or
+ * performance traffic, and `user` / `request` / `extra` stripped in
+ * `beforeSend`. The policy may never describe a fence the code does not hold.
+ *
  * The voice rule (§15 — "never say AI") is a PRODUCT rule. A privacy policy is
  * the one surface where the mechanism must be named precisely, because a user
  * deciding whether to type into this app is entitled to know exactly whose
@@ -47,7 +53,7 @@ export const APPLE_STANDARD_EULA_URL =
 /** Where a subscription is actually cancelled. Named in both documents. */
 export const MANAGE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
 
-export const LAST_UPDATED = '29 July 2026';
+export const LAST_UPDATED = '21 August 2026';
 
 /**
  * Three documents, one route. `parsing` is not a legal document — it is the
@@ -176,7 +182,7 @@ const PRIVACY: LegalDoc = {
   title: 'Privacy Policy',
   updated: LAST_UPDATED,
   intro:
-    'Recore is a training log. It holds what you typed and the record built from it, and nothing else. There is no advertising, no tracking, and no analytics SDK in this app.',
+    'Recore is a training log. It holds what you typed and the record built from it, and nothing else. There is no advertising, no tracking, and no analytics SDK in this app. The only thing it sends on its own initiative is a crash report when it breaks, and that report carries nothing you wrote — see “If Recore crashes”.',
   sections: [
     {
       heading: 'What stays on your device',
@@ -201,10 +207,11 @@ const PRIVACY: LegalDoc = {
     {
       heading: 'What leaves your device, and why',
       body: [
-        'Three things, all only when you are online:',
+        'Four things, all only when you are online:',
         '· The text of a note, to read it into structure. It goes to Recore’s own server function, which forwards it to Anthropic, the language-model provider that returns the reading. The note is sent as data, it is never written to a log, it is never attached to an error report, and Recore does not use it to train anything.',
         '· A single already-computed sentence, when Recore rephrases the reason for a prescription in your language. The weight itself is always computed on your device by code, never chosen by a model.',
         '· Your Recore account identifier, to RevenueCat, so the app can ask whether your subscription is active. No note text, no training data and no name goes with it. This happens once when you sign in, and again only when you buy or restore.',
+        '· A crash report, to Sentry, if Recore stops working — the error, where in the code it happened, the app version, the operating system and the device model. Nothing you wrote and nothing that identifies you goes with it. See “If Recore crashes” below.',
         'Your account’s own rows also sync to your account when a connection is available. That is a copy of your data for you, not a disclosure to anyone.',
       ],
     },
@@ -215,7 +222,8 @@ const PRIVACY: LegalDoc = {
         '· Anthropic — processes note text to return the structured reading described above, and nothing else.',
         '· Apple — handles sign-in and every payment. Recore never sees your card.',
         '· RevenueCat — records which subscription you hold, so the app can tell whether it is active on any device you sign in on. It receives your Recore account identifier and the purchase details Apple returns. It never receives your notes, your training, your name or your email.',
-        'There is no fifth. We do not sell or share personal data, and we do not disclose it for advertising or cross-app tracking.',
+        '· Sentry — receives a report when the app crashes, and nothing at any other time. It never receives your notes, your training, your name, your email or your account identifier.',
+        'There is no sixth. We do not sell or share personal data, and we do not disclose it for advertising or cross-app tracking.',
       ],
     },
     {
@@ -223,6 +231,15 @@ const PRIVACY: LegalDoc = {
       body: [
         'Recore keeps a handful of plain counters — how far you got in setup, whether you imported a history, how many readings you corrected, whether a prescription was followed. They live in the same local database as your training, they carry no identifier and no note text, and they are included in your export so you can read exactly what they say.',
         'They exist so the product can be improved from evidence instead of guesses. There is no third-party analytics SDK in this app, and no data is sent anywhere for that purpose.',
+      ],
+    },
+    {
+      heading: 'If Recore crashes',
+      body: [
+        'A crash report is the one thing Recore sends without you asking, and only when something has actually broken. Nothing is sent while the app is working, nothing is sent when you open it, and how you use Recore is never measured this way.',
+        'What a report contains: the error, the place in the code it came from, the app version, the operating system version and the device model.',
+        'What it does not contain: your notes, your training, your check-in notes, your name, your email, or any identifier that would let two reports be recognised as the same person. An account is never attached to a crash report.',
+        'The reports go to Sentry and to nobody else, and they are kept only for as long as it takes to fix the fault. This build has no switch to turn them off; if that changes, the date at the top of this page changes with it.',
       ],
     },
     {

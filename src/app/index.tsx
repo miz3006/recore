@@ -9,18 +9,19 @@ import {
   hasImportBeenOffered,
   isOnboardingDone,
 } from '@/lib/prefs';
-import { useOnboardingAnswers } from '@/state/onboarding';
+import { useV2 } from '@/state/onboarding-v2';
 
 /**
  * `/` is the funnel DISPATCHER and nothing else.
  *
  * Because the account is deferred to the end of the funnel (see `_layout.tsx`),
  * this route is reachable signed-out — so it routes:
- *   · onboarding not done            → /onboarding/<step> (the illustrated
- *                                       funnel, resumed where a killed app
- *                                       left off; [step].tsx clamps bad values)
- *   · onboarded, no session          → /paywall (finish it — sign-in is the
- *                                       paywall's forward step)
+ *   · onboarding not done            → /onboarding-v2/<step> (the v2 funnel,
+ *                                       primary since 28 Aug 2026, resumed
+ *                                       where a killed app left off;
+ *                                       [step].tsx clamps bad values)
+ *   · onboarded, no session          → /paywall-v2/plan (finish it — sign-in
+ *                                       is the paywall's forward step)
  *   · entitled, tracker user, import
  *     never offered                  → /import-start (the §2.1 fast path)
  *   · otherwise                      → /today, inside the (tabs) group
@@ -46,15 +47,44 @@ export default function Dispatcher() {
   // Read fresh each render (cheap sync KV) — memoizing would strand the
   // dispatcher on a stale value after onboarding completes or sign-in lands.
   const onboarded = isOnboardingDone();
-  // The illustrated funnel's persisted position — hydrated synchronously from
-  // the same SQLite, so a killed app resumes on the exact step it left.
-  const resumeStep = useOnboardingAnswers((s) => s.currentStep);
+  /**
+   * The v2 funnel's persisted position — hydrated synchronously from the same
+   * SQLite, so a killed app resumes on the exact step it left.
+   *
+   * THE FLOW BEHIND THIS CHANGED ON 28 AUGUST 2026 (owner's ruling): v2 is the
+   * primary onboarding and the illustrated funnel at `/onboarding/` is no
+   * longer dispatched to. It is still reachable from the You tab's development
+   * rows and still works; nothing was deleted. An install that was part-way
+   * through the old flow starts the new one from screen 1 rather than resuming
+   * a position that names a different screen — its answers are untouched, and
+   * the new flow asks its own questions anyway.
+   */
+  const resumeStep = useV2((s) => s.step);
 
-  if (!onboarded) return <Redirect href={`/onboarding/${resumeStep}`} />;
-  // Onboarding is done but there's still no account → the paywall is the gate,
-  // and sign-in is its forward step. The app itself needs a Supabase user,
-  // in development too — the paywall's DEV·SKIP goes to sign-in, not past it.
-  if (!session) return <Redirect href="/paywall" />;
+  /**
+   * NOT ONBOARDED **AND SIGNED OUT** → the funnel. The second half of that
+   * condition is what makes screen 1's "I already have an account" work: a
+   * person who signs in there has an account that already carries their record,
+   * and sending them back to screen 2 to be asked where they log their training
+   * would be the app arguing with them. It also rescues the case where
+   * `ensureLocalUser` wiped this device's meta on an account switch — signed in
+   * with no local onboarding flag is a returning user, not a new one.
+   */
+  return <Redirect href="/next" />; // SIMPASS
+  if (!onboarded && !session) return <Redirect href={`/onboarding-v2/${resumeStep}`} />;
+  /**
+   * Onboarding is done but there's still no account → the paywall is the gate,
+   * and sign-in is its forward step. The app itself needs a Supabase user, in
+   * development too — the paywall's DEV·SKIP goes to sign-in, not past it.
+   *
+   * **v2 IS THE FUNNEL'S PAYWALL SINCE 28 AUGUST 2026** (owner's ruling). The
+   * screen at `src/app/paywall.tsx` is not deleted and still works; it is
+   * reachable from the You tab's development rows, exactly like the illustrated
+   * onboarding it shipped beside. Everything commercial about the two is the
+   * same code — one `fetchOffer`, one `purchase`, one entitlement — so the swap
+   * changes what the screen LOOKS like and nothing about what it promises.
+   */
+  if (!session) return <Redirect href="/paywall-v2/plan" />;
 
   if (
     entitlement === 'entitled' &&

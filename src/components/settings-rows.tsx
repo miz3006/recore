@@ -100,6 +100,7 @@ export function Row({
   label,
   sub,
   value,
+  reading = false,
   labelBold = false,
   danger = false,
   warn = false,
@@ -114,6 +115,10 @@ export function Row({
   label: string;
   sub?: string;
   value?: string;
+  /** The value is a number the app will act on (a rest length, a bar weight, an
+   * hour), not a word — set it in the reading face so it lines up with every
+   * other reading on the screen. Same prop, same meaning as `AccordionRow`'s. */
+  reading?: boolean;
   labelBold?: boolean;
   /** Destructive — the label goes red and the glyph loses its tint. */
   danger?: boolean;
@@ -153,7 +158,10 @@ export function Row({
       </View>
       <View style={styles.rowRight}>
         {value != null ? (
-          <Text style={styles.rowValue} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          <Text
+            style={reading ? styles.rowReading : styles.rowValue}
+            numberOfLines={1}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {value}
           </Text>
         ) : null}
@@ -335,13 +343,28 @@ export function Segmented<T extends string | number>({
   );
 }
 
+/**
+ * ONE GUTTER (28 August 2026, from Numify's Profile Settings — `6474290049/
+ * oth_9q00o`).
+ *
+ * The label and the footnote each carried a `spacing.xs` nudge that the card did
+ * not, so a settings page had two left edges four points apart — small enough to
+ * read as a rendering artefact, large enough to see. The reference has one edge
+ * and hangs the card, its rows' text and everything between off it. So do we
+ * now: **nothing in this file adds to the page's own horizontal padding.**
+ *
+ * ONE GROUP RHYTHM. `section` used to leave 16 pt, which meant a group WITH a
+ * footnote sat 24 pt from the next label and a group without one sat 16 — the
+ * distance between two groups depended on whether the first had something to
+ * say. The footnote is part of its group, so the trailing gap belongs to the
+ * section and is one number.
+ */
 const styles = StyleSheet.create({
   section: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xxl,
   },
   sectionLabel: {
-    marginBottom: spacing.sm - 1,
-    marginLeft: spacing.xs,
+    marginBottom: spacing.sm,
   },
   card: {
     backgroundColor: color.surface,
@@ -462,7 +485,6 @@ const styles = StyleSheet.create({
     lineHeight: lineFor(16),
     color: color.textMuted,
     marginTop: spacing.sm,
-    marginHorizontal: spacing.xs,
   },
   footnoteActive: {
     color: color.textSecondary,

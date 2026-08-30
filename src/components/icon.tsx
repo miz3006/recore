@@ -34,6 +34,13 @@ export type IconName =
   // --- by shape before it is read (Granola / Cosmos / Zocdoc on Mobbin).
   | 'calendar'
   | 'target'
+  // --- Profile's "About you" rows. `target` already resolves to the barbell
+  // --- outline, so the goal row needed a glyph that is actually a target, and
+  // --- a duration and a grouping needed one each. All Ionicons outline, same
+  // --- stroke, so the group reads as one family down its left edge.
+  | 'crosshair'
+  | 'hourglass'
+  | 'layers'
   | 'language'
   | 'plate'
   | 'barbell'
@@ -98,6 +105,9 @@ const MAP: Record<IconName, Glyph> = {
   // settings list is scanned by shape AND hue before it is read. Never filled.
   calendar: { set: 'ion', name: 'calendar-outline' },
   target: { set: 'ion', name: 'barbell-outline' },
+  crosshair: { set: 'ion', name: 'locate-outline' },
+  hourglass: { set: 'ion', name: 'hourglass-outline' },
+  layers: { set: 'ion', name: 'layers-outline' },
   language: { set: 'ion', name: 'language-outline' },
   plate: { set: 'ion', name: 'disc-outline' },
   barbell: { set: 'ion', name: 'barbell-outline' },

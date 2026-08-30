@@ -54,6 +54,9 @@ export type AnalyticsEvent =
   | 'onboarding_commit_held'
   | 'onboarding_notifications_choice'
   | 'onboarding_attribution'
+  /** Screen 1's "I already have an account" was tapped — the funnel's one exit
+   * for somebody who is not new here (28 Aug 2026). */
+  | 'onboarding_sign_in_tap'
   | 'paywall_view'
   | 'paywall_cta_tap';
 

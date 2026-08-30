@@ -12,24 +12,34 @@ progress. It is a calm, personal record that gets more useful as a person trains
 | Document | Role |
 |---|---|
 | **This file** | Operating rules, invariants, AI boundary, gates, build order. Always in context. |
-| **docs/product-direction.md** | The V5.1 product and experience authority: funnel, paywall, onboarding, visual language, motion, AI experience, Progress, measurement. |
-| **docs/implementation-status.md** | What is actually live. Update it in the same change as any feature work. |
+| **docs/implementation-status.md** | What is actually live, surface by surface, with the reasoning behind each ruling and a dated change log. The nearest thing the repository has to a product authority. Update it in the same change as any feature work. |
+| **.claude/skills/recore-design/SKILL.md** | The visual system: canvas, the one blue, PLANNED green, type scale, spacing, radii, elevation, shared components, motion, tone. Binding on new and touched code. |
+| **docs/onboarding-v2-spec.md** | The v2 onboarding flow, and the authority for it alone. **Primary onboarding since 28 August 2026** (owner's ruling; §0 of that file is amended in place). The illustrated flow at `src/app/onboarding/` still exists, still works, and is reachable only from the You tab's development rows. |
+| **docs/spec/onboarding-today-v2.md** | The Today/onboarding spec that preceded it. Superseded where the two disagree. |
 | **V4 document** | Repository inventory, data guarantees, and test gates only. Not a product authority. |
 
+**`docs/product-direction.md` DOES NOT EXIST IN THIS REPOSITORY** (checked 28 August 2026:
+absent from the working tree and never committed on any branch). Earlier versions of this file
+named it as the V5.1 product authority and the §-numbers used below and throughout
+`implementation-status.md` — §2 billing, §5 onboarding, §9 the AI boundary, §12 copy and privacy,
+§13 measurement — refer to its sections. **Treat every such reference as a citation you cannot
+follow.** Where a rule from it matters, it has been quoted into one of the files above; where a
+task needs a section that was never quoted, ask the owner rather than reconstructing it. Do not
+create the file: an invented product authority is worse than a missing one.
 
-**Read the product direction section that matches your task before touching that surface:**
+**Rules that were in §12 and are quoted here because code depends on them:**
 
-| Working on… | Read first |
-|---|---|
-| Billing, paywall, trial, lapsed state | product-direction §2, §6 |
-| Onboarding | §5 |
-| First-open walkthrough | §7 |
-| Today / reflections | §8 |
-| Next brief or any AI prompt/guard | §9 (all of it) |
-| Progress charts | §10 |
-| Profile, calendar, import | §11 |
-| Copy, notifications, privacy | §12 |
-| Analytics events | §13 |
+- **Emoji appear only where a person CHOOSES or WRITES, never where the app REPORTS.**
+  Refined by the owner on 28 August 2026, and enforced in
+  `src/components/onboarding-v2/characters.test.ts`: emoji are a per-screen decision, not a
+  per-option one (all of a list or none of it); one semantic family per screen; consistent
+  visual weight, checked rendered rather than in the source; the glyph must denote the thing
+  the option names, never a mood; numbers, durations, dates, frequencies and abstract states
+  get none; never in headlines, body copy, buttons, progress indicators, explainers or the
+  character's speech; no skin tones, no gendered figures, no flags. An option that declines
+  the question is not part of the family and renders below the list as a ghost row. Brand
+  attribution screens use real marks, not emoji approximations.
+- **No fabricated reviews, ratings, user counts, testimonials or personalisation** — §3 below.
 
 ---
 

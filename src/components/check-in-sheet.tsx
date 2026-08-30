@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { getReflection, getWorkoutById, setReflection } from '@/lib/db/workouts';
 import {
@@ -250,19 +250,31 @@ export function CheckInSheet() {
         </Pressable>
       </View>
 
-      <Text style={styles.title} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        How did it go?
-      </Text>
-      {summary.length > 0 ? (
-        <Text style={styles.summary} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {summary}
+      {/* The sheet's own head doubles as a way to put the keyboard down. The
+          field below is MULTILINE, so its return key writes a newline rather
+          than finishing — tapping the question you are answering is the
+          nearest thing to "I am done typing", and it costs nothing. Not a
+          control to VoiceOver (`accessible={false}`): the two lines stay two
+          readable lines, and the keyboard is dismissed by the rotor there. */}
+      <Pressable accessible={false} onPress={Keyboard.dismiss}>
+        <Text style={styles.title} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          How did it go?
         </Text>
-      ) : null}
+        {summary.length > 0 ? (
+          <Text style={styles.summary} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {summary}
+          </Text>
+        ) : null}
+      </Pressable>
 
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
+        // A scroll puts the keyboard away, and an unhandled tap in here does
+        // too ("handled" only spares taps a child actually took, so the chips
+        // and the effort rows still answer on the first tap).
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         showsVerticalScrollIndicator={false}>
         {/* The lifts, when there is parsed work left to rate. Absent entirely
             before a parse lands (the offline case) and absent when every line

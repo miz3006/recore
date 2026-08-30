@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  Keyboard,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { searchExercises } from '@/lib/db/exercises';
 import { tap, tapMedium } from '@/lib/haptics';
@@ -7,14 +16,13 @@ import { MAX_RIR, MIN_RIR, type ParsedSet } from '@/lib/parse/types';
 import { getWeightUnit } from '@/lib/prefs';
 import {
   color,
-  CONTROL_HEIGHT,
-  ink,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
   readingStyle,
   spacing,
+  textRoom,
   type,
 } from '@/lib/theme';
 import {
@@ -30,6 +38,9 @@ import { useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
 import { Icon } from './icon';
+import { DONE_ACCESSORY, KeyboardDoneBar } from './keyboard-done';
+import { PressableScale } from './motion';
+import { AppButton, Eyebrow } from './primitives';
 
 /**
  * "Fix reading" (wireframe 10): fix what the parser got wrong,
@@ -57,6 +68,34 @@ import { Icon } from './icon';
  * 4. **The alias offer is conditional.** "Always read X as Y" only exists once
  *    the Exercise field has actually changed, with the real target named. Fixing
  *    a weight never again shows a radio group asking about a word.
+ *
+ * ## The 20 August 2026 pass — THE READING IS A READING AGAIN (owner)
+ *
+ * The sheet had become a spreadsheet. Every set arrived as an open form — three
+ * steppers, nine bordered boxes, each on a recessed grey card — so a three-set
+ * line put twenty-one controls on screen before the athlete had touched
+ * anything, and finding the ONE wrong number meant reading a grid of identical
+ * boxes against the quoted line two inches above it.
+ *
+ * 1. **A set is a bare row, and becomes a form where the finger lands.** The
+ *    list now prints the reading the way the ledger card prints it, in the same
+ *    reading face, and exactly one row at a time opens into the steppers. That
+ *    is design skill §Structure taken literally: the record is bare rows, the
+ *    chrome floats, and a screen that is mostly canvas is finished. A
+ *    single-set reading opens expanded — there is nothing to scan.
+ * 2. **No recessed grey.** `surfaceHigh` is the skill's *recessed* tone, for
+ *    segmented containers and pressed states, and it is measurably the wrong
+ *    ground for text: `textSecondary` lands at ~4.0:1 on it and `textMuted`
+ *    lower still, so the SET labels and every `kg` / `reps` / `RIR` on those
+ *    cards failed AA. The open row is `surface` carrying a `border`.
+ * 3. **The sheet names its entry.** Eyebrow + exercise name, the same header
+ *    the ⋯ sheet and the note sheet wear, so the three per-entry surfaces open
+ *    as one family instead of three designs.
+ * 4. **One button, and it is the app's button.** `AppButton` primary — brand
+ *    fill, `shadow.glow`, `CTA_HEIGHT` — instead of a bespoke pill. Cancel is
+ *    gone: it was a fourth way out of a sheet that already dismisses on the
+ *    backdrop, on a downward drag and on the grabber, and it cost a full-width
+ *    slab of the one screen where the content is the point.
  *
  * UNITS. Storage is kilograms everywhere (`lib/units.ts`); this is the first
  * surface to show a pound-user their own pounds, which is also the first place
@@ -158,6 +197,15 @@ export function FixSheet() {
   const [unit, setUnit] = useState<WeightUnit>('kg');
   const [exercise, setExercise] = useState('');
   const [drafts, setDrafts] = useState<SetDraft[]>([]);
+  /**
+   * WHICH SET IS OPEN, and at most one.
+   *
+   * The closed rows are the reading; the open one is the form. Holding a single
+   * index rather than a set of them is the rule, not an optimisation: two open
+   * forms would put the athlete back in front of a grid, which is the thing
+   * this replaced.
+   */
+  const [openSet, setOpenSet] = useState<number | null>(null);
   const exerciseRef = useRef<TextInput>(null);
 
   /**
@@ -180,6 +228,9 @@ export function FixSheet() {
     setUnit(u);
     setExercise(fixTarget.item.exercise);
     setDrafts(fixTarget.item.sets.map((s) => draftOf(s, u)));
+    // One set has no list to scan, so the row that would be tapped first opens
+    // itself. Two or more and the reading leads — you look before you edit.
+    setOpenSet(fixTarget.item.sets.length === 1 ? 0 : null);
     setWordsMode(false);
     // Prefilled from the note as it stands, not from the parse snapshot: the
     // athlete edits the line that is on their screen right now.
@@ -197,7 +248,8 @@ export function FixSheet() {
 
   const saveWords = () => {
     if (!fixTarget) return;
-    tap();
+    // No `tap()` here: `AppButton` fires the commit haptic itself, and two on
+    // one press reads as a stutter.
     replaceNoteLine(fixTarget.line, words);
   };
 
@@ -212,7 +264,6 @@ export function FixSheet() {
   };
 
   const save = () => {
-    tap();
     submitFix(
       exercise,
       drafts.map((d) => setOf(d, unit)),
@@ -261,6 +312,9 @@ export function FixSheet() {
    * are the athlete's words about a set they actually wrote. */
   const addSet = () => {
     tapMedium();
+    // The new row is the one being written, so it opens. `drafts` is this
+    // render's array, so its length IS the index the row lands on.
+    setOpenSet(drafts.length);
     setDrafts((prev) => {
       const last = prev[prev.length - 1];
       const blank: SetDraft = {
@@ -298,6 +352,9 @@ export function FixSheet() {
   const removeSet = (index: number) => {
     tap();
     setDrafts((prev) => prev.filter((_, i) => i !== index));
+    // The open index points into a list that just got shorter: the removed row
+    // closes the form, and everything after it slides up by one.
+    setOpenSet((open) => (open == null || open === index ? null : open > index ? open - 1 : open));
   };
 
   /**
@@ -375,9 +432,24 @@ export function FixSheet() {
       visible={fixTarget !== null}
       onClose={close}
       sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
-      <Text style={styles.title} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        Fix reading
-      </Text>
+      {/* Tapping the sheet's own title puts the keyboard down — the words
+          field is multiline and the steppers open number pads, so neither has
+          a return key that finishes. Not a control to VoiceOver. */}
+      <Pressable accessible={false} onPress={Keyboard.dismiss}>
+        {/* Eyebrow states the JOB, the title states the SUBJECT — the same
+            two-line header the ⋯ sheet and the note sheet wear, at the same
+            sizes, so the three per-entry surfaces read as one family. */}
+        <Eyebrow tone="muted" style={styles.eyebrow}>
+          Fix reading
+        </Eyebrow>
+        <Text
+          style={styles.title}
+          numberOfLines={2}
+          accessibilityRole="header"
+          maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {original || 'This entry'}
+        </Text>
+      </Pressable>
 
       {/* The user's own words. Quoted, not rewritten — unless they ask, which
           is what the link underneath is for. */}
@@ -427,7 +499,13 @@ export function FixSheet() {
       </Pressable>
 
       <ScrollView
+        // Three ways out of every field on this sheet: a scroll (here), a tap
+        // on anything in the sheet that is not itself a control ("handled"
+        // keeps the buttons working on the FIRST tap and lets an unhandled tap
+        // dismiss), and — for the steppers, whose number pads have no return
+        // key — the Done bar mounted at the bottom of this sheet.
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         showsVerticalScrollIndicator={false}
         style={styles.scroll}>
         {/* Everything below repairs the READING. In words mode it is all put
@@ -443,15 +521,20 @@ export function FixSheet() {
           <>
         {/* The chevron is the whole point of the row: it was a text field that
             looked like a label, so nobody knew the name was the thing you could
-            change. Tapping anywhere on the row now opens it for editing. */}
+            change. Tapping anywhere on the row now opens it for editing.
+
+            The label moved OUT of the row and became the section's eyebrow. A
+            label inside the box with the value pushed right is a settings row —
+            a thing you read. This is a field, and a field's value starts where
+            you would begin typing it. */}
+        <Eyebrow tone="muted" style={styles.sectionLabel}>
+          Exercise
+        </Eyebrow>
         <Pressable
           style={styles.fieldRow}
           onPress={() => exerciseRef.current?.focus()}
           accessibilityRole="button"
           accessibilityLabel={`Exercise: ${exercise}. Edit`}>
-          <Text style={styles.fieldLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            Exercise
-          </Text>
           <TextInput
             ref={exerciseRef}
             style={styles.exerciseInput}
@@ -487,18 +570,57 @@ export function FixSheet() {
           </View>
         ) : null}
 
-        {drafts.map((d, i) => (
-          <SetRow
-            key={i}
-            draft={d}
-            index={i}
-            unit={unit}
-            canRemove={drafts.length > 1}
-            onPatch={(patch) => patchDraft(i, patch)}
-            onStep={(field, dir) => step(i, field, dir)}
-            onRemove={() => removeSet(i)}
-          />
-        ))}
+        <View style={styles.sectionHead}>
+          <Eyebrow tone="muted">Sets</Eyebrow>
+          {/* The one line of teaching this sheet needs. A disclosure with no
+              chevron is invisible otherwise, and a chevron on every row would
+              put the chrome back that the rows just lost. `textSecondary`, not
+              muted: this is the only place the disclosure is announced, and
+              muted is 3.36:1 — the ink for what may be SKIPPED, which a hint
+              nobody has read yet is not. */}
+          {drafts.length > 1 ? (
+            <Text style={styles.sectionHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              tap a set to correct it
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={styles.setList}>
+          {drafts.map((d, i) =>
+            openSet === i ? (
+              <SetRow
+                key={i}
+                draft={d}
+                index={i}
+                unit={unit}
+                canRemove={drafts.length > 1}
+                onPatch={(patch) => patchDraft(i, patch)}
+                onStep={(field, dir) => step(i, field, dir)}
+                onRemove={() => removeSet(i)}
+                onCollapse={
+                  drafts.length > 1
+                    ? () => {
+                        tap();
+                        Keyboard.dismiss();
+                        setOpenSet(null);
+                      }
+                    : null
+                }
+              />
+            ) : (
+              <SetLine
+                key={i}
+                draft={d}
+                index={i}
+                unit={unit}
+                onOpen={() => {
+                  tap();
+                  setOpenSet(i);
+                }}
+              />
+            ),
+          )}
+        </View>
 
         {/* Quiet, full-width, under the last row — the shape of "one more of
             those", not a primary action competing with Save. */}
@@ -549,34 +671,26 @@ export function FixSheet() {
           </>
         )}
 
+        {/* The app's primary button, not this sheet's own: brand fill, the one
+            coloured shadow, `CTA_HEIGHT`. Cancel is deliberately absent — the
+            backdrop, a downward drag and the grabber are three ways out
+            already, and a fourth as a full-width slab was the largest object on
+            a sheet whose content is the point. */}
         {wordsMode ? (
-          <Pressable
-            style={[styles.save, !wordsChanged && styles.saveDisabled]}
+          <AppButton
+            label="Save my words"
+            onPress={saveWords}
             disabled={!wordsChanged}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !wordsChanged }}
-            onPress={saveWords}>
-            <Text style={styles.saveText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              Save my words
-            </Text>
-          </Pressable>
+            style={styles.save}
+          />
         ) : (
-        <Pressable
-          style={[styles.save, !canSave && styles.saveDisabled]}
-          disabled={!canSave}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !canSave }}
-          onPress={save}>
-          <Text style={styles.saveText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            Save correction
-          </Text>
-        </Pressable>
+          <AppButton
+            label="Save correction"
+            onPress={save}
+            disabled={!canSave}
+            style={styles.save}
+          />
         )}
-        <Pressable style={styles.cancel} onPress={close}>
-          <Text style={styles.cancelText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            Cancel
-          </Text>
-        </Pressable>
         {/* Destructive, last, alone under the safe pair — the same position and
             treatment the ⋯ sheet gives Delete. Hidden in words mode: removing
             the reading of a line you are in the middle of rewriting is two
@@ -598,17 +712,136 @@ export function FixSheet() {
             : 'Never changes your written words. Corrections stay private to you.'}
         </Text>
       </ScrollView>
+
+      {/* Mounted inside the sheet on purpose: a `BottomSheet` is an RN `Modal`
+          with its own window, and an accessory bar on the screen behind it
+          would never attach to a field in here. */}
+      <KeyboardDoneBar />
     </BottomSheet>
   );
 }
 
+/** "SET 2", or the kind when the set is not a plain working one. One helper so
+ * the closed row and the open one can never disagree about what to call it. */
+function labelOf(d: SetDraft, index: number): string {
+  return d.kind === 'working' ? `SET ${index + 1}` : d.kind.toUpperCase();
+}
+
+/** One value and the word for it — the pair the row prints and VoiceOver
+ * speaks. `num` decides which of the two voices it gets: the reading face for
+ * the number, the app's own for the unit. */
+interface Token {
+  t: string;
+  num: boolean;
+}
+
+/** The reading, as the ledger card writes it: `70 kg × 12`. Distance and
+ * duration sets carry one value and its unit, which is the whole reading. */
+function tokensOf(d: SetDraft, unit: WeightUnit): Token[] {
+  if (d.mode === 'distance') return [{ t: d.distance || '—', num: true }, { t: 'm', num: false }];
+  if (d.mode === 'duration') return [{ t: d.duration || '—', num: true }, { t: 's', num: false }];
+  const out: Token[] = [];
+  if (d.weight.trim()) out.push({ t: d.weight, num: true }, { t: unit, num: false });
+  if (d.reps.trim()) {
+    if (out.length > 0) out.push({ t: '×', num: false });
+    out.push({ t: d.reps, num: true });
+  }
+  return out.length > 0 ? out : [{ t: '—', num: true }];
+}
+
+/** The same reading as a sentence — a screen reader gets the set spoken, never
+ * the tokens read out one glyph at a time. */
+function spokenOf(d: SetDraft, unit: WeightUnit): string {
+  if (d.mode === 'distance') return d.distance ? `${d.distance} meters` : 'no distance read';
+  if (d.mode === 'duration') return d.duration ? `${d.duration} seconds` : 'no duration read';
+  const parts: string[] = [];
+  if (d.weight.trim()) parts.push(`${d.weight} ${unit === 'kg' ? 'kilograms' : 'pounds'}`);
+  if (d.reps.trim()) parts.push(`${d.reps} reps`);
+  if (parts.length === 0) parts.push('nothing read');
+  parts.push(d.rir.trim() ? `${d.rir} reps in reserve` : 'reps in reserve not read');
+  return parts.join(', ');
+}
+
 /**
- * One set, reading left to right in the order the athlete wrote it and the
- * ledger prints it: SET → weight → × → reps → RIR.
+ * A SET, CLOSED — the reading itself, and the only state most sets are ever in.
  *
- * RIR drops to its own line under the pair rather than running off the edge of
- * a 390 pt phone — the reading order is unchanged (down IS after right), and
- * the row wraps instead of cropping when Dynamic Type grows it.
+ * It is a bare row: no card, no fill, no hairline under it, the way §Structure
+ * asks the record to be drawn. That is not only restraint — it is the task.
+ * The athlete came here because the quoted line at the top of the sheet and the
+ * numbers under it disagree, and finding the disagreement means READING the
+ * numbers, which a grid of steppers actively prevents. Tapping the row turns
+ * that one set into the form.
+ */
+function SetLine({
+  draft: d,
+  index,
+  unit,
+  onOpen,
+}: {
+  draft: SetDraft;
+  index: number;
+  unit: WeightUnit;
+  onOpen: () => void;
+}) {
+  const label = labelOf(d, index);
+  const hasRir = d.rir.trim().length > 0;
+  return (
+    <PressableScale
+      onPress={onOpen}
+      haptic="none"
+      activeScale={0.98}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}, ${spokenOf(d, unit)}`}
+      accessibilityHint="Opens this set for correction"
+      style={styles.setLine}
+      pressedStyle={styles.setLinePressed}>
+      <Text style={styles.setLineLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {label}
+      </Text>
+      <View style={styles.setLineValue}>
+        {tokensOf(d, unit).map((tok, k) => (
+          <Text
+            key={`${k}:${tok.t}`}
+            style={tok.num ? styles.setLineNum : styles.setLineUnit}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {tok.t}
+          </Text>
+        ))}
+      </View>
+      {/* RIR keeps its slot even when the parser read none: an empty one is the
+          reason a good half of the corrections on this sheet get made, and a
+          field that only appears once it has a value cannot be found. */}
+      {d.mode === 'strength' ? (
+        <View style={styles.setLineRir}>
+          <Text
+            style={[styles.setLineUnit, !hasRir && styles.setLineFaint]}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            RIR
+          </Text>
+          <Text
+            style={[styles.setLineNum, !hasRir && styles.setLineFaint]}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {hasRir ? d.rir : '—'}
+          </Text>
+        </View>
+      ) : null}
+    </PressableScale>
+  );
+}
+
+/**
+ * A SET, OPEN — the form, and the only object on the list that draws an edge.
+ *
+ * It reads left to right in the order the athlete wrote it and the ledger
+ * prints it: SET → weight → × → reps → RIR. RIR drops to its own line under the
+ * pair rather than running off the edge of a 390 pt phone — the reading order is
+ * unchanged (down IS after right), and the row wraps instead of cropping when
+ * Dynamic Type grows it.
+ *
+ * The border, not a grey fill, is what lifts it. `surfaceHigh` is the skill's
+ * RECESSED tone and measures ~4.0:1 under `textSecondary`, so every `kg`,
+ * `reps` and `RIR` printed on it was below AA — the old card was failing the
+ * ink ladder to say something a hairline says for free.
  */
 function SetRow({
   draft: d,
@@ -618,6 +851,7 @@ function SetRow({
   onPatch,
   onStep,
   onRemove,
+  onCollapse,
 }: {
   draft: SetDraft;
   index: number;
@@ -626,25 +860,36 @@ function SetRow({
   onPatch: (patch: Partial<SetDraft>) => void;
   onStep: (field: 'weight' | 'reps' | 'rir', dir: 1 | -1) => void;
   onRemove: () => void;
+  /** Put the form away again. Null when this is the only set — a list of one
+   * has nothing to collapse back to. */
+  onCollapse: (() => void) | null;
 }) {
-  const label = d.kind === 'working' ? `SET ${index + 1}` : d.kind.toUpperCase();
+  const label = labelOf(d, index);
 
   return (
     <View style={styles.setRow}>
       <View style={styles.setHead}>
-        <Text style={styles.setKind} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {label}
-        </Text>
+        <Pressable
+          onPress={onCollapse ?? undefined}
+          disabled={!onCollapse}
+          hitSlop={spacing.sm}
+          accessibilityRole={onCollapse ? 'button' : undefined}
+          accessibilityLabel={onCollapse ? `${label}. Done editing` : label}>
+          <Text style={styles.setKind} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {label}
+          </Text>
+        </Pressable>
         {canRemove ? (
+          // A trash glyph, not a third `×`. The card already spends that
+          // character on "times" between weight and reps and on clearing RIR;
+          // one glyph meaning three things on one row is a puzzle.
           <Pressable
             onPress={onRemove}
             hitSlop={spacing.sm}
             accessibilityRole="button"
             accessibilityLabel={`Remove ${label.toLowerCase()}`}
             style={({ pressed }) => [styles.dropSet, pressed && styles.stepBtnPressed]}>
-            <Text style={styles.dropSetGlyph} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              ×
-            </Text>
+            <Icon name="trash" size={moderateScale(15)} tint={color.textMuted} />
           </Pressable>
         ) : null}
       </View>
@@ -703,6 +948,7 @@ function SetRow({
             placeholder="distance"
             placeholderTextColor={color.textMuted}
             keyboardType="decimal-pad"
+            inputAccessoryViewID={DONE_ACCESSORY}
             keyboardAppearance="light"
             selectionColor={color.accent}
             maxFontSizeMultiplier={MAX_FONT_SCALE}
@@ -720,6 +966,7 @@ function SetRow({
             placeholder="duration"
             placeholderTextColor={color.textMuted}
             keyboardType="number-pad"
+            inputAccessoryViewID={DONE_ACCESSORY}
             keyboardAppearance="light"
             selectionColor={color.accent}
             maxFontSizeMultiplier={MAX_FONT_SCALE}
@@ -813,6 +1060,7 @@ function Stepper({
           keyboardType={
             decimal ? (signed ? 'numbers-and-punctuation' : 'decimal-pad') : 'number-pad'
           }
+          inputAccessoryViewID={DONE_ACCESSORY}
           keyboardAppearance="light"
           selectionColor={color.accent}
           accessibilityLabel={`${label}: ${value || 'not read'}`}
@@ -851,11 +1099,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     maxHeight: '86%',
   },
-  title: {
-    color: color.textPrimary,
-    fontSize: type.headline.fontSize,
-    fontWeight: '700',
+  eyebrow: {
     marginTop: spacing.md,
+  },
+  // `title2`, the same size the ⋯ sheet and the note sheet give the exercise
+  // name. It was an ad-hoc `headline` at 700 — a fourth weight/size pair
+  // invented on one sheet, which is how a type scale stops being one.
+  title: {
+    marginTop: spacing.xs,
+    ...type.title2,
+    color: color.textPrimary,
   },
   quoteCard: {
     marginTop: spacing.sm + 2,
@@ -884,7 +1137,9 @@ const styles = StyleSheet.create({
     lineHeight: lineFor(18),
     color: color.textPrimary,
     padding: 0,
-    minHeight: lineFor(36),
+    // Two lines of room. A layout property on a text component still does not
+    // scale with the reader, so the box grows itself (`textRoom`).
+    minHeight: textRoom(lineFor(36)),
   },
   wordsLinkRow: {
     alignSelf: 'flex-start',
@@ -905,11 +1160,27 @@ const styles = StyleSheet.create({
     flexGrow: 0,
     marginTop: spacing.md,
   },
+  sectionLabel: {
+    marginBottom: spacing.sm,
+  },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  sectionHint: {
+    ...type.caption,
+    color: color.textSecondary,
+  },
   fieldRow: {
     minHeight: moderateScale(48),
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: color.surfaceHigh,
+    // `surface`, not the recessed tone: `surfaceHigh` is for segmented
+    // containers and pressed states, and text on it drops under AA.
+    backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.border,
     // A ROW, so `radius.lg` 20 (skill §Spacing) — `md` 14 is a button's.
@@ -919,16 +1190,10 @@ const styles = StyleSheet.create({
     paddingRight: spacing.sm,
     gap: spacing.sm,
   },
-  fieldLabel: {
-    fontSize: type.caption.fontSize,
-    color: color.textSecondary,
-  },
   exerciseInput: {
     flex: 1,
-    textAlign: 'right',
     color: color.textPrimary,
-    fontSize: moderateScale(14.5),
-    fontWeight: '600',
+    ...type.headline,
     paddingVertical: spacing.sm,
   },
   suggestions: {
@@ -949,8 +1214,61 @@ const styles = StyleSheet.create({
     ...type.caption,
     color: color.textSecondary,
   },
-  setRow: {
+  // Bare rows separated by air, never a hairline between two readings
+  // (§Spacing). The open row is the one object here with an edge, which is what
+  // makes it read as "this is the one being worked on".
+  setList: {
+    gap: spacing.xs,
+  },
+  setLine: {
+    minHeight: moderateScale(48),
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.sm + 2,
+    borderRadius: radius.lg,
+    borderCurve: 'continuous',
+  },
+  setLinePressed: {
     backgroundColor: color.surfaceHigh,
+  },
+  setLineLabel: {
+    ...readingStyle('400'),
+    fontSize: moderateScale(9.5),
+    letterSpacing: 1,
+    color: color.textSecondary,
+    minWidth: moderateScale(48),
+  },
+  setLineValue: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  // Number and unit are typographically two things (§Structure): the reading
+  // face carries the value, the app's own voice carries the word, a step
+  // lighter and one weight down.
+  setLineNum: {
+    ...readingStyle('500'),
+    fontSize: type.body.fontSize,
+    color: color.textPrimary,
+  },
+  setLineUnit: {
+    ...type.caption,
+    color: color.textSecondary,
+  },
+  /** An unread RIR — nothing to carry, so the eye may skip it. */
+  setLineFaint: {
+    color: color.textMuted,
+  },
+  setLineRir: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.xs,
+  },
+  setRow: {
+    backgroundColor: color.surface,
     borderWidth: 1,
     borderColor: color.border,
     // A ROW, so `radius.lg` 20 (skill §Spacing) — `md` 14 is a button's.
@@ -958,7 +1276,6 @@ const styles = StyleSheet.create({
     borderCurve: 'continuous',
     paddingHorizontal: spacing.sm + 2,
     paddingVertical: spacing.sm,
-    marginTop: spacing.sm,
     gap: spacing.xs,
   },
   setHead: {
@@ -979,10 +1296,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.sm - 1,
     borderCurve: 'continuous',
-  },
-  dropSetGlyph: {
-    color: color.textMuted,
-    fontSize: moderateScale(15),
   },
   fields: {
     flexDirection: 'row',
@@ -1034,11 +1347,14 @@ const styles = StyleSheet.create({
   wideInput: {
     minWidth: moderateScale(96),
   },
+  // The one legitimate use of the recessed tone on this sheet: − and + are
+  // CONTROLS, and giving them a fill instead of a border is what stops
+  // "− 70 +" reading as three identical boxes. The value keeps the border, so
+  // the field still looks like the thing you can type into.
   stepBtn: {
     width: moderateScale(28),
     minHeight: moderateScale(32),
-    borderWidth: 1,
-    borderColor: color.border,
+    backgroundColor: color.surfaceHigh,
     borderRadius: radius.sm - 1,
     borderCurve: 'continuous',
     alignItems: 'center',
@@ -1072,14 +1388,15 @@ const styles = StyleSheet.create({
     ...type.caption,
     color: color.textSecondary,
   },
+  // A solid hairline, not a dashed one: nothing else in the app is dashed, and
+  // a border style that appears exactly once is a dialect, not an accent.
   addSet: {
     marginTop: spacing.sm,
-    minHeight: moderateScale(44),
-    borderRadius: radius.md,
+    minHeight: moderateScale(48),
+    borderRadius: radius.lg,
     borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: color.border,
-    borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1131,39 +1448,9 @@ const styles = StyleSheet.create({
     fontSize: type.caption.fontSize,
     color: color.textSecondary,
   },
+  // Geometry only — `AppButton` owns the fill, the glow and `CTA_HEIGHT`.
   save: {
     marginTop: spacing.lg,
-    minHeight: CONTROL_HEIGHT,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    borderCurve: 'continuous',
-    backgroundColor: color.brand,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveDisabled: {
-    opacity: ink.disabled,
-  },
-  saveText: {
-    color: color.onInk,
-    fontSize: moderateScale(16),
-    fontWeight: '600',
-  },
-  cancel: {
-    marginTop: spacing.sm + 1,
-    minHeight: moderateScale(44),
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    borderCurve: 'continuous',
-    borderWidth: 1,
-    borderColor: color.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelText: {
-    color: color.textPrimary,
-    fontSize: type.subhead.fontSize,
-    fontWeight: '600',
   },
   remove: {
     marginTop: spacing.md,

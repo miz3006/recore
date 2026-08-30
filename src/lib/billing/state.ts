@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { Linking } from 'react-native';
 
 import { getMeta, setMeta } from '@/lib/db/index';
 import {
@@ -8,7 +9,15 @@ import {
   markTrialStarted,
 } from '@/lib/funnel';
 
+import { devLog } from '@/lib/log';
+
 import { cancelTrialNotification } from './notifications';
+import {
+  isHostedUIAvailable,
+  presentCustomerCenter,
+  presentHostedPaywall,
+  type PaywallOutcome,
+} from './paywall-ui';
 import {
   decideEntitlement,
   type Entitlement,
@@ -21,9 +30,12 @@ import {
   attachStoreToAccount,
   detachStoreFromAccount,
   fetchEntitlement,
+  isAttachedToAccount,
   isStoreConfigured,
+  managementUrl,
   purchasePlan,
   restorePurchases,
+  subscribeToCustomerInfo,
   type PurchaseOutcome,
   type RestoreOutcome,
 } from './store';
@@ -191,6 +203,41 @@ function decideFromCache(nowMs: number) {
 }
 
 /**
+ * Apply a reading that just came back from the store, wherever it came from —
+ * the session read, a purchase, a Restore, or the push listener below. One
+ * function so the cache, the trial record and the decision can never disagree
+ * about the same snapshot.
+ */
+function applyFreshSnapshot(snapshot: EntitlementSnapshot) {
+  writeSnapshot(snapshot);
+  const override = devOverride();
+  applyDecision(override ?? decideEntitlement(snapshot, snapshot, Date.now()));
+}
+
+/** Live for as long as an account is attached; torn down on sign-out. */
+let stopCustomerInfoWatch: (() => void) | null = null;
+
+/**
+ * Listen for the store's own updates (added 21 Aug 2026).
+ *
+ * RevenueCat pushes a fresh `CustomerInfo` whenever its view of the customer
+ * changes: a renewal, an expiry, a purchase on another device, a cancellation
+ * made inside Customer Center, an Ask-to-Buy request a parent just approved.
+ *
+ * This does NOT weaken the once-per-session rule at the top of this file. That
+ * rule forbids Recore ASKING the store on a write; this only accepts what the
+ * store volunteers, on its own schedule, over a connection the SDK already
+ * holds. Nothing waits on it and no screen blocks for it.
+ *
+ * It closes the one gap the old design had: a person who cancels or resubscribes
+ * outside the app kept the stale answer until the next cold start.
+ */
+function watchCustomerInfo() {
+  if (stopCustomerInfoWatch) return;
+  stopCustomerInfoWatch = subscribeToCustomerInfo(applyFreshSnapshot);
+}
+
+/**
  * Attach the store to the account and resolve the entitlement. Called ONCE per
  * session from `AuthProvider` (§2 invariant 1: never on a write, never mid-set).
  *
@@ -203,9 +250,7 @@ export async function resolveEntitlement(userId: string): Promise<void> {
   const nowMs = Date.now();
   decideFromCache(nowMs);
 
-  const attached = await attachStoreToAccount(userId);
-  if (!attached) return;
-  markAccountAttached();
+  if (!(await ensureStoreAccount(userId))) return;
 
   const fresh = await fetchEntitlement();
   if (fresh) writeSnapshot(fresh);
@@ -217,10 +262,47 @@ export async function resolveEntitlement(userId: string): Promise<void> {
   applyDecision(decideEntitlement(fresh, readSnapshot(), Date.now()));
 }
 
+/**
+ * Attach the store to this account, once, and start listening. Idempotent, and
+ * it is the ONE place the funnel counter and the customer-info watch are wired
+ * — a second caller cannot half-attach.
+ *
+ * IT HAS A SECOND CALLER FOR A REASON (28 August 2026). `resolveEntitlement`
+ * runs from `AuthProvider` the moment a session appears, and the paywall runs
+ * its deferred purchase off the same event: whichever effect fires first wins,
+ * and when the purchase won, `purchasePlan` found no attached customer, refused
+ * to buy — correctly, §2 forbids an anonymous receipt — and the screen said
+ * "that plan is not available on your App Store account right now". A race, not
+ * a store problem, and it cost the first tap of every account on this device.
+ * Awaiting the same attach from `purchase()` closes it; the second call is a
+ * no-op whenever the first has already landed.
+ */
+async function ensureStoreAccount(userId: string): Promise<boolean> {
+  if (!(await attachStoreToAccount(userId))) return false;
+  markAccountAttached();
+  watchCustomerInfo();
+  return true;
+}
+
 /** Drop the customer on sign-out so the next account starts from nothing. */
 export async function releaseEntitlement(): Promise<void> {
+  // Stop listening BEFORE detaching: `logOut` emits a customer-info update for
+  // the fresh anonymous customer, and applying that would write an empty
+  // snapshot over the signed-out account's cached one.
+  stopCustomerInfoWatch?.();
+  stopCustomerInfoWatch = null;
   await detachStoreFromAccount();
   applyDecision({ entitlement: 'lapsed', reason: 'unverified', fromCache: false });
+}
+
+/**
+ * Ask the store again, now. Called only where a person has just done something
+ * that could have changed the answer — finishing in Customer Center, or coming
+ * back from the hosted paywall — never on a write and never on a timer.
+ */
+export async function refreshEntitlement(): Promise<void> {
+  const fresh = await fetchEntitlement();
+  if (fresh) applyFreshSnapshot(fresh);
 }
 
 export function getEntitlement(): Entitlement {
@@ -246,26 +328,96 @@ export function useEntitlementDecision(): EntitlementDecision {
  * this records the outcome, refreshes the entitlement and starts the trial
  * clock from the instants the store reported.
  */
-export async function purchase(plan: Plan): Promise<PurchaseOutcome> {
+export async function purchase(plan: Plan, userId?: string): Promise<PurchaseOutcome> {
+  // The account may have arrived a beat ago — see `ensureStoreAccount`.
+  if (userId && !isAttachedToAccount()) await ensureStoreAccount(userId);
   const outcome = await purchasePlan(plan);
   markPurchaseOutcome(outcome.status);
   if (outcome.status === 'purchased') {
     setMeta(KEYS.trialPlan, plan);
-    writeSnapshot(outcome.snapshot);
-    applyDecision(decideEntitlement(outcome.snapshot, outcome.snapshot, Date.now()));
+    applyFreshSnapshot(outcome.snapshot);
   }
   return outcome;
 }
 
 /** Restore. Never charges, always tells the truth about what it found. */
-export async function restore(): Promise<RestoreOutcome> {
+export async function restore(userId?: string): Promise<RestoreOutcome> {
+  // Same race as `purchase`: a Restore tapped straight after sign-in must not
+  // report "nothing to restore" merely because the customer is not attached yet.
+  if (userId && !isAttachedToAccount()) await ensureStoreAccount(userId);
   const outcome = await restorePurchases();
   markRestoreOutcome(outcome.status);
   if (outcome.status !== 'failed') {
-    writeSnapshot(outcome.snapshot);
-    applyDecision(decideEntitlement(outcome.snapshot, outcome.snapshot, Date.now()));
+    applyFreshSnapshot(outcome.snapshot);
   }
   return outcome;
+}
+
+// --- RevenueCat's own surfaces -----------------------------------------------------
+
+/** Is the hosted paywall / Customer Center reachable at all on this build? */
+export { isHostedUIAvailable };
+
+/**
+ * Show the paywall configured in the RevenueCat dashboard, then reconcile.
+ *
+ * The reconciliation is belt and braces: the customer-info listener has almost
+ * certainly already applied the purchase by the time this resolves. Asking once
+ * more costs one request on a path the person explicitly took, and it means the
+ * screen behind the sheet is correct on the very next frame rather than on the
+ * next push.
+ */
+export async function openHostedPaywall(): Promise<PaywallOutcome> {
+  const outcome = await presentHostedPaywall();
+
+  // Same funnel counters as Recore's own paywall, so the two surfaces are
+  // comparable (§13). `not-presented` is not an attempt and is not counted.
+  if (outcome === 'purchased') markPurchaseOutcome('purchased');
+  else if (outcome === 'cancelled') markPurchaseOutcome('cancelled');
+  else if (outcome === 'error') markPurchaseOutcome('failed');
+  if (outcome === 'restored') markRestoreOutcome('restored');
+
+  if (outcome === 'purchased' || outcome === 'restored') await refreshEntitlement();
+  return outcome;
+}
+
+/**
+ * The one "Manage subscription" action, for every surface that offers one.
+ *
+ * Customer Center when it exists, Apple's URL when it does not. Callers get a
+ * control that always leads somewhere real, which is the whole requirement in
+ * §2 — three screens previously repeated the URL-opening themselves.
+ */
+export async function openSubscriptionManagement(): Promise<void> {
+  if (await openCustomerCenter()) return;
+  // No Customer Center on this build. Apple's own subscriptions page is the
+  // fallback and it is never wrong, only less useful — it cannot restore, it
+  // cannot request a refund, and it tells Recore nothing on the way back.
+  try {
+    await Linking.openURL(await managementUrl());
+  } catch (err) {
+    devLog('manage subscription failed:', err instanceof Error ? err.message : err);
+  }
+}
+
+/**
+ * Open Customer Center — manage, change plan, request a refund, restore, cancel.
+ *
+ * Returns false when the sheet is not available on this build; the caller then
+ * falls back to Apple's subscriptions URL, which is never wrong, only less
+ * useful. A cancellation made in there lands on the entitlement immediately,
+ * through the listener and through the refresh below.
+ */
+export async function openCustomerCenter(): Promise<boolean> {
+  const shown = await presentCustomerCenter({
+    onRestored: () => {
+      markRestoreOutcome('restored');
+      void refreshEntitlement();
+    },
+    onManagementOption: (option) => devLog('customer center option:', option),
+  });
+  if (shown) await refreshEntitlement();
+  return shown;
 }
 
 // --- the trial ---------------------------------------------------------------------

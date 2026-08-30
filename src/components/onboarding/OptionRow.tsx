@@ -56,10 +56,11 @@ import { useSelectFill } from './use-select-fill';
  * `detail` is the design's quiet line under the label — what the answer means
  * for the app, in the person's own register. `emoji` is sanctioned by
  * product-direction §12 ("sparingly as an onboarding choice label when they
- * improve scanning") and appears on every screen of the flow that asks
- * something — one per option, never where the app reports. Neither is
- * announced separately: VoiceOver reads label and detail as one string, because
- * two labels on one control is two stops for one decision.
+ * improve scanning") and since 23 Aug 2026 appears on exactly two screens —
+ * goal and experience, the flow's two ladders (`config.ts`, `StepOption.emoji`).
+ * Every other question is words alone, and the app never reports with a glyph.
+ * Neither line is announced separately: VoiceOver reads label and detail as one
+ * string, because two labels on one control is two stops for one decision.
  */
 export function OptionRow({
   label,
@@ -176,9 +177,32 @@ const styles = StyleSheet.create({
     // tone (skill §Spacing, radii, elevation).
     ...shadow.card,
   },
+  /**
+   * NO `lineHeight`, on purpose — the emoji sets its own line box.
+   *
+   * Apple Color Emoji is not the text face and does not share its metrics. At
+   * 19 pt SF Pro asks for a 22.4 pt line (1.18x) and the emoji face asks for
+   * 28.2 (1.49x), because an emoji's ink fills the em and then some: 17.9 pt of
+   * it sits ABOVE the baseline, against 13.5 for a capital. A line box is
+   * measured DOWN from its own top, so a box shorter than the ink does not
+   * centre the glyph in it — it shaves the top off. The pinned 24 pt was 0.6 pt
+   * short of that at the default text size, which is two device pixels off the
+   * top of every emoji in the flow.
+   *
+   * It got worse with the reader's own setting rather than better, which is
+   * what made it visible: `moderateScale` does not grow with the OS font scale
+   * the way `fontSize` does — that is the whole job of `lineFor` (see
+   * `scale.ts`) — so at one Dynamic Type step up a 22.8 pt emoji was still
+   * being drawn into a 24 pt box, and at the app's 1.5x clamp a 28.5 pt emoji
+   * lost a third of its height.
+   *
+   * Letting the face answer is the one value that cannot be wrong at any text
+   * size, and it needs no clamp to maintain. The row centres its children, so
+   * the taller box only re-centres the emoji against the label; it does not
+   * move the label.
+   */
   emoji: {
     fontSize: moderateScale(19),
-    lineHeight: moderateScale(24),
   },
   text: {
     flex: 1,

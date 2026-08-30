@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -5,7 +6,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '@/components/icon';
 import { PressableScale } from '@/components/motion';
 import { Eyebrow } from '@/components/primitives';
-import { alpha, color, HIT, ink, lineFor, MAX_FONT_SCALE, spacing, type } from '@/lib/theme';
+import {
+  alpha,
+  color,
+  HIT,
+  lineFor,
+  MAX_FONT_SCALE,
+  spacing,
+  textRoom,
+  type,
+} from '@/lib/theme';
 
 import {
   bandHeightAt,
@@ -136,6 +146,9 @@ export type OnboardingScreenProps = {
   contentCount?: number;
   children?: React.ReactNode;
 };
+
+/** How far the page reaches up over the scrolling content at its bottom edge. */
+const CONTENT_FADE = spacing.xxl;
 
 export function OnboardingScreen({
   slug,
@@ -272,14 +285,38 @@ export function OnboardingScreen({
             </Enter>
           ) : null}
 
-          <ScrollView
-            style={styles.content}
-            contentContainerStyle={styles.contentInner}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive">
-            {children}
-          </ScrollView>
+          {/* THE CONTENT BAND, AND ITS BOTTOM EDGE (23 Aug 2026).
+              The band scrolls whenever a step outgrows the page — five options
+              at Dynamic Type, three lift rows, a long lesson — and it was
+              clipped dead flat against the CTA band, so a white card was sliced
+              in half on a straight line. That is the same defect
+              `ScrollEdgeHeader` exists to fix at the top of the list screens
+              (owner, 18 Aug: "ko klikne gor se ne sme tako obarvati"), and the
+              fix is the same shape: the page takes the content over as it
+              approaches the edge, so the last thing you see is a fade rather
+              than a cut.
+
+              It is a gradient over the canvas rather than a blur — the funnel
+              has one flat background colour and a gradient renders it
+              identically on every device. `pointerEvents: none`, so it never
+              eats a tap meant for the row behind it, and it sits over EMPTY
+              page at rest because the container's own bottom padding parks the
+              last item above it. */}
+          <View style={styles.contentWrap}>
+            <ScrollView
+              style={styles.content}
+              contentContainerStyle={styles.contentInner}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive">
+              {children}
+            </ScrollView>
+            <LinearGradient
+              colors={[alpha(color.canvas, 0), color.canvas]}
+              style={styles.contentFade}
+              pointerEvents="none"
+            />
+          </View>
 
           {/* Always the last thing on the page, so the button sits at the same
               height on every screen that has one.
@@ -392,7 +429,9 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   eyebrowLine: {
-    minHeight: lineFor(14),
+    // Reserved room in a VIEW, so it carries the reader's own scale (`textRoom`):
+    // the eyebrow inside it is grown by the renderer, this box is not.
+    minHeight: textRoom(lineFor(14)),
     justifyContent: 'center',
     marginBottom: spacing.sm,
   },
@@ -423,18 +462,45 @@ const styles = StyleSheet.create({
     ...type.display,
     color: color.textPrimary,
   },
+  /**
+   * THE SUBTEXT IS INFORMATION, SO IT IS `textSecondary` (23 Aug 2026).
+   *
+   * It was ink at the `echo` alpha (0.55), which composites to `#817F7E` on the
+   * canvas and measures **3.79:1** — under the 4.5:1 the ink ladder owes
+   * anything that has to be read, and this line is the one that says what an
+   * answer will DO ("This decides how Recore adds weight for you"). `echo` is
+   * for a first-time reading beside a value, not for a sentence.
+   *
+   * `textSecondary` measures **4.83:1** on the same page. It is also simply
+   * more legible: at 0.55 the line looked switched off next to a 30 pt
+   * headline, which is why every question on the flow read as one line of type
+   * and one grey smudge.
+   */
   subtext: {
     ...type.body,
-    color: alpha(color.textPrimary, ink.echo),
+    color: color.textSecondary,
     marginTop: spacing.sm,
   },
-  content: {
+  /** Holds the band and the fade that sits over its bottom edge. */
+  contentWrap: {
     flex: 1,
     marginTop: spacing.xl,
   },
+  content: {
+    flex: 1,
+  },
   contentInner: {
     gap: spacing.md,
-    paddingBottom: spacing.md,
+    // The fade's own height, so the last row comes to rest ABOVE it: content
+    // parked under a gradient reads as washed out, which is worse than the cut.
+    paddingBottom: CONTENT_FADE,
+  },
+  contentFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: CONTENT_FADE,
   },
   ctaBand: {
     paddingTop: spacing.md,

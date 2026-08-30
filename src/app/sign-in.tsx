@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Icon } from '@/components/icon';
 import { FadeSlideIn, Stagger } from '@/components/motion';
-import { AppButton, Eyebrow } from '@/components/primitives';
+import { Eyebrow } from '@/components/primitives';
+import { ProviderButton } from '@/components/provider-button';
 import {
   signInWithApple,
   signInWithGoogle,
@@ -21,8 +21,25 @@ import { color, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme
  * front door. The user has personalized their ledger and picked a plan; this
  * screen turns that into a real account so the trial can start and the setup is
  * backed up. Framed as reward, never a toll gate. Providers are the real ones
- * wired today: Apple (primary ink-fill) and Google (bordered secondary). Auth
- * logic (PKCE, busy/error states) is unchanged.
+ * wired today: Apple and Google.
+ *
+ * Both now wear their owners' buttons (`components/provider-button.tsx`, 28
+ * August 2026) rather than the app's blue CTA and its tinted companion. The
+ * header comment used to claim "Apple (primary ink-fill) and Google (bordered
+ * secondary)" while the code rendered two shades of Recore blue; it is true
+ * now. Auth logic (PKCE, busy/error states) is unchanged.
+ *
+ * **Apple and Google are the whole list, and that is a decision, not a gap.**
+ * There is no email/password path and none is required: App Store guideline
+ * 4.8 asks that an app offering a third-party login (Google) also offer a
+ * privacy-equivalent one, and Sign in with Apple IS that option — it does not
+ * ask for a second one on top. Every iPhone that can install this app is signed
+ * into an Apple ID, so "I have neither account" is close to unreachable in
+ * practice. The one real hole is an Apple ID without two-factor, which Sign in
+ * with Apple refuses; those people still have Google. If that hole ever needs
+ * closing, close it with an email magic link (Supabase already speaks OTP) —
+ * never a password, because "No passwords" below is a promise this screen
+ * keeps.
  *
  * A fabricated `<Rating score={4.9} countLabel="loved by early lifters" />` sat
  * under the subline until 28 July. There are no real reviews (§12.1), so it was
@@ -82,22 +99,21 @@ export default function SignIn() {
       <View style={styles.bottom}>
         <View style={styles.buttons}>
           {appleAvailable ? (
-            <AppButton
+            <ProviderButton
+              provider="apple"
               label="Sign in with Apple"
               onPress={() => void run('apple', signInWithApple)}
               disabled={busy !== null}
               loading={busy === 'apple'}
-              leading={<Icon name="apple" size={moderateScale(18)} tint={color.onInk} />}
             />
           ) : null}
 
-          <AppButton
+          <ProviderButton
+            provider="google"
             label="Continue with Google"
-            variant="secondary"
             onPress={() => void run('google', signInWithGoogle)}
             disabled={busy !== null}
             loading={busy === 'google'}
-            leading={<Icon name="google" size={moderateScale(16)} tint={color.textPrimary} />}
           />
         </View>
 

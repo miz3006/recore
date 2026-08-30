@@ -5,10 +5,12 @@ import {
   adherenceChip,
   briefHeadline,
   buildSections,
-  DELTA_SUSPECT_RATIO,
+  lastDoneOf,
   moveLabel,
-  movingReading,
-  sparkSeries,
+  reasonLine,
+  sessionTitleOf,
+  targetsLine,
+  type SessionRow,
 } from './sections.ts';
 
 import type { Brief } from '../db/brief.ts';
@@ -46,7 +48,7 @@ const stall = (canonical: string, weight: number, deloadTo: number | null = null
 
 // --- the dedupe rule ---------------------------------------------------------
 
-test('one exercise, one home: the session card wins over both other sections', () => {
+test('one exercise, one home: the session claims it once, plateau folded in', () => {
   const s = buildSections(
     brief({
       lines: [{ name: 'Bench press', canonical: 'Bench press', value: '3×12 120 kg', why: null }],
@@ -54,9 +56,8 @@ test('one exercise, one home: the session card wins over both other sections', (
       movers: [mover('Bench press', 6.5, 140)],
     }),
   );
-  assert.equal(s.sessionRows.length, 1);
-  assert.deepEqual(s.standing, [], 'the plateau left the standing section');
-  assert.deepEqual(s.moving, [], 'and the climb left the moving section');
+  assert.equal(s.sessionRows.length, 1, 'one row, not a row and two signals');
+  assert.ok(s.sessionRows[0]!.watch, 'the plateau is IN the row, not beside it');
 });
 
 test('the losing plateau is not discarded — it becomes the row WATCH line', () => {
@@ -87,64 +88,8 @@ test('dedupe keys on the canonical name, not the display one', () => {
       stalls: [stall('BENCH PRESS', 120, 107.5)],
     }),
   );
-  assert.deepEqual(s.standing, [], 'case and spelling differences are one lift');
+  assert.equal(s.sessionRows.length, 1, 'case and spelling differences are one lift');
   assert.ok(s.sessionRows[0]!.watch);
-});
-
-test('a lift the session does not name keeps its own section', () => {
-  const s = buildSections(
-    brief({
-      lines: [{ name: 'Squat', canonical: 'Squat', value: '3×5 100 kg', why: null }],
-      stalls: [stall('Bench press', 120, 107.5)],
-      movers: [mover('Row', 6.5, 90, [80, 84, 90])],
-    }),
-  );
-  assert.deepEqual(s.standing.map((r) => r.name), ['Bench press']);
-  assert.deepEqual(s.moving.map((r) => r.name), ['Row']);
-});
-
-test('standing still outranks moving for the same lift', () => {
-  const s = buildSections(
-    brief({
-      stalls: [stall('Bench press', 120, 107.5)],
-      movers: [mover('Bench press', 6.5, 140)],
-    }),
-  );
-  assert.equal(s.standing.length, 1);
-  assert.deepEqual(s.moving, []);
-});
-
-test('no exercise name appears twice across the three sections', () => {
-  const s = buildSections(
-    brief({
-      lines: [
-        { name: 'Bench press', canonical: 'Bench press', value: '3×12 120 kg', why: null },
-        { name: 'Row', canonical: 'Row', value: '3×8 70 kg', why: null },
-      ],
-      stalls: [stall('Bench press', 120, 107.5), stall('Squat', 140, 125)],
-      movers: [mover('Row', 6.5, 90), mover('Squat', 5, 160), mover('Curl', 3, 40)],
-    }),
-  );
-  const names = [
-    ...s.sessionRows.map((r) => r.key),
-    ...s.standing.map((r) => r.key),
-    ...s.moving.map((r) => r.key),
-  ];
-  assert.equal(new Set(names).size, names.length, names.join(', '));
-});
-
-test('moving is capped at three, biggest trend first', () => {
-  const s = buildSections(
-    brief({
-      movers: [
-        mover('A', 3, 100),
-        mover('B', 9, 100),
-        mover('C', 5, 100),
-        mover('D', 7, 100),
-      ],
-    }),
-  );
-  assert.deepEqual(s.moving.map((r) => r.name), ['B', 'D', 'C']);
 });
 
 // --- the decision the row leads with -----------------------------------------
@@ -159,7 +104,7 @@ test('the lever is stated in words, and carries its own increment', () => {
 
 test('the two moves that are not progress wear amber, never green', () => {
   assert.equal(moveLabel({ kind: 'hold' })!.tone, 'attention');
-  assert.equal(moveLabel({ kind: 'backoff', toKg: 107.5 })!.tone, 'attention');
+  assert.equal(moveLabel({ kind: 'backoff', fromKg: 120, toKg: 107.5 })!.tone, 'attention');
 });
 
 test('no decision, no label — a first-ever session invents nothing', () => {
@@ -181,75 +126,17 @@ test('the decision reaches the row', () => {
       ],
     }),
   );
-  assert.deepEqual(s.sessionRows[0]!.move, { label: 'ADD A REP', tone: 'signal' });
+  // The row carries the engine's OWN lever, not a phrasing of it: the reason
+  // line needs the arithmetic, and `moveLabel` still turns this into words.
+  assert.deepEqual(s.sessionRows[0]!.move, { kind: 'rep' });
+  assert.deepEqual(moveLabel(s.sessionRows[0]!.move), { label: 'ADD A REP', tone: 'signal' });
 });
 
-test('a ghost line has no reason code and so claims no decision', () => {
+test('a line with no reason code claims no decision', () => {
   const s = buildSections(
     brief({ lines: [{ name: 'Bench press', canonical: 'Bench press', value: '3×5 120 kg', why: null }] }),
   );
   assert.equal(s.sessionRows[0]!.move, null);
-});
-
-// --- the trust guard ---------------------------------------------------------
-
-test('a believable delta prints as a signed number', () => {
-  assert.deepEqual(movingReading(mover('Bench press', 6.5, 140)), {
-    kind: 'delta',
-    text: '+6.5 kg',
-  });
-});
-
-test('the absurd +64 kg is refused and shown as a direction instead', () => {
-  const warned: unknown[] = [];
-  const reading = movingReading(mover('Bench press', 64, 140), (_m, d) => warned.push(d));
-  assert.deepEqual(reading, { kind: 'direction', text: 'climbing' });
-  assert.equal(warned.length, 1, 'the refusal is logged for the root-cause fix');
-});
-
-test('the threshold is a quarter of the CURRENT e1RM, inclusive', () => {
-  const at = 100 * DELTA_SUSPECT_RATIO; // exactly 25 kg on a 100 kg e1RM
-  assert.equal(movingReading(mover('Squat', at, 100)).kind, 'delta', 'exactly at the line is kept');
-  assert.equal(movingReading(mover('Squat', at + 0.1, 100)).kind, 'direction');
-});
-
-test('a delta with no usable denominator is refused, never divided by zero', () => {
-  assert.equal(movingReading(mover('Squat', 5, 0)).kind, 'direction');
-  assert.equal(movingReading(mover('Squat', 5, Number.NaN)).kind, 'direction');
-  assert.equal(movingReading(mover('Squat', Number.NaN, 100)).kind, 'direction');
-});
-
-test('a refused NEGATIVE trend says falling, not climbing', () => {
-  assert.deepEqual(movingReading(mover('Squat', -60, 140)), {
-    kind: 'direction',
-    text: 'falling',
-  });
-});
-
-test('no delta over a quarter of the e1RM ever reaches the screen as a number', () => {
-  const s = buildSections(brief({ movers: [mover('Bench press', 64, 140)] }));
-  assert.equal(s.moving[0]!.reading.kind, 'direction');
-  assert.ok(!/\d/.test(s.moving[0]!.reading.text), 'the fallback carries no figure at all');
-});
-
-test('every moving row states the same window', () => {
-  const s = buildSections(brief({ movers: [mover('A', 3, 100), mover('B', 4, 100)] }));
-  assert.deepEqual(new Set(s.moving.map((r) => r.subtext)), new Set(['est. 1RM · 8 wk']));
-});
-
-// --- the sparkline -----------------------------------------------------------
-
-test('a flat trend gets no sparkline', () => {
-  assert.deepEqual(sparkSeries([100, 100.2, 100.1]), []);
-});
-
-test('a shaped trend keeps its values', () => {
-  assert.deepEqual(sparkSeries([100, 104, 110]), [100, 104, 110]);
-});
-
-test('two points are a segment, not a trend', () => {
-  assert.deepEqual(sparkSeries([100, 120]), []);
-  assert.deepEqual(sparkSeries(undefined), []);
 });
 
 // --- the adherence chip ------------------------------------------------------
@@ -353,5 +240,184 @@ test('the provenance line stays truthful about who phrased the prose', () => {
   assert.equal(
     buildSections(EMPTY, { phrased: true }).provenance,
     'Phrased from your brief — every number read from your record.',
+  );
+});
+
+// --- the reason line: every row explains its own target ----------------------
+
+const ROW: SessionRow = {
+  key: 'bench press',
+  name: 'Bench press',
+  canonical: 'Bench press',
+  move: null,
+  bestKg: null,
+  last: null,
+  lastDay: null,
+  prescription: '82.5 × 5·5·5',
+  loadKg: 82.5,
+  scheme: '5·5·5',
+  beatsBest: false,
+  why: null,
+  watch: null,
+  note: null,
+};
+
+const row = (over: Partial<SessionRow>): SessionRow => ({ ...ROW, ...over });
+const said = (r: SessionRow): string | null =>
+  (reasonLine(r) ?? []).map((s) => s.text).join('') || null;
+
+test('the row states what changed and what it changed from', () => {
+  assert.equal(
+    said(row({ move: { kind: 'weight', deltaKg: 2.5 }, lastDay: '2026-08-08' })),
+    'up 2.5 from Sat 8 Aug',
+  );
+});
+
+test('the planned magnitude is the only tinted part of the line', () => {
+  const line = reasonLine(row({ move: { kind: 'weight', deltaKg: 2.5 }, lastDay: '2026-08-08' }))!;
+  assert.deepEqual(
+    line.map((s) => s.tone),
+    ['plain', 'planned', 'plain'],
+  );
+  assert.equal(line[1]!.text, '2.5');
+});
+
+test('a rep and a hold carry no figure, and so carry no colour', () => {
+  const rep = reasonLine(row({ move: { kind: 'rep' }, lastDay: '2026-08-08' }))!;
+  assert.deepEqual(rep, [{ text: 'one more rep than Sat 8 Aug', tone: 'plain' }]);
+  const hold = reasonLine(row({ move: { kind: 'hold' }, lastDay: '2026-08-08' }))!;
+  assert.deepEqual(hold, [{ text: 'same weight as Sat 8 Aug', tone: 'plain' }]);
+});
+
+test('a backoff states its own size, in the tone a backoff already wears', () => {
+  const line = reasonLine(
+    row({ move: { kind: 'backoff', fromKg: 90, toKg: 85 }, lastDay: '2026-08-08' }),
+  )!;
+  assert.equal(line.map((s) => s.text).join(''), 'down 5 from Sat 8 Aug');
+  assert.equal(line[1]!.tone, 'watch', 'amber, never green — a backoff is not progress');
+});
+
+test('a plateau outranks the lever: it IS the reason for the target', () => {
+  const line = reasonLine(
+    row({ move: { kind: 'hold' }, lastDay: '2026-08-08', watch: { sessions: 3, deloadTo: 82.5 } }),
+  )!;
+  assert.deepEqual(line, [{ text: '3 sessions at this weight', tone: 'watch' }]);
+});
+
+test('one session at a weight is not three', () => {
+  assert.equal(said(row({ watch: { sessions: 1, deloadTo: 80 } })), '1 session at this weight');
+});
+
+test('an unresolved name loses the date, never invents one', () => {
+  assert.equal(said(row({ move: { kind: 'weight', deltaKg: 2.5 }, lastDay: null })), 'up 2.5');
+});
+
+test('no lever, but a record: the line states the evidence and claims nothing', () => {
+  assert.equal(
+    said(row({ last: '3×8 80', lastDay: '2026-08-08' })),
+    'from 3×8 80 on Sat 8 Aug',
+  );
+});
+
+test('no target, no line — the slot holds evidence, never an instruction', () => {
+  assert.equal(reasonLine(row({ prescription: null, loadKg: null, last: '3×8 80' })), null);
+});
+
+test('nothing to say at all stays silent', () => {
+  assert.equal(reasonLine(ROW), null);
+});
+
+test('the stakes ride the line as arithmetic, never as a badge', () => {
+  const line = reasonLine(
+    row({ move: { kind: 'weight', deltaKg: 2.5 }, lastDay: '2026-08-08', beatsBest: true }),
+  )!;
+  assert.equal(line.map((s) => s.text).join(''), 'up 2.5 from Sat 8 Aug · heaviest yet');
+  assert.equal(line[line.length - 1]!.tone, 'planned');
+});
+
+// --- the title block ---------------------------------------------------------
+
+test('a declared split day names itself', () => {
+  assert.equal(
+    sessionTitleOf(brief({ lines: [{ name: 'Bench press', value: '82.5', why: null }], dayLabel: 'Push day', forToday: true }), false),
+    'Push day',
+  );
+});
+
+test('no declared day is "Next session", not an invented one', () => {
+  assert.equal(
+    sessionTitleOf(brief({ lines: [{ name: 'Bench press', value: '82.5', why: null }] }), false),
+    'Next session',
+  );
+});
+
+test('a flat lifter is not owed a day name, and is not apologised to', () => {
+  const b = brief({ lines: [{ name: 'Bench press', value: '82.5', why: null }], dayLabel: 'Push day', forToday: true });
+  assert.equal(sessionTitleOf(b, true), 'Due now', 'flat wins over a label the record happens to carry');
+});
+
+test('an empty record says so before it says anything else', () => {
+  assert.equal(sessionTitleOf(EMPTY, false), 'Nothing due yet');
+  assert.equal(sessionTitleOf(EMPTY, true), 'Nothing due yet');
+});
+
+test('last done is the most recent day the session\'s lifts were touched', () => {
+  assert.equal(
+    lastDoneOf([
+      row({ key: 'a', lastDay: '2026-08-08' }),
+      row({ key: 'b', lastDay: '2026-08-12' }),
+      row({ key: 'c', lastDay: null }),
+    ]),
+    '2026-08-12',
+  );
+});
+
+test('no dated row, no date — never a guess', () => {
+  assert.equal(lastDoneOf([row({ lastDay: null })]), null);
+  assert.equal(lastDoneOf([]), null);
+});
+
+// --- what the session targets ------------------------------------------------
+
+test('the summary counts lifts and names the patterns they vote for', () => {
+  assert.equal(
+    targetsLine([
+      row({ key: 'a', name: 'Bench press', canonical: 'Bench press' }),
+      row({ key: 'b', name: 'Overhead press', canonical: 'Overhead press' }),
+      row({ key: 'c', name: 'Barbell row', canonical: 'Barbell row' }),
+    ]),
+    '3 lifts · push, pull',
+  );
+});
+
+test('one lift is not lifts', () => {
+  assert.equal(targetsLine([row({ name: 'Bench press', canonical: 'Bench press' })]), '1 lift · push');
+});
+
+test('a lift the lexicon does not know does not vote, and never guesses', () => {
+  assert.equal(
+    targetsLine([row({ name: 'Sled push-pull thing', canonical: 'Sled push-pull thing' })]),
+    '1 lift',
+  );
+});
+
+test('an empty session claims no patterns', () => {
+  assert.equal(targetsLine([]), '0 lifts');
+});
+
+test('the stakes are stated once, on the first row that earns them', () => {
+  const s = buildSections(
+    brief({
+      lines: [
+        { name: 'Bench press', canonical: 'Bench press', value: '85 × 5·5·5', why: null, loadKg: 85, bestKg: 82.5 },
+        { name: 'Lateral raise', canonical: 'Lateral raise', value: '14 × 12·12·12', why: null, loadKg: 14, bestKg: 12 },
+        { name: 'Cable fly', canonical: 'Cable fly', value: '17.5 × 12·12·12', why: null, loadKg: 17.5, bestKg: 15 },
+      ],
+    }),
+  );
+  assert.deepEqual(
+    s.sessionRows.map((r) => r.beatsBest),
+    [true, false, false],
+    'three "heaviest yet" lines is a hype reel (§15)',
   );
 });

@@ -70,18 +70,29 @@ eas login
 eas init                  # links the project, writes the EAS project id
 ```
 
-**Environment variables.** The client reads `EXPO_PUBLIC_SUPABASE_URL` and
-`EXPO_PUBLIC_SUPABASE_ANON_KEY` (`src/lib/env.ts`) and nothing else. Locally they come
-from `.env`; EAS builds do **not** see that file, so register them once:
+**Environment variables.** The client reads exactly four, all of them in `src/lib/env.ts`:
+the two Supabase values, the RevenueCat public iOS key (added with the billing work) and the
+Sentry DSN (added 21 Aug 2026). Locally they come from `.env`; EAS builds do **not** see that
+file — it is git-ignored — so register them once:
 
 ```bash
 eas env:create --name EXPO_PUBLIC_SUPABASE_URL      --value "…" --environment production --visibility plaintext
 eas env:create --name EXPO_PUBLIC_SUPABASE_ANON_KEY --value "…" --environment production --visibility plaintext
+eas env:create --name EXPO_PUBLIC_REVENUECAT_IOS_KEY --value "appl_…" --environment production --visibility plaintext
+eas env:create --name EXPO_PUBLIC_SENTRY_DSN        --value "https://…" --environment production --visibility plaintext
 # repeat for --environment preview and development
 ```
 
-Both are publishable values (the anon key is protected by RLS, §10.2) — the model key is a
-Supabase secret and never touches this.
+All four are publishable (the anon key is protected by RLS, §10.2; a DSN can only write into
+one Sentry project) — the model key is a Supabase secret and never touches this. **A missing
+value fails silently and differently in each case:** no Supabase pair means sign-in, parsing
+and sync are dead and the sign-in screen shows a developer hint; no RevenueCat key means the
+paywall cannot sell and every account resolves to `lapsed`, i.e. the read-only ledger; no DSN
+simply means no crash reports. Confirm with `eas env:list` before the first build.
+
+For readable (source-mapped) crash stacks, the Sentry Expo plugin also wants `SENTRY_ORG`,
+`SENTRY_PROJECT` and `SENTRY_AUTH_TOKEN` in the **build** environment — the auth token is a
+secret and must be created with `--visibility secret`.
 
 **Build and ship:**
 
@@ -123,11 +134,11 @@ next to the text it points at.
 | **Identifiers → User ID** | Collected · Linked to the user · App Functionality · not used for tracking |
 | **User Content → Other User Content** *(the workout notes and the record read out of them)* | Collected · Linked to the user · App Functionality · not used for tracking |
 | Usage Data / Analytics | **No.** There is no analytics SDK. The counters in `funnel.ts` never leave the device and are handed back in the user's own export. |
-| Diagnostics / Crash data | **No** |
+| Diagnostics / Crash data | **Yes since 21 Aug 2026** · **Not** linked to the user · App Functionality · not used for tracking. Sentry receives a report only when the app crashes: the error, its place in the code, the app version, the OS and the device model. `src/lib/crash.ts` attaches no account, no email and no note text, and sends nothing when the app is working. A build with no `EXPO_PUBLIC_SENTRY_DSN` sends nothing at all. |
 | Location, Contacts, Photos, Health, Purchases, Search, Browsing, Advertising ID | **No** |
 | Push notifications | The app uses **local** notifications only (one day-5 trial reminder). There is no push server and no device token is ever registered, so nothing is collected here. |
 | Used for tracking across apps or websites? | **No** |
-| Third-party partners with access | Supabase (hosting) and Anthropic (parses note text). Both are processors under the policy; neither is an advertising or analytics partner. |
+| Third-party partners with access | Supabase (hosting), Anthropic (parses note text), RevenueCat (subscription state, account id only) and Sentry (crash reports, no identifier). All four are processors under the policy; none is an advertising or analytics partner. |
 | Account deletion available in-app? | **Yes** — You → Delete account (`src/lib/account/delete.ts`) |
 
 ---

@@ -169,7 +169,16 @@ export default function Today() {
               the plan lives (bottom-toolbar.tsx).
 
               `components/plan-strip.tsx` and `planned-checklist.tsx` stay on
-              disk, unmounted, so a way back is one wire. */}
+              disk, unmounted, so a way back is one wire.
+
+              29 Aug: the checklist WAS wired here for a day, behind Next's
+              pinned Start. Both are gone again on the owner's ruling, and the
+              reason is CLAUDE.md §3 rather than taste — *"training input is
+              free text first; touch controls repair, inspect or enrich it,
+              they never replace writing as the primary path."* A full-width
+              button on Next that filled Today with a checklist made the
+              checklist the way into a session. Next is a briefing you read;
+              this page is where you write. */}
           <NoteSurface />
         </DaySwipe>
         {/* THE RESTING PILL IS GONE (owner, 18 Aug 2026). The floating capsule

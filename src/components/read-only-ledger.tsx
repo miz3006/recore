@@ -1,10 +1,15 @@
 import { useRouter } from 'expo-router';
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useMemo, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { restore, useEntitlementDecision } from '@/lib/billing/state';
-import { managementUrl } from '@/lib/billing/store';
+import {
+  isHostedUIAvailable,
+  openHostedPaywall,
+  openSubscriptionManagement,
+  restore,
+  useEntitlementDecision,
+} from '@/lib/billing/state';
 import { formatChargeDate } from '@/lib/billing/trial';
 import { buildExportJson } from '@/lib/export-json';
 import { shareExportFile } from '@/lib/export-share';
@@ -99,9 +104,35 @@ export function ReadOnlyLedger() {
     setExportMessage(outcome === 'failed' ? 'Export failed — try again.' : null);
   };
 
-  const handleResubscribe = () => {
+  /**
+   * The win-back path, and the ONE place Recore shows RevenueCat's own paywall
+   * instead of its own (owner's ruling, 21 Aug 2026).
+   *
+   * A returning subscriber is the audience whose offer is actually worth
+   * testing, and testing it means changing the screen from the dashboard rather
+   * than shipping a build. It is also where the dashboard's full package set —
+   * weekly included — belongs; §6's two-card funnel screen stays two cards.
+   *
+   * Recore's own paywall is the fallback, not the loser: with no key, no
+   * Customer Center pod, or no paywall configured on the current offering, the
+   * tap lands on the funnel's own paywall exactly as it always did.
+   */
+  const handleResubscribe = async () => {
+    if (busy) return;
     tap();
-    router.push('/paywall');
+    if (isHostedUIAvailable()) {
+      setBusy(true);
+      try {
+        const outcome = await openHostedPaywall();
+        // Bought or restored: the entitlement flips and this screen unmounts.
+        // Dismissed: they chose that, and a second paywall on top would be
+        // the nagging §20 forbids. Only a genuine failure falls through.
+        if (outcome !== 'error') return;
+      } finally {
+        setBusy(false);
+      }
+    }
+    router.push('/paywall-v2/plan');
   };
 
   /** Restore, right here. §2.2 requires it directly reachable from this screen —
@@ -126,9 +157,9 @@ export function ReadOnlyLedger() {
 
   const handleManage = () => {
     tap();
-    void managementUrl()
-      .then((url) => Linking.openURL(url))
-      .catch(() => {});
+    // Customer Center where the build has it, Apple's subscriptions page
+    // otherwise. One entry point, so all three surfaces stay identical.
+    void openSubscriptionManagement();
   };
 
   /**
@@ -188,7 +219,8 @@ export function ReadOnlyLedger() {
           <AppButton
             label="Resubscribe"
             compact
-            onPress={handleResubscribe}
+            disabled={busy}
+            onPress={() => void handleResubscribe()}
             style={styles.bannerButton}
           />
         </View>

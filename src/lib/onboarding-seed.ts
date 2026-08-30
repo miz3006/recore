@@ -3,6 +3,7 @@ import { getMeta, setMeta } from '@/lib/db/index';
 import { getWorkoutForDay, saveRawText } from '@/lib/db/workouts';
 import { devLog } from '@/lib/log';
 import { useOnboardingAnswers } from '@/state/onboarding';
+import { v2Answers } from '@/state/onboarding-v2';
 
 import { parseDemoEntry } from './demo-parse';
 
@@ -68,10 +69,24 @@ export function seedOnboardingDemo(userId: string): void {
 
     // The in-memory answers, on purpose: they survive `ensureLocalUser`'s wipe
     // of the meta table, which is what the persisted copy lives in.
-    const entry = parseDemoEntry(useOnboardingAnswers.getState().answers.demoEntry);
-    if (!entry || entry.source === 'example') return;
-
-    const text = entry.rawText.trim();
+    //
+    // THE WHOLE PAGE, NOT THE LEAD LINE (23 Aug 2026). The demo screen is Today
+    // now and takes two or three exercises, so `demoText` is what the person
+    // wrote — every line, in order, including any the offline grammar could not
+    // read (the real parser gets its own go at those, which is the promise the
+    // screen makes). `demoEntry` stays the fallback for a flow that was
+    // completed by the previous build and signs in after this one.
+    //
+    // TWO FLOWS CAN HAVE WRITTEN IT (28 Aug 2026). v2 is the primary onboarding
+    // and keeps its own page in its own store, so it is read FIRST; the v1
+    // answers are still read behind it, because an install that finished the
+    // illustrated flow before this build and signs in after it wrote its line
+    // there and nowhere else. Only one of the two can be non-empty in practice.
+    const answers = useOnboardingAnswers.getState().answers;
+    const v2Page = v2Answers().demoText.trim();
+    const page = v2Page || answers.demoText?.trim();
+    const lead = parseDemoEntry(answers.demoEntry);
+    const text = page || (lead && lead.source !== 'example' ? lead.rawText.trim() : '');
     if (!text) return;
 
     const day = todayKey();

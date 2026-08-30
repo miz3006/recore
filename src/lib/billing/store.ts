@@ -8,11 +8,11 @@ import Purchases, {
   type PurchasesStoreProduct,
 } from 'react-native-purchases';
 
-import { REVENUECAT_IOS_KEY } from '@/lib/env';
+import { REVENUECAT_IOS_KEY, isTestStore } from '@/lib/env';
 import { devLog } from '@/lib/log';
 
 import type { EntitlementSnapshot } from './entitlement';
-import { ENTITLEMENT_ID, MANAGE_SUBSCRIPTIONS_URL, type Plan } from './pricing';
+import { ALL_PLANS, ENTITLEMENT_ID, MANAGE_SUBSCRIPTIONS_URL, type Plan } from './pricing';
 
 /**
  * The store adapter — THE ONLY FILE IN RECORE THAT IMPORTS `react-native-purchases`
@@ -50,6 +50,16 @@ import { ENTITLEMENT_ID, MANAGE_SUBSCRIPTIONS_URL, type Plan } from './pricing';
 export function isStoreConfigured(): boolean {
   return Platform.OS !== 'web' && REVENUECAT_IOS_KEY.length > 0;
 }
+
+/**
+ * Is this the SIMULATED Test Store rather than the App Store? Re-exported here
+ * so no surface has to import `env.ts` to ask a billing question.
+ *
+ * `env.ts` already blanks a `test_` key outside `__DEV__`, so this can only
+ * return true in a development build — which is exactly when a screen should
+ * be able to say so out loud rather than let a simulated purchase look real.
+ */
+export { isTestStore };
 
 /** Has `configure` run at all this launch? */
 let configured = false;
@@ -126,7 +136,23 @@ export async function detachStoreFromAccount(): Promise<void> {
 /** The localized price string for the product behind an entitlement, if we know it. */
 let lastKnownPriceLabels: Partial<Record<string, string>> = {};
 
+/**
+ * A misconfigured `ENTITLEMENT_ID` is the quietest possible billing bug: every
+ * lookup misses, every paying customer reads as lapsed, and nothing throws.
+ * Development builds say so; release builds carry none of this.
+ */
+function warnOnEntitlementMismatch(info: CustomerInfo) {
+  if (!__DEV__) return;
+  const ids = Object.keys(info.entitlements.active);
+  if (ids.length === 0 || ids.includes(ENTITLEMENT_ID)) return;
+  devLog(
+    `entitlement id mismatch: the customer holds [${ids.join(', ')}] but Recore ` +
+      `reads '${ENTITLEMENT_ID}' (src/lib/billing/pricing.ts). Everyone will read as lapsed.`,
+  );
+}
+
 function snapshotFrom(info: CustomerInfo, nowMs: number): EntitlementSnapshot {
+  warnOnEntitlementMismatch(info);
   const active: PurchasesEntitlementInfo | undefined = info.entitlements.active[ENTITLEMENT_ID];
   // An inactive-but-known entitlement still tells us the product, which is what
   // separates "expired" from "never bought anything" (§2.2).
@@ -160,6 +186,50 @@ export async function fetchEntitlement(nowMs: number = Date.now()): Promise<Enti
   }
 }
 
+/**
+ * PUSH, not poll. RevenueCat hands us a fresh `CustomerInfo` whenever its own
+ * view of the customer changes — a renewal, an expiry, a purchase made on
+ * another device, a cancellation the person just made inside Customer Center.
+ *
+ * This is the piece that makes rule 2 at the top of this file affordable. We
+ * still never ASK the store on a write; we simply accept what it volunteers.
+ * The callback is a local delivery, not a network call, so nothing here can
+ * stand in front of a keystroke (CLAUDE.md §2 invariant 1).
+ *
+ * Without it, a subscription cancelled in Customer Center would keep reading as
+ * active until the next cold start — which is the exact moment a person expects
+ * the app to have noticed.
+ *
+ * Returns an unsubscribe. Safe to call before `configure`: the listener is
+ * registered against the SDK, which replays nothing, and an unconfigured SDK
+ * simply never fires it.
+ */
+export function subscribeToCustomerInfo(
+  onSnapshot: (snapshot: EntitlementSnapshot) => void,
+): () => void {
+  if (!configureStore()) return () => {};
+  const listener = (info: CustomerInfo) => {
+    try {
+      onSnapshot(snapshotFrom(info, Date.now()));
+    } catch (err) {
+      devLog('customer info listener failed:', err instanceof Error ? err.message : err);
+    }
+  };
+  try {
+    Purchases.addCustomerInfoUpdateListener(listener);
+  } catch (err) {
+    devLog('customer info listener not attached:', err instanceof Error ? err.message : err);
+    return () => {};
+  }
+  return () => {
+    try {
+      Purchases.removeCustomerInfoUpdateListener(listener);
+    } catch {
+      // Detaching a listener is never worth surfacing.
+    }
+  };
+}
+
 // --- reading the offer -------------------------------------------------------------
 
 /**
@@ -178,10 +248,12 @@ export interface StorePlan {
   trialDays: number;
 }
 
-export interface StoreOffer {
-  annual: StorePlan | null;
-  monthly: StorePlan | null;
-}
+/**
+ * The current offering, one entry per plan. A null means the offering carries
+ * no package for that plan — normal, and every surface renders around it rather
+ * than inventing a price.
+ */
+export type StoreOffer = Record<Plan, StorePlan | null>;
 
 /** ISO-8601-ish period unit → days. Only used to state a trial length honestly. */
 function trialDaysOf(product: PurchasesStoreProduct): number {
@@ -212,6 +284,11 @@ function planFrom(plan: Plan, pkg: PurchasesPackage | null): StorePlan | null {
     plan,
     priceLabel: p.priceString,
     price: p.price,
+    // ANNUAL ONLY, and deliberately. Apple supplies a per-month string for
+    // every recurring product, but on a monthly card it restates the price
+    // that is already the largest thing on the card, and on a weekly one it
+    // reads as a second, different price. `paywall.tsx` renders whatever is
+    // here, so the filtering belongs here.
     pricePerMonthLabel: plan === 'annual' ? p.pricePerMonthString : null,
     trialDays: trialDaysOf(p),
   };
@@ -231,14 +308,22 @@ export async function fetchOffer(): Promise<StoreOffer | null> {
     const offerings = await Purchases.getOfferings();
     const current = offerings.current;
     if (!current) return null;
-    packagesByPlan = {
-      annual: current.annual ?? undefined,
-      monthly: current.monthly ?? undefined,
+    // Resolved by PACKAGE, never by product id: `$rc_annual` is the same
+    // question on the App Store, the Play Store and the Test Store, while the
+    // product behind it differs on each (`pricing.ts`).
+    const byPlan: Record<Plan, PurchasesPackage | null> = {
+      annual: current.annual,
+      monthly: current.monthly,
+      weekly: current.weekly,
     };
-    return {
-      annual: planFrom('annual', current.annual),
-      monthly: planFrom('monthly', current.monthly),
-    };
+    packagesByPlan = {};
+    const offer = {} as StoreOffer;
+    for (const plan of ALL_PLANS) {
+      const pkg = byPlan[plan];
+      if (pkg) packagesByPlan[plan] = pkg;
+      offer[plan] = planFrom(plan, pkg);
+    }
+    return offer;
   } catch (err) {
     devLog('offerings read failed:', err instanceof Error ? err.message : err);
     return null;
@@ -251,9 +336,29 @@ export type PurchaseOutcome =
   | { status: 'purchased'; snapshot: EntitlementSnapshot }
   /** The user backed out of Apple's sheet. Not an error, and never phrased as one. */
   | { status: 'cancelled' }
+  /**
+   * Apple has the purchase but nobody has approved it yet: Ask to Buy, or a
+   * bank's strong-customer-authentication step. NOT a failure and never shown
+   * as one — the entitlement simply arrives later, through the customer-info
+   * listener, with no further tap from this person.
+   */
+  | { status: 'pending' }
+  /**
+   * This Apple Account already owns the subscription — a reinstall, a second
+   * device, a family member. The fix is Restore, never a second charge, and
+   * saying "purchase failed" here is how a duplicate-charge complaint starts.
+   */
+  | { status: 'already-owned' }
+  /** The store could not be reached. Distinct from a refusal (§2.2's rule). */
+  | { status: 'offline' }
+  /** Purchases are disallowed on this device — parental controls, MDM. */
+  | { status: 'not-allowed' }
   /** The product is not on this storefront, or the offering has not loaded. */
   | { status: 'unavailable' }
   | { status: 'failed' };
+
+/** Every outcome word, for the funnel counter and for exhaustive UI switches. */
+export type PurchaseStatus = PurchaseOutcome['status'];
 
 /**
  * Buy a plan. The store owns every step of this: the sheet, the price, the
@@ -276,10 +381,54 @@ export async function purchasePlan(
     const result = await Purchases.purchasePackage(pkg);
     return { status: 'purchased', snapshot: snapshotFrom(result.customerInfo, nowMs) };
   } catch (err) {
-    if (isCancellation(err)) return { status: 'cancelled' };
-    devLog('purchase failed:', err instanceof Error ? err.message : err);
-    return { status: 'failed' };
+    const status = classifyPurchaseError(err);
+    // A cancellation and a pending approval are both normal ends to a tap; only
+    // the rest are worth a line in the log.
+    if (status !== 'cancelled' && status !== 'pending') {
+      devLog('purchase failed:', status, err instanceof Error ? err.message : err);
+    }
+    return { status };
   }
+}
+
+/**
+ * The store's error code, turned into one of Recore's outcome words.
+ *
+ * Everything the SDK can raise collapses into a sentence a person can act on:
+ * try again, restore instead, wait for approval, or nothing-you-did-wrong. An
+ * unrecognised code lands on `failed`, which is the honest default — we do not
+ * pretend to know what happened.
+ */
+function classifyPurchaseError(err: unknown): Exclude<PurchaseStatus, 'purchased'> {
+  const code = errorCodeOf(err);
+  switch (code) {
+    case PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR:
+      return 'cancelled';
+    case PURCHASES_ERROR_CODE.PAYMENT_PENDING_ERROR:
+      return 'pending';
+    case PURCHASES_ERROR_CODE.PRODUCT_ALREADY_PURCHASED_ERROR:
+    case PURCHASES_ERROR_CODE.RECEIPT_ALREADY_IN_USE_ERROR:
+      return 'already-owned';
+    case PURCHASES_ERROR_CODE.NETWORK_ERROR:
+    case PURCHASES_ERROR_CODE.OFFLINE_CONNECTION_ERROR:
+      return 'offline';
+    case PURCHASES_ERROR_CODE.PURCHASE_NOT_ALLOWED_ERROR:
+      return 'not-allowed';
+    case PURCHASES_ERROR_CODE.PRODUCT_NOT_AVAILABLE_FOR_PURCHASE_ERROR:
+    case PURCHASES_ERROR_CODE.INELIGIBLE_ERROR:
+      return 'unavailable';
+    default:
+      // `userCancelled` is deprecated but still the only signal some older
+      // hybrid layers set, so it is checked after the code and not instead.
+      return isCancellation(err) ? 'cancelled' : 'failed';
+  }
+}
+
+/** The SDK's `code` off a thrown value, or null when it is not one of its errors. */
+function errorCodeOf(err: unknown): PURCHASES_ERROR_CODE | null {
+  if (typeof err !== 'object' || err === null) return null;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' ? (code as PURCHASES_ERROR_CODE) : null;
 }
 
 export type RestoreOutcome =

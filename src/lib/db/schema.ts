@@ -6,7 +6,7 @@
  * table, and `parse_cache` (the last parse result + gutter signals per
  * workout, kept so the gutter renders instantly after a cold start).
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS predictions (
   created_at  TEXT NOT NULL,
   accepted_at TEXT,
   outcome     TEXT,                         -- followed | edited | ignored
+  lines_json  TEXT,                         -- LOCAL ONLY: per-lift reasons (v6)
   dirty       INTEGER NOT NULL DEFAULT 1,
   UNIQUE (user_id, for_date)
 );
@@ -205,4 +206,36 @@ ALTER TABLE workouts ADD COLUMN reflection TEXT;
  */
 export const MIGRATION_5_SQL = `
 ALTER TABLE workouts ADD COLUMN entry_notes TEXT;
+`;
+
+/**
+ * v5 → v6: the ghost's PER-LIFT reasons (owner, 28 August 2026).
+ *
+ * Next's row prints the reason for its target beside every target, always —
+ * "up 2.5 from Fri 8 Aug" — and a derived plan the reader cannot audit is a
+ * plan they will not trust. The declared-split path already carried this:
+ * `planStripFor` hands `why` and `move` to every row.
+ *
+ * The GHOST path did not, and the reason is worth recording because it was not
+ * a gap in the engine. `computeNextSession` computes a full `Reason` for every
+ * lift it prescribes, collects them in `reasons[]`, and then keeps exactly
+ * ONE — `pickBest` picks the session's single headline sentence — while
+ * `ghost_text` is persisted as bare lines. The arithmetic was already done and
+ * then discarded on the way to the database. This column stops discarding it.
+ *
+ * WHY LOCAL ONLY. The ghost is a CACHE: every parse recomputes it, and the
+ * reasons are derivable from the record that sync already carries. Pushing
+ * them would mean a remote migration and a second copy of a projection, for a
+ * column that any device can rebuild the moment its owner writes a session.
+ * `pushPredictions` and the pull `select` both enumerate their columns, so
+ * neither sees this one.
+ *
+ * The cost of that choice is one line in `upsertPredictionFromRemote`: when a
+ * remote row overwrites `ghost_text`, the local `lines_json` is CLEARED rather
+ * than left in place. Reasons that belong to a superseded ghost would be a
+ * confident sentence attached to the wrong number, and this screen's whole
+ * claim is that its reasons can be checked. Silence, not a guess.
+ */
+export const MIGRATION_6_SQL = `
+ALTER TABLE predictions ADD COLUMN lines_json TEXT;
 `;

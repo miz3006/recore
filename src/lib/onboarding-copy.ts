@@ -125,3 +125,40 @@ export function projectionHeadline(
   const called = name?.trim();
   return called ? `${called} — your next ${horizon}` : `Your next ${horizon}`;
 }
+
+/**
+ * THE WEEK CARD'S OWN READBACK (23 Aug 2026) — what the seven cells add up to,
+ * in two lines, inside the card that produced them (`WeekPicker`).
+ *
+ * Three states, and the third is the one that did not exist before: somebody
+ * who told the screen they decide on the day and left the week empty is not an
+ * unfinished form. They are answered, and the copy says what the app will do
+ * with that answer instead of asking again.
+ *
+ * Nothing here is a target and nothing counts a miss (§11) — the words are
+ * chosen to make that impossible to misread.
+ */
+export function weekReadback(
+  days: number,
+  feel: string | null | undefined,
+): { title: string; detail: string } {
+  if (days > 0) {
+    return {
+      title: `${days} ${days === 1 ? 'day' : 'days'} a week`,
+      detail:
+        feel === 'flexible'
+          ? 'Recore expects this rhythm and never counts a miss.'
+          : 'Recore builds your Next tab around this rhythm.',
+    };
+  }
+  if (feel === 'flexible') {
+    return {
+      title: 'No fixed days',
+      detail: 'Recore follows what you write instead of a schedule.',
+    };
+  }
+  return {
+    title: 'Pick your days',
+    detail: 'Roughly is fine — you can change it any time.',
+  };
+}

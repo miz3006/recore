@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -11,10 +12,11 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { shortDayLabel } from '@/lib/db/dates';
 import { type GutterSignal } from '@/lib/parse/types';
-import { color, MAX_FONT_SCALE, moderateScale, readingStyle, spacing } from '@/lib/theme';
+import { alpha, color, MAX_FONT_SCALE, moderateScale, readingStyle } from '@/lib/theme';
 
-import { NOTE_LINE_HEIGHT, READING_FONT_SIZE } from './note-metrics';
+import { NOTE_LINE_BOX, NOTE_LINE_HEIGHT, READING_FONT_SIZE } from './note-metrics';
 
 /**
  * The interpreted reading in the RIGHT GUTTER of a line (the record contract,
@@ -45,6 +47,44 @@ const PR_FROM = 0.8;
 const TAG_RADIUS = 4;
 const TAG_PAD_H = 5;
 const TAG_PAD_V = 2;
+
+const KG_DELTA_RE = /^[+-]\d+(?:\.\d+)?$/;
+
+/**
+ * The archival comparison subline of a card ("up 2.5 kg vs last"). PR carries a
+ * chip instead, so it returns null here.
+ *
+ * "SAME AS LAST" NAMES THE SESSION IT MEANS (owner, 11 Aug 2026). Unqualified,
+ * it was the one comparison the reader could not check: same as which day —
+ * Friday, or the identical session three weeks ago? The date comes from the
+ * signal itself (`db/history.ts` records the workout it compared against), so
+ * a signal cached before that existed simply says less. It never guesses.
+ *
+ * It lives HERE, beside `signalText` / `signalTint` / `PrLabel`, because this
+ * file is where a signal becomes language. It was private to `note-surface`
+ * until the ⋯ sheet's header needed the same sentence, and a second copy of a
+ * comparison is how two surfaces start disagreeing about the same lift.
+ */
+export function comparisonOf(signal: GutterSignal | null): string | null {
+  if (!signal) return null;
+  switch (signal.kind) {
+    case 'up':
+    case 'down': {
+      // Neutral reference — no bare +/- sign (a leading minus reads as a scold
+      // on a deload day). Up and down carry identical muted weight.
+      const word = signal.kind === 'up' ? 'up' : 'down';
+      const mag = KG_DELTA_RE.test(signal.delta)
+        ? `${signal.delta.replace(/^[+-]/, '')} kg`
+        : signal.delta.replace(/^[+-]/, '');
+      return `${word} ${mag} vs last`;
+    }
+    case 'equal':
+      return signal.at ? `same as last · ${shortDayLabel(signal.at)}` : 'same as last';
+    case 'pr':
+    case 'set':
+      return null;
+  }
+}
 
 export function signalText(signal: GutterSignal): string {
   switch (signal.kind) {
@@ -282,7 +322,17 @@ const PENDING_MIN = 0.25;
 const PENDING_MAX = 0.8;
 export const PENDING_STEP_MS = 160;
 
-export function PendingDot({ delay }: { delay: number }) {
+export function PendingDot({
+  delay,
+  tint,
+  size,
+}: {
+  delay: number;
+  tint?: string;
+  /** Diameter. Defaults to the gutter's own dot; the ⋯ column passes the
+   * metrics of the glyph it is standing in for. */
+  size?: number;
+}) {
   const reduceMotion = useReducedMotion();
   const opacity = useSharedValue(PENDING_MIN);
 
@@ -304,72 +354,217 @@ export function PendingDot({ delay }: { delay: number }) {
 
   const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
 
-  return <Animated.View style={[styles.pendingDot, animatedStyle]} />;
+  return (
+    <Animated.View
+      style={[
+        styles.pendingDot,
+        tint ? { backgroundColor: tint } : null,
+        size ? { width: size, height: size, borderRadius: size / 2 } : null,
+        animatedStyle,
+      ]}
+    />
+  );
 }
 
 /**
- * THE SCAN — the working state of a line that has been committed but not yet
- * read back, shown IN THE READING'S OWN SLOT at the right of the card, so the
- * indicator is replaced in place by the answer it was waiting for. Nothing
- * jumps: the eye is already where the result will appear.
+ * THE READ — what stands on a line between pressing return and the reading
+ * coming back (owner's pick of four variants, 29 August 2026).
  *
- * A quiet mono word plus a shuttle that sweeps a 3px track. The shuttle EASES
- * rather than travelling linearly, BREATHES from 12 to 20pt at mid-travel, and
- * fades toward each end — which is why it reads as something passing over the
- * line rather than a slider being dragged. That is the whole trick, and it is
- * the difference between "a spinner is on screen" and "my line is being read".
+ * TWO MARKS, ONE ROW, AND A DIVISION OF LABOUR:
  *
- * No colour, no percentage, no spinner. A percentage would be a lie — the parse
- * is one round trip and there is nothing to be 40% of — and §5.1 keeps green for
- * prescriptions. Under Reduce Motion the shuttle holds still, centred and at
- * full width: the movement goes, the "still working" information stays (§14).
+ * - **`ReadingSweep`** passes a band of the app's one blue across the WHOLE
+ *   ROW the athlete just committed — rail to ⋯ column, edge to edge, behind
+ *   everything on it. A light travelling the length of a line being read. It
+ *   never dims the words, never moves them, and never fills a track: the parse
+ *   is one round trip and there is no percentage here to be honest about (§5.1
+ *   keeps a filled bar for things that were measured). A beat of stillness
+ *   separates one pass from the next, so it reads as a line being read and
+ *   then read again rather than as a strobe.
+ *
+ *   It crossed only the words until the owner saw it on 29 August 2026: a band
+ *   the width of the text reads as a highlight ON a word, and what is being
+ *   read is the whole entry. Full-row travel is also the only version that is
+ *   legible at a glance — the band is now the width of a thumb rather than of
+ *   a syllable.
+ *
+ * - **`ReadingDots`** is the machine's own working mark, and it is the SAME
+ *   THREE DOTS the settled card carries as its ⋯ menu. While the line is being
+ *   read they wave; when the reading lands they stop and that identical glyph
+ *   is the button. Nothing new appears on the row, and nothing moves at the
+ *   handover — which is the whole reason the mark is dots and not a spinner.
+ *
+ * Everything stays on ONE ROW, beside the words. An earlier pass put the
+ * working state a line below, in the slot the reading itself would occupy;
+ * the geometry was honest and the owner rejected the look on 29 August. The
+ * line the athlete wrote is the line the app is working on, and that is where
+ * the app says so.
+ *
+ * ## Reduce Motion
+ *
+ * Neither mark survives, and the state does. `ReadingSheen` renders its
+ * children untouched, `ReadingDots` renders nothing at all — three still dots
+ * would read as the ⋯ button, and a control that does nothing is worse than no
+ * control — and the caller prints `ReadingWord` at the end of the same row
+ * instead. The movement goes, the information does not (§14).
  */
-const SCAN_W = moderateScale(40);
-const SCAN_H = 3;
-const SHUTTLE_MIN = moderateScale(12);
-const SHUTTLE_MAX = moderateScale(20);
-const SCAN_MS = 1100;
+/** Longer than a word-width sweep was: the band now crosses a whole row, and
+ * the same duration over three times the distance reads as a flick. */
+const SHEEN_MS = 1300;
+/** The pause between passes. The band is off the right edge for all of it. */
+const SHEEN_HOLD_MS = 400;
+/** A thumb's width of light, not a syllable's. */
+const SHEEN_W = moderateScale(120);
+/**
+ * The band's stops, PRECOMPUTED at module scope — `alpha()` may never be
+ * called inside a worklet (design skill §Colour), and these are props anyway.
+ * The transparent ends carry the blue's own hue, so the band fades to nothing
+ * rather than through a grey fringe.
+ */
+const SHEEN_STOPS = [alpha(color.brand, 0), alpha(color.brand, 0.16), alpha(color.brand, 0)] as const;
+/**
+ * The vertical veil, and the reason the light reads as a beam rather than as a
+ * column. A `LinearGradient` fades in one direction only, so the band's top and
+ * bottom edges arrive as straight lines the width of a thumb — and two pending
+ * lines stacked in a ledger merged into a single tall bar, which was the first
+ * thing visible on the device. Laying the canvas back over the band's own top
+ * and bottom, fading to nothing across its middle, gives it the second axis:
+ * full strength through the line's core, gone by its edges.
+ *
+ * It is `canvas` rather than a mask because there is nothing to mask with here
+ * (no `MaskedView` in this app), and the flat token sits within 1.007:1 of the
+ * `PaperField` gradient it is standing in for at any point on the page — a
+ * difference no eye resolves, and one the design doc measured before allowing
+ * the flat fill anywhere else.
+ */
+const VEIL_STOPS = [
+  color.canvas,
+  alpha(color.canvas, 0),
+  alpha(color.canvas, 0),
+  color.canvas,
+] as const;
+const VEIL_AT = [0, 0.3, 0.7, 1] as const;
 
-export function ParseIndicator({ label = 'reading' }: { label?: string }) {
+export function ReadingSweep() {
   const reduceMotion = useReducedMotion();
   const t = useSharedValue(0);
+  /** The row's measured width. The band crosses exactly the row it is reading
+   * rather than a fixed guess, so the pass is as long as the entry at any
+   * Dynamic Type setting and on any device width. */
+  const w = useSharedValue(0);
 
   useEffect(() => {
-    if (reduceMotion) {
-      t.value = 0.5; // mid-travel: widest, brightest, motionless
-      return;
-    }
+    if (reduceMotion) return;
     t.value = 0;
     t.value = withRepeat(
-      withTiming(1, { duration: SCAN_MS, easing: Easing.inOut(Easing.cubic) }),
+      withSequence(
+        withTiming(1, { duration: SHEEN_MS, easing: Easing.inOut(Easing.cubic) }),
+        // Holding AT 1 — the band is already off the right edge, so the jump
+        // back to 0 at the top of the next repeat happens out of sight.
+        withTiming(1, { duration: SHEEN_HOLD_MS }),
+      ),
       -1,
-      true, // sweep back rather than snapping to the start
+      false,
     );
   }, [reduceMotion, t]);
 
-  const shuttle = useAnimatedStyle(() => {
-    // 0 at both ends, 1 in the middle — one curve driving width and ink, so the
-    // sweep thickens and darkens as it crosses and thins out as it leaves.
+  const band = useAnimatedStyle(() => {
+    // 0 at both ends, 1 in the middle. WITHOUT it the band meets the row's
+    // clipped edge at full strength on the way in and on the way out, and a
+    // hard-edged rectangle sliding out from under the ring reads as a chip
+    // rather than as light — visible the moment it was screenshotted. With it
+    // the light arrives from nothing, peaks over the middle of the entry, and
+    // leaves into nothing, and the 400 ms hold sits at zero.
     const breath = Math.sin(t.value * Math.PI);
-    const width = SHUTTLE_MIN + (SHUTTLE_MAX - SHUTTLE_MIN) * breath;
     return {
-      width,
-      transform: [{ translateX: t.value * (SCAN_W - width) }],
-      opacity: 0.35 + 0.5 * breath,
+      opacity: breath,
+      transform: [{ translateX: -SHEEN_W + t.value * (w.value + SHEEN_W) }],
     };
   });
 
+  if (reduceMotion) return null;
+
   return (
+    // BEHIND the row, and taking no touches: it is drawn first so every sibling
+    // paints over it, and the words keep their own full ink.
     <View
-      style={styles.scan}
-      accessibilityRole="progressbar"
-      accessibilityLabel={`${label}, in progress`}>
-      <Text style={styles.scanLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {label}
-      </Text>
-      <View style={styles.scanTrack}>
-        <Animated.View style={[styles.scanShuttle, shuttle]} />
-      </View>
+      style={styles.sweepTrack}
+      pointerEvents="none"
+      onLayout={(e) => {
+        w.value = e.nativeEvent.layout.width;
+      }}>
+      <Animated.View style={[styles.sweepBand, band]}>
+        <LinearGradient
+          colors={SHEEN_STOPS}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <LinearGradient
+          colors={VEIL_STOPS}
+          locations={VEIL_AT}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+    </View>
+  );
+}
+
+/**
+ * The ⋯ column's voice while the line is being read — the settled card's own
+ * glyph, waving. Nothing under Reduce Motion; the caller prints the word.
+ *
+ * THE METRICS ARE THE GLYPH'S, measured off the rendered card rather than
+ * taken from the gutter's dot: `Icon`'s ellipsis at 17 pt draws three ~3 pt
+ * dots on a ~3 pt pitch, and the gutter's own 4.5 pt dot on a 4.5 pt pitch
+ * made this mark twice the width of the thing it becomes. Two dots' worth of
+ * shift at the handover is exactly the movement this card exists to avoid.
+ */
+const GLYPH_DOT = moderateScale(3);
+
+export function ReadingDots() {
+  const reduceMotion = useReducedMotion();
+  if (reduceMotion) return null;
+  return (
+    <View style={styles.dotsRow}>
+      <PendingDot delay={0} tint={color.textMuted} size={GLYPH_DOT} />
+      <PendingDot delay={PENDING_STEP_MS} tint={color.textMuted} size={GLYPH_DOT} />
+      <PendingDot delay={PENDING_STEP_MS * 2} tint={color.textMuted} size={GLYPH_DOT} />
+    </View>
+  );
+}
+
+/** The state in a word — what the row says when the marks are not allowed to
+ * move. Exported for the composer, which has its own column to place it in. */
+export function ReadingWord({ label = 'reading' }: { label?: string }) {
+  return (
+    <Text style={styles.readingWord} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+      {label}
+    </Text>
+  );
+}
+
+/**
+ * THE ROW'S WHOLE ANSWER TO "what is happening here", and the only thing a
+ * caller should mount: the waving dots in the ⋯ column's slot, or the word when
+ * motion is off.
+ *
+ * ONE HOOK DECIDES BOTH. Before this, the marks read `useReducedMotion()`
+ * themselves while the card chose the word from a `reduceMotion` prop passed
+ * down from its parent. In production those two agree, because the prop comes
+ * from the same hook — but the simulator showed what happens when they do not:
+ * with Reduce Motion on and the prop still false, the dots vanished, the word
+ * never rendered, and the row said NOTHING while the app was working. A
+ * silent working state is the one failure this component cannot be allowed,
+ * so the decision now lives in exactly one place.
+ */
+export function ReadingMark() {
+  const reduceMotion = useReducedMotion();
+  if (reduceMotion) return <ReadingWord />;
+  return (
+    <View style={styles.markSlot}>
+      <ReadingDots />
     </View>
   );
 }
@@ -409,7 +604,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: PENDING_DOT,
-    height: NOTE_LINE_HEIGHT,
+    height: NOTE_LINE_BOX, // a VIEW on the note's grid, so it scales itself
   },
   pendingDot: {
     width: PENDING_DOT,
@@ -417,28 +612,51 @@ const styles = StyleSheet.create({
     borderRadius: PENDING_DOT / 2,
     backgroundColor: color.textSecondary,
   },
-  scan: {
+  /**
+   * The track the band runs along: the whole row, edge to edge, absolutely
+   * placed so it costs the layout nothing and the row measures exactly as it
+   * would without it.
+   *
+   * DELIBERATELY NOT CLIPPED. A clip is the obvious thing to reach for and it
+   * is what made the first build read as a chip: while any part of the band
+   * was outside the row, the clip cut it down the middle and printed a hard
+   * vertical edge against the canvas — a rectangle sliding out from under the
+   * ring rather than a light crossing a line. Uncut, the band starts a band's
+   * width off the row and ends a band's width past it, so its own soft ends
+   * are the only edges the eye ever meets. It is one row tall, so it cannot
+   * stray onto the record above or below.
+   */
+  sweepTrack: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  /** No radius and no clip: the veil above softens all four edges to nothing,
+   * so there are no corners left to round. */
+  sweepBand: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: SHEEN_W,
+  },
+  /** The dots as the ⋯ column wears them: no row height of its own, so it
+   * centres inside the 36 pt box the menu glyph will occupy. */
+  dotsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: GLYPH_DOT,
   },
-  scanLabel: {
+  /** The ⋯ column's own width, so the dots' x is the glyph's x. No height: the
+   * row centres the slot on the words' own line. */
+  markSlot: {
+    width: moderateScale(36),
+    alignItems: 'center',
+  },
+  /** The state in a word — the reading's face at the comparison line's size,
+   * muted, because it reports the app's state and never a value. */
+  readingWord: {
     ...readingStyle('400'),
-    fontSize: moderateScale(10.5),
+    fontSize: READING_FONT_SIZE,
     letterSpacing: 0.6,
     color: color.textMuted,
-  },
-  scanTrack: {
-    width: SCAN_W,
-    height: SCAN_H,
-    borderRadius: SCAN_H / 2,
-    backgroundColor: color.surfaceHigh,
-    overflow: 'hidden',
-  },
-  scanShuttle: {
-    height: SCAN_H,
-    borderRadius: SCAN_H / 2,
-    backgroundColor: color.textSecondary,
   },
   // No alignSelf: the tag centers in row headers and gets a row wrapper in
   // column layouts so the border always hugs the text.

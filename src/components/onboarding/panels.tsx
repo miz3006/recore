@@ -1,9 +1,23 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { Eyebrow } from '@/components/primitives';
-import { color, hairline, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
+import {
+  color,
+  hairline,
+  lineFor,
+  MAX_FONT_SCALE,
+  moderateScale,
+  radius,
+  readingStyle,
+  shadow,
+  spacing,
+  type,
+} from '@/lib/theme';
 
 import { BRAND_CARD, CARD_FILL } from './tokens';
+
+/** The app's own icon, as shipped (`app.json`). */
+const APP_ICON = require('../../../assets/images/icon.png');
 
 /**
  * The v3 flow's flat panels — the pieces of the design that are pictures made
@@ -33,10 +47,21 @@ export function Footnote({ children }: { children: string }) {
   );
 }
 
-/** A paragraph of a lesson screen. */
-export function Paragraph({ children }: { children: string }) {
+/**
+ * A paragraph of a lesson screen.
+ *
+ * `lede` sets the FIRST one a step higher (`type.lede`, 19/600, in full ink):
+ * the two lesson screens are the only prose in the funnel, and a wall of three
+ * identical grey paragraphs under a headline reads as terms and conditions. One
+ * step of contrast on the opening line is what makes it read as written rather
+ * than as filler — the same device the brief and the check-in already use, and
+ * the token was already in the scale for it.
+ */
+export function Paragraph({ children, lede = false }: { children: string; lede?: boolean }) {
   return (
-    <Text style={styles.paragraph} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+    <Text
+      style={lede ? styles.lede : styles.paragraph}
+      maxFontSizeMultiplier={MAX_FONT_SCALE}>
       {children}
     </Text>
   );
@@ -68,19 +93,40 @@ export function OverloadCard({
   next: string;
   unit: string;
 }) {
+  const shape = `${sets} × ${reps}`;
   return (
-    <View style={styles.card}>
-      <Eyebrow tone="muted">LAST WEEK</Eyebrow>
-      <Text style={styles.cardLine} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {`${lift} — ${sets} × ${reps} @ ${last} ${unit}`}
-      </Text>
+    <View
+      style={styles.card}
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`${lift}. Last week ${shape} at ${last} ${unit}. This week ${shape} at ${next} ${unit}.`}>
+      {/* The lift is named ONCE, at the top, because it is the card's subject
+          and not part of either reading. It was printed on both lines, which
+          made two rows of near-identical prose out of a comparison whose whole
+          point is the one number that differs. */}
+      <Eyebrow tone="muted">{lift.toUpperCase()}</Eyebrow>
+
+      <View style={styles.compareRow}>
+        <Text style={styles.compareLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          Last week
+        </Text>
+        <Text style={styles.compareValue} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {`${shape} · ${last} `}
+          <Text style={styles.compareUnit}>{unit}</Text>
+        </Text>
+      </View>
+
       <View style={styles.cardRule} />
-      <Eyebrow tone="muted" style={styles.blueLabel}>
-        THIS WEEK
-      </Eyebrow>
-      <Text style={[styles.cardLine, styles.blueLine]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {`${lift} — ${sets} × ${reps} @ ${next} ${unit}`}
-      </Text>
+
+      <View style={styles.compareRow}>
+        <Text style={[styles.compareLabel, styles.blueLabel]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          This week
+        </Text>
+        <Text style={[styles.compareValue, styles.blueValue]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {`${shape} · ${next} `}
+          <Text style={[styles.compareUnit, styles.blueValue]}>{unit}</Text>
+        </Text>
+      </View>
     </View>
   );
 }
@@ -123,11 +169,18 @@ export function RecapPreview({ title, body }: { title: string; body: string }) {
   return (
     <View style={styles.notification}>
       <View style={styles.notificationHead}>
-        <View style={styles.appMark} />
+        {/* THE REAL ICON, not a coloured square. This card is a picture of a
+            thing the person will meet outside the app, and the one detail that
+            decides whether it reads as that thing or as a mock-up is the app
+            mark being the app's own. It is the file `app.json` ships as the
+            icon, so the preview cannot drift from the real notification. */}
+        <Image source={APP_ICON} style={styles.appIcon} accessibilityIgnoresInvertColors />
         <Eyebrow tone="muted">RECORE</Eyebrow>
         <View style={styles.flex} />
+        {/* "Sunday", not "now": the recap is weekly, and a preview that says
+            now is describing a notification this app will never send. */}
         <Text style={styles.stamp} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          now
+          Sunday
         </Text>
       </View>
       <Text style={styles.notificationTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -153,30 +206,59 @@ const styles = StyleSheet.create({
     ...type.body,
     color: color.textSecondary,
   },
+  lede: {
+    ...type.lede,
+    color: color.textPrimary,
+  },
   card: {
     backgroundColor: CARD_FILL,
     borderRadius: radius.xl,
     borderCurve: 'continuous',
     padding: spacing.lg,
-    gap: spacing.xs,
     // A white surface on the canvas needs an edge to exist: it is 1.05:1 by
     // tone (skill §Spacing, radii, elevation).
     ...shadow.card,
   },
-  cardLine: {
-    ...type.headline,
-    fontWeight: '600',
+  /** One comparison row: what it is on the left, what it reads on the right —
+   * the record's own shape (skill §Structure), so the funnel's cards and the
+   * app's rows speak the same way. */
+  compareRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    // One even beat all the way down the card: eyebrow → row → rule → row.
+    marginTop: spacing.md,
+  },
+  compareLabel: {
+    ...type.subhead,
+    fontWeight: '500',
+    color: color.textSecondary,
+  },
+  /** A load is a reading, so it is set in the reading face — never the sans
+   * (skill §Decided-5). */
+  compareValue: {
+    ...readingStyle('600'),
+    fontSize: moderateScale(17),
+    lineHeight: lineFor(22),
     color: color.textPrimary,
+  },
+  /** The unit is a step down and a weight lighter: a number and its unit are
+   * typographically two things. */
+  compareUnit: {
+    ...readingStyle('500'),
+    fontSize: moderateScale(13),
+    color: color.textSecondary,
   },
   cardRule: {
     height: hairline,
     backgroundColor: color.border,
-    marginVertical: spacing.md,
+    marginTop: spacing.md,
   },
   blueLabel: {
     color: color.brand,
   },
-  blueLine: {
+  blueValue: {
     color: color.brand,
   },
   statCard: {
@@ -221,12 +303,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.xs,
   },
-  appMark: {
-    width: moderateScale(18),
-    height: moderateScale(18),
+  appIcon: {
+    width: moderateScale(20),
+    height: moderateScale(20),
     borderRadius: moderateScale(5),
     borderCurve: 'continuous',
-    backgroundColor: color.accent,
   },
   stamp: {
     ...type.caption,

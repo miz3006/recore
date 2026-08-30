@@ -1,119 +1,58 @@
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import {
-  Alert,
-  LayoutAnimation,
-  Linking,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  UIManager,
-  View,
-} from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { HistorySheet } from '@/components/history-sheet';
-import { Icon } from '@/components/icon';
-import { PressableScale, Stagger } from '@/components/motion';
-import { AccordionRow, Row, Section, Segmented } from '@/components/settings-rows';
+import { Stagger } from '@/components/motion';
 import { EDGE_FADE, ScrollEdgeHeader } from '@/components/scroll-edge';
+import { AnswerSheet } from '@/components/profile/answer-sheet';
+import { Identity } from '@/components/profile/identity';
+import { LiftsSheet } from '@/components/profile/lifts-sheet';
+import { ObstaclesSheet } from '@/components/profile/obstacles-sheet';
+import { PrefSheet, prefLabel, type PrefId } from '@/components/profile/pref-sheet';
+import { RecapSheet, recapRowValue } from '@/components/profile/recap-sheet';
+import { StatCard } from '@/components/profile/stat-card';
+import { Row, Section } from '@/components/settings-rows';
 import { listAliasOverrides } from '@/lib/db/alias-overrides';
 import { listPlanDays } from '@/lib/db/plan';
 import { clearParseCache } from '@/lib/db/cache';
 import { contactSupport, SUPPORT_EMAIL } from '@/lib/support';
-import { buildActivityGrid, type GridWeek } from '@/lib/activity';
 import { deleteAccount } from '@/lib/account/delete';
-import { useAuth } from '@/lib/auth/provider';
 import { signOut } from '@/lib/auth/sign-in';
 import {
   getPriceLabel,
   getTrialClock,
   isDevLapsed,
+  openSubscriptionManagement,
   restore,
   setDevLapsed,
   useEntitlementDecision,
 } from '@/lib/billing/state';
-import { managementUrl } from '@/lib/billing/store';
 import { formatChargeDate } from '@/lib/billing/trial';
 import { buildWorkoutsCsv } from '@/lib/export-csv';
 import { buildExportJson } from '@/lib/export-json';
 import { shareExportFile } from '@/lib/export-share';
-import { todayKey } from '@/lib/db/dates';
 import { getProfileTotals } from '@/lib/db/insights';
-import { computeStreak, getLoggedDayKeys } from '@/lib/db/workouts';
+import { getLoggedDayKeys } from '@/lib/db/workouts';
 import { markImported } from '@/lib/funnel';
+import {
+  keyLiftsLabel,
+  labelFor,
+  obstaclesLabel,
+  obstaclesSub,
+  type AnswerId,
+} from '@/lib/profile-answers';
+import { seedV2FromRecord } from '@/lib/onboarding-v2-seed';
+import { resetSandbox, snapshotPrefs } from '@/lib/onboarding-v2-sandbox';
 import { useOnboardingAnswers } from '@/state/onboarding';
+import { beginSandboxRun } from '@/state/onboarding-v2';
 import { tap, tapMedium } from '@/lib/haptics';
 import { pickAndImportCsv } from '@/lib/import/pick';
 import type { LegalDocId } from '@/lib/legal';
 import { groupThousands } from '@/lib/parse/estimate';
-import { fmtNumber } from '@/lib/parse/summarize';
-import { recachePredictionFromLatest } from '@/lib/predict/cache';
-import { disableRecap, enableRecap, refreshRecapNotification } from '@/lib/recap';
 import { canRateApp, rateApp } from '@/lib/review';
-import {
-  DAY_LABELS,
-  daysLabel,
-  formatBodyWeight,
-  hasDay,
-  parseBodyHeight,
-  parseBodyWeight,
-  toggleDay,
-  type Experience,
-  type SessionFeel,
-  type TrainingStyle,
-} from '@/lib/onboarding';
-import {
-  getBarWeightKg,
-  getBodyHeightCm,
-  getBodyWeightKg,
-  getExperience,
-  getGoal,
-  getObLanguage,
-  getRecapHour,
-  getRestSeconds,
-  getSessionFeel,
-  getSmallestPlateKg,
-  getTrainingStyle,
-  getUsualDays,
-  getWeightUnit,
-  isRecapEnabled,
-  setBarWeightKg,
-  setBodyHeightCm,
-  setBodyWeightKg,
-  setExperience,
-  setGoal,
-  setObLanguage,
-  setRecapHour,
-  setRestSeconds,
-  setSessionFeel,
-  setSmallestPlateKg,
-  REST_OPTIONS_S,
-  setTrainingStyle,
-  setUsualDays,
-  setWeightUnit,
-  type Goal,
-  type ObLanguage,
-  type WeightUnit,
-} from '@/lib/prefs';
 import { scheduleSync } from '@/lib/sync/index';
-import {
-  color,
-  FIXED_FONT_SCALE,
-  hairline,
-  lineFor,
-  MAX_FONT_SCALE,
-  moderateScale,
-  radius,
-  readingStyle,
-  shadow,
-  spacing,
-  TAB_BAR_CLEARANCE,
-  type,
-} from '@/lib/theme';
-import { useDisplay } from '@/state/display';
+import { color, MAX_FONT_SCALE, spacing, TAB_BAR_CLEARANCE, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
 /**
@@ -132,129 +71,11 @@ import { useSession } from '@/state/session-store';
  * touch history.
  */
 
-// Android needs this opt-in for LayoutAnimation (the accordion's soft expand).
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-/**
- * §5's five focus answers, all editable here — "all answers are editable in You
- * after account creation". Three of them reach the prediction engine through
- * `focusForGoal`; the other two change wording only.
- */
-const GOAL_OPTIONS: { id: Goal; label: string }[] = [
-  { id: 'strength', label: 'Strength' },
-  { id: 'muscle', label: 'Muscle' },
-  { id: 'fitness', label: 'Fitness' },
-  { id: 'sport', label: 'Sport' },
-  { id: 'both', label: 'Mixed' },
-];
-
-const EXPERIENCE_OPTIONS: { id: Experience; label: string }[] = [
-  { id: 'new', label: 'New' },
-  { id: 'building', label: 'Building' },
-  { id: 'experienced', label: 'Experienced' },
-];
-
-const STYLE_OPTIONS: { id: TrainingStyle; label: string }[] = [
-  { id: 'gym', label: 'Gym' },
-  { id: 'sport', label: 'Sport' },
-  { id: 'hybrid', label: 'Both' },
-];
-
-const FEEL_OPTIONS: { id: SessionFeel; label: string }[] = [
-  { id: 'structured', label: 'Structured' },
-  { id: 'flexible', label: 'Flexible' },
-  { id: 'sportLed', label: 'Sport-led' },
-  { id: 'hybrid', label: 'Mixed' },
-];
-
-const UNIT_OPTIONS: { id: WeightUnit; label: string }[] = [
-  { id: 'kg', label: 'kg' },
-  { id: 'lb', label: 'lb' },
-];
-
-/** OB_04's writing languages — wired to the real parser-language pref. */
-const LANGUAGE_OPTIONS: { id: ObLanguage; label: string }[] = [
-  { id: 'en', label: 'English' },
-  { id: 'slo', label: 'Slovenščina' },
-  { id: 'both', label: 'Both' },
-];
-
-/** Same options onboarding offers — one source of plate truth for the picker. */
-const PLATE_OPTIONS = [0.5, 1.25, 2.5] as const;
-const PLATE_SEG: { id: number; label: string }[] = PLATE_OPTIONS.map((p) => ({ id: p, label: fmtNumber(p) }));
-
-/** Olympic 20 or the common 15 — feeds the checklist's plate math. */
-const BAR_OPTIONS = [15, 20] as const;
-const BAR_SEG: { id: number; label: string }[] = BAR_OPTIONS.map((b) => ({ id: b, label: `${b}` }));
-
-/** The §12.1 recap's editable hour — Sunday, one of four sensible slots. */
-const RECAP_HOUR_SEG: { id: number; label: string }[] = [8, 12, 18, 20].map((h) => ({
-  id: h,
-  label: `${String(h).padStart(2, '0')}:00`,
-}));
-
-const RECAP_TOGGLE: { id: 'off' | 'on'; label: string }[] = [
-  { id: 'off', label: 'Off' },
-  { id: 'on', label: 'On' },
-];
-
-/** How the ledger prints a set: aligned columns, or one spelled-out line each
- * at accessibility size. The names describe the RESULT, not a font size. */
-const SET_READING_SEG: { id: 'standard' | 'large'; label: string }[] = [
-  { id: 'standard', label: 'Standard' },
-  { id: 'large', label: 'Larger' },
-];
-
-/** Rest-timer lengths, as the settings picker shows them ("1:30"). */
-const REST_SEG: { id: number; label: string }[] = REST_OPTIONS_S.map((s) => ({
-  id: s,
-  label: `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`,
-}));
-
-type Expand =
-  | 'focus'
-  | 'experience'
-  | 'style'
-  | 'feel'
-  | 'days'
-  | 'unit'
-  | 'rest'
-  | 'language'
-  | 'body'
-  | 'plate'
-  | 'bar'
-  | 'setreadings'
-  | 'recap'
-  | null;
-
-/** "Jan Kovač" → "JK"; else the email's initial; else a bare mark. */
-function initialsOf(name: string | null, email: string | null): string {
-  if (name && name.trim()) {
-    const parts = name.trim().split(/\s+/);
-    const a = parts[0]?.[0] ?? '';
-    const b = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
-    const out = (a + b).toUpperCase();
-    if (out) return out;
-  }
-  return email ? email[0]!.toUpperCase() : '—';
-}
-
-const labelOf = <T,>(options: { id: T; label: string }[], id: T | null): string =>
-  options.find((o) => o.id === id)?.label ?? 'Not set';
-
-/** The stored metric weight as bare text in the DISPLAY unit — what the body
- * field edits. Empty when nothing is stored. */
-const weightTextOf = (kg: number | null, unit: WeightUnit): string =>
-  kg == null ? '' : (formatBodyWeight(kg, unit)?.split(' ')[0] ?? '');
-
 export default function Settings() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  // Measured, not guessed: the title row grows with Dynamic Type.
+  // Measured, not guessed: the safe area is what the bare scroll edge occupies.
   const [headerH, setHeaderH] = useState(0);
-  const { session } = useAuth();
   const userId = useSession((s) => s.userId);
   const hydrate = useSession((s) => s.hydrate);
   // Bumped by every landed correction — the shorthand count follows it.
@@ -262,43 +83,33 @@ export default function Settings() {
   const [busy, setBusy] = useState<null | 'import' | 'signout' | 'delete' | 'restore'>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
-  const [goal, setGoalState] = useState<Goal | null>(() => getGoal());
-  const [language, setLanguageState] = useState<ObLanguage | null>(() => getObLanguage());
-  const [plate, setPlateState] = useState<number | null>(() => getSmallestPlateKg());
-  const [bar, setBarState] = useState<number>(() => getBarWeightKg());
-  // §5's answers, all editable here — body context included (§11).
-  const [experience, setExperienceState] = useState<Experience | null>(() => getExperience());
-  const [style, setStyleState] = useState<TrainingStyle | null>(() => getTrainingStyle());
-  const [feel, setFeelState] = useState<SessionFeel | null>(() => getSessionFeel());
-  const [days, setDaysState] = useState<number>(() => getUsualDays());
-  const [unit, setUnitState] = useState<WeightUnit>(() => getWeightUnit() ?? 'kg');
-  // Body context, editable in place (§11: every onboarding answer stays
-  // editable). The texts are what the fields show; the numbers are what is
-  // stored — a field only writes when its text parses, and an emptied field
-  // is a real answer that clears the value.
-  const [bodyWeightKg, setBodyWeightKgState] = useState<number | null>(() => getBodyWeightKg());
-  const [bodyHeightCm, setBodyHeightCmState] = useState<number | null>(() => getBodyHeightCm());
-  const [weightText, setWeightText] = useState<string>(() =>
-    weightTextOf(getBodyWeightKg(), getWeightUnit() ?? 'kg'),
-  );
-  const [heightText, setHeightText] = useState<string>(() => {
-    const cm = getBodyHeightCm();
-    return cm == null ? '' : String(cm);
-  });
-  const [expanded, setExpanded] = useState<Expand>(null);
-  // Display preference — held in its own live store so the ledger follows the
-  // tap immediately (`state/display.ts`), with the value itself in the meta KV.
-  const largeSets = useDisplay((s) => s.largeSetReadings);
-  const setLargeSets = useDisplay((s) => s.setLargeSetReadings);
   const [lapsed, setLapsed] = useState<boolean>(() => isDevLapsed());
-  const [historyOpen, setHistoryOpen] = useState(false);
+  /**
+   * WHICH "About you" PICKER IS OPEN, and whether it is on screen.
+   *
+   * Two pieces of state and not one, on purpose: clearing the id on close would
+   * unmount the sheet's content on the same frame the dismissal starts, and the
+   * exit animation would play over an empty card. The id survives the close and
+   * is simply replaced on the next open.
+   */
+  const [editing, setEditing] = useState<AnswerId | null>(null);
+  const [answerOpen, setAnswerOpen] = useState(false);
+  const [liftsOpen, setLiftsOpen] = useState(false);
+  const [obstaclesOpen, setObstaclesOpen] = useState(false);
+  /**
+   * THE SAME TWO-PIECE PATTERN, for the settings that are not flow answers:
+   * which picker is open, and whether it is on screen. `PrefSheet` is one
+   * mounted sheet driven by an id, exactly as `AnswerSheet` is — six mounted
+   * sheets would be six native presentation contexts fighting for one slot.
+   */
+  const [prefEditing, setPrefEditing] = useState<PrefId | null>(null);
+  const [prefOpen, setPrefOpen] = useState(false);
+  const [recapOpen, setRecapOpen] = useState(false);
+  /** Bumped by every landed answer — the "About you" labels are derived from it. */
+  const [answerRevision, setAnswerRevision] = useState(0);
+  /** The same, for the rows whose value lives in a pref rather than an answer. */
+  const [settingsRevision, setSettingsRevision] = useState(0);
   const [subscriptionMessage, setSubscriptionMessage] = useState<string | null>(null);
-  // The §12.1 weekly recap — the ONE recurring notification, off by default,
-  // off in one tap, its hour user-visible and editable right here.
-  const [recapOn, setRecapOnState] = useState<boolean>(() => isRecapEnabled());
-  const [recapHour, setRecapHourState] = useState<number>(() => getRecapHour());
-  const [recapMessage, setRecapMessage] = useState<string | null>(null);
-  const [rest, setRestState] = useState<number>(() => getRestSeconds());
   const [accountMessage, setAccountMessage] = useState<string | null>(null);
   const [supportMessage, setSupportMessage] = useState<string | null>(null);
   const entitlement = useEntitlementDecision();
@@ -346,15 +157,85 @@ export default function Settings() {
     const days = getLoggedDayKeys(userId);
     if (days.size === 0) return null; // nothing to draw is not a zero, it is silence
     const totals = getProfileTotals(userId);
-    const today = todayKey();
-    return {
-      days: days.size,
-      sets: totals.sets,
-      volume: totals.volume,
-      streak: computeStreak(userId, today),
-      grid: buildActivityGrid(days, today),
-    };
+    // Sessions ARE logged days here: the record is one note per day, so the two
+    // counts are the same number and the card names the one a person thinks in.
+    return { days: days.size, sets: totals.sets, volume: totals.volume };
   }, [userId]);
+
+  /**
+   * The seven "About you" values, as the rows print them. Derived rather than
+   * held: `labelFor` reads the flow's own option list, so a row can never show a
+   * label for a choice the flow no longer offers.
+   */
+  const answers = useMemo(
+    () => ({
+      goal: labelFor('goal'),
+      experience: labelFor('experience'),
+      frequency: labelFor('frequency'),
+      split: labelFor('split'),
+      keyLifts: keyLiftsLabel(),
+      tracker: labelFor('tracker'),
+      obstacles: obstaclesLabel(),
+      // The frustrations themselves, in the flow's words, on the row's second
+      // line — the value column is one line wide and these are sentences.
+      obstaclesSub: obstaclesSub(),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [answerRevision],
+  );
+
+  /**
+   * The settings rows' values, derived the same way the answers are. `prefLabel`
+   * and the picker read one table (`profile/pref-sheet`), so a row and the sheet
+   * it opens cannot print different words for the same stored value.
+   */
+  const prefs = useMemo(
+    () => ({
+      unit: prefLabel('unit'),
+      rest: prefLabel('rest'),
+      bar: prefLabel('bar'),
+      language: prefLabel('language'),
+      setreadings: prefLabel('setreadings'),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [settingsRevision],
+  );
+
+  /** "Sundays 18:00", "Mondays 08:00", or "Off" — the DAY included, because the
+   * v2 flow asks for it and `lib/recap.ts` schedules on it. */
+  const recapValue = useMemo(
+    () => recapRowValue(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [settingsRevision],
+  );
+
+  const openAnswer = (id: AnswerId) => {
+    tap();
+    setEditing(id);
+    setAnswerOpen(true);
+  };
+
+  const openPref = (id: PrefId) => {
+    tap();
+    setPrefEditing(id);
+    setPrefOpen(true);
+  };
+
+  /**
+   * An "About you" answer just landed.
+   *
+   * The rows re-read, and the v2 store is re-seeded from the record — the
+   * paywall builds its copy from that store (`paywall-v2/plan.tsx`) and is
+   * reachable from the subscription row two groups down, so an edit that did
+   * not travel would show up as a paywall quoting the answer that was just
+   * replaced. `lib/onboarding-v2-seed.ts` has the whole argument.
+   */
+  const noteAnswerChanged = () => {
+    seedV2FromRecord();
+    setAnswerRevision((n) => n + 1);
+  };
+
+  const noteSettingChanged = () => setSettingsRevision((n) => n + 1);
 
   /** How many shorthands the parser has been taught — the count on the
    * "Reading corrections" row. Re-read on every landed correction. */
@@ -376,154 +257,6 @@ export default function Settings() {
     if (labels.length === 0) return 'Not set';
     return labels.length > 3 ? `${labels.slice(0, 3).join(', ')} +${labels.length - 3}` : labels.join(', ');
   }, [userId]);
-
-  // The real account, never a placeholder: name (best-effort) + email + provider.
-  const meta = session?.user.user_metadata as { full_name?: string; name?: string } | undefined;
-  const displayName = meta?.full_name ?? meta?.name ?? null;
-  const email = session?.user.email ?? null;
-  const provider = session?.user.app_metadata.provider;
-  const providerLabel = provider === 'apple' ? 'Apple' : provider === 'google' ? 'Google' : null;
-
-  const toggle = (key: Exclude<Expand, null>) => {
-    tap();
-    LayoutAnimation.configureNext(LayoutAnimation.create(180, 'easeInEaseOut', 'opacity'));
-    setExpanded((cur) => (cur === key ? null : key));
-  };
-
-  const handleBar = (kg: number) => {
-    tap();
-    setBarWeightKg(kg);
-    setBarState(kg);
-  };
-
-  /** Writes the pref AND the live copy, so Today's ledger changes behind this
-   * screen rather than after a relaunch. */
-  const handleSetReadings = (id: 'standard' | 'large') => {
-    tap();
-    setLargeSets(id === 'large');
-  };
-
-  const handleGoal = (g: Goal) => {
-    tap();
-    setGoal(g);
-    setGoalState(g);
-  };
-
-  const handleLanguage = (l: ObLanguage) => {
-    tap();
-    setObLanguage(l);
-    setLanguageState(l);
-  };
-
-  const handleExperience = (e: Experience) => {
-    tap();
-    setExperience(e);
-    setExperienceState(e);
-  };
-
-  const handleStyle = (s: TrainingStyle) => {
-    tap();
-    setTrainingStyle(s);
-    setStyleState(s);
-  };
-
-  const handleFeel = (f: SessionFeel) => {
-    tap();
-    setSessionFeel(f);
-    setFeelState(f);
-  };
-
-  const handleUnit = (u: WeightUnit) => {
-    tap();
-    setWeightUnit(u);
-    setUnitState(u);
-    // The weight field speaks the display unit — re-derive its text from the
-    // stored metric value so a unit switch never reinterprets typed digits.
-    setWeightText(weightTextOf(getBodyWeightKg(), u));
-  };
-
-  /** Write-through body weight: parses in the display unit, stores metric.
-   * Empty clears; text that doesn't parse yet just stays on screen. */
-  const handleBodyWeightText = (text: string) => {
-    setWeightText(text);
-    if (text.trim() === '') {
-      setBodyWeightKg(null);
-      setBodyWeightKgState(null);
-      return;
-    }
-    const kg = parseBodyWeight(text, unit);
-    if (kg != null) {
-      setBodyWeightKg(kg);
-      setBodyWeightKgState(kg);
-    }
-  };
-
-  const handleBodyHeightText = (text: string) => {
-    setHeightText(text);
-    if (text.trim() === '') {
-      setBodyHeightCm(null);
-      setBodyHeightCmState(null);
-      return;
-    }
-    const cm = parseBodyHeight(text, 'cm');
-    if (cm != null) {
-      setBodyHeightCm(cm);
-      setBodyHeightCmState(cm);
-    }
-  };
-
-  /** On blur a field that never parsed snaps back to what is stored, so the
-   * row and its editor cannot disagree about the record. */
-  const snapWeightText = () => setWeightText(weightTextOf(getBodyWeightKg(), unit));
-  const snapHeightText = () => {
-    const cm = getBodyHeightCm();
-    setHeightText(cm == null ? '' : String(cm));
-  };
-
-  /** The usual week. An expectation, never a target — nothing counts a miss. */
-  const handleDay = (index: number) => {
-    tap();
-    const next = toggleDay(days, index);
-    setUsualDays(next);
-    setDaysState(next);
-  };
-
-  /** On asks the OS in context and only claims On when a notice can actually
-   * fire (§2: never a state the app cannot keep). Off cancels the pending one. */
-  const handleRecapToggle = async (id: 'off' | 'on') => {
-    tap();
-    if (!userId) return;
-    setRecapMessage(null);
-    if (id === 'off') {
-      await disableRecap();
-      setRecapOnState(false);
-      return;
-    }
-    const ok = await enableRecap(userId);
-    setRecapOnState(ok);
-    if (!ok) {
-      setRecapMessage('Notifications are off for Recore in iOS Settings. Allow them there, then turn this on.');
-    }
-  };
-
-  const handleRecapHour = (h: number) => {
-    tap();
-    setRecapHour(h);
-    setRecapHourState(h);
-    if (userId) void refreshRecapNotification(userId);
-  };
-
-  const handlePlate = (kg: number) => {
-    tap();
-    setSmallestPlateKg(kg);
-    setPlateState(kg);
-    // The plate shapes every prescribed load (roundToPlate) — rebuild the
-    // cached ghost so the change is visible on the very next open.
-    if (userId) {
-      recachePredictionFromLatest(userId);
-      hydrate(userId);
-    }
-  };
 
   const handleImport = async () => {
     if (busy || !userId) return;
@@ -579,18 +312,6 @@ export default function Settings() {
     const outcome = await shareExportFile(format, contents);
     if (outcome === 'unavailable') setExportMessage('Sharing is unavailable on this device.');
     else if (outcome === 'failed') setExportMessage('Export failed — try again.');
-  };
-
-  /**
-   * The rest timer's default length. It was reachable only by LONG-PRESSING
-   * the timer chip on Today — a gesture with no label anywhere — so the value
-   * most people never discovered they could change now sits where a default
-   * belongs. The chip reads the same pref, so the two can never disagree.
-   */
-  const handleRest = (seconds: number) => {
-    tap();
-    setRestSeconds(seconds);
-    setRestState(seconds);
   };
 
   /**
@@ -670,18 +391,40 @@ export default function Settings() {
     }
   };
 
+  /**
+   * "Restart onboarding" replays THE FLOW A NEW PERSON MEETS — v2 since 28
+   * August 2026. It used to open the illustrated v1 flow, which would now show
+   * a returning user a funnel the app no longer uses and re-write their
+   * preferences in the older vocabulary on the way out.
+   *
+   * The previous answers are kept rather than cleared, so the run opens with
+   * their own choices already ticked; finishing it commits again through the
+   * same single commit point. It is a real run, so it carries no `dev` flag —
+   * the development rows in the section below are the sandboxed way in.
+   */
+  /**
+   * REPLAY THE FLOW ON TODAY'S ANSWERS, not on the ones the last run left behind.
+   *
+   * The row promises "your answers already ticked". What the flow's own store
+   * holds is whatever was true when that run finished, which is not the same
+   * thing the moment anybody edits a row above — and finishing the replay would
+   * then commit the stale answer straight back over the edit. Seeding first
+   * closes that loop: the screens open on the record, and the commit at the end
+   * writes back what the person actually confirmed.
+   */
   const handleReplaySetup = () => {
     tap();
-    router.push('/onboarding/1');
+    seedV2FromRecord();
+    router.push('/onboarding-v2/1');
   };
 
   const handleManage = () => {
     tap();
     // The customer-specific URL when the store has one, Apple's generic
     // subscriptions page otherwise. Never a dead control (§2).
-    void managementUrl()
-      .then((url) => Linking.openURL(url))
-      .catch(() => {});
+    // Customer Center where the build has it, Apple's subscriptions page
+    // otherwise. One entry point, so all three surfaces stay identical.
+    void openSubscriptionManagement();
   };
 
   /** Real Restore: it asks the store, it never charges, and it says what it found. */
@@ -768,113 +511,160 @@ export default function Settings() {
         contentContainerStyle={[
           styles.content,
           {
-            // The list runs UNDER the title and fades out into it (§ScrollEdge);
-            // its own top padding is what the header measured, plus the fade, so
-            // nothing ever rests beneath the gradient.
+            // The title is the first thing IN the list now, so the edge above it
+            // carries no row — but it still carries the FADE, or rows would run
+            // under the clock and the Dynamic Island untreated. Content starts
+            // below the gradient, never under it (§ScrollEdge).
             paddingTop: headerH + EDGE_FADE,
             // Content scrolls *behind* the tab bar (§5.2 — glass needs something
             // to refract), so the last row clears it with padding, not an inset.
             paddingBottom: insets.bottom + spacing.xxl + TAB_BAR_CLEARANCE,
           },
         ]}
-        // The list is now the FIRST view in the controller, so UIKit would
-        // helpfully add its own safe-area inset on top of the padding the
-        // header just measured. It is our header; we do the arithmetic.
+        // The list is the FIRST view in the controller, so UIKit would helpfully
+        // add its own safe-area inset on top of the one applied above. The
+        // arithmetic is ours and it is done once.
         contentInsetAdjustmentBehavior="never"
+        // The one input left on this page is the inline rename in the identity
+        // block. Scrolling puts its keyboard away the iOS way — following the
+        // finger down rather than snapping shut — and the field commits on blur,
+        // so a scroll IS a way to finish typing rather than a way to lose it.
+        keyboardDismissMode="interactive"
         showsVerticalScrollIndicator={false}>
         <Stagger step={55} initialDelay={80}>
-        {/* PROFILE — the identity block became a proper grouped card (12 Aug):
-            the avatar heads it, and what the account actually IS reads as
-            rows underneath. Read-only on purpose — the name and address belong
-            to the Apple or Google account that signs you in, and Recore
-            editing them here would be a second, disagreeing copy. */}
-        <Section label="Profile">
-          <View style={styles.profile}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarInitials} maxFontSizeMultiplier={FIXED_FONT_SCALE}>
-                {initialsOf(displayName, email)}
-              </Text>
-            </View>
-            <View style={styles.profileText}>
-              <Text
-                style={styles.profileName}
-                numberOfLines={1}
-                maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {displayName ?? 'Your account'}
-              </Text>
-              {providerLabel ? (
-                <Text style={styles.profileProvider} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  Signed in with {providerLabel}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-          <Row label="Name" value={displayName ?? 'Not set'} chevron={false} divider />
-          <Row label="Email" value={email ?? 'Not set'} chevron={false} divider />
-        </Section>
+        {/* THE PAGE TITLE — large, left, and it SCROLLS AWAY (Pin Trading,
+            `6751493504/oth_hirl5`).
 
-        {/* THE RECORD — the career numbers and the shape of the training year,
-            in one card that is also a door to Progress (Mobbin: komoot and
-            AllTrails both make the stat block tappable rather than decorative).
-            Absent entirely on an empty account: three zeros over an empty grid
-            is noise, and §1.1 invariant 6 says say nothing instead. */}
+            It used to be a fixed `ScrollEdgeHeader` that the list ran under and
+            faded into. That chrome earns its keep on Today, where a person is
+            writing and the header has to stay reachable; on a page that is read
+            top to bottom and left alone, a permanent 34 pt title is a permanent
+            tax on the first screenful. Both references put the title in the
+            content and let it go.
+
+            ONE HEADER, NO ICONS. No gear (everything settings-shaped is already
+            a row below), no crown (the subscription is a row in Account, never a
+            banner — that is the Pin Trading pattern this app rejects), and no
+            second anything. */}
+        <Text
+          style={styles.pageTitle}
+          accessibilityRole="header"
+          maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          Profile
+        </Text>
+
+        <Identity />
+
+        {/* THE CAREER NUMBERS. Absent entirely on an empty account: three zeros
+            over an empty card is noise, and §1.1 invariant 6 says say nothing
+            instead of saying zero. */}
         {record ? (
-          <View style={styles.section}>
-            <View style={[styles.card, styles.recordCard]}>
-              {/* The numbers go to Progress — that is where a number is
-                  explained. Two controls in one card, each its own 44 pt
-                  target, because they answer different questions. */}
-              <PressableScale
-                onPress={() => {
-                  tap();
-                  router.push('/progress');
-                }}
-                haptic="none"
-                activeScale={0.98}
-                accessibilityRole="button"
-                accessibilityLabel={`${record.days} training days, ${record.sets} sets, ${groupThousands(record.volume)} kilograms. Open Progress.`}
-                style={styles.stats}>
-                <Stat value={String(record.days)} label="Training days" />
-                <View style={styles.statRule} />
-                <Stat value={String(record.sets)} label="Sets" />
-                <View style={styles.statRule} />
-                <Stat value={compactKg(record.volume)} label="Kg lifted" />
-              </PressableScale>
-
-              {/* The grid opens ITSELF, in full: the card can only hold thirty
-                  weeks, and the obvious question a partial record raises is
-                  "what about before that". */}
-              <PressableScale
-                onPress={() => {
-                  tap();
-                  setHistoryOpen(true);
-                }}
-                haptic="none"
-                activeScale={0.98}
-                accessibilityRole="button"
-                accessibilityLabel="Open your full training record"
-                style={styles.gridBlock}>
-                <ActivityGrid weeks={record.grid} />
-                <View style={styles.gridFoot}>
-                  <Text style={styles.gridFootLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    Last 30 weeks
-                  </Text>
-                  <View style={styles.gridFootMore}>
-                    <Text style={styles.gridFootLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                      See all
-                    </Text>
-                    <Icon name="chevron-forward" size={moderateScale(12)} tint={color.textMuted} />
-                  </View>
-                </View>
-              </PressableScale>
-            </View>
-            <Text style={styles.footnote} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {record.streak > 1
-                ? `${record.streak} training days in a row. Rest days never break it.`
-                : 'Every day you wrote something down.'}
-            </Text>
+          <View style={styles.statSection}>
+            <StatCard
+              stats={[
+                { value: String(record.days), label: 'Sessions' },
+                { value: String(record.sets), label: 'Sets' },
+                { value: compactKg(record.volume), label: 'Kg lifted' },
+              ]}
+            />
           </View>
         ) : null}
+
+        {/* ABOUT YOU — the onboarding answers, and the POINT of the section is
+            that none of them is locked once the flow closes. Every row opens the
+            same picker the flow asked the question on (`profile/answer-sheet`),
+            so the wording, the order and the opt-out demotion are the flow's own
+            and cannot drift from it.
+
+            The answers themselves live in `lib/profile-answers.ts` rather than in
+            v2's in-memory store, which by design forgets everything when the app
+            is killed. See that file for why, and for the v1 keys each write
+            mirrors so the prediction engine never reads a stale goal. */}
+        <Section
+          label="About you"
+          footnote="Everything you answered when you set Recore up. Change any of it whenever it changes.">
+          <Row
+            icon="crosshair"
+            label="Goal"
+            value={answers.goal}
+            onPress={() => openAnswer('goal')}
+          />
+          <Row
+            icon="hourglass"
+            label="Training experience"
+            value={answers.experience}
+            divider
+            onPress={() => openAnswer('experience')}
+          />
+          <Row
+            icon="calendar"
+            label="Sessions a week"
+            value={answers.frequency}
+            divider
+            onPress={() => openAnswer('frequency')}
+          />
+          <Row
+            icon="layers"
+            label="Split"
+            value={answers.split}
+            divider
+            onPress={() => openAnswer('split')}
+          />
+          <Row
+            icon="barbell"
+            label="Key lifts"
+            value={answers.keyLifts}
+            sub="And what you lift now"
+            divider
+            onPress={() => {
+              tap();
+              setLiftsOpen(true);
+            }}
+          />
+          {/* WHERE THEY LOG NOW, and WHAT GETS IN THE WAY — screens 2 and 3,
+              which the flow has always asked and Profile could not show until
+              29 August 2026. The first decides whether the CSV import fast path
+              is offered; the second decides which value proposition leads on
+              the reveal and on the paywall. Both are answers about the person,
+              both change over a year of training, and neither was reachable
+              once the flow closed. They sit under the training answers rather
+              than in the flow's order, so the thing a person opens this section
+              for — their goal — stays at the top of it. */}
+          <Row
+            icon="document"
+            label="Where you log now"
+            value={answers.tracker}
+            divider
+            onPress={() => openAnswer('tracker')}
+          />
+          <Row
+            icon="wrench"
+            label="What gets in the way"
+            value={answers.obstacles}
+            sub={answers.obstaclesSub}
+            divider
+            onPress={() => {
+              tap();
+              setObstaclesOpen(true);
+            }}
+          />
+
+          {/* THE WHOLE FLOW AGAIN, under the answers it rewrites. It sat in
+              Support until 28 August 2026, between the privacy policy and the
+              build number, which is a filing cabinet for things nobody expects
+              to change anything — and this row rewrites every value above it.
+              A real run, not the sandboxed replay in Development: it opens with
+              the previous answers already ticked and commits through the same
+              single commit point when it finishes. */}
+          <Row
+            icon="refresh"
+            label="Run setup again"
+            sub="Replays the questions from the start, with your answers already ticked"
+            divider
+            onPress={handleReplaySetup}
+          />
+        </Section>
+
 
         {/* SUBSCRIPTION — the store's own state, and three real actions. The
             footnote doubles as the result line for Restore, the way "Your
@@ -896,7 +686,7 @@ export default function Settings() {
             sub={subscriptionSub}
             onPress={() => {
               tap();
-              router.push('/paywall');
+              router.push('/paywall-v2/plan');
             }}
           />
           <Row icon="card" label="Manage subscription" external divider onPress={handleManage} />
@@ -909,238 +699,65 @@ export default function Settings() {
           />
         </Section>
 
-        {/* TRAINING — the four settings that change how a SESSION works, in
-            the order they come up in a gym: what you lift in, how long you
-            rest, which days you train, and whether Sunday brings a recap.
-            Everything that describes YOU rather than the session moved to its
-            own card below (12 Aug) — this one used to be eleven rows deep and
-            the two most-changed values were buried in the middle of it. */}
+        {/* TRAINING — the settings that change how a SESSION works, and NOT
+            one of them is an onboarding answer. The v2 flow writes and shows
+            kilograms, takes the writing language from the locale and states a
+            20 kg Olympic bar as an assumption rather than a question
+            (`flow.ts`), so these belong here and not in "About you" above.
+            They are still real settings with live readers — `bottom-toolbar`
+            starts the timer from the rest pref, `ghost-prediction` racks a
+            prediction with the bar — which is why they stay on this screen.
+
+            THEY OPEN SHEETS NOW (28 August 2026). Every one of these used to
+            expand inline into a segmented control, so Profile had two ways to
+            change a value: the flow's picker for the onboarding answers, and a
+            different control with a different gesture for everything else. One
+            screen, one vocabulary — `profile/pref-sheet`.
+
+            The USUAL-WEEK row went with the accordions, and did not come back:
+            `pref_usual_days` is a v1 onboarding question (the v2 flow asks how
+            many sessions a week, which is the "Sessions a week" row above) and
+            grep says NOTHING in the app reads it. A row that writes a value no
+            code consumes is a setting that does nothing. The days a person
+            actually trains on are named in the split — the "Session types" row
+            below. */}
         <Section
           label="Training"
-          footnote={recapMessage ?? 'Predictions round to what your gym’s bar can actually hold.'}
-          footnoteActive={recapMessage != null}>
-          <AccordionRow
-            icon="plate"
-            label="Units"
-            value={unit}
-            open={expanded === 'unit'}
-            onToggle={() => toggle('unit')}>
-            <Segmented options={UNIT_OPTIONS} selected={unit} onSelect={handleUnit} />
-          </AccordionRow>
-          <AccordionRow
+          footnote="Predictions round to what your gym’s bar can actually hold.">
+          <Row icon="plate" label="Units" value={prefs.unit} onPress={() => openPref('unit')} />
+          <Row
             icon="timer"
             label="Rest timer default"
-            value={REST_SEG.find((o) => o.id === rest)?.label ?? '2:00'}
+            value={prefs.rest}
             reading
-            open={expanded === 'rest'}
-            onToggle={() => toggle('rest')}
-            divider>
-            <Segmented options={REST_SEG} selected={rest} onSelect={handleRest} reading />
-          </AccordionRow>
-          {/* The usual week. The caption says what it is FOR, because a row of
-              day chips in a settings screen otherwise reads as a schedule —
-              and §11 forbids turning it into one. */}
-          <AccordionRow
-            icon="calendar"
-            label="Training days"
-            value={daysLabel(days) || 'Not set'}
-            open={expanded === 'days'}
-            onToggle={() => toggle('days')}
-            divider>
-            <View style={styles.dayRow}>
-              {DAY_LABELS.map((label, i) => {
-                const on = hasDay(days, i);
-                return (
-                  <PressableScale
-                    key={label}
-                    onPress={() => handleDay(i)}
-                    haptic="none"
-                    activeScale={0.94}
-                    accessibilityRole="checkbox"
-                    accessibilityLabel={label}
-                    accessibilityState={{ checked: on }}
-                    style={[styles.dayChip, on && styles.dayChipOn]}>
-                    <Text
-                      style={[styles.dayChipText, on && styles.dayChipTextOn]}
-                      maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                      {label}
-                    </Text>
-                  </PressableScale>
-                );
-              })}
-            </View>
-          </AccordionRow>
-          {/* The §12.1 weekly recap — the one recurring notification that
-              exists. It lives here rather than in a Notifications card of its
-              own: it is a training habit, and one row does not need a section. */}
-          <AccordionRow
-            icon="bell"
-            label="Weekly recap"
-            value={recapOn ? `Sundays ${String(recapHour).padStart(2, '0')}:00` : 'Off'}
-            reading={recapOn}
-            open={expanded === 'recap'}
-            onToggle={() => toggle('recap')}
-            divider>
-            <View style={styles.recapEditor}>
-              <Segmented
-                options={RECAP_TOGGLE}
-                selected={recapOn ? 'on' : 'off'}
-                onSelect={(id) => void handleRecapToggle(id)}
-              />
-              {recapOn ? (
-                <Segmented
-                  options={RECAP_HOUR_SEG}
-                  selected={recapHour}
-                  onSelect={handleRecapHour}
-                  reading
-                />
-              ) : null}
-            </View>
-          </AccordionRow>
-        </Section>
-
-        {/* ABOUT YOU — the onboarding answers, still editable in place (§11: a
-            replay of onboarding is not an editor). */}
-        <Section label="About you">
-          <AccordionRow
-            icon="target"
-            label="Focus"
-            value={labelOf(GOAL_OPTIONS, goal)}
-            open={expanded === 'focus'}
-            onToggle={() => toggle('focus')}>
-            <Segmented options={GOAL_OPTIONS} selected={goal} onSelect={handleGoal} />
-          </AccordionRow>
-          <AccordionRow
-            icon="target"
-            label="Experience"
-            value={labelOf(EXPERIENCE_OPTIONS, experience)}
-            open={expanded === 'experience'}
-            onToggle={() => toggle('experience')}
-            divider>
-            <Segmented
-              options={EXPERIENCE_OPTIONS}
-              selected={experience}
-              onSelect={handleExperience}
-            />
-          </AccordionRow>
-          <AccordionRow
-            icon="barbell"
-            label="How you train"
-            value={labelOf(STYLE_OPTIONS, style)}
-            open={expanded === 'style'}
-            onToggle={() => toggle('style')}
-            divider>
-            <Segmented options={STYLE_OPTIONS} selected={style} onSelect={handleStyle} />
-          </AccordionRow>
-          <AccordionRow
-            icon="sparkle"
-            label="Session style"
-            value={labelOf(FEEL_OPTIONS, feel)}
-            open={expanded === 'feel'}
-            onToggle={() => toggle('feel')}
-            divider>
-            <Segmented options={FEEL_OPTIONS} selected={feel} onSelect={handleFeel} />
-          </AccordionRow>
-          <AccordionRow
-            icon="language"
-            label="Writing language"
-            value={labelOf(LANGUAGE_OPTIONS, language)}
-            open={expanded === 'language'}
-            onToggle={() => toggle('language')}
-            divider>
-            <Segmented options={LANGUAGE_OPTIONS} selected={language} onSelect={handleLanguage} />
-          </AccordionRow>
-          {/* Body context, editable in place (§11: every onboarding answer
-              stays editable — a replay of onboarding is not an editor). Both
-              fields are optional; clearing one removes it from the record. */}
-          <AccordionRow
-            icon="target"
-            label="Body context"
-            value={
-              [formatBodyWeight(bodyWeightKg, unit), bodyHeightCm ? `${bodyHeightCm} cm` : null]
-                .filter(Boolean)
-                .join(' · ') || 'Not set'
-            }
-            open={expanded === 'body'}
-            onToggle={() => toggle('body')}
-            divider>
-            <View style={styles.bodyFields}>
-              <View style={styles.bodyField}>
-                <Text style={styles.bodyFieldLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  Weight
-                </Text>
-                <View style={styles.bodyInputWrap}>
-                  <TextInput
-                    style={styles.bodyInput}
-                    value={weightText}
-                    onChangeText={handleBodyWeightText}
-                    onEndEditing={snapWeightText}
-                    placeholder="—"
-                    placeholderTextColor={color.textMuted}
-                    keyboardType="decimal-pad"
-                    keyboardAppearance="light"
-                    selectionColor={color.accent}
-                    cursorColor={color.accent}
-                    allowFontScaling
-                    maxFontSizeMultiplier={MAX_FONT_SCALE}
-                    accessibilityLabel={`Body weight in ${unit === 'lb' ? 'pounds' : 'kilograms'}`}
-                  />
-                  <Text style={styles.bodyUnit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {unit}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.bodyField}>
-                <Text style={styles.bodyFieldLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  Height
-                </Text>
-                <View style={styles.bodyInputWrap}>
-                  <TextInput
-                    style={styles.bodyInput}
-                    value={heightText}
-                    onChangeText={handleBodyHeightText}
-                    onEndEditing={snapHeightText}
-                    placeholder="—"
-                    placeholderTextColor={color.textMuted}
-                    keyboardType="number-pad"
-                    keyboardAppearance="light"
-                    selectionColor={color.accent}
-                    cursorColor={color.accent}
-                    allowFontScaling
-                    maxFontSizeMultiplier={MAX_FONT_SCALE}
-                    accessibilityLabel="Height in centimetres"
-                  />
-                  <Text style={styles.bodyUnit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    cm
-                  </Text>
-                </View>
-              </View>
-              <Text style={styles.bodyHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                Context for your own numbers. Never a target or a score. Clear a field to remove
-                it.
-              </Text>
-            </View>
-          </AccordionRow>
-          <AccordionRow
-            icon="plate"
-            label="Smallest plate"
-            value={plate != null ? `${fmtNumber(plate)} kg` : 'Not set'}
-            reading={plate != null}
-            open={expanded === 'plate'}
-            onToggle={() => toggle('plate')}
-            divider>
-            <Segmented options={PLATE_SEG} selected={plate} onSelect={handlePlate} reading />
-          </AccordionRow>
-          <AccordionRow
+            divider
+            onPress={() => openPref('rest')}
+          />
+          <Row
             icon="barbell"
             label="Bar weight"
-            value={`${bar} kg`}
+            value={prefs.bar}
             reading
-            open={expanded === 'bar'}
-            onToggle={() => toggle('bar')}
-            divider>
-            <Segmented options={BAR_SEG} selected={bar} onSelect={handleBar} reading />
-          </AccordionRow>
+            divider
+            onPress={() => openPref('bar')}
+          />
+          {/* The §12.1 weekly recap — the one recurring notification that
+              exists. It lives here rather than in a Notifications card of its
+              own: it is a training habit, and one row does not need a section.
+              The value names the DAY as well as the hour, because the flow
+              asks for the day and the scheduler honours it. */}
+          <Row
+            icon="bell"
+            label="Weekly recap"
+            value={recapValue}
+            reading={recapValue !== 'Off'}
+            sub="One short read on your week"
+            divider
+            onPress={() => {
+              tap();
+              setRecapOpen(true);
+            }}
+          />
         </Section>
 
         {/* YOUR RECORD — the four doors to the record itself: what a session is
@@ -1208,25 +825,33 @@ export default function Settings() {
           />
         </Section>
 
-        {/* DISPLAY — how the record is printed, not what is in it (owner,
-            9 Aug). Recore already follows the system text size; this is for the
-            person who wants their sets bigger HERE without enlarging every app
-            on their phone. It changes the ledger the moment it is tapped. */}
+        {/* PREFERENCES — how Recore reads what you write, and how it prints it
+            back. Neither is an answer about the person and neither is asked by
+            the v2 flow, which is exactly why they are one group.
+
+            The writing language sat in Training only because it had live
+            readers (`brief-explain`, `empty-note-cards`) and nowhere else to
+            go; its own note asked for this group to be built. "Set readings"
+            was a one-row Display card. Recore already follows the system text
+            size — this is for the person who wants their sets bigger HERE
+            without enlarging every app on their phone, and it changes the
+            ledger the moment it is tapped. */}
         <Section
-          label="Display"
-          footnote="Recore already follows your iPhone’s text size. This makes the sets larger on their own.">
-          <AccordionRow
+          label="Preferences"
+          footnote="Recore already follows your iPhone’s text size. Set readings makes the sets larger on their own.">
+          <Row
+            icon="language"
+            label="Writing language"
+            value={prefs.language}
+            onPress={() => openPref('language')}
+          />
+          <Row
             icon="table"
             label="Set readings"
-            value={largeSets ? 'Larger' : 'Standard'}
-            open={expanded === 'setreadings'}
-            onToggle={() => toggle('setreadings')}>
-            <Segmented
-              options={SET_READING_SEG}
-              selected={largeSets ? 'large' : 'standard'}
-              onSelect={handleSetReadings}
-            />
-          </AccordionRow>
+            value={prefs.setreadings}
+            divider
+            onPress={() => openPref('setreadings')}
+          />
         </Section>
 
         {/* SUPPORT — a real mailbox, the store listing, and what this build
@@ -1246,7 +871,6 @@ export default function Settings() {
           <Row icon="sparkle" label="How parsing works" divider onPress={() => openDoc('parsing')} />
           <Row icon="lock" label="Privacy Policy" divider onPress={() => openDoc('privacy')} />
           <Row icon="document" label="Terms of Use" divider onPress={() => openDoc('terms')} />
-          <Row icon="refresh" label="Restart onboarding" divider onPress={handleReplaySetup} />
           <Row
             icon="wrench"
             label="About"
@@ -1296,31 +920,95 @@ export default function Settings() {
           />
         </Section>
 
-        {/* DEV — the lapsed surface has no other way in until a sandbox
-            subscription can expire (PLAN B4). `__DEV__` compiles it out. */}
+        {/* DEVELOPMENT — the onboarding flows side by side, sandboxed, plus the
+            one billing state that has no other way in until a sandbox
+            subscription can expire (docs/onboarding-v2-spec.md §0, PLAN B4).
+            `__DEV__` compiles the whole thing out of a release build; to expose
+            it in TestFlight, change this one condition.
+
+            IT WAS TWO SECTIONS UNTIL 28 AUGUST 2026 — "Dev" and "Development" —
+            and they each carried a row that ran the v1 flow. The two were not
+            the same: one snapshotted every `pref_%` row first, the other reset
+            the answers and pushed straight into the flow, which WROTE AS IT
+            WENT over the real settings with nothing to restore from. Two rows
+            with near-identical labels, one of them destructive, is a trap
+            rather than a convenience. One section, one row per thing.
+
+            v2 IS THE PRIMARY FLOW SINCE 28 AUGUST 2026, so its row is not "the
+            other one" — it is a sandboxed replay of what a new person meets.
+            `?dev=1` is what makes it sandboxed: the store refuses to persist and
+            the flow refuses to commit while it is set, so a replay creates no
+            account, completes no onboarding and overwrites no answer. */}
         {__DEV__ ? (
-          <Section label="Dev" footnote="Development only — never in a release build.">
+          <Section
+            label="Development"
+            footnote="Neither onboarding row creates an account, completes onboarding or opens the paywall.">
+            <Row
+              icon="wrench"
+              label="Run onboarding (v2 — the real one)"
+              sub="Replays the primary flow. Nothing is saved or committed"
+              chevron={false}
+              onPress={() => {
+                tap();
+                // NOT `resetSandbox()`: that row clears the stored answers, and
+                // launching a replay must not delete the real ones. Sandbox
+                // mode goes on first, so the blank slate is memory only.
+                beginSandboxRun();
+                router.push({ pathname: '/onboarding-v2/[step]', params: { step: '1', dev: '1' } });
+              }}
+            />
+            <Row
+              icon="wrench"
+              label="Run illustrated onboarding (v1)"
+              sub="The legacy flow. It writes as it goes, so your answers are snapshotted first"
+              chevron={false}
+              divider
+              onPress={() => {
+                tap();
+                snapshotPrefs();
+                useOnboardingAnswers.getState().reset();
+                router.push('/onboarding/1');
+              }}
+            />
+            <Row
+              icon="wrench"
+              label="Reset sandbox state"
+              sub="Clears the v2 answers on this device and restores the snapshot"
+              chevron={false}
+              divider
+              onPress={() => {
+                tap();
+                const { restored } = resetSandbox();
+                setSettingsRevision((n) => n + 1);
+                Alert.alert(
+                  'Sandbox reset',
+                  restored > 0
+                    ? `${restored} settings restored.`
+                    : 'v2 answers cleared. There was no snapshot to restore.',
+                );
+              }}
+            />
+            <Row
+              icon="wrench"
+              label="Open the paywall (v1)"
+              sub="The illustrated buy screen v2 replaced on 28 August. It still works; this row is the only way in"
+              chevron={false}
+              divider
+              onPress={() => {
+                tap();
+                router.push('/paywall');
+              }}
+            />
             <Row
               icon="wrench"
               label="Simulate lapsed subscription"
               value={lapsed ? 'On' : 'Off'}
               chevron={false}
+              divider
               onPress={() => {
                 tap();
                 setDevLapsed(!lapsed);
                 setLapsed(!lapsed);
-              }}
-              divider
-            />
-            <Row
-              icon="wrench"
-              label="Run illustrated onboarding"
-              sub="Resets its answers and opens step 1"
-              chevron={false}
-              onPress={() => {
-                tap();
-                useOnboardingAnswers.getState().reset();
-                router.push('/onboarding/1');
               }}
             />
           </Section>
@@ -1332,23 +1020,47 @@ export default function Settings() {
         </Stagger>
       </ScrollView>
 
-      {/* Drawn after the list so it sits over it. A tab root, so no chevron:
-          there is nothing to go back to, and the title goes left-aligned per
-          §6.5 rather than centred to balance one. */}
-      <ScrollEdgeHeader onHeight={setHeaderH}>
-        <View style={styles.nav}>
-          <Text
-            style={styles.navTitle}
-            accessibilityRole="header"
-            maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            You
-          </Text>
-        </View>
-      </ScrollEdgeHeader>
+      {/* The scroll edge, with nothing pinned in it: this page's title is
+          content and scrolls away, but the top of the list still has to fade
+          into the canvas rather than run under the status bar. */}
+      <ScrollEdgeHeader onHeight={setHeaderH} />
 
-      {/* The full record, opened from the grid. Mounted here rather than app-
-          wide: unlike ExerciseSheet, You is the only screen that opens it. */}
-      <HistorySheet visible={historyOpen} onClose={() => setHistoryOpen(false)} />
+      {/* THE "About you" PICKERS. Mounted here rather than per row: a sheet is
+          a native modal, and six of them stacked in a list would be six
+          presentation contexts fighting for one slot. */}
+      <AnswerSheet
+        id={editing}
+        visible={answerOpen}
+        onClose={() => setAnswerOpen(false)}
+        onChange={noteAnswerChanged}
+      />
+      <LiftsSheet
+        visible={liftsOpen}
+        onClose={() => setLiftsOpen(false)}
+        onChange={noteAnswerChanged}
+      />
+      <ObstaclesSheet
+        visible={obstaclesOpen}
+        onClose={() => setObstaclesOpen(false)}
+        onChange={noteAnswerChanged}
+      />
+
+      {/* THE SETTINGS PICKERS, on the same terms: one sheet driven by an id for
+          the four single-choice prefs, and the recap's own — it carries a
+          second control and a permission request, so it closes on Done rather
+          than on the tap. */}
+      <PrefSheet
+        id={prefEditing}
+        visible={prefOpen}
+        onClose={() => setPrefOpen(false)}
+        onChange={noteSettingChanged}
+      />
+      <RecapSheet
+        visible={recapOpen}
+        onClose={() => setRecapOpen(false)}
+        onChange={noteSettingChanged}
+        userId={userId}
+      />
     </View>
   );
 }
@@ -1358,78 +1070,6 @@ export default function Settings() {
 // to `components/settings-rows.tsx` on 12 Aug 2026, when a second settings
 // surface needed it. What is left here is what only THIS screen draws.
 
-/**
- * A career number: a big numeral over a small caption (Mobbin — Tonal, Open and
- * Peloton Strength+ all land on the same shape). Tabular figures, so three of
- * them side by side sit on one optical baseline whatever the digits.
- */
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <View style={styles.stat}>
-      <Text
-        style={styles.statValue}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.6}
-        maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {value}
-      </Text>
-      <Text style={styles.statLabel} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {label}
-      </Text>
-    </View>
-  );
-}
-
-/**
- * The shape of the training year: one dot per day, one column per week, filled
- * where the athlete trained. The rule lives in `src/lib/activity.ts` (pure,
- * eight tests); this only draws it.
- *
- * TWO MARKS AND NO MORE. A trained day is the blue trained mark (§5.1, ruled
- * 28 Jul), an untrained day is the recessed paper, and a day that has not
- * happened yet is nothing at all. There is no intensity ramp — grading days by
- * volume would quietly tell someone their deload week counted less (§15), and
- * one flat mark keeps §20's "no rings, no daily goals" intact. It is a record,
- * drawn.
- *
- * Not individually tappable: a 7pt dot cannot be a 44pt target (§14), so the
- * whole card is the one control and it opens Progress.
- */
-function ActivityGrid({ weeks }: { weeks: GridWeek[] }) {
-  return (
-    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <View style={styles.gridMonths}>
-        {weeks.map((week, i) => (
-          <View key={`m:${i}`} style={styles.gridMonthSlot}>
-            {week.monthLabel ? (
-              <Text style={styles.gridMonth} numberOfLines={1} allowFontScaling={false}>
-                {week.monthLabel}
-              </Text>
-            ) : null}
-          </View>
-        ))}
-      </View>
-      <View style={styles.grid}>
-        {weeks.map((week, i) => (
-          <View key={`w:${i}`} style={styles.gridWeek}>
-            {week.days.map((day) => (
-              <View
-                key={day.key}
-                style={[
-                  styles.gridDot,
-                  day.trained && styles.gridDotOn,
-                  day.future && styles.gridDotFuture,
-                ]}
-              />
-            ))}
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
 /** A lifetime tonnage runs into the millions; seven grouped digits would set
  * the whole strip's type size by its longest member. Past a million it reads
  * "1.2M kg" — still specific (§15), and it stops the row shrinking. */
@@ -1438,40 +1078,21 @@ function compactKg(kg: number): string {
 }
 
 
-const AVATAR = moderateScale(52);
-const ROW_ICON = moderateScale(18);
-/** Where a separator starts: past the glyph column, so the icons read as one
- * vertical run rather than as marks floating in a ruled table. */
-const ROW_ICON_SLOT = ROW_ICON + spacing.md;
-/** The activity grid's dot. Laid out `space-between`, so the column count
- * (`GRID_WEEKS`) is what keeps the horizontal gaps equal to the vertical ones —
- * see the note on that constant before changing either. */
-const DOT = moderateScale(7);
 /**
- * How far a pressed row's highlight bleeds past its content, toward the card's
- * edge. A press fill drawn on the row's own box is a hard-cornered grey
- * rectangle floating inside the card's padding — the tap reads as a mis-drawn
- * box rather than as the row lighting up. Bleeding it out and rounding it
- * (`radius.sm`) makes the highlight a band that belongs to the card. Content
- * does not move: every row that bleeds pays the margin back as padding.
+ * ONE GUTTER, AND EVERYTHING HANGS OFF IT (28 August 2026).
+ *
+ * The page had two left edges: cards at `spacing.lg` and the title, the group
+ * labels and the footnotes 4 pt further in, because each of those carried its
+ * own `spacing.xs` nudge. Four points is small enough to look like a rendering
+ * artefact and large enough to see, which is the worst size a misalignment can
+ * be. There is now one number — the ScrollView's own horizontal padding — and
+ * nothing adds to it. `settings-rows.tsx` lost the matching nudges in the same
+ * change, so every settings-shaped surface in the app lines up the same way.
  */
-const PRESS_BLEED = spacing.sm;
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: color.canvas,
-  },
-  nav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
-  },
-  navTitle: {
-    ...type.title2,
-    color: color.textPrimary,
   },
   scroll: {
     flex: 1,
@@ -1479,381 +1100,17 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.lg,
   },
-
-  // Profile identity block.
-  profile: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md + 2,
-    paddingHorizontal: spacing.xs,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
-  },
-  avatar: {
-    width: AVATAR,
-    height: AVATAR,
-    borderRadius: AVATAR / 2,
-    borderWidth: 1,
-    borderColor: color.border,
-    backgroundColor: color.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitials: {
-    ...type.headline,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-    color: color.textPrimary,
-  },
-  profileText: {
-    flex: 1,
-  },
-  profileName: {
-    ...type.title2,
-    color: color.textPrimary,
-  },
-  profileEmail: {
-    marginTop: 2,
-    ...type.subhead,
-    color: color.textSecondary,
-  },
-  profileProvider: {
-    marginTop: 2,
-    ...type.footnote,
-    color: color.textMuted,
-  },
-
-  // Sections & cards.
-  section: {
-    marginBottom: spacing.lg,
-  },
-  sectionLabel: {
-    marginBottom: spacing.sm - 1,
-    marginLeft: spacing.xs,
-  },
   /**
-   * ## The one screen where a card is the DEFAULT, and why that is allowed
-   *
-   * Skill §Structure says a card must be justified against bare rows first.
-   * This is the justification, and it is the platform's: a grouped settings
-   * list is what iOS Settings is, every reader already knows what the grouping
-   * MEANS, and the `glyph.*` tints exist specifically so a long one is scanned
-   * by shape and hue before it is read. The rule it is an exception to is about
-   * the RECORD — a lift, a set, a session — and none of that is on this screen.
-   *
-   * `radius.xl` 24, the app's card radius: a settings group, a sheet and a
-   * section card are the same kind of object.
+   * The page title. `largeTitle` (34), not `title2` (22): both references lead
+   * with a title that is unmistakably the biggest thing on the screen, and this
+   * one has no navigation bar left to share the row with.
    */
-  card: {
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.divider,
-    borderRadius: radius.xl,
-    borderCurve: 'continuous',
-    paddingHorizontal: spacing.lg + 2,
-    // A hair of vertical padding so the first and last row's pressed highlight
-    // (PRESS_BLEED below) stays inside the card's own rounded corner instead of
-    // poking a square grey nub past it.
-    paddingVertical: spacing.xs,
-    ...shadow.card,
-  },
-
-  // The record card: career numbers over the training year, and a door to
-  // Progress. Tighter horizontal padding than a row card — the grid wants the
-  // width, and the numbers read better with air above and below than beside.
-  recordCard: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  stats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
-  // A CARD-SHAPED TARGET DIPS, IT DOES NOT SHADE (owner, 18 Aug 2026).
-  //
-  // Both blocks used to fill `surfaceHigh` while held. A grey rectangle inside
-  // a white card is the one press treatment that always looks cheap: it cannot
-  // reach the card's edge (the card's own rounded corner has no clip to hide
-  // behind, and clipping it would cost the shadow), so it lands as a floating
-  // grey box with white margins either side. iOS shades LIST ROWS, which run
-  // wall to wall; a block this size is a card, and a card presses by moving.
-  // The scale dip does all of it now — hence no fill, and no bleed to carry.
-  gridBlock: {
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xs,
-    gap: spacing.sm,
-  },
-  gridFoot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  gridFootMore: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  gridFootLabel: {
-    ...type.footnote,
-    color: color.textMuted,
-  },
-  stat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 2,
-  },
-  statRule: {
-    width: hairline,
-    alignSelf: 'stretch',
-    backgroundColor: color.border,
-  },
-  // The usual week, inside its accordion. Ink when chosen — the trained-day
-  // blue marks a day that happened, and an expected day is not one.
-  dayRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  dayChip: {
-    flex: 1,
-    minHeight: moderateScale(44),
-    borderRadius: radius.sm,
-    borderCurve: 'continuous',
-    borderWidth: 1,
-    borderColor: color.border,
-    backgroundColor: color.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dayChipOn: {
-    borderColor: color.accent,
-    backgroundColor: color.accent,
-  },
-  dayChipText: {
-    ...type.caption,
-    fontWeight: '600',
-    color: color.textSecondary,
-  },
-  dayChipTextOn: {
-    color: color.onInk,
-  },
-  bodyFields: {
-    gap: spacing.sm,
-  },
-  bodyField: {
-    minHeight: moderateScale(44),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  bodyFieldLabel: {
-    ...type.subhead,
-    color: color.textSecondary,
-  },
-  bodyInputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderWidth: 1,
-    borderColor: color.border,
-    borderRadius: radius.sm,
-    borderCurve: 'continuous',
-    backgroundColor: color.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
-  },
-  bodyInput: {
-    minWidth: moderateScale(64),
-    textAlign: 'right',
-    padding: 0,
-    color: color.textPrimary,
-    ...readingStyle('400'),
-    fontSize: type.subhead.fontSize,
-  },
-  bodyUnit: {
-    ...type.caption,
-    // The unit of a bodyweight the person typed — a step lighter than the
-    // number, never a step past readable.
-    color: color.textSecondary,
-  },
-  bodyHint: {
-    ...type.footnote,
-    color: color.textMuted,
-  },
-  recapEditor: {
-    gap: spacing.sm,
-  },
-  statValue: {
-    ...readingStyle('600'),
-    fontSize: moderateScale(24),
-    letterSpacing: -0.4,
+  pageTitle: {
+    ...type.largeTitle,
     color: color.textPrimary,
   },
-  statLabel: {
-    ...type.footnote,
-    // It names the career number above it — a label on a value is information,
-    // and muted is for what the eye may skip (skill §Colour).
-    color: color.textSecondary,
-  },
-
-  // The activity grid.
-  gridMonths: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs,
-  },
-  gridMonthSlot: {
-    width: DOT,
-  },
-  gridMonth: {
-    ...readingStyle('400'),
-    fontSize: moderateScale(8.5),
-    letterSpacing: 0.4,
-    color: color.textMuted,
-  },
-  grid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  gridWeek: {
-    gap: DOT * 0.55,
-  },
-  gridDot: {
-    width: DOT,
-    height: DOT,
-    borderRadius: DOT / 2,
-    backgroundColor: color.surfaceHigh,
-  },
-  gridDotOn: {
-    backgroundColor: color.brand,
-  },
-  // Not yet lived. Invisible, never drawn as a missed day.
-  gridDotFuture: {
-    backgroundColor: 'transparent',
-  },
-
-  // Rows.
-  row: {
-    minHeight: moderateScale(48),
-    paddingVertical: spacing.md + 1,
-    marginHorizontal: -PRESS_BLEED,
-    paddingHorizontal: PRESS_BLEED,
-    borderRadius: radius.sm,
-    borderCurve: 'continuous',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  rowIcon: {
-    width: ROW_ICON,
-    alignItems: 'center',
-  },
-  rowSep: {
-    height: hairline,
-    marginLeft: ROW_ICON_SLOT,
-    backgroundColor: color.border,
-  },
-  rowLeft: {
-    flex: 1,
-  },
-  rowLabel: {
-    ...type.subhead,
-    color: color.textPrimary,
-  },
-  rowLabelBold: {
-    fontWeight: '600',
-  },
-  rowLabelDanger: {
-    color: color.error,
-  },
-  rowSub: {
-    ...type.caption,
-    lineHeight: lineFor(16),
-    color: color.textMuted,
-    marginTop: 2,
-  },
-  rowRight: {
-    flexShrink: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-  },
-  rowValue: {
-    flexShrink: 1,
-    ...type.subhead,
-    color: color.textSecondary,
-    textAlign: 'right',
-  },
-  rowValueOpen: {
-    color: color.textPrimary,
-    fontWeight: '600',
-  },
-  external: {
-    ...readingStyle('400'),
-    fontSize: moderateScale(14),
-    color: color.textMuted,
-  },
-
-  // Inline segmented editor (revealed by an AccordionRow).
-  editor: {
-    paddingBottom: spacing.md,
-  },
-  segments: {
-    flexDirection: 'row',
-    backgroundColor: color.surfaceHigh,
-    borderRadius: radius.sm,
-    borderCurve: 'continuous',
-    padding: moderateScale(3),
-    gap: moderateScale(3),
-  },
-  segment: {
-    flex: 1,
-    paddingVertical: moderateScale(8),
-    borderRadius: radius.sm - 3,
-    borderCurve: 'continuous',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: hairline,
-    borderColor: 'transparent',
-  },
-  segmentSelected: {
-    backgroundColor: color.surface,
-    borderColor: color.border,
-  },
-  segmentLabel: {
-    ...type.caption,
-    fontWeight: '600',
-    color: color.textSecondary,
-  },
-  segmentMono: {
-    ...readingStyle('400'),
-    letterSpacing: 0.2,
-  },
-  segmentLabelSelected: {
-    color: color.textPrimary,
-  },
-
-  footnote: {
-    ...type.footnote,
-    lineHeight: lineFor(16),
-    color: color.textMuted,
-    marginTop: spacing.sm,
-    marginHorizontal: spacing.xs,
-  },
-  footnoteActive: {
-    color: color.textSecondary,
-  },
-  version: {
-    ...type.footnote,
-    color: color.textMuted,
-    textAlign: 'center',
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  versionNum: {
-    ...readingStyle('400'),
-    color: color.textMuted,
+  /** The same trailing gap a `Section` leaves, so the stat card is a group. */
+  statSection: {
+    marginBottom: spacing.xxl,
   },
 });

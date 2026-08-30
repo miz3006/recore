@@ -1,7 +1,9 @@
 // Relative + .ts extension: this file is BOTH bundled by Metro AND run under
 // `node --test` (which can't resolve the `@/` alias) — the same pattern as
 // onboarding.ts, streak.ts and plan/prescribe.ts.
+import { canonicalName, readWrittenLine, splitSegments, type ReadItem } from './demo-read.ts';
 import { LB_PER_KG, loadStep, toPlate } from './onboarding.ts';
+import type { ParsedItem, ParseResult } from './parse/types.ts';
 
 /**
  * THE DEMO'S OWN PARSER — a small, offline grammar for ONE line, used by the
@@ -70,61 +72,28 @@ export interface DemoReading {
 /** The demo's canned line — the exact shape `parse-eval-cases.json` covers. */
 export const DEMO_EXAMPLE = 'bench 100kg 5,5,4';
 
-// --- bounds -------------------------------------------------------------------
-// Outside these a number is a typo, not training. They are deliberately wider
-// than the stepper's range: this reads what a person WROTE, and refusing a real
-// 260 kg deadlift would be worse than accepting an unlikely one.
+// --- the grammar ---------------------------------------------------------------
 
-const MAX_KG = 500;
-const MAX_LB = 1100;
+/**
+ * READING A LINE IS `lib/demo-read.ts` (23 Aug 2026, owner: "use the same
+ * parser logic as in Today, it does not read well").
+ *
+ * This file used to hold the grammar itself — one weight, one rep list, one
+ * exercise per line — and it read 41 of the 79 lines in the corpus the REAL
+ * parser is evaluated against, several of them wrongly (`100x8 90x10` came back
+ * as a hundred sets of eight). The grammar moved to its own file, was rebuilt
+ * around the shapes people actually write, and is scored against that corpus on
+ * every test run. What stayed here is the flow's own vocabulary: the answers it
+ * stores, the units it displays, and the `ParseResult` it hands to Today's
+ * receipt.
+ */
+
+/** Reps above this are a typo, not training — the storage validator's bound. */
 const MAX_REPS = 100;
-const MAX_SETS = 20;
 
-/**
- * The lifts the key-lift screen offers, with the shorthand people actually
- * type. Canonical names are spelled EXACTLY as `KEY_LIFTS` in the flow config,
- * so a demo line can pre-select a chip by string equality rather than by a
- * second fuzzy pass (`matchKeyLift`).
- */
-const LIFT_ALIASES: Record<string, readonly string[]> = {
-  'Bench press': ['bench', 'bench press', 'benchpress', 'bp', 'flat bench', 'barbell bench'],
-  Squat: ['squat', 'squats', 'back squat', 'bs', 'barbell squat'],
-  Deadlift: ['deadlift', 'deadlifts', 'dl', 'conventional deadlift'],
-  // NO bare 'press': "incline db press", "leg press" and "chest press" are all
-  // different movements, and a demo that renames one of them is worse than a
-  // demo that keeps the words the person wrote.
-  'Overhead press': ['ohp', 'overhead press', 'shoulder press', 'military press'],
-  'Pull-ups': ['pull up', 'pull ups', 'pullup', 'pullups', 'pull-up', 'pull-ups', 'chin up', 'chin ups', 'chinup', 'chinups'],
-  'Barbell row': ['row', 'rows', 'barbell row', 'bb row', 'bent over row', 'pendlay row'],
-};
-
-const normalize = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, ' ');
-
-/**
- * A typed movement resolved to the name the rest of the flow uses, or null when
- * nothing matches. Alias-first, exactly like `db/exercises.ts` resolves a parsed
- * item — the difference is that this one runs with no database and no account.
- */
+/** A movement resolved to the name the rest of the flow uses, or null. */
 export function canonicalLift(name: string): string | null {
-  const needle = normalize(name);
-  if (!needle) return null;
-  for (const [canonical, aliases] of Object.entries(LIFT_ALIASES)) {
-    if (normalize(canonical) === needle) return canonical;
-    if (aliases.includes(needle)) return canonical;
-  }
-  // A written line rarely stops at the movement ("bench press touch and go"),
-  // so an alias CONTAINED in the words still resolves — longest alias first, so
-  // "bench press" never loses to "press".
-  const ranked = Object.entries(LIFT_ALIASES).flatMap(([canonical, aliases]) =>
-    aliases.map((alias) => ({ canonical, alias })),
-  );
-  ranked.sort((a, b) => b.alias.length - a.alias.length);
-  for (const { canonical, alias } of ranked) {
-    if (needle === alias || needle.startsWith(`${alias} `) || needle.endsWith(` ${alias}`) || needle.includes(` ${alias} `)) {
-      return canonical;
-    }
-  }
-  return null;
+  return canonicalName(name);
 }
 
 /**
@@ -134,106 +103,35 @@ export function canonicalLift(name: string): string | null {
  */
 export function matchKeyLift(exerciseName: string, offered: readonly string[]): string | null {
   const canonical = canonicalLift(exerciseName);
-  const needle = normalize(exerciseName);
+  const needle = nameKeyOf(exerciseName);
   for (const lift of offered) {
-    if (canonical && normalize(lift) === normalize(canonical)) return lift;
-    if (normalize(lift) === needle) return lift;
+    if (canonical && nameKeyOf(lift) === nameKeyOf(canonical)) return lift;
+    if (nameKeyOf(lift) === needle) return lift;
   }
   return null;
 }
 
-/** Title case for a movement nobody has an alias for — "incline db press". */
-function titleCase(words: string): string {
-  const trimmed = words.trim().replace(/\s+/g, ' ');
-  if (!trimmed) return '';
-  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-}
-
-/** `5,5,4` / `5 5 4` / `5x5` / `3 x 8` → the reps of each set, or null. */
-function readReps(text: string): number[] | null {
-  const setsByReps = text.match(/(\d{1,2})\s*[x×]\s*(\d{1,3})/i);
-  if (setsByReps) {
-    const sets = Number.parseInt(setsByReps[1]!, 10);
-    const reps = Number.parseInt(setsByReps[2]!, 10);
-    if (sets >= 1 && sets <= MAX_SETS && reps >= 1 && reps <= MAX_REPS) {
-      return Array.from({ length: sets }, () => reps);
-    }
-    return null;
-  }
-
-  // A separated list: 5,5,4 — commas, slashes, or plain spaces between them.
-  const list = text.match(/\b\d{1,3}(?:\s*[,/]\s*\d{1,3})+\b/);
-  if (list) {
-    const reps = list[0]!
-      .split(/[,/]/)
-      .map((n) => Number.parseInt(n.trim(), 10))
-      .filter((n) => Number.isInteger(n) && n >= 1 && n <= MAX_REPS);
-    return reps.length > 0 ? reps : null;
-  }
-  return null;
-}
+const nameKeyOf = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
 /**
- * Read one written line. Returns null when there is nothing here a record could
- * be made of — which is a first-class answer, not a failure (see the file note).
+ * Read ONE line as a single reading — the shape the store keeps and the shape
+ * the remote parser answers in. A line carrying several movements answers with
+ * the first of them; the demo screen reads the page with `demoParseText`, which
+ * keeps them all.
  */
 export function parseDemoLine(input: string): DemoReading | null {
-  const line = String(input ?? '').replace(/\s+/g, ' ').trim();
-  if (!line || line.length > 200) return null;
-
-  // 1. The weight: a number wearing a unit wins outright; otherwise the first
-  //    bare number that is not part of the rep list (see below).
-  let unit: 'kg' | 'lb' = 'kg';
-  let weight: number | null = null;
-  let weightAt = -1;
-  const united = line.match(/(\d{1,4}(?:[.,]\d{1,2})?)\s*(kgs?|kilos?|kilograms?|lbs?|pounds?)\b/i);
-  if (united) {
-    const value = Number.parseFloat(united[1]!.replace(',', '.'));
-    const written = united[2]!.toLowerCase();
-    unit = written.startsWith('lb') || written.startsWith('pound') ? 'lb' : 'kg';
-    const ceiling = unit === 'lb' ? MAX_LB : MAX_KG;
-    // A number wearing a unit is unambiguous, so an impossible one makes the
-    // WHOLE line unreadable rather than a line with no load: reading `9000kg
-    // 5,5,5` back as "three sets, no weight" would be a misquote of what the
-    // person wrote, and the demo's honest answer to that is the canned example.
-    if (!Number.isFinite(value) || value <= 0 || value > ceiling) return null;
-    weight = value;
-    weightAt = united.index ?? -1;
-  }
-
-  // 2. The reps, read from what is left after the weight is taken out — so the
-  //    100 in "100kg 5,5,4" can never be mistaken for a set of a hundred.
-  const withoutWeight =
-    weightAt >= 0 ? line.slice(0, weightAt) + ' ' + line.slice(weightAt + united![0]!.length) : line;
-  const reps = readReps(withoutWeight);
-  if (!reps || reps.length === 0) return null;
-
-  // 3. A bare weight: the biggest remaining number that is not one of the reps,
-  //    which is how "squat 100 5x5" reads to a person.
-  if (weight == null) {
-    const repText = withoutWeight.match(/(\d{1,2})\s*[x×]\s*(\d{1,3})|\b\d{1,3}(?:\s*[,/]\s*\d{1,3})+\b/);
-    const withoutReps = repText ? withoutWeight.replace(repText[0]!, ' ') : withoutWeight;
-    const bare = [...withoutReps.matchAll(/\b(\d{1,4}(?:[.,]\d{1,2})?)\b/g)]
-      .map((m) => Number.parseFloat(m[1]!.replace(',', '.')))
-      .filter((n) => Number.isFinite(n) && n > 0 && n <= MAX_KG);
-    if (bare.length > 0) {
-      weight = Math.max(...bare);
-      weightAt = line.indexOf(String(bare[0]));
-    }
-  }
-
-  // 4. The movement: the words BEFORE the first number of the line. Everything
-  //    a person writes after the numbers is a comment on the set, not a name.
-  const firstNumber = line.search(/\d/);
-  const words = (firstNumber > 0 ? line.slice(0, firstNumber) : '').replace(/[^\p{L}\s-]/gu, ' ').trim();
-  if (words.length < 2) return null;
-
-  const canonical = canonicalLift(words);
+  const item = readWrittenLine(input)[0];
+  if (!item) return null;
+  const reps = item.sets.map((s) => s.reps).filter((r): r is number => r != null && r > 0);
+  if (reps.length === 0) return null;
+  const weights = item.sets
+    .map((s) => s.weightKg)
+    .filter((w): w is number => w != null && w > 0);
   return {
-    exerciseName: canonical ?? titleCase(words),
-    weightKg: weight == null ? null : toKilograms(weight, unit),
+    exerciseName: item.name,
+    weightKg: weights.length > 0 ? Math.max(...weights) : null,
     reps,
-    unit,
+    unit: item.unit,
   };
 }
 
@@ -252,6 +150,132 @@ export function inWrittenUnit(kg: number, unit: 'kg' | 'lb'): number {
 /** The smallest jump that still counts, in the person's unit (`loadStep`). */
 export function demoIncrement(unit: 'kg' | 'lb'): number {
   return loadStep(unit);
+}
+
+// --- the page, as the app's own parse result ---------------------------------
+
+/**
+ * THE DEMO READS A PAGE THE WAY TODAY READS ONE (owner, 23 Aug 2026: "make the
+ * parser actually work exactly like it does in Today — everything the same,
+ * the table too").
+ *
+ * `parseDemoLine` above answers one line with a `DemoReading`, which was enough
+ * when the demo screen drew its own little card. The demo screen is Today now,
+ * and Today does not render readings — it renders a `ParseResult` through
+ * `buildReceipt`, which is what produces the per-set table, the compact set
+ * text, the done keys and the totals. So this turns what the grammar reads into
+ * exactly that shape, and the screen renders it with the app's own components.
+ *
+ * Two consequences worth naming:
+ *
+ *  · **Several exercises on one line work.** `bench 3x8, rows 3x10` is two
+ *    cards in Today and is two cards here (`splitLineSegments`). A rep list is
+ *    never split: the separator only counts when WORDS follow it, so
+ *    `bench 100kg 5,5,4` stays one exercise.
+ *  · **What the grammar cannot read is kept, not lost.** A line with no items
+ *    renders as Today renders one — the words, "kept as a note · not counted" —
+ *    and it still reaches the record verbatim at signup, where the real parser
+ *    reads it like any other line.
+ *
+ * WHAT IT IS NOT: the app's parser. That one is an edge function behind a user
+ * JWT (§7.3) and there is no account on the fourth screen of a funnel. This is
+ * the same small offline grammar it always was, wearing the app's own result
+ * shape so that everything DOWNSTREAM of the parse — the receipt, the table,
+ * the totals — is genuinely the same code rather than a lookalike.
+ */
+
+/**
+ * Zero, and deliberately not `CLIENT_PARSE_VERSION`: nothing this function
+ * produces is ever cached, written to SQLite, or synced. A demo result that
+ * carried the real version number could be mistaken for one.
+ */
+export const DEMO_PARSE_VERSION = 0;
+
+/**
+ * One physical line, split where a NEW exercise starts. The rule and its one
+ * safety (a separator only counts when WORDS follow it, so `5,5,4` is never
+ * split) live with the grammar; this re-export is what the flow and its tests
+ * have always called it.
+ */
+export function splitLineSegments(line: string): string[] {
+  return splitSegments(line);
+}
+
+/** One reading as a parsed item on a given physical line. */
+export function demoItemOf(reading: DemoReading, line: number): ParsedItem {
+  return itemOf(
+    {
+      name: reading.exerciseName,
+      unit: reading.unit,
+      sets: reading.reps.map((reps) => ({
+        kind: 'working' as const,
+        reps,
+        weightKg: reading.weightKg,
+        distanceM: null,
+        durationS: null,
+        rir: null,
+      })),
+    },
+    line,
+  );
+}
+
+/** One read exercise as the app's own parsed item. */
+function itemOf(item: ReadItem, line: number): ParsedItem {
+  return {
+    exercise: item.name,
+    aliases_seen: [],
+    // The modality the sets themselves describe: a distance or a duration with
+    // no reps is cardio, everything else is strength. Nothing here guesses.
+    modality: item.sets.some((s) => s.reps == null && (s.distanceM != null || s.durationS != null))
+      ? 'cardio'
+      : 'strength',
+    group_key: null,
+    line,
+    sets: item.sets.map((s) => ({
+      kind: s.kind,
+      reps: s.reps,
+      weight_kg: s.weightKg,
+      distance_m: s.distanceM,
+      duration_s: s.durationS,
+      rir: s.rir,
+      parent: null,
+      note: null,
+    })),
+  };
+}
+
+/** The whole written page, as the result `buildReceipt` expects. */
+export function demoParseText(text: string): ParseResult {
+  const items: ParsedItem[] = [];
+  const lines = String(text ?? '').split('\n');
+  for (let line = 0; line < lines.length; line++) {
+    for (const item of readWrittenLine(lines[line]!)) items.push(itemOf(item, line));
+  }
+  return { items, parse_version: DEMO_PARSE_VERSION };
+}
+
+/**
+ * A parsed item back as the answer the flow stores (`demoEntries`). The load is
+ * the heaviest working set, which is what every later screen means by "what you
+ * work with now"; the unit is the one the line was WRITTEN in, so somebody who
+ * typed 225 lb is never shown 102 kg back on the key-lift screen.
+ */
+export function demoEntryOfItem(item: ParsedItem, rawLine: string): DemoEntry {
+  const weights = item.sets
+    .map((s) => s.weight_kg)
+    .filter((w): w is number => w != null && w > 0);
+  return {
+    rawText: rawLine.trim(),
+    exerciseName: item.exercise,
+    weightKg: weights.length > 0 ? Math.max(...weights) : null,
+    reps: item.sets.map((s) => s.reps).filter((r): r is number => r != null && r > 0),
+    source: 'typed',
+    parsedLocally: true,
+    // A digit in front, and no leading \b: "225lb" has no word boundary
+    // between the 5 and the l, which is exactly how people write it.
+    unit: /\d\s*(?:lbs?|pounds?)\b/i.test(rawLine) ? 'lb' : 'kg',
+  };
 }
 
 /** A reading plus how it was made — what the store keeps. */
@@ -279,6 +303,54 @@ export function toDemoEntry(
 
 export function serializeDemoEntry(entry: DemoEntry): string {
   return JSON.stringify(entry);
+}
+
+/**
+ * THE WHOLE PAGE, not one line (owner, 23 Aug 2026: the demo screen became the
+ * Today page and takes two or three exercises).
+ *
+ * `demoEntry` still holds the LEAD entry — the one the key-lift chip, the
+ * overload card and the projection were already built out of — so nothing
+ * downstream had to change to keep working. This array holds every line that
+ * READ, in the order it was written, and it is what the key-lift screen now
+ * pre-selects up to three chips from.
+ *
+ * A stored array from an older build, a truncated row, an object where a list
+ * belongs: every one of them degrades to "no lines", never to a crash.
+ */
+export function serializeDemoEntries(entries: readonly DemoEntry[]): string {
+  return JSON.stringify(entries);
+}
+
+export function parseDemoEntries(raw: string | null | undefined): DemoEntry[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const out: DemoEntry[] = [];
+    for (const item of parsed) {
+      const entry = parseDemoEntry(JSON.stringify(item));
+      if (entry) out.push(entry);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The one entry the rest of the flow is built out of, chosen from a page of
+ * them: the first that carries a LOAD, and otherwise the first that read at
+ * all.
+ *
+ * The load is the tie-breaker because of what reads it downstream — the
+ * overload card's two weeks and the projection's start-to-target are both
+ * arithmetic on a starting number, and an entry with no weight ("pull ups
+ * 3x8") sends both to their fallbacks while a perfectly good `squat 100kg 5x5`
+ * sits one line below it.
+ */
+export function leadDemoEntry(entries: readonly DemoEntry[]): DemoEntry | null {
+  return entries.find((e) => e.weightKg != null && e.weightKg > 0) ?? entries[0] ?? null;
 }
 
 export function parseDemoEntry(raw: string | null | undefined): DemoEntry | null {

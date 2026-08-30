@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import {
   getPriceLabel,
   getTrialClock,
   isTrialReminderDue,
   markTrialReminderShown,
+  openSubscriptionManagement,
 } from '@/lib/billing/state';
-import { managementUrl } from '@/lib/billing/store';
 import { formatChargeDate } from '@/lib/billing/trial';
 import { tap } from '@/lib/haptics';
 import { color, lineFor, MAX_FONT_SCALE, spacing, type } from '@/lib/theme';
@@ -61,9 +61,9 @@ export function TrialReminderSheet() {
     tap();
     // The customer-specific management URL when the store has one; Apple's
     // generic subscriptions page otherwise. Never a dead control (§2).
-    void managementUrl()
-      .then((url) => Linking.openURL(url))
-      .catch(() => {});
+    // Customer Center where the build has it, Apple's subscriptions page
+    // otherwise. One entry point, so all three surfaces stay identical.
+    void openSubscriptionManagement();
     close();
   };
 

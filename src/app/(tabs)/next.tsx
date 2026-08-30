@@ -3,24 +3,34 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
+import { KeyboardDoneBar } from '@/components/keyboard-done';
 import { FadeSlideIn, FadeSwap, PressableScale, Stagger } from '@/components/motion';
-import { BriefLede } from '@/components/next/brief';
-import { LiftCard, UnknownLifts } from '@/components/next/session';
-import { Signals } from '@/components/next/signals';
+import { GroupPills, GroupSheet } from '@/components/next/groups';
+import { LiftRow } from '@/components/next/lift-row';
 import { NextSkeleton } from '@/components/next/skeleton';
 import { SplitChips } from '@/components/next/split-chips';
-import { AppButton, Eyebrow } from '@/components/primitives';
 import { StubScreen } from '@/components/stub-screen';
 import { ThoughtProcessCard } from '@/components/thought-process';
 import { getCachedBriefSummary, refineBriefSummary } from '@/lib/brief-explain';
-import { briefDateline, briefProse } from '@/lib/brief-prose';
+import { briefProse } from '@/lib/brief-prose';
 import { buildBrief, planDayLines, type Brief } from '@/lib/db/brief';
-import { todayKey } from '@/lib/db/dates';
+import { shortDayLabel, todayKey } from '@/lib/db/dates';
 import { listPlanDays, resolveTodayPlanDay } from '@/lib/db/plan';
+import { getDaySessionFacts } from '@/lib/db/workouts';
+import { entryNoteKey } from '@/lib/entry-note';
 import { markBriefShown } from '@/lib/funnel';
 import { tap } from '@/lib/haptics';
 import { devWarn } from '@/lib/log';
-import { buildSections, sessionRowsOf, type SessionRow } from '@/lib/next/sections';
+import { groupsOf, type GroupKey } from '@/lib/next/groups';
+import { getOverrides, setOverride } from '@/lib/next/overrides';
+import {
+  buildSections,
+  lastDoneOf,
+  sessionRowsOf,
+  targetsLine,
+  type SessionRow,
+} from '@/lib/next/sections';
+import { getAnswer, getKeyLifts } from '@/lib/profile-answers';
 import {
   color,
   lineFor,
@@ -35,7 +45,7 @@ import { useSession } from '@/state/session-store';
 
 /**
  * Next — "What am I doing next?" (owner, 28 July 2026; rebuilt 13 August;
- * re-housed in Progression's chrome 18 August).
+ * restructured on Symmetry's Workout Detail 28 August 2026).
  *
  * §16 names the prediction as the single strongest retention mechanism in the
  * product: *a reason to open the app on a training day that exists before the
@@ -50,39 +60,62 @@ import { useSession } from '@/state/session-store';
  * prose that `explain-brief` is already allowed to REWRITE — never to author
  * (§9.1). Same history, same briefing, every time, offline.
  *
- * ## The 18 August pass: one app, not two
+ * **And it is not a library.** Every gym app in the corpus builds this screen
+ * as one — template grids, category pills, a create-workout FAB, an
+ * AI-generate tile. Next is derived from the athlete's own history; nothing on
+ * it is picked from a catalogue, and no pattern that implies the user CHOOSES
+ * their workout belongs here.
  *
- * The owner's brief was one sentence — *"Next should be the same as
- * Progression, only performing its own function"* — and the diagnosis behind it
- * was that the two tabs had grown into two design systems:
+ * ## The 28 August restructure
  *
- * | | Progression (13→17 Aug) | Next (13 Aug) |
- * |---|---|---|
- * | Header | large title + one counted line | `title2` + a dateline on the right |
- * | Gutter | `spacing.xxl` | `spacing.lg` |
- * | Control | wrapping pills, blue wash | horizontal scroller, ink fill |
- * | List | one card per lift, all equal | one hero card + plain rows |
- * | Secondary | eyebrow + count + hairline rows | horizontally-scrolling tiles |
- * | Tail | a quiet row + chevron | a bordered card-shaped row |
+ * Symmetry's Workout Detail gave the skeleton — *title block, a compact
+ * summary of what it targets, exercise rows, one pinned Start* — and Setgraph
+ * gave the colour discipline, a single green carrying a whole screen on a
+ * light neutral canvas. What neither reference has is the reason line under
+ * every target, and that is the point of the screen:
  *
- * Six differences, none of them carrying a meaning. Every one is now
- * Progression's, and the page reads as the same app one tab across:
+ *     Bench press                            82.5 kg × 5·5·5
+ *                                             up 2.5 from Sat 8 Aug
  *
- *   1. `StubScreen` large title with ONE counted line under it — the dateline
- *      and the lift count, which is exactly the job Progression's cadence line
- *      does. No scroll-edge hairline: Progression has none.
- *   2. the LEDE — the brief's one or two lines, on bare paper (§9's "short
- *      briefing paragraph", still short). This is Next's own function and has
- *      no Progression counterpart, so it keeps its own block;
- *   3. the CHIPS — `ChipRow`, the control both tabs now share;
- *   4. ONE CARD PER LIFT, staggered in, accordion-opening onto its WHY/WATCH
- *      and a "Full history" opener — Progression's card, its motion and its
- *      accordion rule, to the token;
- *   5. YOUR OTHER LIFTS — eyebrow + count + hairline rows + one closing line;
- *   6. the full brief behind one disclosure, its provenance, and All lifts.
+ * What the restructure removed, and why:
  *
- * ONE open card at a time, as on Progression: an accordion keeps the page
- * short, and two open cards is a list that has stopped being scannable.
+ * | Gone | Why |
+ * |---|---|
+ * | `BriefLede` at the top | a paragraph competing with the numbers it summarises |
+ * | the `Planned ·` eyebrow | with green dominant, a label announcing green is furniture; the session's name moved into the title block |
+ * | `LiftCard` | one card per lift, opening onto a reason — see `next/lift-row.tsx` |
+ * | `UnknownLifts` | a lift with no history is now a row with an em dash, in the ONE list, instead of a counted block below it |
+ * | "Nothing counts until you lift it" | the pinned Start says it by doing it |
+ * | the header's dateline | the title block says when it was last done, which is the useful half |
+ * | `Signals` (29 Aug) | "your other lifts" are lifts the coming session does NOT name — a question across lifts, which is Progression's. It moved there folded into rows that already showed those lifts, rather than as a second list beside them |
+ * | the pinned Start (29 Aug) | see below |
+ *
+ * ## The 29 August pass, after the owner saw it on a device
+ *
+ * *"Definitivno mi ni všeč dizajn."* Tiimo — iPhone App of the Year 2025, and
+ * an AI co-planner, which is this screen's function in another category —
+ * named the faults. Four changes:
+ *
+ *  1. **Cards, not bare rows**, and the reason moved LEFT under the name. Both
+ *     arguments are in `next/lift-row.tsx`.
+ *  2. **The decision strip** — `GOING UP · 3`, `HOLDING · 1` — counted off the
+ *     engine's own levers, every pill opening the RULE behind it. The row says
+ *     what changed; the pill says what rule changed it. It counts across the
+ *     session and never reorders it: the order somebody trains in is a training
+ *     opinion the app does not hold (§20).
+ *  3. **The split switcher is back, under the title.** The owner asked to see
+ *     push and pull separately — which is what these chips have always done,
+ *     and the redesign draft had dropped them.
+ *  4. **The pinned Start is gone.** It offered to fill Today with a checklist,
+ *     and CLAUDE.md §3 is explicit: *"Training input is free text first. Touch
+ *     controls repair, inspect, or enrich it; they never replace writing as the
+ *     primary path."* A full-width green button making the checklist the way
+ *     into a session was that rule quietly inverted. Next is a briefing you
+ *     read; Today is where you write. `start-bar.tsx`, `startFromNext` and the
+ *     `PlannedChecklist` mount stay on disk, unmounted, so the wire is one line
+ *     if the owner wants it back.
+ *
+ * NO SERIF: the owner ruled one type family across the whole app (29 Aug).
  *
  * This file assembles; it decides nothing. Every placement rule lives in the
  * pure module (`lib/next/sections.ts`) or in one section component.
@@ -126,11 +159,24 @@ export default function Next() {
     });
   }, [prose]);
 
+  /**
+   * FLAT MODE. The athlete answered "I don't follow a split" on onboarding
+   * screen 14, and it is the one answer on that screen that changes app
+   * behaviour rather than personalising copy (`flow.ts`, `drivesBranch`).
+   *
+   * On this screen it changes exactly one thing: they are not owed a day's
+   * name, so the title block does not invent one. The rows are identical,
+   * because the reason line already answers both of their questions at once —
+   * "up 2.5 from Sat 8 Aug" is what to put on the bar AND how long it has
+   * been. The date IS the staleness.
+   */
+  const flat = getAnswer('split') === 'flat';
+
   // Where every placement rule on this page lives. `devWarn` is how a refused
   // e1RM delta reaches a developer without reaching the athlete.
   const sections = useMemo(
-    () => (brief ? buildSections(brief, { phrased: summary != null, warn: devWarn }) : null),
-    [brief, summary],
+    () => (brief ? buildSections(brief, { phrased: summary != null, flat, warn: devWarn }) : null),
+    [brief, summary, flat],
   );
 
   /**
@@ -139,13 +185,20 @@ export default function Next() {
    * what it would ask of them, computed by the same `planStripFor` the real
    * strip runs on.
    *
-   * Looking is not answering: selecting a chip writes nothing and does not move
-   * which day is due. That stays the session-start card's job (§8.2).
+   * Looking is not answering: selecting a chip writes nothing, does not move
+   * which day is due, and — since the pinned Start arrived — offers no Start
+   * either. A look ahead that could be begun would be a second way to answer
+   * the question the session-start path already owns (§8.2).
    */
   /* eslint-disable react-hooks/exhaustive-deps */
   const planDays = useMemo(() => (userId ? listPlanDays(userId) : []), [userId, refresh]);
   const dueId = useMemo(
     () => (userId ? (resolveTodayPlanDay(userId, todayKey())?.id ?? null) : null),
+    [userId, refresh],
+  );
+  /** Today's own record, when there is one — the "you already trained" state. */
+  const written = useMemo(
+    () => (userId ? getDaySessionFacts(userId, todayKey()) : null),
     [userId, refresh],
   );
   /* eslint-enable react-hooks/exhaustive-deps */
@@ -166,142 +219,155 @@ export default function Next() {
     return { title: previewDay.label, rows };
   }, [userId, previewDay, brief]);
 
-  /** The key of the ONE open card — Progression's accordion, same rule. */
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  /**
+   * EDIT MODE — Setgraph's placement, the owner's lighter version of Symmetry's
+   * Edit Workout bar. One control in the title block turns every target into a
+   * field; at rest there is no field anywhere on the page.
+   */
+  const [editing, setEditing] = useState(false);
+  const [openGroup, setOpenGroup] = useState<GroupKey | null>(null);
+  const [overrideRev, setOverrideRev] = useState(0);
+  /* eslint-disable react-hooks/exhaustive-deps */
+  const overrides = useMemo(() => getOverrides(), [overrideRev, refresh]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
-  // Which list of lifts the cards are drawn from: the previewed day when a chip
-  // that is not the due day is selected, otherwise the session actually due.
+  /**
+   * ONE LIST. A lift the record has nothing on is a row with an em dash and an
+   * empty reason slot, beside the lifts that do have targets — not a separate
+   * counted block underneath them. The slot below a target holds EVIDENCE for
+   * that target; putting "write one session and this fills in" there would put
+   * an instruction where the reader has learned to find proof. It is said
+   * once, under the title block (owner, 28 August 2026).
+   */
   const rows: SessionRow[] = preview ? preview.rows : (sections?.sessionRows ?? []);
-  // A lift with no prescription has nothing to put in a card's reading slot, so
-  // it goes to the counted block below rather than into an empty card (§7.3).
-  const carded = rows.filter((r) => r.prescription);
-  const unknown = rows.filter((r) => !r.prescription);
+  const seeded = useMemo(() => (rows.length === 0 ? keyLiftRows() : []), [rows.length]);
+  const shown = rows.length > 0 ? rows : seeded;
+  const missing = shown.some((r) => !r.prescription);
+  const groups = groupsOf(shown);
 
   const hasAnything =
     sections != null &&
     brief != null &&
-    (sections.sessionRows.length > 0 ||
-      sections.standing.length > 0 ||
-      sections.moving.length > 0 ||
-      brief.notes.length > 0 ||
-      sections.adherenceChip != null);
-
-  // Progression's header carries one counted line and no adjectives (§2 rule 6).
-  // This one counts the same way: the date, and how many lifts are on the page.
-  const counted = countedLine(rows.length);
+    (sections.sessionRows.length > 0 || brief.notes.length > 0 || sections.adherenceChip != null);
 
   if (!sections) {
     // No account resolved yet — the record is still being opened. The one thing
     // this must not do is show the empty state, which is a real claim about an
     // empty record rather than a way to pass the time.
     return (
-      <StubScreen title="Next" subtitle={counted} back={false} large>
+      <StubScreen title="Next" back={false} large>
         <NextSkeleton />
       </StubScreen>
     );
   }
 
-  if (!hasAnything) {
-    // §15: an empty screen invites an action, it never reports a lack. Same
-    // dashed card, same voice, same one button as Progression's empty state.
-    return (
-      <StubScreen title="Next" back={false} large>
-        <FadeSlideIn>
-          <View style={styles.emptyCard}>
-            <Eyebrow>Next</Eyebrow>
-            <Text style={styles.emptyTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              Write two sessions and this fills itself.
-            </Text>
-            <Text style={styles.emptyBody} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              A prescription needs prior sets of the same lift. Until there are some, Recore has
-              nothing true to put here — so it puts nothing.
-            </Text>
-            <View style={styles.emptyActions}>
-              <AppButton
-                label="Write today's session"
-                variant="secondary"
-                compact
-                onPress={() => {
-                  tap();
-                  router.push('/today');
-                }}
-              />
-            </View>
-          </View>
-        </FadeSlideIn>
-      </StubScreen>
-    );
-  }
+  /** THE TITLE BLOCK — what this session is, and when it was last done. */
+  const title = preview ? preview.title : sections.sessionTitle;
+  const lastDone = lastDoneOf(shown);
+  /**
+   * The title block's second line. It absorbed the counted-targets line on
+   * 29 Aug: the decision strip already counts this session, and two things
+   * counting the same five lifts on one screen is one of them being furniture.
+   * What the strip does NOT say is what the session targets, so that is what
+   * survives here.
+   */
+  const subtitle = !preview && written
+    ? // Today is on the record, so the page below is the NEXT session and says
+      // so. No congratulation, no tick — one line of provenance (§2 rule 6).
+      `Today is written · ${written.lifts} ${written.lifts === 1 ? 'lift' : 'lifts'}`
+    : shown.length > 0
+      ? [lastDone ? `Last done ${shortDayLabel(lastDone)}` : null, targetsLine(shown)]
+          .filter(Boolean)
+          .join(' · ')
+      : hasAnything
+        ? undefined
+        : 'No sessions written';
+
+  const commit = (row: SessionRow, kg: number | null) => {
+    setOverride(row.canonical ?? row.name, kg, row.loadKg);
+    setOverrideRev((n) => n + 1);
+  };
 
   return (
-    <StubScreen title="Next" subtitle={counted} back={false} large>
+    <StubScreen
+      title={title}
+      subtitle={subtitle}
+      back={false}
+      large
+      trailing={
+        // Only where there is something to argue with. An Edit control over a
+        // page of em dashes offers to change nothing.
+        shown.some((r) => r.loadKg != null) ? (
+          <EditPill
+            on={editing}
+            onPress={() => {
+              tap();
+              setEditing((v) => !v);
+            }}
+          />
+        ) : undefined
+      }>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
-        {/* The standfirst. Next's own function, and the one block on the page
-            Progression has no counterpart for — so it keeps its own voice. */}
-        <View style={styles.lede}>
-          <BriefLede headline={sections.headline} adherence={sections.adherenceChip} />
-        </View>
-
+        {/* WHICH DAY AM I LOOKING AT — directly under the title, because that
+            is the question it answers. The owner asked to see push and pull
+            separately (29 Aug); this control has always done it. */}
         <SplitChips
           days={planDays}
           activeId={previewDay?.id ?? dueId}
           dueId={dueId}
           onSelect={(id) => {
             setPreviewId(id === dueId ? null : id);
-            setOpenKey(null); // a different day is a different list of cards
+            setEditing(false); // a different day is a different set of targets
+            setOpenGroup(null);
           }}
         />
 
-        {/*
-          THE PLANNED MARKER (owner, 18 Aug 2026). It names the state of
-          everything below it, in the app's fourth data state's own colour —
-          product-direction §4.2's "planned green … always with its label and
-          reason", and this is the label.
+        {/* WHAT CHANGED SINCE LAST TIME. Counted off the engine's own levers;
+            each pill opens the rule behind it. */}
+        <GroupPills
+          groups={groups}
+          onOpen={(key) => {
+            tap();
+            setOpenGroup(key);
+          }}
+        />
 
-          It replaced a plain muted eyebrow that only appeared when the chips
-          did not, which left the commonest case — a lifter with a split — with
-          no statement anywhere that the loads on this page have not been lifted
-          yet. That statement used to live on Today, in the plan strip's green
-          values, and left with it on 18 Aug.
-
-          It says the day too, so it is never a decoration: "PLANNED · TODAY ·
-          PUSH DAY" is the marker AND the session's name, which is why the old
-          eyebrow can be deleted rather than stacked under this one.
-        */}
-        <Eyebrow style={styles.planned}>
-          {`Planned · ${preview ? preview.title : sections.sessionTitle}`}
-        </Eyebrow>
-
-        {!preview && sections.sessionNote ? (
-          <Text style={styles.sessionNote} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {sections.sessionNote}
+        {/* The instruction, ONCE, and only when a row on the page is waiting
+            for it. Under the title block — never in a reason slot. */}
+        {missing ? (
+          <Text style={styles.instruction} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {rows.length === 0
+              ? 'Write a session with these and Recore has something to beat.'
+              : 'One logged session each and the rest of these fill in.'}
           </Text>
         ) : null}
 
-        {carded.length > 0 ? (
+        {/* ONE list, ONE gap. `Stagger` renders a fragment, so without this
+            wrapper every card became a direct child of the page and collected
+            the page's `spacing.lg` on top of its own — 28 pt between rows of a
+            list that wants 8. */}
+        {shown.length > 0 ? (
+          <View style={styles.list}>
           <Stagger step={55} initialDelay={60}>
-            {carded.map((row, i) => {
-              const key = row.key || `${row.name}:${i}`;
-              return (
-                <LiftCard
-                  key={key}
-                  row={row}
-                  open={openKey === key}
-                  onToggle={() => {
-                    tap();
-                    setOpenKey((k) => (k === key ? null : key));
-                  }}
-                  onOpenHistory={() => {
-                    tap();
-                    if (row.canonical) openExerciseSheet(row.canonical);
-                  }}
-                />
-              );
-            })}
+            {shown.map((row, i) => (
+              <LiftRow
+                key={row.key || `${row.name}:${i}`}
+                row={row}
+                override={overrideOf(overrides, row)}
+                editing={editing && !preview}
+                onPress={() => {
+                  tap();
+                  if (row.canonical) openExerciseSheet(row.canonical);
+                }}
+                onCommit={(kg) => commit(row, kg)}
+              />
+            ))}
           </Stagger>
+          </View>
         ) : (
           <FadeSlideIn>
             <Text style={styles.thin} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -312,61 +378,20 @@ export default function Next() {
           </FadeSlideIn>
         )}
 
-        {unknown.length > 0 ? (
-          <FadeSlideIn>
-            <UnknownLifts rows={unknown} />
-          </FadeSlideIn>
-        ) : null}
-
-        {/* The closing line belongs to a session that HAS cards. Under the
-            "nothing to progress yet" message it would be a second sentence
-            saying less than the first. */}
-        {carded.length > 0 ? (
+        {/* A preview is a look at another day, and the page has to keep saying
+            so — selecting a chip writes nothing and does not move which day is
+            due (§8.2). */}
+        {preview ? (
           <Text style={styles.foot} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {preview
-              ? dueLabel
-                ? `A look ahead. Today reads as ${dueLabel}.`
-                : 'A look ahead — not the session you are due for.'
-              : 'Nothing counts until you lift it. Write what you actually do.'}
+            {dueLabel ? `A look ahead. Today reads as ${dueLabel}.` : 'A look ahead — not the session you are due for.'}
           </Text>
         ) : null}
 
-        {/* The lifts the coming session does not name. Only ever the DUE day's
-            signals: a preview is a look at another session, not a claim about
-            what the rest of the record is doing that day. */}
-        {!preview && (sections.standing.length > 0 || sections.moving.length > 0) ? (
-          <FadeSlideIn>
-            <Signals
-              standing={sections.standing}
-              moving={sections.moving}
-              onOpen={(canonical) => {
-                tap();
-                openExerciseSheet(canonical);
-              }}
-            />
-          </FadeSlideIn>
-        ) : null}
-
-        {/* THE REASONING, AS AN OBJECT (v6, skill §Reuse). The full paragraph
-            used to sit behind a "Read the full brief" disclosure, with the
-            provenance line as 11 pt grey under it — the page's own explanation
-            of itself, filed as a footnote. `ThoughtProcessCard` is that
-            explanation given a shape: the evidence ring, the paragraph, where
-            the words came from, and a way to disagree with it.
-
-            It stays at the BOTTOM of the page, which leaves the 13 Aug ruling
-            intact: the paragraph competed with the loads when it sat at the
-            top, and it is not going back there. What changed is that a reader
-            who scrolls to the end no longer has to ask for it.
-
-            `FadeSwap` keeps §9.1's promise that the model's rewrite is VISIBLE
-            when it lands — one dip, once, exactly as the disclosure did.
-
-            No paragraph, no card: `BriefFooter` returned null on the same test,
-            and an empty explanation is worse than none. `BriefFooter` itself
-            stays in `next/brief.tsx`, unmounted, so the disclosure is one line
-            away if the owner prefers it. */}
-        {(summary ?? prose) ? (
+        {/* THE REASONING, AS AN OBJECT. It stays at the BOTTOM: the paragraph
+            competed with the loads when it sat at the top, and it is not going
+            back there. `FadeSwap` keeps §9.1's promise that the model's rewrite
+            is VISIBLE when it lands. No paragraph, no card. */}
+        {brief && (summary ?? prose) ? (
           <FadeSwap swapKey={summary ? 'model' : 'composed'}>
             <ThoughtProcessCard
               reasoning={summary ?? prose}
@@ -381,9 +406,6 @@ export default function Next() {
           </FadeSwap>
         ) : null}
 
-        {/* Lifts moved out of the tab bar to make room for this screen. It is
-            one tap away, not gone — and it is the same quiet row that closes
-            Progression, not a card pretending to be one. */}
         <PressableScale
           haptic="none"
           activeScale={0.98}
@@ -400,41 +422,109 @@ export default function Next() {
           <Icon name="chevron-forward" size={moderateScale(14)} tint={color.textMuted} />
         </PressableScale>
       </ScrollView>
+
+      <GroupSheet
+        group={groups.find((g) => g.key === openGroup) ?? null}
+        onClose={() => setOpenGroup(null)}
+      />
+
+      <KeyboardDoneBar />
     </StubScreen>
   );
 }
 
-/** The header's one counted line. Two facts, both counted off what is on the
- * page: today's date and how many lifts it names. No adjectives (§2, rule 6). */
-function countedLine(lifts: number): string {
-  const date = briefDateline(new Date());
-  if (lifts === 0) return date;
-  return `${date} · ${lifts} ${lifts === 1 ? 'lift' : 'lifts'}`;
+/** The athlete's number for a row, or null — void the moment the engine moves
+ * off the load it displaced (`lib/next/overrides.ts`). */
+function overrideOf(
+  book: ReturnType<typeof getOverrides>,
+  row: SessionRow,
+): number | null {
+  const entry = book[entryNoteKey(row.canonical ?? row.name)];
+  if (!entry) return null;
+  return entry.was === (row.loadKg ?? null) ? entry.kg : null;
+}
+
+/**
+ * THE EMPTY STATE'S ROWS — the lifts they named in onboarding (screen 15),
+ * with no targets.
+ *
+ * It shows the STRUCTURE the screen will fill, in their own lifts' names, and
+ * claims nothing: the working weights they typed on that screen stay out of
+ * the target column, because a number the athlete stated about themselves is
+ * not a number the engine prescribed, and printing it there would be the page
+ * inventing a prescription (§2 rule 2).
+ *
+ * No key lifts on file means no rows — the title block and the instruction
+ * carry the page on their own.
+ */
+function keyLiftRows(): SessionRow[] {
+  return getKeyLifts().map((name) => ({
+    key: entryNoteKey(name),
+    name,
+    canonical: null,
+    move: null,
+    bestKg: null,
+    last: null,
+    lastDay: null,
+    prescription: null,
+    loadKg: null,
+    scheme: null,
+    beatsBest: false,
+    why: null,
+    watch: null,
+    note: null,
+  }));
+}
+
+/** The title block's one control. A pill, because everything interactive on
+ * this canvas floats as one. */
+function EditPill({ on, onPress }: { on: boolean; onPress: () => void }) {
+  return (
+    <PressableScale
+      haptic="none"
+      activeScale={0.96}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+      accessibilityLabel={on ? 'Done editing targets' : 'Edit targets'}
+      style={[styles.editPill, on ? styles.editPillOn : null]}>
+      <Text
+        style={[styles.editLabel, on ? styles.editLabelOn : null]}
+        maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {on ? 'Done' : 'Edit'}
+      </Text>
+    </PressableScale>
+  );
 }
 
 const styles = StyleSheet.create({
-  // Progression's scroll, to the token: the body's gutter is given back so the
-  // scroll runs full-bleed, and ONE gap separates every block on the page.
   scroll: {
     flex: 1,
     marginHorizontal: -spacing.xxl,
   },
   content: {
     paddingHorizontal: spacing.xxl,
-    // Content scrolls *behind* the tab bar (§5.2 — glass needs something to
-    // refract), so the last row is padded clear of it rather than inset.
+    // Content scrolls *behind* the tab bar and the pinned Start (§5.2 — glass
+    // needs something to refract), so the last row is padded clear of both.
     paddingBottom: spacing.huge + TAB_BAR_CLEARANCE,
     gap: spacing.lg,
   },
-  /** The lede sits closer to the chips than the page gap allows: it is the
-   * standfirst for what follows, not a block of its own. */
-  lede: {
-    marginBottom: -spacing.xs,
+  /** What the session targets. Counted, so it reads as a fact rather than a
+   * headline: secondary ink, no scale. */
+  targets: {
+    ...type.subhead,
+    marginTop: -spacing.xs,
+    color: color.textSecondary,
   },
-  /** The one green on the page that is not a value: the label those values
-   * are owed (§4.2). `signal` on white is 4.93:1 — AA, at any size. */
-  planned: {
-    color: color.signal,
+  list: {
+    gap: spacing.sm,
+  },
+  /** Said once, under the title block — never in a row's reason slot. */
+  instruction: {
+    ...type.footnote,
+    lineHeight: lineFor(16),
+    marginTop: -spacing.md,
+    color: color.textMuted,
   },
   sessionNote: {
     ...type.footnote,
@@ -448,10 +538,10 @@ const styles = StyleSheet.create({
     color: color.textMuted,
   },
   thin: {
-    ...type.subhead,
     // It CARRIES INFORMATION — what the page would need before it could say
     // anything — so it is secondary ink, not muted (skill §Colour: "`textMuted`
     // is for what the eye may skip").
+    ...type.subhead,
     color: color.textSecondary,
     paddingVertical: spacing.md,
   },
@@ -469,27 +559,28 @@ const styles = StyleSheet.create({
     ...type.caption,
     color: color.textSecondary,
   },
-  emptyCard: {
+  editPill: {
+    minHeight: moderateScale(32),
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    backgroundColor: color.surface,
     borderWidth: 1,
-    borderStyle: 'dashed',
     borderColor: color.border,
-    // A card's radius, not a button's — `md` 14 belongs to controls.
-    borderRadius: radius.xl,
+    borderRadius: radius.pill,
     borderCurve: 'continuous',
-    padding: spacing.lg,
-    gap: spacing.md,
   },
-  emptyTitle: {
-    ...type.headline,
+  /** Selection is a CONTROL state, so it wears the brand — never the planned
+   * green, which on this screen means "a load nobody has lifted yet". */
+  editPillOn: {
+    backgroundColor: color.brand,
+    borderColor: color.brand,
+  },
+  editLabel: {
+    ...type.caption,
     fontWeight: '600',
     color: color.textPrimary,
   },
-  emptyBody: {
-    ...type.subhead,
-    color: color.textSecondary,
-  },
-  emptyActions: {
-    flexDirection: 'row',
-    marginTop: spacing.xs,
+  editLabelOn: {
+    color: color.surface,
   },
 });

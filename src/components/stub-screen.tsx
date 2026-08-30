@@ -32,6 +32,7 @@ export function StubScreen({
   note,
   back = true,
   large = false,
+  trailing,
   children,
 }: {
   title: string;
@@ -42,6 +43,17 @@ export function StubScreen({
   back?: boolean;
   /** Tab-root only: set the title at `largeTitle` instead of `title2`. */
   large?: boolean;
+  /**
+   * ONE control on the header's trailing edge — Next's Edit pill, and the
+   * reason this slot exists (28 August 2026). Setgraph puts exactly this
+   * there; the alternative was a control floating in the body, which would
+   * have been a second thing claiming to be a header.
+   *
+   * It aligns to the TOP of the title, not its centre: beside a large title
+   * with a subtitle under it, a vertically centred pill sits against the
+   * subtitle and reads as belonging to it.
+   */
+  trailing?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   const router = useRouter();
@@ -78,6 +90,7 @@ export function StubScreen({
           ) : null}
         </View>
         {back ? <View style={styles.back} /> : null}
+        {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
       </View>
 
       <View style={[styles.body, subtitle ? styles.bodyTight : null]}>
@@ -100,6 +113,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
     // minHeight, never height: at accessibilityLarge a 22pt title is taller than
     // the 44pt tap target and a fixed height would crop its own label.
     minHeight: HIT,
@@ -112,6 +126,12 @@ const styles = StyleSheet.create({
   back: {
     width: HIT,
     justifyContent: 'center',
+  },
+  /** Top-aligned, so the control sits beside the TITLE rather than drifting
+   * down to the subtitle it does not belong to. */
+  trailing: {
+    alignSelf: 'flex-start',
+    flexShrink: 0,
   },
   titleWrap: {
     flex: 1,

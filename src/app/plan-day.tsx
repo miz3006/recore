@@ -121,7 +121,13 @@ export default function PlanDayEditor() {
 
         <ScrollView
           style={styles.scroll}
+          // The movements field is MULTILINE — its return key writes the next
+          // movement rather than finishing — so the ways out are a scroll
+          // (here), a tap on anything in the page that is not a control, and
+          // Save itself. The DAY field above is single-line and its return key
+          // still ends editing.
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxl }]}
           showsVerticalScrollIndicator={false}>
           <Text style={styles.caption} maxFontSizeMultiplier={MAX_FONT_SCALE}>

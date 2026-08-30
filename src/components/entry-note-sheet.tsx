@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import {
   ENTRY_NOTE_PLACEHOLDER,
@@ -16,7 +16,6 @@ import {
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
-  monoText,
   radius,
   spacing,
   type,
@@ -24,8 +23,9 @@ import {
 import { useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
+import { EntrySheetHeader } from './entry-sheet-header';
 import { PressableScale } from './motion';
-import { AppButton, Eyebrow } from './primitives';
+import { AppButton } from './primitives';
 
 /**
  * The per-entry note sheet (owner, 4 August 2026) — opened from a ledger card's
@@ -99,22 +99,23 @@ export function EntryNoteSheet() {
       visible={target !== null}
       onClose={commitAndClose}
       sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
-      <Eyebrow tone="muted" style={styles.eyebrow}>
-        This entry
-      </Eyebrow>
-      <Text style={styles.title} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {exercise}
-      </Text>
-      {target?.setText ? (
-        <Text style={styles.sets} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {target.setText}
-        </Text>
-      ) : null}
+      {/* The head is also a way down: the note below is MULTILINE, so its
+          return key writes a newline instead of finishing. Not a control to
+          VoiceOver — the three lines stay three readable lines. */}
+      <Pressable accessible={false} onPress={Keyboard.dismiss}>
+        {/* The same header the ⋯ sheet wears — this sheet opens straight out
+            of it, so the name may not change size or position on the way. No
+            `note` is passed on purpose: the field below is about to show those
+            exact words, and a header quoting the paragraph beneath it is an
+            echo, not context. */}
+        <EntrySheetHeader eyebrow="This entry" exercise={exercise} setText={target?.setText} />
+      </Pressable>
 
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         showsVerticalScrollIndicator={false}>
         {/* THE WORDS, AND ONLY THE WORDS (owner, 12 Aug 2026).
             The effort scale used to lead this sheet. It moved out, not away:
@@ -192,23 +193,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     maxHeight: '86%',
   },
-  eyebrow: {
-    marginTop: spacing.sm,
-  },
-  // Same header, same size as the ⋯ sheet this opens out of (see its `title`):
-  // the two are one object's header shown back to back, and a 27 → 22 jump on
-  // the exercise name would read as the sheet re-titling itself.
-  title: {
-    marginTop: spacing.xs,
-    ...type.title2,
-    color: color.textPrimary,
-  },
-  sets: {
-    marginTop: spacing.xs,
-    ...monoText,
-    fontSize: moderateScale(13),
-    color: color.textSecondary,
-  },
   scroll: {
     marginTop: spacing.lg,
   },
@@ -230,48 +214,10 @@ const styles = StyleSheet.create({
     color: color.textMuted,
   },
 
-  // --- effort ---
-  scale: {
-    flexDirection: 'row',
-    gap: spacing.xs + 2,
-  },
-  level: {
-    flex: 1,
-    minHeight: moderateScale(56),
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-    paddingHorizontal: spacing.xs,
-    // A ROW, so `radius.lg` 20 (skill §Spacing) — `md` 14 is a button's.
-    borderRadius: radius.lg,
-    borderCurve: 'continuous',
-    borderWidth: hairline,
-    borderColor: color.border,
-    backgroundColor: color.surface,
-  },
-  // Selected = ink fill, exactly like every other committed state in the app.
-  levelOn: {
-    backgroundColor: color.accent,
-    borderColor: color.accent,
-  },
-  levelLabel: {
-    ...type.caption,
-    fontWeight: '600',
-    color: color.textPrimary,
-  },
-  levelLabelOn: {
-    color: color.onInk,
-  },
-  levelHint: {
-    fontSize: moderateScale(9.5),
-    lineHeight: lineFor(12),
-    textAlign: 'center',
-    color: color.textMuted,
-  },
-  levelHintOn: {
-    color: color.onInk,
-    opacity: 0.72,
-  },
+  // (The effort scale's seven styles were deleted on 20 August 2026. The
+  // control itself moved to "Fix this entry" on 12 August — RIR is per SET —
+  // and the styling it left behind was a component's worth of dead geometry
+  // that the next reader would have taken for a control still on this sheet.)
 
   // --- the note ---
   input: {

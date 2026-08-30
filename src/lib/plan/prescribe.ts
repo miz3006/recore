@@ -38,7 +38,7 @@ export type Move =
   | { kind: 'weight'; deltaKg: number }
   | { kind: 'rep' }
   | { kind: 'hold' }
-  | { kind: 'backoff'; toKg: number };
+  | { kind: 'backoff'; fromKg: number; toKg: number };
 
 /** The engine's own decision, read off the reason it already returned. */
 export function moveFor(reason: Reason): Move | null {
@@ -51,7 +51,7 @@ export function moveFor(reason: Reason): Move | null {
     case 'hold':
       return { kind: 'hold' };
     case 'deload':
-      return { kind: 'backoff', toKg: reason.to };
+      return { kind: 'backoff', fromKg: reason.from, toKg: reason.to };
     default:
       return null;
   }

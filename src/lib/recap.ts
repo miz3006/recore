@@ -2,11 +2,11 @@ import * as Notifications from 'expo-notifications';
 
 import { getMeta, setMeta } from '@/lib/db/index';
 import { todayKey } from '@/lib/db/dates';
-import { mondayOf } from '@/lib/db/stats';
 import { getLoggedDayKeys } from '@/lib/db/workouts';
 import { markRecapToggled } from '@/lib/funnel';
 import { devLog } from '@/lib/log';
-import { getRecapHour, isRecapEnabled, setRecapEnabled } from '@/lib/prefs';
+import { getRecapDay, getRecapHour, isRecapEnabled, setRecapEnabled } from '@/lib/prefs';
+import { knowableWindow, nextRecapDate } from '@/lib/recap-schedule';
 
 /**
  * The §12.1 weekly recap notification — THE one recurring notification Recore
@@ -15,14 +15,25 @@ import { getRecapHour, isRecapEnabled, setRecapEnabled } from '@/lib/prefs';
  * bearing, and every function swallows its own failure.
  *
  * THE RULES (§12.1):
- *  - At most one per week, on Sunday, at a user-visible and editable hour
- *    (You → Weekly recap). Off in one tap, off by default.
+ *  - At most one per week, on the day and hour the person chose — Sunday
+ *    evening by default, Monday morning if the onboarding recap screen was
+ *    answered that way (28 Aug 2026), and the hour is editable in
+ *    You → Weekly recap. Off in one tap, off by default.
  *  - Content is factual and drawn from the person's own record: the sessions
  *    of the week that is ending. An empty week states a neutral fact — never
  *    guilt, never a streak warning, never "we miss you".
- *  - Permission is asked in context: on the first recap card, or when the
- *    person turns the row on in You. Never in onboarding (§5.1), never
- *    re-asked after a denial.
+ *  - Permission is asked IN CONTEXT, on a surface that has just explained what
+ *    the message is for, and never re-asked after a denial. Three places do
+ *    that: the recap screen of onboarding (owner, 23 Aug 2026 — see
+ *    `requestRecapInOnboarding`), the first recap card, and the You row.
+ *
+ *    That first one reverses §5.1's "no permission prompt in onboarding". The
+ *    owner's ruling: the recap screen shows the message, says what is in it and
+ *    asks in the person's own words, and answering "yes, send it" to a question
+ *    like that and then getting nothing until some later Sunday is the part
+ *    that reads as a broken promise. The clause the rule protects — never ask
+ *    before the reason is on the glass — is kept, because the reason IS the
+ *    screen. Nothing else in the flow asks the OS for anything.
  *
  * HOW THE CONTENT STAYS TRUE with a locally scheduled notification (which is
  * static once scheduled): the pending notice is re-computed and re-scheduled
@@ -62,25 +73,46 @@ export async function requestRecapNotificationPermission(): Promise<boolean> {
   }
 }
 
-/** Sessions recorded in the week containing today (Monday-first). One logged
- * day is one session — that is the record's own unit. */
-function sessionsThisWeek(userId: string): number {
-  const monday = mondayOf(todayKey());
-  const today = todayKey();
-  let n = 0;
-  for (const day of getLoggedDayKeys(userId)) {
-    if (day >= monday && day <= today) n += 1;
-  }
-  return n;
+/**
+ * Has the OS already been asked, whatever it answered? The recap card reads it
+ * so it can stop offering something that can no longer be turned on: a denial
+ * is permanent here (`canAskAgain` plus the local flag), so an offer after one
+ * is a button whose only possible outcome is nothing happening.
+ */
+export function recapPermissionAsked(): boolean {
+  return hasAsked();
 }
 
-/** The next Sunday at the chosen hour — today, if it is Sunday and the hour is
- * still ahead. */
-function nextRecapDate(hour: number, now = new Date()): Date {
-  const fire = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 0, 0, 0);
-  fire.setDate(fire.getDate() + ((7 - now.getDay()) % 7)); // getDay(): 0 = Sunday
-  if (fire.getTime() <= now.getTime()) fire.setDate(fire.getDate() + 7);
-  return fire;
+/**
+ * THE ONBOARDING ASK (owner, 23 Aug 2026).
+ *
+ * Called from the recap screen's Continue when the answer is "yes, send it": it
+ * opens the real iOS prompt and, only when that prompt is granted, turns the
+ * weekly recap ON. A denial leaves it off and is not an error — the intent is
+ * still stored, You still carries the row, and nothing in the flow waits.
+ *
+ * It does NOT schedule anything, because there is no account yet: the first
+ * Today open calls `refreshRecapNotification` with a real user id and the
+ * pending notice is computed there, from the record as it stands.
+ */
+export async function requestRecapInOnboarding(): Promise<boolean> {
+  const granted = await requestRecapNotificationPermission();
+  if (!granted) return false;
+  if (!isRecapEnabled()) {
+    setRecapEnabled(true);
+    markRecapToggled(true); // §13: recap enabled
+  }
+  return true;
+}
+
+/** Sessions recorded between two day keys, inclusive. One logged day is one
+ * session — that is the record's own unit. */
+function sessionsBetween(userId: string, from: string, to: string): number {
+  let n = 0;
+  for (const day of getLoggedDayKeys(userId)) {
+    if (day >= from && day <= to) n += 1;
+  }
+  return n;
 }
 
 /**
@@ -96,16 +128,32 @@ export async function refreshRecapNotification(userId: string): Promise<void> {
     }
     if (!(await Notifications.getPermissionsAsync()).granted) return;
 
-    const n = sessionsThisWeek(userId);
+    /**
+     * THE DAY IS AN ANSWER NOW (28 Aug 2026). The v2 onboarding's recap screen
+     * asks for Sunday evening or Monday morning, and until it became the
+     * primary flow this scheduler fired on Sunday whatever anybody chose.
+     *
+     * The day changes the WORDS as well as the date: a Monday-morning notice
+     * arrives after the week it is about has closed, so it says "last week".
+     * `knowableWindow` decides which days it counts and never counts forward
+     * into a week that has not happened.
+     */
+    const day = getRecapDay();
+    const fire = nextRecapDate(getRecapHour(), day);
+    const window = knowableWindow(fire, day, todayKey());
+    const period = day === 'mon' ? 'last week' : 'this week';
+    const n = window ? sessionsBetween(userId, window.from, window.to) : 0;
     const body =
-      n > 0 ? `${n} ${n === 1 ? 'session' : 'sessions'} this week.` : 'No sessions recorded this week.';
+      window && n > 0
+        ? `${n} ${n === 1 ? 'session' : 'sessions'} ${period}.`
+        : `No sessions recorded ${period} yet.`;
 
     await cancelRecapNotification(); // never two
     const id = await Notifications.scheduleNotificationAsync({
       content: { title: 'Weekly recap', body },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: nextRecapDate(getRecapHour()),
+        date: fire,
       },
     });
     setMeta(KEYS.scheduledId, id);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -11,15 +11,13 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { shortDayLabel } from '@/lib/db/dates';
 import { getLastSessionPrefill } from '@/lib/db/last-set';
 import { getReflection } from '@/lib/db/workouts';
 import { readEntryNote } from '@/lib/entry-note';
-import { tap } from '@/lib/haptics';
+import { tap, tapMedium } from '@/lib/haptics';
 import { DUR, SPRING } from '@/lib/motion';
 import { namesMatch, typedNameOf, type ReceiptRow } from '@/lib/parse/receipt';
 import { doneKeyFor } from '@/lib/parse/summarize';
-import { type GutterSignal } from '@/lib/parse/types';
 import {
   COMPOSER_HINT_SESSIONS,
   hasCoachRingDone,
@@ -28,11 +26,12 @@ import {
   markCoachRingDone,
   markComposerHintDone,
 } from '@/lib/prefs';
-import { color, FIXED_FONT_SCALE, lineFor, MAX_FONT_SCALE, moderateScale, readingStyle, spacing } from '@/lib/theme';
+import { reflectionTagLine, splitReflection } from '@/lib/reflection';
+import { color, FIXED_FONT_SCALE, HIT, lineFor, MAX_FONT_SCALE, moderateScale, readingStyle, spacing } from '@/lib/theme';
 import { useCurrentNote, useSession } from '@/state/session-store';
 
-import { EntryActionsSheet, type EntryAction } from './entry-actions-sheet';
-import { ParseIndicator, PrLabel } from './gutter-value';
+import { EntryActionsSheet, joinNames, type EntryAction } from './entry-actions-sheet';
+import { comparisonOf, PrLabel, ReadingMark, ReadingSweep } from './gutter-value';
 import { Icon } from './icon';
 import { PressableScale } from './motion';
 import { BODY_PADDING_H, BODY_PADDING_TOP } from './note-metrics';
@@ -73,10 +72,10 @@ import { useSessionActive } from './use-session-active';
  * something for it to describe. The page is the product; furniture around an
  * empty page is the app talking to itself.
  */
-const PLACEHOLDER = 'Write your training…';
-const NEXT_PLACEHOLDER = 'Next exercise…';
-
-const KG_DELTA_RE = /^[+-]\d+(?:\.\d+)?$/;
+/** Today's own placeholders, exported so the demo asks for the same thing in
+ * the same words. */
+export const PLACEHOLDER = 'Write your training…';
+export const NEXT_PLACEHOLDER = 'Next exercise…';
 
 /** When the parser resolved a line to a name the user did NOT type ("tricpes" →
  * "Triceps Pushdown"), echo their original word beside the card (X4) — the
@@ -85,35 +84,6 @@ const KG_DELTA_RE = /^[+-]\d+(?:\.\d+)?$/;
 function aliasEchoOf(rawLine: string, canonical: string): string | null {
   const typed = typedNameOf(rawLine);
   return typed && !namesMatch(typed, canonical) ? typed : null;
-}
-
-/** The archival comparison subline of a card ("+2.5 kg vs last"). PR carries a
- * chip instead, so it returns null here.
- *
- * "SAME AS LAST" NAMES THE SESSION IT MEANS (owner, 11 Aug 2026). Unqualified,
- * it was the one comparison the reader could not check: same as which day —
- * Friday, or the identical session three weeks ago? The date comes from the
- * signal itself (`db/history.ts` records the workout it compared against), so
- * a signal cached before that existed simply says less. It never guesses. */
-function comparisonOf(signal: GutterSignal | null): string | null {
-  if (!signal) return null;
-  switch (signal.kind) {
-    case 'up':
-    case 'down': {
-      // Neutral reference — no bare +/- sign (a leading minus reads as a scold
-      // on a deload day). Up and down carry identical muted weight.
-      const word = signal.kind === 'up' ? 'up' : 'down';
-      const mag = KG_DELTA_RE.test(signal.delta)
-        ? `${signal.delta.replace(/^[+-]/, '')} kg`
-        : signal.delta.replace(/^[+-]/, '');
-      return `${word} ${mag} vs last`;
-    }
-    case 'equal':
-      return signal.at ? `same as last · ${shortDayLabel(signal.at)}` : 'same as last';
-    case 'pr':
-    case 'set':
-      return null;
-  }
 }
 
 export function NoteSurface() {
@@ -161,20 +131,74 @@ export function NoteSurface() {
   // (after the native modal is gone) and still needs to know which card it
   // was for. The row is cleared there, never on close.
   const [actionsRow, setActionsRow] = useState<ReceiptRow | null>(null);
+  /** The OTHER entries on `actionsRow`'s physical line, snapshotted the moment
+   * the sheet opened — for the same reason `actionsRow` outlives `actionsOpen`:
+   * a parse landing mid-sheet must not change what the athlete was warned
+   * about between reading the row and confirming it. */
+  const [actionsSiblings, setActionsSiblings] = useState<string[]>([]);
   const [actionsOpen, setActionsOpen] = useState(false);
   /** Which card is showing the athlete's own words instead of the reading —
    * one at a time, so flipping a second card settles the first. Held here
    * rather than inside the card only because the list owns "one at a time". */
   const [wordsKey, setWordsKey] = useState<string | null>(null);
+  /**
+   * DELETE ASKS FIRST, AND NAMES WHAT GOES (20 August 2026).
+   *
+   * Two things were wrong with the one-tap delete. It removed a PHYSICAL LINE
+   * while calling itself "Delete entry", and one line can hold several entries
+   * ("bench 3x8, rows 3x10" is one line, two cards) — so deleting the bench
+   * silently took the rows with it. There is no fixing that by deleting less:
+   * `ParsedItem` carries no offset back into the sentence, and guessing at a
+   * substring of what the athlete wrote would corrupt the record (§3). The line
+   * is the only honest unit, so the athlete is TOLD it is the unit — on the row
+   * itself (`alsoOnLine`) and again here.
+   *
+   * And it never asked. `deleteNoteLine` splices out of `note`, which is
+   * `raw_text`, which is the record, and there is no undo stack behind it —
+   * while the far gentler "Remove reading" in the fix sheet, which deletes
+   * nothing the athlete wrote, already stops to ask. Same Alert shape as that
+   * one, so the app has one destructive voice.
+   *
+   * It runs from `onSelect`, i.e. after the sheet's native modal is gone. An
+   * alert is a presentation like any other, and UIKit will refuse it over a
+   * live modal exactly as it refuses a second sheet.
+   */
+  const confirmDeleteLine = (
+    line: number,
+    /** The entry the ⋯ was tapped on, when that is where this came from. The
+     * inline editor deletes the line it is editing, and says so instead. */
+    entry: { exercise: string; alsoOnLine: string[] } | null,
+  ) => {
+    const what = entry
+      ? entry.alsoOnLine.length > 0
+        ? `“${entry.exercise}” shares one written line with ${joinNames(entry.alsoOnLine)}, so all of them go.`
+        : `The line you wrote for “${entry.exercise}” is removed from this session.`
+      : 'The line you wrote is removed from this session.';
+    Alert.alert(entry ? 'Delete this entry?' : 'Delete this line?', `${what} This cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          tapMedium();
+          deleteNoteLine(line);
+        },
+      },
+    ]);
+  };
+
   const runEntryAction = (action: EntryAction) => {
     const row = actionsRow;
+    const siblings = actionsSiblings;
     setActionsRow(null);
+    setActionsSiblings([]);
     if (!row) return;
     switch (action) {
       case 'note':
         // The athlete's own remark about THIS lift — effort (which moves the
         // next load) and words (which Next quotes back). It used to be a bubble
         // on every card; one door per card, named, is the 11 Aug ruling.
+        Keyboard.dismiss(); // the sheet brings its own input
         openEntryNote({ exercise: row.exercise, setText: row.setText, line: row.line });
         break;
       case 'history':
@@ -186,7 +210,7 @@ export function NoteSurface() {
         openFixSheet(row.line);
         break;
       case 'delete':
-        deleteNoteLine(row.line);
+        confirmDeleteLine(row.line, { exercise: row.exercise, alsoOnLine: siblings });
         break;
     }
   };
@@ -285,7 +309,10 @@ export function NoteSurface() {
           value={raw}
           onChange={(t) => setLineText(i, t)}
           onDone={stopEditLine}
-          onDelete={() => deleteNoteLine(i)}
+          // The SAME `deleteNoteLine`, so the same confirm — a bare one-tap
+          // Delete beside an autofocused field, on a line with no undo behind
+          // it, was the more accidental of the two doors, not the safer one.
+          onDelete={() => confirmDeleteLine(i, null)}
           // "Fix reading" repairs the PARSE of this line (wrong name, wrong
           // numbers) without touching the written words — only offered while
           // the line has a reading to fix.
@@ -339,6 +366,9 @@ export function NoteSurface() {
               // used to hide behind a gesture: edit, words, note, history, fix,
               // delete.
               setActionsRow(row);
+              // The rest of this written line: delete takes the line, so the
+              // sheet has to be able to name who leaves with this card.
+              setActionsSiblings(rows.filter((r) => r !== row).map((r) => r.exercise));
               setActionsOpen(true);
             }}
             onFix={() => {
@@ -355,6 +385,7 @@ export function NoteSurface() {
         <PendingCard
           key={`p:${i}`}
           text={raw.trim()}
+          reduceMotion={reduceMotion}
           onPress={() => {
             tap();
             startEditLine(line);
@@ -408,12 +439,28 @@ export function NoteSurface() {
   }, [hintDone, sessionCount]);
   const showComposerHint = !hintDone && sessionCount < COMPOSER_HINT_SESSIONS;
 
-  const hasReflection = useMemo(
-    () => (workoutId ? (getReflection(workoutId)?.trim().length ?? 0) > 0 : false),
+  /**
+   * THE SESSION'S OWN NOTE, READ BACK (owner, 20 Aug 2026).
+   *
+   * The check-in used to be write-only from this page: you answered it once,
+   * the prompt row vanished, and your words lived on in a column no screen
+   * printed. §8.1 calls a reflection part of the record, and a record you
+   * cannot re-read is a form you filled in — so the day now prints it under
+   * the lifts it is about: the chosen tags on one quiet line, the prose under
+   * them, both a step smaller than a lift because they ANNOTATE the session
+   * rather than report a number.
+   *
+   * Read on the same beat as the prompt it replaces — the check-in writes it,
+   * so closing that sheet (or changing day) is what makes this current.
+   */
+  const reflection = useMemo(() => {
+    const stored = workoutId ? getReflection(workoutId) : null;
+    if (!stored || stored.trim().length === 0) return null;
+    const { tags, text } = splitReflection(stored);
+    return { tags: reflectionTagLine(tags), text };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [workoutId, checkInOpen, receipt],
-  );
-  const showReflectionRow = settledCards > 0 && !sessionActive && !hasReflection;
+  }, [workoutId, checkInOpen, receipt]);
+  const showReflectionRow = settledCards > 0 && !sessionActive && reflection === null;
 
   return (
     <>
@@ -426,6 +473,46 @@ export function NoteSurface() {
       showsVerticalScrollIndicator={false}>
       <Pressable style={styles.fill} onPress={focusInput}>
         {blocks}
+
+        {/* The session's check-in, printed where the session's lifts end.
+
+            It sits ABOVE the writing line, with the cards, because it is
+            written down — the air under the last block is the page's one real
+            boundary ("everything above this is recorded"), and the athlete's
+            words about the session belong on the recorded side of it. The
+            invitation to write them stays below the line, where the unwritten
+            lives.
+
+            Tapping re-opens the same check-in, so the note is editable from
+            the page that shows it and there is still exactly one place the
+            words are written. */}
+        {reflection ? (
+          <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(220)}>
+            <Pressable
+              onPress={() => {
+                tap();
+                Keyboard.dismiss(); // the check-in brings its own field
+                openCheckIn();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Your note about this session: ${[reflection.tags, reflection.text]
+                .filter((part) => part.length > 0)
+                .join('. ')}`}
+              accessibilityHint="Opens the check-in to edit it"
+              style={({ pressed }) => [styles.reflectNote, pressed && styles.cardPressed]}>
+              {reflection.tags.length > 0 ? (
+                <Text style={styles.reflectTags} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  {reflection.tags}
+                </Text>
+              ) : null}
+              {reflection.text.length > 0 ? (
+                <Text style={styles.reflectBody} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  {reflection.text}
+                </Text>
+              ) : null}
+            </Pressable>
+          </Animated.View>
+        ) : null}
 
         {/* WHAT IS SETTLED AND WHAT IS BEING WRITTEN are separated by AIR, not
             by a line (v6). A rule used to close the record here and it is the
@@ -459,27 +546,15 @@ export function NoteSurface() {
           <Animated.View
             style={styles.activeBody}
             layout={reduceMotion ? undefined : LinearTransition.duration(DUR.slow)}>
-            <TextInput
-              ref={noteInputRef}
-              style={styles.input}
+            <NoteInput
+              inputRef={noteInputRef}
               value={activeValue}
               onChangeText={setActive}
               onSubmitEditing={commit}
               onFocus={() =>
                 requestAnimationFrame(() => noteScrollRef.current?.scrollToEnd({ animated: true }))
               }
-              blurOnSubmit={false}
-              returnKeyType="next"
               placeholder={empty ? PLACEHOLDER : NEXT_PLACEHOLDER}
-              placeholderTextColor={color.textMuted}
-              selectionColor={color.accent}
-              cursorColor={color.accent}
-              keyboardAppearance="light"
-              autoCapitalize="none"
-              autoCorrect={false}
-              spellCheck={false}
-              allowFontScaling
-              maxFontSizeMultiplier={MAX_FONT_SCALE}
             />
             {/* Live read-out of what you're typing — the parse, before you commit. */}
             {activeRows && activeRows.length ? (
@@ -517,12 +592,19 @@ export function NoteSurface() {
                 </Text>
               </Animated.View>
             ) : activePending ? (
-              // Right-aligned for the same reason as the settled card: this is
-              // where the live read-out's value lands, so the scan is standing
-              // in the answer's place rather than beside it.
-              <View style={styles.previewPending}>
-                <ParseIndicator />
-              </View>
+              // THE COMPOSER'S VALUE COLUMN. There are no committed words here
+              // for a light to pass under — the line is still in the field
+              // above, and moving anything under a cursor mid-sentence is the
+              // one thing §14 rules out outright. So the working mark alone
+              // waits in the column the live read-out prints its value in, and
+              // the answer takes its place without moving.
+              <Animated.View
+                entering={reduceMotion ? undefined : FadeIn.duration(180)}
+                style={styles.previewPending}
+                accessibilityRole="progressbar"
+                accessibilityLabel="reading, in progress">
+                <ReadingMark />
+              </Animated.View>
             ) : null}
           </Animated.View>
         </Animated.View>
@@ -554,6 +636,7 @@ export function NoteSurface() {
             <Pressable
               onPress={() => {
                 tap();
+                Keyboard.dismiss(); // the check-in brings its own field
                 openCheckIn();
               }}
               accessibilityRole="button"
@@ -592,7 +675,13 @@ export function NoteSurface() {
     <EntryActionsSheet
       visible={actionsOpen}
       target={actionsRow ? { exercise: actionsRow.exercise, setText: actionsRow.setText } : null}
-      hasNote={actionsRow ? readEntryNote(entryNotes, actionsRow.exercise) !== null : false}
+      // The card's own three facts travel with it: the athlete's remark (which
+      // makes "Edit note" a decision instead of a guess), and the comparison
+      // signal, which the header turns into a PR label or an "up 2.5 kg vs
+      // last" line. All of it was already computed for the card.
+      note={actionsRow ? readEntryNote(entryNotes, actionsRow.exercise) : null}
+      signal={actionsRow?.signal ?? null}
+      alsoOnLine={actionsSiblings}
       onClose={() => setActionsOpen(false)}
       onSelect={runEntryAction}
     />
@@ -600,7 +689,83 @@ export function NoteSurface() {
   );
 }
 
-function ExerciseCard({
+/**
+ * THE LINE YOU WRITE ON. One definition, used by Today and by the onboarding
+ * demo (28 August 2026).
+ *
+ * Extracted rather than copied, and every prop of the original is still set
+ * here: `blurOnSubmit={false}` and `returnKeyType="next"` are what let a person
+ * write three exercises without the keyboard closing between them, and the
+ * autocorrect/spellcheck/capitalisation trio is what keeps "3x8" from becoming
+ * "3X8" and "ohp" from becoming "OHP". Those are not defaults, they are the
+ * reason writing a session feels like writing a note, and a demo that used a
+ * plain `TextInput` would get every one of them wrong.
+ *
+ * `keyboardAppearance="light"` stays too: the app is `userInterfaceStyle:
+ * "light"` and a dark keyboard under a paper canvas is the kind of detail that
+ * makes a screen feel borrowed.
+ */
+export function NoteInput({
+  inputRef,
+  value,
+  onChangeText,
+  onSubmitEditing,
+  onFocus,
+  placeholder,
+  autoFocus = false,
+  testID,
+}: {
+  inputRef?: React.Ref<TextInput>;
+  value: string;
+  onChangeText: (text: string) => void;
+  onSubmitEditing?: () => void;
+  onFocus?: () => void;
+  placeholder: string;
+  autoFocus?: boolean;
+  testID?: string;
+}) {
+  return (
+    <TextInput
+      ref={inputRef}
+      style={styles.input}
+      value={value}
+      onChangeText={onChangeText}
+      onSubmitEditing={onSubmitEditing}
+      onFocus={onFocus}
+      blurOnSubmit={false}
+      returnKeyType="next"
+      placeholder={placeholder}
+      placeholderTextColor={color.textMuted}
+      selectionColor={color.accent}
+      cursorColor={color.accent}
+      keyboardAppearance="light"
+      autoCapitalize="none"
+      autoCorrect={false}
+      spellCheck={false}
+      autoFocus={autoFocus}
+      allowFontScaling
+      maxFontSizeMultiplier={MAX_FONT_SCALE}
+      testID={testID}
+    />
+  );
+}
+
+/**
+ * ONE ENTRY, AS THE RECORD DRAWS IT.
+ *
+ * EXPORTED (28 August 2026) so the onboarding demo can render the real thing
+ * rather than a lookalike. It was already the right shape for it: every value
+ * arrives as a prop and every action leaves as a callback — it reads nothing
+ * from `session-store` and touches no database. Making it shareable was adding
+ * the word `export`, which is the whole reason this note is short.
+ *
+ * The card therefore has exactly one definition, one set of styles and one
+ * typography, and a change to how an entry looks on Today changes how it looks
+ * in the demo in the same commit. That is the point: the demo screen is not
+ * allowed to drift from Today, and the cheapest way to guarantee that is for
+ * there to be nothing to drift from.
+ */
+export function ExerciseCard({
   row,
   order,
   done,
@@ -731,7 +896,9 @@ function ExerciseCard({
           onPress={onActions}
           hitSlop={spacing.xs}
           accessibilityRole="button"
-          accessibilityLabel={`More on ${row.exercise} — edit, show my words, note, history, fix reading, delete`}
+          // FOUR, because the sheet has four (owner, 12 Aug). "Edit line" and
+          // "Show my words" left that day; VoiceOver kept announcing them.
+          accessibilityLabel={`More on ${row.exercise} — fix reading, note, history, delete`}
           style={({ pressed }) => [styles.sideBtn, pressed && styles.cardPressed]}>
           <Icon name="ellipsis" size={moderateScale(17)} tint={color.textMuted} />
         </Pressable>
@@ -909,26 +1076,74 @@ function EditRow({
 /**
  * A line that has settled but has not been read back yet.
  *
- * The scan sits at the RIGHT of the row, in the exact slot the reading will
- * occupy once the parse lands (§5.2 — an interpreted reading is right-aligned
- * mono). So the indicator does not announce itself and then hand off somewhere
- * else: it is replaced, in place, by the answer. The user's own words stay put
- * on the left the entire time and are never dimmed — the record is never in
- * doubt while the machine catches up.
+ * IT IS THE SETTLED CARD, MINUS THE ANSWER. Rail, body and the ⋯ column are
+ * the exercise card's own three columns at their own widths, and the athlete's
+ * words sit in the name's place — so the parse landing replaces words with a
+ * name and grows the reading underneath, in a shape that was already standing.
+ * Before this the indicator lived in a two-column row of its own and the whole
+ * block re-laid itself out at the instant the athlete was reading it, which is
+ * the one moment a ledger must hold still.
+ *
+ * EVERYTHING THE MACHINE SAYS HERE IS ON THE WORDS' OWN ROW (owner, 29 August
+ * 2026): a light passes under the line being read, and the ⋯ column — the one
+ * place on this card that belongs to the app rather than to the record — waves
+ * the same three dots that become its menu the moment the reading arrives.
+ *
+ * The words themselves are never dimmed and never move; the band passes
+ * beneath them. They are `textSecondary` rather than full ink for one reason
+ * only: a raw line is not a resolved name yet, and the parse is what promotes
+ * it.
  */
-function PendingCard({ text, onPress }: { text: string; onPress: () => void }) {
+function PendingCard({
+  text,
+  reduceMotion,
+  onPress,
+}: {
+  text: string;
+  reduceMotion: boolean;
+  onPress: () => void;
+}) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
-      <View style={styles.rail}>
-        <View style={styles.railHollow} />
-      </View>
-      <View style={styles.pendingBody}>
-        <Text style={styles.pendingText} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {text}
-        </Text>
-        <ParseIndicator />
-      </View>
-    </Pressable>
+    // ENTERING ONLY, DELIBERATELY. An exiting animation would be the obvious
+    // way to cross-fade into the read card, and it is the wrong one: a view
+    // that is animating out still holds its place in the layout, so for the
+    // length of the fade the ledger would stand one card taller and then
+    // collapse — the exact reflow this card was reshaped to remove. The
+    // exchange is carried by the read card's own arrival instead.
+    <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(DUR.fast)}>
+      <Pressable
+        onPress={onPress}
+        accessibilityLabel={`${text} — reading`}
+        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
+        {/* The light crosses the WHOLE row, rail to ⋯ column, behind every
+            other child — it is drawn first so the words always paint over it,
+            and it is absolutely placed so the row measures as if it were not
+            there. */}
+        <ReadingSweep />
+        <View style={styles.rail}>
+          <View style={styles.railHollow} />
+        </View>
+        {/* ONE ROW, CENTRED ON THE WORDS. The ⋯ column lives inside this row
+            rather than beside it, so the mark sits on the words' own optical
+            centre instead of in the middle of a 36 pt button box that is
+            top-aligned to a card three lines tall — which put the dots below
+            the descenders, reading as a footnote to the line rather than as
+            its status (owner, 29 August 2026). The slot keeps the column's
+            width and the gap before it, so the mark's x is unchanged: it still
+            lands exactly where the ⋯ will. */}
+        <View style={styles.pendingHead}>
+          <Text
+            style={styles.pendingText}
+            numberOfLines={2}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {text}
+          </Text>
+          {/* Dots in the ⋯ column, or the word when motion is off — one hook
+              decides, so this row can never end up silent. */}
+          <ReadingMark />
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -1104,16 +1319,27 @@ const styles = StyleSheet.create({
   },
 
   // Pending / prose blocks.
-  pendingBody: {
+  /** The words in the NAME's place: `exName`'s metrics exactly, one step
+   * quieter in ink because a raw line is not a resolved name yet. */
+  pendingText: {
+    // `flex`, not `flexShrink`: the words claim the free space so the Reduce
+    // Motion word and the ⋯ slot are pushed hard against the card's right edge
+    // — the same edge the settled card's glyph sits on.
+    flex: 1,
+    fontSize: moderateScale(17),
+    fontWeight: '600',
+    letterSpacing: -0.2,
+    color: color.textSecondary,
+  },
+  /** The words' row, and the only row this card has: the line on the left,
+   * whatever the app has to say about it hard against the right, and the ⋯
+   * column's own slot at the end. `alignItems: 'center'` is the whole point —
+   * every mark on this row centres on the line's own height. */
+  pendingHead: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-  },
-  pendingText: {
-    flex: 1,
-    fontSize: moderateScale(16),
-    color: color.textSecondary,
+    gap: spacing.sm,
   },
   proseText: {
     fontSize: moderateScale(16),
@@ -1256,6 +1482,30 @@ const styles = StyleSheet.create({
   reflectText: {
     fontSize: moderateScale(14),
     fontWeight: '600',
+    color: color.textSecondary,
+  },
+  // The answer to that prompt, once it exists — same indentation as the row
+  // that asked, a step smaller than a lift. Both lines are `textSecondary`:
+  // they carry the athlete's own information, and muted is for what the eye
+  // may skip (design skill §Colour).
+  reflectNote: {
+    marginLeft: RAIL_W + spacing.sm,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    minHeight: HIT,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  reflectTags: {
+    // The chips the athlete armed, in their canonical order — a label line
+    // over the words, weighted so the two read as two things.
+    fontSize: moderateScale(11.5),
+    fontWeight: '600',
+    color: color.textSecondary,
+  },
+  reflectBody: {
+    fontSize: moderateScale(13),
+    lineHeight: lineFor(18),
     color: color.textSecondary,
   },
   coachHint: {

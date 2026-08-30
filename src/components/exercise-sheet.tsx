@@ -4,6 +4,7 @@ import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-nativ
 
 import { FadeSwap, PressableScale, Stagger } from '@/components/motion';
 import { Eyebrow } from '@/components/primitives';
+import { cadenceLine, heaviestLine, summarise, trendLine } from '@/lib/lift-summary';
 import { getCachedBriefSummary, refineBriefSummary } from '@/lib/brief-explain';
 import { type DayKey } from '@/lib/db/dates';
 import { getExerciseStats, type ExerciseSession, type ExerciseStats } from '@/lib/db/exercise-stats';
@@ -22,13 +23,11 @@ import {
   spacing,
   type,
 } from '@/lib/theme';
-import { groupThousands } from '@/lib/parse/estimate';
 import { fmtNumber } from '@/lib/parse/summarize';
 import { labelForDay, useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
 import { seriesPathD } from './charts';
-import { glyphTint, Icon, type IconName } from './icon';
 import { ThoughtProcessCard } from './thought-process';
 
 /**
@@ -63,12 +62,6 @@ const PR_SCAN = 400;
 /** Human label for a lift's modality — the one real categorical attribute we
  * have (no equipment/variant data exists, so the frame's variant chips collapse
  * to a single honest chip). */
-const MODALITY_LABEL: Record<string, string> = {
-  strength: 'Strength',
-  cardio: 'Cardio',
-  carry: 'Carry',
-  hold: 'Hold',
-};
 
 /** The right-aligned mono reading for a session ("5×5 · 100 kg"). */
 function sessionValue(s: ExerciseSession): string {
@@ -174,6 +167,8 @@ function ProgressionChart({
   const domain = prRef != null ? [...values, prRef] : values;
   const min = Math.min(...domain);
   const max = Math.max(...domain);
+  /** Every reading identical: there is no shape here, only a value. */
+  const flat = max - min < 1e-9;
   const span = max - min;
   const plotW = Math.max(1, w - AXIS_W - padR);
   const plotH = H - padT - padB;
@@ -219,7 +214,12 @@ function ProgressionChart({
                   strokeDasharray="3 4"
                 />
               ) : null}
-              <Path d={areaD} fill={`url(#${FILL_ID})`} />
+              {/* A FLAT SERIES GETS NO FILL. A ribbon under a horizontal line
+                  is the chart claiming a shape the record does not have — and
+                  on a lift held at one weight it filled a third of the sheet
+                  with nothing. The line still draws: the value is real, the
+                  area was decoration. */}
+              {flat ? null : <Path d={areaD} fill={`url(#${FILL_ID})`} />}
               <Path
                 d={lineD}
                 fill="none"
@@ -292,46 +292,6 @@ function ProgressionChart({
  * itself stays ink. The label wraps rather than clipping at the Dynamic Type
  * ceiling (§5.3).
  */
-function Stat({
-  glyph,
-  label,
-  value,
-  unit,
-}: {
-  glyph: IconName;
-  label: string;
-  value: string;
-  unit?: string;
-}) {
-  return (
-    <View
-      style={styles.statTile}
-      accessible
-      accessibilityLabel={`${label}: ${value}${unit ? ` ${unit}` : ''}`}>
-      <View style={styles.statHead}>
-        <Icon name={glyph} size={moderateScale(13)} tint={glyphTint(glyph)} />
-        <Text style={styles.statLabel} numberOfLines={2}>
-          {label.toUpperCase()}
-        </Text>
-      </View>
-      <View style={styles.statFigureRow}>
-        <Text
-          style={styles.statFigure}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
-          maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {value}
-        </Text>
-        {unit ? (
-          <Text style={styles.statUnit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {unit}
-          </Text>
-        ) : null}
-      </View>
-    </View>
-  );
-}
 
 type ChartMetric = 'weight' | 'e1rm' | 'reps';
 
@@ -350,6 +310,32 @@ export function ExerciseSheet() {
     if (!userId || !sheetExercise) return null;
     return getExerciseStats(userId, sheetExercise);
   }, [userId, sheetExercise]);
+
+  /**
+   * WHAT THIS LIFT HAS ACTUALLY BEEN DOING (owner, 29 August 2026).
+   *
+   * The sheet opened on `Sessions · Best e1RM · Volume` — three database
+   * aggregates in a row, answering a question nobody arrived with. Somebody
+   * taps a lift on Next to find out **how it is going**: how often they train
+   * it, whether it is moving, and what the heaviest thing on record is. Three
+   * counted sentences say that better than three tiles, and `lib/lift-summary`
+   * derives them from every session of this lift — including the cadence,
+   * which is the same median gap the flat scheduler ranks lifts by.
+   */
+  const liftSummary = useMemo(
+    () => (stats ? summarise(stats.sessions.map((x) => ({ day: x.day, topWeight: x.topWeight, topReps: x.topReps }))) : null),
+    [stats],
+  );
+  const summaryLines = useMemo(() => {
+    if (!liftSummary) return [];
+    return [
+      cadenceLine(liftSummary, fmtNumber),
+      heaviestLine(liftSummary, fmtNumber),
+      trendLine(liftSummary, fmtNumber),
+    ].filter(
+      (l): l is string => l != null,
+    );
+  }, [liftSummary]);
 
   // Real config + vocabulary only — never fabricated. The exercises row gives
   // the modality and plate step; the aliases the parser has actually seen.
@@ -480,14 +466,6 @@ export function ExerciseSheet() {
     closeExerciseSheet();
   };
 
-  // Real config only ("step +2.5 kg") — hidden when unknown.
-  const step =
-    exerciseRow?.modality === 'strength' && exerciseRow.increment_kg != null
-      ? `step +${fmtNumber(exerciseRow.increment_kg)} kg`
-      : null;
-
-  const modality = exerciseRow ? MODALITY_LABEL[exerciseRow.modality] ?? null : null;
-
   // Newest session first; the older session (for the comparison subline) is the
   // next one in this reversed order.
   const ordered = stats ? [...stats.sessions].reverse() : [];
@@ -504,46 +482,30 @@ export function ExerciseSheet() {
       onClose={close}
       sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
       {/* Header: chevron close · centered name pill · spacer. */}
+      {/* A SHEET DISMISSES, IT DOES NOT GO BACK (29 Aug 2026). The header was
+          a back chevron and a bordered name pill — the chevron promised a
+          previous screen that does not exist inside a sheet, and the pill put
+          a border around a title. The grabber already says "drag me away", so
+          the name can just be the name. */}
       <View style={styles.header}>
-            <PressableScale
-              style={styles.chevron}
-              onPress={close}
-              haptic="none"
-              activeScale={0.92}
-              hitSlop={spacing.sm}
-              accessibilityRole="button"
-              accessibilityLabel="Close">
-              <Icon name="chevron-back" size={moderateScale(16)} tint={color.textPrimary} />
-            </PressableScale>
-            <View style={styles.namePill}>
-              <Text style={styles.nameText} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {stats?.canonical ?? sheetExercise}
-              </Text>
-            </View>
-            <View style={styles.spacer} />
+            <Text style={styles.nameText} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {stats?.canonical ?? sheetExercise}
+            </Text>
+            {summaryLines.length > 0 ? (
+              <View style={styles.summary}>
+                {summaryLines.map((line) => (
+                  <Text key={line} style={styles.summaryLine} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    {line}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
           </View>
 
           <ScrollView
             style={styles.scroll}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}>
-          {/* Variant row — a single selected chip for the real modality (no
-              equipment/variant data exists to offer alternatives). */}
-          {modality ? (
-            <View style={styles.chipRow}>
-              <View style={styles.chipSelected}>
-                <Text style={styles.chipSelectedText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {modality}
-                </Text>
-              </View>
-              {step ? (
-                <Text style={styles.step} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {step}
-                </Text>
-              ) : null}
-            </View>
-          ) : null}
-
           {stats && hero ? (
             <Stagger step={55} initialDelay={80}>
               {/* The three readings the whole sheet is about: how much record
@@ -551,56 +513,6 @@ export function ExerciseSheet() {
                   it. All INK — the ember below draws the shape of the record,
                   never its numbers. Tonnage gives way to reps on a bodyweight
                   lift, where there is no weight to multiply. */}
-              <View style={styles.statsCard}>
-                <Stat
-                  glyph="calendar"
-                  label={stats.sessionCount === 1 ? 'Session' : 'Sessions'}
-                  value={String(stats.sessionCount)}
-                />
-                <View style={styles.statRule} />
-                <Stat
-                  glyph="plate"
-                  label="Best e1RM"
-                  value={stats.e1rm != null ? fmtNumber(stats.e1rm) : '—'}
-                  unit={stats.e1rm != null ? 'kg' : undefined}
-                />
-                <View style={styles.statRule} />
-                {stats.volumeTotal > 0 ? (
-                  <Stat
-                    glyph="barbell"
-                    label="Volume"
-                    value={groupThousands(stats.volumeTotal)}
-                    unit="kg"
-                  />
-                ) : (
-                  <Stat glyph="barbell" label="Total reps" value={groupThousands(stats.repsTotal)} />
-                )}
-              </View>
-
-              {/* PR card — best working set first. */}
-              <View style={styles.heroCard}>
-                <Eyebrow tone="muted" style={styles.cardEyebrow}>
-                  Personal record
-                </Eyebrow>
-                <View style={styles.heroTagRow}>
-                  <Text style={styles.prLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    PR
-                  </Text>
-                  <Text style={styles.heroCaption} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    Best working set · {labelForDay(hero.day)}
-                  </Text>
-                </View>
-                <View style={styles.heroFigureRow}>
-                  <Text style={styles.heroFigure} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {hero.weight != null
-                      ? `${fmtNumber(hero.weight)} kg × ${hero.reps ?? '—'}`
-                      : hero.reps != null
-                        ? `× ${hero.reps}`
-                        : '—'}
-                  </Text>
-                </View>
-              </View>
-
               {/* PROGRESSION — its own card, the way the reference reads it:
                   what is plotted, its current value, the switch, the chart. */}
               {chart ? (
@@ -847,14 +759,14 @@ const styles = StyleSheet.create({
    * *"rows, fields, option rows"*. These are cards.
    */
   // The progression card — label, current reading, metric switch, chart.
+  /**
+   * A SECTION, NOT A BOX (29 Aug 2026). The sheet IS the surface; drawing a
+   * bordered card on it put a second edge inside the first and made the sheet
+   * read as a container of boxes rather than as one page. The eyebrow and the
+   * air do the separating now — the same rule the record follows.
+   */
   progressCard: {
-    marginTop: spacing.lg,
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.border,
-    borderRadius: radius.xl,
-    borderCurve: 'continuous',
-    padding: spacing.xl,
+    marginTop: spacing.xl,
   },
 
   // Metric chips above the progression chart (Heaviest / Est. 1RM / Top Reps).
@@ -953,11 +865,12 @@ const styles = StyleSheet.create({
   },
 
   // Header
+  /** A title block, not a nav bar: the name reads as a heading and the three
+   * counted lines sit under it, left-aligned, the way a page opens. */
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     marginTop: spacing.sm,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
   },
   chevron: {
     width: moderateScale(38),
@@ -979,9 +892,26 @@ const styles = StyleSheet.create({
     maxWidth: '70%',
   },
   nameText: {
-    ...type.subhead,
-    fontWeight: '600',
+    ...type.title2,
+    fontWeight: '700',
+    letterSpacing: -0.4,
     color: color.textPrimary,
+  },
+  summary: {
+    gap: 3,
+  },
+  /** Counted prose, in the reading face because every clause is a figure.
+   * `textSecondary` and not muted: this is the answer to the question the
+   * reader arrived with, not something the eye may skip. */
+  summaryLine: {
+    ...readingStyle('400'),
+    fontSize: moderateScale(13),
+    // Room for the ×1.5 Dynamic Type cap (13 → 19.5), not for the unscaled
+    // size: `lineFor` scales for the DEVICE and knows nothing about the
+    // reader's text-size setting, so a box sized to 19 clips its own
+    // descenders the moment somebody turns type up.
+    lineHeight: lineFor(22),
+    color: color.textSecondary,
   },
   spacer: {
     width: moderateScale(38),
@@ -1060,14 +990,7 @@ const styles = StyleSheet.create({
   },
   // History table card
   tableCard: {
-    marginTop: spacing.lg,
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.border,
-    borderRadius: radius.xl,
-    borderCurve: 'continuous',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xs / 2,
+    marginTop: spacing.xl,
   },
   tableEyebrow: {
     marginTop: spacing.md,

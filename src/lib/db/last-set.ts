@@ -2,6 +2,7 @@ import { echoTextOf, fmtNumber, setsLineText, topOfSets } from '@/lib/parse/summ
 import { namesMatch } from '@/lib/parse/receipt';
 
 import { findAliasOverride } from './alias-overrides';
+import { dayKeyFor, type DayKey } from './dates';
 import { getExerciseById, type ExerciseRow } from './exercises';
 import { getDb } from './index';
 
@@ -15,6 +16,16 @@ export interface LastSetHint {
   canonical: string;
   /** "3×8 80" — the same voice the gutter echo speaks. */
   echo: string;
+  /**
+   * The LOCAL DAY that set was performed (owner, 28 August 2026).
+   *
+   * Next's row prints its reason beside every prescription — "up 2.5 from
+   * Fri 8 Aug" — and the date is the half that makes it auditable. Without it
+   * the row states a delta the reader has to take on trust; with it they can
+   * open the record and check it. The query already selected this workout; it
+   * simply threw the column away.
+   */
+  day: DayKey;
 }
 
 function normalize(s: string): string {
@@ -72,8 +83,8 @@ export function getLastSetHint(
   const exercise = resolveForHint(userId, typed);
   if (!exercise) return null;
 
-  const workout = getDb().getFirstSync<{ id: string }>(
-    `SELECT w.id FROM workouts w
+  const workout = getDb().getFirstSync<{ id: string; performed_at: string }>(
+    `SELECT w.id, w.performed_at FROM workouts w
      JOIN items i ON i.workout_id = w.id
      WHERE w.user_id = ? AND i.exercise_id = ? AND w.id IS NOT ?
      ORDER BY w.performed_at DESC LIMIT 1`,
@@ -97,7 +108,7 @@ export function getLastSetHint(
   const echo = echoTextOf(topOfSets(sets));
   if (!echo) return null;
 
-  return { canonical: exercise.canonical, echo };
+  return { canonical: exercise.canonical, echo, day: dayKeyFor(new Date(workout.performed_at)) };
 }
 
 interface RawSet {

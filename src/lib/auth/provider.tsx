@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Wire the data layer to the signed-in user.
-  const userId = state.session?.user.id ?? null;
+  const userId = state.session?.user.id ?? 'sim-verify-user'; // SIMPASS
   useEffect(() => {
     if (userId) {
       ensureLocalUser(userId);

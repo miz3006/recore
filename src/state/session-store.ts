@@ -133,6 +133,24 @@ interface SessionState {
    * split day also pins it as today's due day, so the strip, the calendar and
    * the Next brief follow the same answer the picker gave. */
   startPlannedSession: (option: SessionOption) => void;
+  /**
+   * START, from Next (owner, 28 August 2026).
+   *
+   * Next is where the plan lives, so Next is where a session begins. The
+   * targets on that screen — the engine's, with any the athlete overrode —
+   * arrive here as a `PlannedSession` and become today's checklist.
+   *
+   * IT WRITES NOTHING. The one invariant this had to keep is that a plan is
+   * not a record: `raw_text` is untouched, so today's totals, the week, the
+   * streak and every statistic still see an unwritten day. A set counts when
+   * its circle is ticked and the line is written, through the path a typed
+   * line has always taken. That is the whole reason the checklist was the
+   * right destination and "fill the note with the plan" was not.
+   *
+   * `predictionId` is the ghost that earned the Start, when the plan came from
+   * one — adherence, §7.2 Gap 3, the same accept `startFromGhost` records.
+   */
+  startFromNext: (session: PlannedSession, predictionId: string | null) => void;
   /** Put the checklist away. The record it has already written stays. */
   clearPlannedSession: () => void;
   /** Tap a circle: done at the planned values, into the note, counting. */
@@ -536,6 +554,14 @@ export const useSession = create<SessionState>((set, get) => ({
     if (option.kind === 'type') get().choosePlanDay(option.id);
 
     const session = plannedSessionFor(userId, option, selectedDay);
+    savePlannedSession(selectedDay, session);
+    set({ plannedSession: session });
+  },
+
+  startFromNext: (session, predictionId) => {
+    const { userId, selectedDay } = get();
+    if (!userId || session.sets.length === 0) return;
+    if (predictionId) markPredictionAccepted(predictionId);
     savePlannedSession(selectedDay, session);
     set({ plannedSession: session });
   },

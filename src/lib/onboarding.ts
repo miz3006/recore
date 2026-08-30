@@ -321,7 +321,11 @@ export function wantsImportFastPath(
 ): boolean {
   if (alreadyOffered) return false;
   if (firstAction === 'write') return false;
-  return tracker === 'strong' || tracker === 'hevy';
+  // `app` is v2's one combined "Hevy or Strong" answer (28 Aug 2026). It hands
+  // the importer the same kind of file the two narrow answers do, so it is
+  // offered the same fast path; `import-start` names both products when that is
+  // all it was told.
+  return tracker === 'strong' || tracker === 'hevy' || tracker === 'app';
 }
 
 /**

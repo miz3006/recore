@@ -23,9 +23,11 @@ import { alpha, blend, color, moderateScale } from '@/lib/theme';
  *
  * EMOJI are the one exception to "nothing else is coloured", and they are the
  * product authority's own (product-direction §12: "Emoji may appear sparingly
- * as an onboarding choice label when they improve scanning"). Since 20 Aug 2026
- * every screen that ASKS something carries one per option row — and no screen
- * that reports anything carries one at all. Nowhere else in the app.
+ * as an onboarding choice label when they improve scanning"). Since 23 Aug 2026
+ * exactly TWO screens carry them — goal and experience, the flow's two ladders,
+ * where a glyph per rung is how the eye finds its own rung. Every other
+ * question is words alone, no screen that reports anything carries one, and
+ * nowhere else in the app does either (`config.ts`, `StepOption.emoji`).
  *
  * This is inside product-direction §4.2: "Recore blue may be used for selected
  * onboarding choices, interactive focus, active controls." It is an accent, not

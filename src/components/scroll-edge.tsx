@@ -31,6 +31,19 @@ import { alpha, color, spacing } from '@/lib/theme';
  *   header measures itself because its height moves with Dynamic Type, and the
  *   fade has to sit over EMPTY background at rest — content parked under the
  *   gradient would read as washed-out, which is a worse bug than the cut.
+ *
+ * ## It works with NO title, and Profile is why (28 August 2026)
+ *
+ * Profile's title scrolls with the content, the way both of its references draw
+ * it. Dropping this component along with the fixed title looked right until the
+ * page was scrolled: rows ran under the Dynamic Island and the clock with no
+ * treatment at all, so the time sat on top of a row label. The cut this
+ * component was written to remove came back as a worse thing — an overlap.
+ *
+ * So `children` is optional. With none, this is the scroll edge on its own:
+ * `insets.top` of opaque canvas and the gradient under it, no row, nothing
+ * pinned. The measured height is then just the safe area, which is exactly what
+ * a caller whose title is content wants back as padding.
  */
 
 /** How far the background reaches down over the content. */
@@ -40,7 +53,8 @@ export function ScrollEdgeHeader({
   children,
   onHeight,
 }: {
-  children: ReactNode;
+  /** Omit for a bare scroll edge — see the note above. */
+  children?: ReactNode;
   /** The measured header height (safe area included) — the caller's top padding. */
   onHeight: (h: number) => void;
 }) {

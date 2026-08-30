@@ -157,13 +157,41 @@ configure by hand before shipping.
      `com.recore.app`, upload the App Store Connect shared secret / in-app
      purchase key, then:
      - create an **entitlement with the identifier `pro`** (matches
-       `ENTITLEMENT_ID`), and attach both products to it;
-     - create the **current offering** with an `annual` and a `monthly`
-       package — the app reads `offerings.current.annual` / `.monthly` by those
-       package types, not by product id.
+       `ENTITLEMENT_ID`), and attach every product to it. "Recore Pro" is the
+       display name; `pro` is the identifier the SDK is indexed by, and only the
+       identifier matters to the app;
+     - create the **current offering** with `$rc_annual`, `$rc_monthly` and
+       (optionally) `$rc_weekly` packages — the app reads
+       `offerings.current.annual` / `.monthly` / `.weekly` by those package
+       types, never by product id, which is what lets the same build work
+       against the App Store and the Test Store;
+     - **optionally design a paywall on that offering** (Paywalls v2). It is not
+       required: with none configured, Recore's own paywall handles every path.
+       Where it IS used, the same copy rules apply as to any screen in this
+       repository — no fabricated review, testimonial, user count or countdown
+       (CLAUDE.md §2 rule 6, product-direction §12). Prices there come from
+       StoreKit and cannot be wrong;
+     - **optionally enable Customer Center**. Recore prefers it for every
+       "Manage subscription" control and falls back to Apple's subscriptions URL
+       when it is absent, so enabling it is a strict upgrade, never a dependency.
    - **Copy the public iOS SDK key** (`appl_…`) into `.env` as
      `EXPO_PUBLIC_REVENUECAT_IOS_KEY`. The **secret** key (`sk_…`) is a server
      credential and must never enter the app, `.env`, or git.
+   - **The Test Store, for development before App Store Connect is ready.** A
+     `test_…` key from the same screen drives real dashboard offerings and real
+     paywalls with SIMULATED purchases: no App Store sheet, no receipt, no
+     money. Two things keep that safe:
+     - `src/lib/env.ts` **blanks a `test_` key in any non-`__DEV__` bundle**, so
+       a release built with one shows no price and sells nothing rather than
+       granting free entitlements. If a TestFlight build reports "cannot reach
+       the App Store", check the key prefix first.
+     - the paywall carries a "Test Store · purchases are simulated" line while
+       one is in use, so a simulated buy is never mistaken for a real one.
+   - **`react-native-purchases-ui` needs its pod.** It is autolinked, but a
+     lockfile that predates it pins the old `PurchasesHybridCommon`; the install
+     then fails with a version conflict. The fix is
+     `cd ios && pod update PurchasesHybridCommon`, which pulls in
+     `PurchasesHybridCommonUI` and `RevenueCatUI` alongside it.
    - **Build a dev client and test in the App Store sandbox** with a sandbox
      Apple Account: buy, cancel, let it expire, and Restore on a second device.
      Sandbox trials are compressed to minutes, which is why the trial clock

@@ -17,18 +17,65 @@
  * The product identifiers must match App Store Connect and the RevenueCat
  * dashboard exactly. They are read by `store.ts` only.
  */
-export type Plan = 'annual' | 'monthly';
+export type Plan = 'annual' | 'monthly' | 'weekly';
+
+/** Every plan the billing layer can read, price and buy. */
+export const ALL_PLANS: readonly Plan[] = ['annual', 'monthly', 'weekly'] as const;
 
 /**
- * The RevenueCat entitlement identifier. One entitlement, both products —
- * "does this person have Recore Pro" is the only question the app asks.
+ * The plans the DESIGNED paywall renders, in the order it renders them.
+ *
+ * Owner's ruling, 21 Aug 2026: the dashboard offering carries three packages
+ * ($rc_annual, $rc_monthly, $rc_weekly) but `paywall.tsx` stays the two-card
+ * screen product-direction §6 specifies. Weekly is fully supported below this
+ * line — it prices, it buys, it restores, and the RevenueCat-hosted paywall
+ * sells it — it simply is not a third card on Recore's own funnel screen.
+ *
+ * This constant is what makes that a decision rather than an omission. It is
+ * documentation with a type attached: `paywall.tsx` still names its two cards
+ * inline, because the pair is measured, animated and laid out as a pair, and a
+ * loop over an array would buy nothing but a harder screen to read. What this
+ * gives a future reader is the answer to "where did weekly go" without having
+ * to diff the dashboard against the JSX.
+ */
+export const NATIVE_PAYWALL_PLANS: readonly Plan[] = ['annual', 'monthly'] as const;
+
+/**
+ * The RevenueCat entitlement identifier — confirmed against the dashboard by
+ * the owner, 21 Aug 2026. "Recore Pro" is its DISPLAY name; `pro` is the key
+ * `customerInfo.entitlements.active` is indexed by, and the display name is
+ * never what an SDK returns.
+ *
+ * One entitlement, every product — "does this person have Recore Pro" is the
+ * only question the app asks.
  */
 export const ENTITLEMENT_ID = 'pro';
 
-/** The App Store Connect product ids, mirrored in the RevenueCat dashboard. */
+/**
+ * The RevenueCat PACKAGE identifiers behind each plan. These, not product ids,
+ * are what `store.ts` resolves an offering through — a package is stable across
+ * stores, and it is the level the dashboard actually configures.
+ */
+export const PACKAGE_IDS: Record<Plan, string> = {
+  annual: '$rc_annual',
+  monthly: '$rc_monthly',
+  weekly: '$rc_weekly',
+};
+
+/**
+ * The App Store Connect product ids, mirrored in the RevenueCat dashboard.
+ * DOCUMENTATION ONLY — no code path reads them, because resolving by package
+ * (above) is what survives a store swap. They are here so App Store Connect and
+ * this repository can be diffed by eye.
+ *
+ * The Test Store products the dashboard currently serves are named differently
+ * and deliberately so: `yearly`, `monthly`, `weekly`. Nothing in `src/` depends
+ * on either naming.
+ */
 export const PRODUCT_IDS: Record<Plan, string> = {
   annual: 'com.recore.app.pro.annual',
   monthly: 'com.recore.app.pro.monthly',
+  weekly: 'com.recore.app.pro.weekly',
 };
 
 /**

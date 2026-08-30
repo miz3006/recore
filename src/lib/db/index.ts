@@ -7,6 +7,7 @@ import {
   MIGRATION_2_SQL,
   MIGRATION_4_SQL,
   MIGRATION_5_SQL,
+  MIGRATION_6_SQL,
   SCHEMA_SQL,
   SCHEMA_VERSION,
 } from './schema';
@@ -38,6 +39,7 @@ function migrate(database: SQLiteDatabase) {
     // only an existing `workouts` table needs the ALTER.
     if (current >= 1 && current < 4) database.execSync(MIGRATION_4_SQL);
     if (current >= 1 && current < 5) database.execSync(MIGRATION_5_SQL);
+    if (current >= 1 && current < 6) database.execSync(MIGRATION_6_SQL);
     database.execSync(SCHEMA_SQL);
     database.execSync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
     devLog('sqlite migrated to schema', SCHEMA_VERSION);

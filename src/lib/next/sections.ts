@@ -1,7 +1,9 @@
 // Relative + .ts extension: this module is BOTH bundled by Metro AND run under
 // `node --test` — the same pattern as plan/prescribe.ts and activity.ts.
+import { shortDayLabel, type DayKey } from '../db/dates.ts';
 import { entryNoteKey } from '../entry-note.ts';
 import { fmtNumber } from '../parse/summarize.ts';
+import { patternOf } from '../split/pattern.ts';
 
 import type { Brief, BriefNote } from '../db/brief.ts';
 import type { Move } from '../plan/prescribe.ts';
@@ -23,14 +25,21 @@ import type { Move } from '../plan/prescribe.ts';
  * "3 sessions at the same weight", "up 6.5 kg" — and a reader had to
  * reconcile them. They are all true; they are not all worth equal space.
  *
- * So an exercise appears EXACTLY ONCE, in the first of these that claims it:
+ * So an exercise appeared EXACTLY ONCE, in the first of these that claimed it:
  *
  *     Next session  >  Standing still  >  Moving
  *
- * The information the losing sections held is not thrown away. A plateau on a
- * lift that IS in the next session becomes that row's WATCH line, where it is
- * more useful than it ever was as a separate block: it sits next to the load
- * it is about.
+ * **Only the first of those is still on this screen** (29 August 2026). The
+ * other two — "your other lifts", the ones the coming session does not name —
+ * are a question about lifts ACROSS lifts, which is Progression's, and they
+ * moved there folded into rows that were already showing those lifts. The rule
+ * survives its own sections: one lift, one home, and the home is now one of two
+ * TABS rather than one of three blocks.
+ *
+ * What the losing sections held was never thrown away. A plateau on a lift that
+ * IS in the next session becomes that row's reason line, where it is more
+ * useful than it ever was as a separate block: it sits next to the load it is
+ * about.
  *
  * ## Dedupe is on the CANONICAL name, never the display one
  *
@@ -41,20 +50,8 @@ import type { Move } from '../plan/prescribe.ts';
  * whether "Bench Press" and "bench press" are one lift.
  */
 
-/**
- * A trend larger than this share of the lift's current e1RM is not believed.
- * See `movingReading` for what happens instead and why.
- */
-export const DELTA_SUSPECT_RATIO = 0.25;
-
 /** Below this share of settled prescriptions the record stays unsaid (§1). */
 export const ADHERENCE_MIN_RATIO = 0.5;
-
-const MOVING_LIMIT = 3;
-/** Two points is a line segment, not a trend — a sparkline needs a shape. */
-const SPARK_MIN_POINTS = 3;
-/** Under a kilo of spread across the window, the line is flat and adds nothing. */
-const SPARK_MIN_SPREAD_KG = 1;
 
 export interface WatchLine {
   /** Sessions already spent at this weight. */
@@ -85,11 +82,25 @@ export interface SessionRow {
    * opener rather than guessing at one (the same rule Progression's cards
    * follow). */
   canonical: string | null;
-  /** Which lever the engine moved, in words. Null on the ghost path. */
-  move: MoveLabel | null;
+  /**
+   * WHICH LEVER THE ENGINE MOVED, as the engine states it.
+   *
+   * It held `MoveLabel` — the decision already phrased for a chip — until
+   * 28 August 2026. The row's reason line needs the ARITHMETIC ("up 2.5"), not
+   * the phrase, and one fact stored twice in two shapes is how two surfaces
+   * start disagreeing about one lift. `moveLabel()` still turns this into the
+   * words, for VoiceOver and for anything that wants the lever as a label.
+   *
+   * No longer null on the ghost path: `predict/data.ts` persists the levers it
+   * always computed (`predictions.lines_json`).
+   */
+  move: Move | null;
   bestKg: number | null;
   /** "3×5 120" — the record the prescription grew from. */
   last: string | null;
+  /** The local day `last` was performed — what makes the reason line
+   * checkable. Null whenever `last` is. */
+  lastDay: DayKey | null;
   /** "3×12 120 kg" — the not-yet-lifted number. Green, and only here. */
   prescription: string | null;
   /**
@@ -115,48 +126,24 @@ export interface SessionRow {
   note: BriefNote | null;
 }
 
-export interface StandingRow {
-  key: string;
-  name: string;
-  weight: number;
-  sessions: number;
-  deloadTo: number | null;
-}
-
-/**
- * What a mover's right-hand reading says.
- *
- * `delta` is the number. `direction` is the fallback for a delta the guard
- * refused — the trend is still real and still worth showing, but the figure
- * attached to it is not trustworthy enough to print.
- */
-export type MovingReading =
-  | { kind: 'delta'; text: string }
-  | { kind: 'direction'; text: string };
-
-export interface MovingRow {
-  key: string;
-  name: string;
-  reading: MovingReading;
-  /** "est. 1RM · 8 wk" — one window, spelled the same on every row. */
-  subtext: string;
-  /** Sparkline values, or [] when the trend is flat and the line would lie
-   * about having a shape. */
-  series: number[];
-}
-
 export interface NextSections {
   /** One stat and one highlight. Two lines at most, on any type size. */
   headline: string;
   /** "3 of 5 prescriptions followed", or null. Never "0 of N". */
   adherenceChip: string | null;
   provenance: string;
+  /**
+   * WHAT THIS SESSION IS — the title block's first line (Symmetry's shape,
+   * 28 Aug 2026). The session's own NAME and nothing else: "Push day", or
+   * "Next session" when the record has not declared one, or "Due now" for a
+   * lifter who follows no split and is therefore not owed a day's name. It
+   * read "Today · Push day" until the title block existed to say the WHEN on
+   * its own line.
+   */
   sessionTitle: string;
   sessionRows: SessionRow[];
   /** The ghost's sentence, when no row claimed it as its WHY. */
   sessionNote: string | null;
-  standing: StandingRow[];
-  moving: MovingRow[];
 }
 
 const keyOf = (name: string | null | undefined): string => entryNoteKey(name);
@@ -194,6 +181,123 @@ export function moveLabel(move: Move | null | undefined): MoveLabel | null {
     default:
       return null;
   }
+}
+
+/**
+ * THE REASON LINE — every row explains its own target (owner, 28 Aug 2026).
+ *
+ * *"A derived plan the user can't audit is a plan they won't trust."* This is
+ * the sentence under every prescribed load on Next: secondary type, always
+ * present, never a tooltip and never behind a tap. It replaced the card's
+ * WHY/WATCH accordion, whose one-tap disclosure was itself the claim that the
+ * reason was optional.
+ *
+ * ## What it is allowed to say
+ *
+ * Only what the engine already decided. `Move` is the engine's own lever and
+ * carries its own arithmetic — the increment, the load a deload backs off
+ * from — so nothing here computes a number, phrases one, or infers one from a
+ * string. The DATE comes from `LastSetHint.day`, the record's own
+ * `performed_at`. Every line is therefore a claim the reader can go and check,
+ * which is the whole point of printing it.
+ *
+ * ## Priority, and why the plateau wins
+ *
+ * A plateau outranks the lever, exactly as the retired card's meta line ranked
+ * it: it is the fact that changes what the athlete does, and "3 sessions at
+ * this weight" explains a held target better than "same weight as Fri 8 Aug"
+ * ever could. It carries `watch` tone — amber is already the app's colour for
+ * a plateau, a backoff and a pause — and the WORDS say it too, so the hue is
+ * never the only carrier (§14).
+ *
+ * ## When it says nothing
+ *
+ * A row with no prescription gets NO line. The slot is evidence for a number,
+ * and a row with no number has no evidence to give; filling it with "write one
+ * session and this fills in" would put an instruction where the reader has
+ * learned to find proof (owner, 28 Aug). The instruction belongs once, under
+ * the title block. §8.3's older form of the same rule: no reason, no line.
+ */
+export type ReasonTone = 'plain' | 'planned' | 'watch';
+
+export interface ReasonSegment {
+  text: string;
+  tone: ReasonTone;
+}
+
+/** The line, as segments, so the row renders tone without parsing a string. */
+export type ReasonLine = ReasonSegment[];
+
+const plain = (text: string): ReasonSegment => ({ text, tone: 'plain' });
+
+export function reasonLine(row: SessionRow): ReasonLine | null {
+  // No number, no evidence. The empty slot is the honest one.
+  if (!row.prescription) return null;
+
+  // A plateau is the reason, and outranks the lever that answered it.
+  if (row.watch) {
+    const n = row.watch.sessions;
+    return [{ text: `${n} ${n === 1 ? 'session' : 'sessions'} at this weight`, tone: 'watch' }];
+  }
+
+  const line = leverLine(row.move, row.lastDay) ?? recordLine(row);
+  if (!line) return null;
+
+  // The stakes, stated as arithmetic and never as a badge (§15). A backoff
+  // cannot also be a record, so it never reaches this.
+  if (row.beatsBest) line.push({ text: ' · heaviest yet', tone: 'planned' });
+  return line;
+}
+
+/** " from Fri 8 Aug" — omitted whole when the name never resolved to history.
+ * A dateless line still says something true; an invented date would not. */
+function since(day: DayKey | null, preposition: string): string {
+  return day ? ` ${preposition} ${shortDayLabel(day)}` : '';
+}
+
+/**
+ * The lever, as what changed and what it changed from.
+ *
+ * ONE GRAMMAR for all four: `<what changed> <since when>`. The emphasised
+ * segment is the planned MAGNITUDE where there is one — green for a load going
+ * up, amber for one backing off, matching the tone `moveLabel` gives the same
+ * decision. "One more rep" and "same weight" carry no figure, so they carry no
+ * colour: green marks a planned quantity, and there is none to mark.
+ */
+function leverLine(move: Move | null, day: DayKey | null): ReasonLine | null {
+  if (!move) return null;
+  switch (move.kind) {
+    case 'weight':
+      return [
+        plain('up '),
+        { text: fmtNumber(move.deltaKg), tone: 'planned' },
+        plain(since(day, 'from')),
+      ];
+    case 'rep':
+      return [plain(`one more rep${since(day, 'than')}`)];
+    case 'hold':
+      return [plain(`same weight${since(day, 'as')}`)];
+    case 'backoff':
+      return [
+        plain('down '),
+        { text: fmtNumber(move.fromKg - move.toKg), tone: 'watch' },
+        plain(since(day, 'from')),
+      ];
+    default:
+      return null;
+  }
+}
+
+/**
+ * The fallback when there is no lever: the record the target grew out of.
+ *
+ * A cardio or carry line, and any ghost cached before `lines_json` existed,
+ * reaches here. It states the evidence without claiming a decision was made —
+ * which is exactly the truth about those rows.
+ */
+function recordLine(row: SessionRow): ReasonLine | null {
+  if (!row.last) return null;
+  return [plain(`from ${row.last}${since(row.lastDay, 'on')}`)];
 }
 
 /**
@@ -244,57 +348,6 @@ export function briefHeadline(brief: Brief): string {
 }
 
 /**
- * THE TRUST GUARD (owner, 12 Aug 2026).
- *
- * The Moving section was printing figures like "+64 kg" — arithmetically what
- * the code computed, and nonsense as a claim about eight weeks of training. A
- * number that absurd does not read as a bug, it reads as an app that does not
- * know what it is measuring, and it costs more trust than the whole section
- * earns (§7.4: predict conservatively or not at all).
- *
- * So the display layer refuses it. Above a quarter of the lift's CURRENT e1RM,
- * the direction is still shown — the trend is real, the athlete did climb —
- * but the figure is withheld rather than printed. Withholding a number we
- * cannot stand behind is the honest half of showing the ones we can.
- *
- * TODO(est-1rm-window): fix the root cause in `findMovers` (`db/brief.ts`).
- * The delta is `last.e1rm - first.e1rm` over whatever `getE1rmSeries`
- * (`db/insights.ts`) returned, and that function's `limit` counts SESSIONS,
- * not weeks — so "8 wk" is a label over a window nobody bounded to eight
- * weeks. Worse, `first` is a single session: one rep-out day (3×12 at 60 →
- * e1RM 84) against a later heavy single (3×5 at 120 → e1RM 140) produces a
- * +56 kg "gain" out of two honest sessions. A baseline over the earliest few
- * points, and a window measured in days, would let this guard go quiet.
- */
-export function movingReading(
-  mover: { canonical: string; deltaKg: number; weeks: number; currentE1rm: number },
-  warn?: (message: string, detail: unknown) => void,
-): MovingReading {
-  const { deltaKg, currentE1rm } = mover;
-  const usable =
-    Number.isFinite(deltaKg) && Number.isFinite(currentE1rm) && currentE1rm > 0;
-  if (!usable || Math.abs(deltaKg) > currentE1rm * DELTA_SUSPECT_RATIO) {
-    warn?.('next: e1RM delta refused as implausible', {
-      lift: mover.canonical,
-      deltaKg,
-      currentE1rm,
-      ratio: DELTA_SUSPECT_RATIO,
-    });
-    return { kind: 'direction', text: deltaKg < 0 ? 'falling' : 'climbing' };
-  }
-  const sign = deltaKg < 0 ? '−' : '+';
-  return { kind: 'delta', text: `${sign}${fmtNumber(Math.abs(deltaKg))} kg` };
-}
-
-/** The sparkline's values, or [] when the line would have no shape to draw. */
-export function sparkSeries(series: number[] | undefined): number[] {
-  const values = (series ?? []).filter((v) => Number.isFinite(v));
-  if (values.length < SPARK_MIN_POINTS) return [];
-  const spread = Math.max(...values) - Math.min(...values);
-  return spread < SPARK_MIN_SPREAD_KG ? [] : values;
-}
-
-/**
  * The ghost's one sentence, moved off the page and INTO the card.
  *
  * It names its own lift ("Two sessions stuck at 120 on bench press…" —
@@ -341,9 +394,10 @@ export function sessionRowsOf(
       key: keyOf(l.canonical ?? l.name),
       name: l.name,
       canonical: l.canonical ?? null,
-      move: moveLabel(l.move),
+      move: l.move ?? null,
       bestKg,
       last: l.last ?? null,
+      lastDay: l.lastDay ?? null,
       prescription: l.value,
       loadKg,
       scheme: l.scheme ?? null,
@@ -356,9 +410,28 @@ export function sessionRowsOf(
     };
   });
 
+  /**
+   * THE STAKES ARE STATED ONCE (owner, 29 Aug 2026 — seen on a device).
+   *
+   * `beatsBest` is true of every row whose target out-lifts that lift's own
+   * record, and on a climbing week that is most of the session: three cards in
+   * a row each ending "· heaviest yet" is the hype reel §15 bans, and it makes
+   * the one that matters unreadable. `brief.prReach` already caps the same
+   * fact at one "because two 'heaviest ever' lines are a hype reel" — this is
+   * that rule applied to the rows, and it picks the same one: the FIRST in
+   * plan order.
+   */
+  let claimedBest = false;
+  const capped = rawRows.map((row) => {
+    if (!row.beatsBest) return row;
+    if (claimedBest) return { ...row, beatsBest: false };
+    claimedBest = true;
+    return row;
+  });
+
   // A plateau on a claimed lift becomes that row's WATCH line. A stall with no
   // backoff load has nothing to warn about, so it never becomes a WATCH.
-  const withWatch = rawRows.map((row) => {
+  const withWatch = capped.map((row) => {
     const stall = stalls.find((s) => keyOf(s.canonical) === row.key);
     return stall && stall.deloadTo != null
       ? { ...row, watch: { sessions: stall.sessions, deloadTo: stall.deloadTo } }
@@ -368,12 +441,78 @@ export function sessionRowsOf(
   return attachSentence(withWatch, sentence);
 }
 
+/**
+ * The title block's first line.
+ *
+ * A FLAT lifter is not owed a day's name, and inventing one for them would be
+ * the screen apologising for an answer they gave on purpose. "Due now" is the
+ * truth about their screen: these are the lifts the record says are up next,
+ * ranked by the dates their own reason lines carry. No split, no day, no
+ * apology.
+ */
+export function sessionTitleOf(brief: Brief, flat: boolean): string {
+  if (brief.lines.length === 0) return 'Nothing due yet';
+  if (flat) return 'Due now';
+  if (brief.dayLabel) return brief.dayLabel;
+  return brief.forToday ? 'Today' : 'Next session';
+}
+
+/**
+ * When this session was last done — the most recent day any of its lifts was
+ * performed.
+ *
+ * Derived from the rows rather than queried, which is what makes it the SAME
+ * date the reason lines print. A session whose lifts were last touched on
+ * different days resolves to the most recent, because that is the honest
+ * answer to "when did I last do this".
+ */
+export function lastDoneOf(rows: readonly SessionRow[]): DayKey | null {
+  let latest: DayKey | null = null;
+  for (const row of rows) {
+    if (row.lastDay && (latest == null || row.lastDay > latest)) latest = row.lastDay;
+  }
+  return latest;
+}
+
+/**
+ * "6 lifts · push, pull" — what the session targets, in counted facts.
+ *
+ * Symmetry puts a Muscle distribution strip here, three cards deep, with a
+ * percentage under each. We have movement PATTERNS, not muscles, and we have
+ * them as a tested lexicon (`lib/split/pattern.ts`) rather than as a claim
+ * about anatomy — so the strip says what the record can support and stops
+ * there. Patterns are listed by how many of the session's lifts vote for them,
+ * biggest first; a lift the lexicon does not know simply does not vote, which
+ * is `patternOf`'s own rule.
+ */
+export function targetsLine(rows: readonly SessionRow[]): string {
+  const n = rows.length;
+  const counted = `${n} ${n === 1 ? 'lift' : 'lifts'}`;
+  if (n === 0) return counted;
+
+  const votes = new Map<string, number>();
+  for (const row of rows) {
+    const pattern = patternOf(row.canonical ?? row.name);
+    if (pattern) votes.set(pattern, (votes.get(pattern) ?? 0) + 1);
+  }
+  if (votes.size === 0) return counted;
+
+  const patterns = [...votes.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([pattern]) => pattern);
+  return `${counted} · ${patterns.join(', ')}`;
+}
+
 export function buildSections(
   brief: Brief,
   opts?: {
     /** True when the expandable prose is the model's phrasing, not the
      * composed one — the provenance line has to stay truthful about which. */
     phrased?: boolean;
+    /** The athlete answered "I don't follow a split" (onboarding screen 14).
+     * Passed in rather than read here, because this module is pure and runs
+     * under `node --test`: it may not touch prefs. */
+    flat?: boolean;
     warn?: (message: string, detail: unknown) => void;
   },
 ): NextSections {
@@ -383,34 +522,6 @@ export function buildSections(
     brief.stalls,
     brief.headline,
   );
-  const claimed = new Set(sessionRows.map((r) => r.key).filter(Boolean));
-
-  const standing: StandingRow[] = brief.stalls
-    .filter((s) => !claimed.has(keyOf(s.canonical)))
-    .map((s) => ({
-      key: keyOf(s.canonical),
-      name: s.canonical,
-      weight: s.weight,
-      sessions: s.sessions,
-      deloadTo: s.deloadTo,
-    }));
-  const standingKeys = new Set(standing.map((s) => s.key));
-
-  // 3. Moving takes what is left, biggest trend first.
-  const moving: MovingRow[] = brief.movers
-    .filter((m) => {
-      const k = keyOf(m.canonical);
-      return !claimed.has(k) && !standingKeys.has(k);
-    })
-    .sort((a, b) => Math.abs(b.deltaKg) - Math.abs(a.deltaKg))
-    .slice(0, MOVING_LIMIT)
-    .map((m) => ({
-      key: keyOf(m.canonical),
-      name: m.canonical,
-      reading: movingReading(m, opts?.warn),
-      subtext: `est. 1RM · ${m.weeks} wk`,
-      series: sparkSeries(m.series),
-    }));
 
   return {
     headline: briefHeadline(brief),
@@ -418,10 +529,8 @@ export function buildSections(
     provenance: opts?.phrased
       ? 'Phrased from your brief — every number read from your record.'
       : 'Every number read from your record.',
-    sessionTitle: brief.forToday ? `Today · ${brief.dayLabel ?? 'your split'}` : 'Next session',
+    sessionTitle: sessionTitleOf(brief, opts?.flat === true),
     sessionRows,
     sessionNote: leftover,
-    standing,
-    moving,
   };
 }

@@ -30,6 +30,30 @@ export function getWorkoutForDay(userId: string, day: DayKey): WorkoutRow | null
 }
 
 /**
+ * WHAT A DAY ALREADY HAS ON IT — Next's "you already trained today" state.
+ *
+ * A session that is written is not a session that is due, and Next repeating
+ * it back as a plan would be the screen failing to read the record it is
+ * derived from. This is the smallest true answer to "is today done, and what
+ * is on it": how many distinct movements the parse found, and when the note
+ * was last touched.
+ *
+ * `lifts` counts ITEMS, not lines — the parser's own projection of the note —
+ * so a movement written twice counts once, the way every other aggregate in
+ * the app counts it. Null when the day has no row or the row is still empty:
+ * a workout with no text is a day someone opened, not a day they trained.
+ */
+export function getDaySessionFacts(userId: string, day: DayKey): { lifts: number } | null {
+  const workout = getWorkoutForDay(userId, day);
+  if (!workout || workout.raw_text.trim() === '') return null;
+  const row = getDb().getFirstSync<{ n: number }>(
+    'SELECT COUNT(DISTINCT exercise_id) AS n FROM items WHERE workout_id = ? AND exercise_id IS NOT NULL',
+    [workout.id],
+  );
+  return { lifts: row?.n ?? 0 };
+}
+
+/**
  * The optimistic write (CLAUDE.md §6 step 1): raw_text lands in SQLite in the
  * same tick as the keystroke. Marks the row dirty for sync and needs_parse for
  * the background parser. Returns the workout id.

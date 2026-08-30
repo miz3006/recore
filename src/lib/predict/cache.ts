@@ -16,7 +16,13 @@ export function recachePrediction(userId: string, workoutId: string): void {
     const draft = computeNextSession(userId, workoutId);
     if (!draft) return;
     const forDate = shiftDayKey(todayKey(), 1);
-    upsertPrediction(userId, forDate, draft.ghostText, draft.reason);
+    upsertPrediction(
+      userId,
+      forDate,
+      draft.ghostText,
+      draft.reason,
+      draft.lines.length > 0 ? JSON.stringify(draft.lines) : null,
+    );
     // V2: quietly upgrade the template reason to a phrased one (user's
     // language, their own words). Fire-and-forget.
     void refinePredictionReason(userId, forDate, draft);

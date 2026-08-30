@@ -198,6 +198,9 @@ test('a stored bodyweight reads back in the unit the person uses', () => {
 test('the fast path is offered only to trackers Recore can actually read', () => {
   assert.equal(wantsImportFastPath('strong', false, null), true);
   assert.equal(wantsImportFastPath('hevy', false, 'import'), true);
+  // v2 asks "Hevy or Strong" as one option (28 Aug 2026). It is the same file
+  // and the same offer; only the name on the screen is the vaguer one.
+  assert.equal(wantsImportFastPath('app', false, null), true);
   // Notes and a fresh start have no CSV to hand an importer.
   assert.equal(wantsImportFastPath('notes', false, null), false);
   assert.equal(wantsImportFastPath('none', false, null), false);

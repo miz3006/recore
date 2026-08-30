@@ -1,4 +1,4 @@
-export { color, alpha, blend, glyph, ink, type ColorToken, type GlyphTone } from './color';
+export { color, alpha, blend, glyph, ink, provider, type ColorToken, type GlyphTone } from './color';
 export { shadow, type ShadowToken } from './elevation';
 export {
   spacing,
@@ -29,4 +29,11 @@ export {
   roundedFaceAvailable,
   type ReadingFace,
 } from './typography';
-export { moderateScale, lineFor, FIXED_FONT_SCALE, MAX_FONT_SCALE, osFontScale } from './scale';
+export {
+  moderateScale,
+  lineFor,
+  textRoom,
+  FIXED_FONT_SCALE,
+  MAX_FONT_SCALE,
+  osFontScale,
+} from './scale';

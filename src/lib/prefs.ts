@@ -32,8 +32,18 @@ import type { ScheduleMode } from '@/lib/plan/resolve';
  */
 export type { Experience, Goal, SessionFeel, TrainingStyle };
 export type LogSource = 'none' | 'paper' | 'app';
-/** OB_03 — where the user's training history lives today. */
-export type ObTracker = 'strong' | 'hevy' | 'notes' | 'none';
+/**
+ * OB_03 — where the user's training history lives today.
+ *
+ * `app` joined the union on 28 August 2026, when the v2 flow became the primary
+ * onboarding: it asks "Hevy or Strong" as ONE option, and there is no honest way
+ * to store that as either product on its own. Everything that acted on `strong`
+ * or `hevy` acts on it too (`wantsImportFastPath`); the one screen that printed
+ * the product's name now says "Hevy or Strong" when that is all it was told.
+ * The two narrow values stay because installs onboarded before that date still
+ * carry them.
+ */
+export type ObTracker = 'strong' | 'hevy' | 'app' | 'notes' | 'none';
 /** OB_04 — the language(s) the user writes workouts in. */
 export type ObLanguage = 'en' | 'slo' | 'both';
 /** OB_05 — display unit for loads. Storage stays kg everywhere. */
@@ -78,6 +88,7 @@ const KEYS = {
   recapIntent: 'pref_recap_intent',
   recapEnabled: 'pref_recap_enabled',
   recapHour: 'pref_recap_hour',
+  recapDay: 'pref_recap_day',
 } as const;
 
 export function isOnboardingDone(): boolean {
@@ -202,8 +213,15 @@ export function getLogSource(): LogSource | null {
   return v === 'none' || v === 'paper' || v === 'app' ? v : null;
 }
 
-export function setSmallestPlateKg(kg: number) {
-  setMeta(KEYS.smallestPlate, String(kg));
+/**
+ * `null` CLEARS IT, and that is a real answer rather than an empty state: the
+ * onboarding offers "not sure", and a person who picks it must be able to pick
+ * it again from Profile. `getSmallestPlateKg` already returns null for anything
+ * unparseable, so the two ends have always agreed — only the setter was
+ * one-way.
+ */
+export function setSmallestPlateKg(kg: number | null) {
+  setMeta(KEYS.smallestPlate, kg == null ? null : String(kg));
 }
 
 /** Feeds the prediction engine's plate rounding (CLAUDE.md §7). */
@@ -250,7 +268,7 @@ export function setObTracker(tracker: ObTracker) {
 
 export function getObTracker(): ObTracker | null {
   const v = getMeta(KEYS.obTracker);
-  return v === 'strong' || v === 'hevy' || v === 'notes' || v === 'none' ? v : null;
+  return v === 'strong' || v === 'hevy' || v === 'app' || v === 'notes' || v === 'none' ? v : null;
 }
 
 export function setObLanguage(language: ObLanguage) {
@@ -461,8 +479,27 @@ export function isRecapEnabled(): boolean {
   return getMeta(KEYS.recapEnabled) === '1';
 }
 
-/** The recap's user-visible, editable hour (0–23) on Sunday. §12.1: "at a
- * user-visible and editable time". */
+/**
+ * WHICH DAY THE RECAP LANDS ON.
+ *
+ * Sunday for everyone until 28 August 2026, because nothing ever asked. The v2
+ * onboarding does ask — "Sunday evening" or "Monday morning" — and the moment
+ * that flow became the primary one, a scheduler that always fired on Sunday
+ * would have been answering a question with the wrong day. Sunday stays the
+ * default, so every install that never answered keeps exactly what it had.
+ */
+export type RecapDay = 'sun' | 'mon';
+
+export function setRecapDay(day: RecapDay) {
+  setMeta(KEYS.recapDay, day);
+}
+
+export function getRecapDay(): RecapDay {
+  return getMeta(KEYS.recapDay) === 'mon' ? 'mon' : 'sun';
+}
+
+/** The recap's user-visible, editable hour (0–23) on the recap day. §12.1: "at
+ * a user-visible and editable time". */
 export const RECAP_DEFAULT_HOUR = 18;
 
 export function setRecapHour(hour: number) {

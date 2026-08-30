@@ -1,0 +1,143 @@
+import { StyleSheet, Text, View } from 'react-native';
+
+import { PressableScale } from '@/components/motion';
+import {
+  color,
+  CTA_HEIGHT,
+  MAX_FONT_SCALE,
+  moderateScale,
+  radius,
+  shadow,
+  spacing,
+  TAB_BAR_CLEARANCE,
+  type,
+} from '@/lib/theme';
+
+/**
+ * THE PINNED START — one full-width CTA at the bottom of Next (Symmetry's
+ * Workout Detail, owner 28 August 2026).
+ *
+ * Symmetry pins two controls there, Edit Workout above Start Workout. Ours
+ * pins one: editing moved to the title block, where it does not compete with
+ * the action the screen exists to offer.
+ *
+ * ## What Start does, and what it refuses to do
+ *
+ * It hands Next's targets to Today as a CHECKLIST and writes nothing. A plan
+ * filled into `raw_text` would count as performed the moment it landed — every
+ * total, the week and the streak would report a workout nobody did — so the
+ * session arrives as planned rows that have never been written, and ticking a
+ * circle is what writes the line. `state/session-store.ts#startFromNext`.
+ *
+ * ## The colour, and the rule it sits against
+ *
+ * This CTA is PLANNED GREEN on the owner's ruling for this screen: *"Next is
+ * the one screen in the app where everything is planned, so PLANNED green is
+ * the dominant colour here rather than an accent — targets, the reason lines'
+ * emphasis, the Start CTA."* Setgraph carries a whole screen on one green over
+ * a light neutral canvas, and this is that.
+ *
+ * **It contradicts a standing rule and the contradiction is deliberate, not
+ * overlooked.** `recore-design` §Colour says green *"never becomes a CTA, a
+ * link or a selected state"*, and §Decided-1 makes the primary CTA a filled
+ * brand-blue pill. The owner's instruction is later and more specific, so it
+ * governs here — but it is the first green control in the app, and it is
+ * flagged rather than quietly normalised. One line switches this back to
+ * `AppButton variant="primary"` if the owner prefers the standing rule.
+ *
+ * Two consequences of the ruling, decided here so they are not decided by
+ * accident:
+ *
+ *  - **No glow.** `shadow.glow` is brand-blue and belongs to the blue CTA
+ *    alone; a green button wearing a blue halo would be the two systems
+ *    arguing. It rests on `shadow.card` like every other floating surface.
+ *  - **White on `signal`** measures the same 4.4962:1 as the ink-on-white
+ *    direction. At the CTA's 17 pt semibold that is large text under WCAG,
+ *    which owes 3:1, so the label clears comfortably — unlike the 11.5 pt
+ *    figure in the reason line, which is the one place the shortfall bites.
+ */
+export function StartBar({
+  label,
+  onPress,
+  /** The secondary shape: today is already written, so the action is to open
+   * what exists rather than to begin something. Ink outline, no fill — a green
+   * button offering to re-open a finished session would be the screen calling
+   * a record a plan. */
+  quiet = false,
+  bottomInset = 0,
+}: {
+  label: string;
+  onPress: () => void;
+  quiet?: boolean;
+  bottomInset?: number;
+}) {
+  return (
+    <View style={[styles.bar, { paddingBottom: bottomInset + spacing.md }]} pointerEvents="box-none">
+      <PressableScale
+        haptic="none"
+        activeScale={0.98}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={[styles.cta, quiet ? styles.ctaQuiet : styles.ctaStart]}>
+        <Text
+          style={[styles.label, quiet ? styles.labelQuiet : styles.labelStart]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {label}
+        </Text>
+      </PressableScale>
+    </View>
+  );
+}
+
+/** What a scroll must clear so its last row is never parked under the bar. */
+export const START_BAR_CLEARANCE = CTA_HEIGHT + TAB_BAR_CLEARANCE + spacing.xxl;
+
+const styles = StyleSheet.create({
+  /**
+   * Pinned, and clearing the tab bar BY HAND — the skill's rule for anything
+   * that floats over a tab scroll. The canvas shows through: the bar is the
+   * button and its air, not a bordered dock, so the list visibly runs under it
+   * rather than stopping at a second edge.
+   *
+   * NO HORIZONTAL PADDING OF ITS OWN. It is absolutely positioned inside
+   * `StubScreen`'s body, and an absolute child is laid out against its
+   * parent's PADDING box — so `left: 0` already sits on the body gutter. Adding
+   * `spacing.xxl` here would inset the button twice and it would not line up
+   * with the rows above it.
+   */
+  bar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: TAB_BAR_CLEARANCE,
+  },
+  cta: {
+    minHeight: CTA_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    borderCurve: 'continuous',
+    ...shadow.card,
+  },
+  ctaStart: {
+    backgroundColor: color.signal,
+  },
+  ctaQuiet: {
+    backgroundColor: color.surface,
+    borderWidth: 1,
+    borderColor: color.border,
+  },
+  label: {
+    ...type.headline,
+    letterSpacing: moderateScale(0.1),
+  },
+  labelStart: {
+    color: color.surface,
+  },
+  labelQuiet: {
+    color: color.textPrimary,
+  },
+});

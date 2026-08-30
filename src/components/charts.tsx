@@ -1,5 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedProps,
+  useReducedMotion,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
 import { groupThousands } from '@/lib/parse/estimate';
@@ -12,6 +20,7 @@ import {
   moderateScale,
   readingStyle,
   spacing,
+  textRoom,
   type,
 } from '@/lib/theme';
 
@@ -45,6 +54,9 @@ import {
 
 const BAR_RADIUS = 3;
 
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
 export interface WeekBarDatum {
   /** Short label under the bar (e.g. "12 Jan" or ""). */
   label: string;
@@ -63,7 +75,9 @@ export function WeekBars({ data, height = moderateScale(120) }: { data: WeekBarD
   const n = data.length;
   const gap = spacing.sm;
   const barW = n > 0 && width > 0 ? (width - gap * (n - 1)) / n : 0;
-  const valueRoom = type.caption.lineHeight!;
+  // Room reserved INSIDE the SVG for the RN <Text> pinned above the bars, so it
+  // takes the reader's scale by hand — the label grows, this band would not.
+  const valueRoom = textRoom(type.caption.lineHeight!);
   const chartH = height - valueRoom;
 
   return (
@@ -181,35 +195,134 @@ export function MicroBars({
 /**
  * A quiet trend line (e1RM over sessions): hairline paper path, the latest
  * point marked at full strength. No axes — the numbers live next to it.
+ *
+ * **It can draw itself** (28 August 2026). Pass `delay` and the line runs on
+ * left to right with its row, the terminal dot landing last and an optional
+ * wash resolving underneath it — the same event the big charts stage, at
+ * whisper size, so a list of lifts arrives as a set of records being written
+ * rather than as a wall of finished decorations. Omit `delay` (or pass
+ * `animate={false}`) and it is the static line it has always been, which is
+ * what a chart inside an already-visible sheet wants.
+ *
+ * REDUCE MOTION: fully drawn on mount, no fade, no travel.
  */
-export function Sparkline({
+export function Sparkline(props: {
+  values: number[];
+  width: number;
+  height?: number;
+  /** Ink by default. The Next tab's climbing tiles pass `color.brand`, which the
+   * skill permits: a line of recorded progress is exactly what the blue is for. */
+  tint?: string;
+  /** A gradient under the line, in the line's own hue. */
+  wash?: boolean;
+  /** Milliseconds before the line starts. Anything ≥ 0 turns the draw on. */
+  delay?: number;
+  animate?: boolean;
+}) {
+  // The guard lives OUT here so the body below can hold hooks: a component that
+  // returns before its own hooks is the one thing React does not forgive.
+  if (props.values.length < 2 || props.width <= 0) return null;
+  return <SparkBody {...props} />;
+}
+
+/** Short: a 54 pt line is a glance, not a journey. The big charts' 800 ms would
+ * read as a stall on a row that is already on screen. */
+const SPARK_DRAW_MS = 520;
+
+function SparkBody({
   values,
   width,
   height = moderateScale(44),
-  /** Ink by default. The Next tab's climbing tiles pass `color.brand`, which the
-   * skill permits: a line of recorded progress is exactly what the blue is for. */
   tint = color.accent,
+  wash = false,
+  delay,
+  animate = delay != null,
 }: {
   values: number[];
   width: number;
   height?: number;
   tint?: string;
+  wash?: boolean;
+  delay?: number;
+  animate?: boolean;
 }) {
-  if (values.length < 2 || width <= 0) return null;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-  const pad = 4;
-  const stepX = (width - pad * 2) / (values.length - 1);
-  const y = (v: number) => pad + (1 - (v - min) / span) * (height - pad * 2);
-  const d = values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${pad + i * stepX} ${y(v)}`).join(' ');
-  const lastX = pad + (values.length - 1) * stepX;
-  const lastY = y(values[values.length - 1]!);
+  const reduced = useReducedMotion();
+  const on = animate && !reduced;
+  const drawn = useSharedValue(on ? 0 : 1);
+  const [washId] = useState(() => `sparkWash${(fillSeq += 1)}`);
+
+  const geometry = useMemo(() => {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    const pad = 4;
+    const stepX = (width - pad * 2) / (values.length - 1);
+    const y = (v: number) => pad + (1 - (v - min) / span) * (height - pad * 2);
+    const xs = values.map((_, i) => pad + i * stepX);
+    const ys = values.map(y);
+    const d = xs.map((x, i) => `${i === 0 ? 'M' : 'L'} ${x} ${ys[i]}`).join(' ');
+    // The polyline's own length — exact here, because these are straight
+    // segments, so the dash offset it drives can never leave the line short.
+    let length = 0;
+    for (let i = 1; i < xs.length; i += 1) {
+      length += Math.hypot(xs[i]! - xs[i - 1]!, ys[i]! - ys[i - 1]!);
+    }
+    return {
+      d,
+      area: `${d} L ${xs[xs.length - 1]} ${height} L ${xs[0]} ${height} Z`,
+      length: Math.max(length, 1),
+      lastX: xs[xs.length - 1]!,
+      lastY: ys[ys.length - 1]!,
+    };
+  }, [height, values, width]);
+
+  useEffect(() => {
+    if (!on) {
+      drawn.value = 1;
+      return;
+    }
+    drawn.value = 0;
+    drawn.value = withDelay(
+      delay ?? 0,
+      withTiming(1, { duration: SPARK_DRAW_MS, easing: Easing.out(Easing.cubic) }),
+    );
+  }, [delay, drawn, geometry.d, on]);
+
+  const lineProps = useAnimatedProps(() => ({
+    strokeDashoffset: geometry.length * (1 - drawn.value),
+  }));
+  // The wash resolves under the line rather than travelling with it: at this
+  // size a clipped reveal is four pixels of movement nobody can see.
+  const washProps = useAnimatedProps(() => ({ fillOpacity: drawn.value }));
+  // The dot is the arrival — it holds at nothing until the pen is nearly on it.
+  const dotProps = useAnimatedProps(() => ({
+    r: 3 * Math.min(Math.max((drawn.value - 0.88) / 0.12, 0), 1),
+  }));
 
   return (
     <Svg width={width} height={height}>
-      <Path d={d} stroke={alpha(tint, 0.45)} strokeWidth={1.5} fill="none" />
-      <Circle cx={lastX} cy={lastY} r={3} fill={tint} />
+      {wash ? (
+        <>
+          <Defs>
+            <LinearGradient id={washId} x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={tint} stopOpacity={0.18} />
+              <Stop offset="1" stopColor={tint} stopOpacity={0.01} />
+            </LinearGradient>
+          </Defs>
+          <AnimatedPath d={geometry.area} fill={`url(#${washId})`} animatedProps={washProps} />
+        </>
+      ) : null}
+      <AnimatedPath
+        d={geometry.d}
+        stroke={alpha(tint, 0.45)}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+        strokeDasharray={geometry.length}
+        animatedProps={lineProps}
+      />
+      <AnimatedCircle cx={geometry.lastX} cy={geometry.lastY} fill={tint} animatedProps={dotProps} />
     </Svg>
   );
 }

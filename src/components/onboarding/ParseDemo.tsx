@@ -45,6 +45,14 @@ import { BRAND_WASH, CARD_FILL, RISE_PX, SELECT_BORDER } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 /**
+ * UNMOUNTED SINCE 23 AUGUST 2026. The demo step draws `DemoToday` — the whole
+ * Today page, taking two or three exercises instead of one line (owner: "make
+ * the same design as the homepage"). This file stays on disk the way every
+ * other rolled-back surface here does; re-mounting it is one branch in
+ * `app/onboarding/[step].tsx`.
+ *
+ * Everything below describes the single-field screen it was.
+ *
  * THE AHA MOMENT, and now the person's OWN line (conversion pass, 20 Aug 2026).
  *
  * This screen used to play a canned animation: `bench 100kg 5,5,4` faded in and

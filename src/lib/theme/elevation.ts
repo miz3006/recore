@@ -31,9 +31,10 @@ import { color } from './color';
  * grey); we keep it minimal there. Spread as `...shadow.card` into a style.
  */
 
-/** The shadow's colour — warm ink, from the paper canvas's own family. It was
- * neutral `#1C1C1E` for the three days the app was white (18–20 Aug 2026). */
-const SHADOW_INK = '#2E2418';
+/** The shadow's colour — warm ink, from the paper canvas's own family. It lived
+ * here as a literal until the palette merge of 28 Aug 2026; it is `shadowCast`
+ * in `color.ts` now, so the app has exactly one place a colour is named. */
+const SHADOW_INK: string = color.shadowCast;
 
 type Shadow = Pick<
   ViewStyle,

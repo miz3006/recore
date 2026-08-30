@@ -1,3 +1,5 @@
+import type { PurchaseStatus } from '@/lib/billing/store';
+import type { Plan } from '@/lib/billing/pricing';
 import { getMeta, setMeta } from '@/lib/db/index';
 
 /**
@@ -123,7 +125,7 @@ export function markPaywallShown() {
  * the denominator of the annual-vs-monthly mix and the only way to tell whether
  * the honest preselection in §6 is doing anything.
  */
-export function markPlanSelected(plan: 'annual' | 'monthly') {
+export function markPlanSelected(plan: Plan) {
   setMeta(KEYS.planSelected, plan);
 }
 
@@ -145,11 +147,15 @@ export function markTrialStarted() {
  * category, never with a price, a receipt or an identifier — a funnel counter
  * is not a payment record.
  */
-export function markPurchaseOutcome(status: 'purchased' | 'cancelled' | 'unavailable' | 'failed') {
+export function markPurchaseOutcome(status: PurchaseStatus) {
   bump(KEYS.purchaseAttempts);
   if (status === 'purchased') bump(KEYS.purchasePurchased);
   else if (status === 'cancelled') bump(KEYS.purchaseCancelled);
-  else bump(KEYS.purchaseFailed);
+  // `pending` is an Ask-to-Buy or bank approval still in flight: the attempt is
+  // counted, the outcome is not, and the purchase counter moves if and when the
+  // store confirms it. Calling it a failure would understate the conversion of
+  // every family-managed account.
+  else if (status !== 'pending') bump(KEYS.purchaseFailed);
 }
 
 /** The outcome of a Restore (§13: "restore state"). */

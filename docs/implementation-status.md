@@ -8,6 +8,12 @@ accent, unframed illustrations, the notifications switch, the optional founder n
 side-by-side paywall plan cards, and a full rewrite of the onboarding copy) — sections 4, 5
 and 6 below.**
 
+**Amended 21 August 2026** with the RevenueCat integration pass: the SDK at 10.7.2 with
+`react-native-purchases-ui` and its pods installed, a weekly package below a still-two-card
+paywall, a customer-info listener, seven typed purchase outcomes, the hosted paywall on the
+win-back path, Customer Center behind every Manage control, and a Test Store key that cannot
+survive into a release bundle — Section 2 below.
+
 Method: every row below was determined by reading routes, components, state, billing code and
 tests in `src/`, `supabase/` and `scripts/` — not by trusting CLAUDE2.md, `CLAUDE_zastareli.md`
 (the V4 inventory), PLAN.md or RELEASE.md, all of which predate V5.1 and none of which is a
@@ -64,14 +70,14 @@ promise in product-direction §2/§6. None of them is a TODO.
 
 | Requirement | Status | Evidence | Notes |
 |---|---|---|---|
-| Subscription product from first release | **done** | `package.json` (`react-native-purchases` 10.5.0), `src/lib/billing/store.ts` | The only file importing the SDK. Everything above it speaks in `Plan` / `EntitlementSnapshot` / outcome words. |
+| Subscription product from first release | **done** | `package.json` (`react-native-purchases` **10.7.2**, `react-native-purchases-ui` **10.7.2**), `src/lib/billing/store.ts`, `src/lib/billing/paywall-ui.ts` | Two import sites and no more: `store.ts` is the only file importing the SDK, `paywall-ui.ts` the only one importing its UI package. Everything above them speaks in `Plan` / `EntitlementSnapshot` / outcome words. |
 | One free trial for eligible subscribers | **done** | `src/lib/billing/store.ts` (`trialDaysOf`), `src/app/paywall.tsx` (`timelineFor`, `ctaLabel`) | The length is read from the product's introductory offer. Apple decides eligibility per subscription group, so a returning subscriber is shown the price with no trial rather than a promise the store will not honour. A non-zero introductory price is treated as a discount, never as a trial. |
 | Both plans start the same trial | **done** | `src/app/paywall.tsx` (`PlanCard` sub line, `ctaLabel`), `src/lib/legal.ts` | Owner action required: **both products need the 7-day introductory offer configured in App Store Connect** (SECURITY.md step 8). The app states what the store offers; it cannot create the offer. |
 | Annual may be preselected under §6's four conditions | **done** | `src/app/paywall.tsx` (`useState<Plan>('annual')`, `PlanCard`), `src/lib/billing/pricing.ts` (`savePct`, `perMonth`) | Both cards are the same component, size and target; annual shows its real total and true per-month; the saving is computed from the two live prices and the badge **disappears** when the comparison cannot be made honestly; switching is one tap. |
 | Trial attaches to an account; account after plan selection | **done** | `src/lib/billing/store.ts` (`configureStore`, `attachStoreToAccount`), `src/app/paywall.tsx` (`pendingPurchase`), `src/lib/auth/provider.tsx` | The SDK configures anonymously so the paywall can show real prices **before** sign-in, then `logIn(userId)` aliases the customer. `purchasePlan` refuses to buy while anonymous. The CTA sends a signed-out user to sign-in and completes the purchase when the session lands. |
 | Hard paywall after trial ends | **done** | `src/lib/billing/entitlement.ts`, `src/app/(tabs)/today.tsx:65–74` | Verified-inactive, or nothing cached, resolves to `lapsed` and Today becomes read-only. The V4-era "assume entitled when unverifiable" default is gone. |
 | Offline behaviour does not lock out a paying subscriber | **done** | `src/lib/billing/entitlement.ts` (`decideEntitlement`, `GRACE_MS`), `src/lib/billing/entitlement.test.ts` | Owner's ruling, 29 Jul: last known state plus a **seven-day grace** past the verified expiry. Keeps CLAUDE.md §2 invariant 1 true without softening the paywall. 11 unit tests cover every edge. |
-| Price, renewal, trial-end date, legal links, Restore, Manage always truthful and reachable | **done** | `src/app/paywall.tsx`, `src/app/(tabs)/you.tsx`, `src/components/read-only-ledger.tsx`, `src/lib/billing/store.ts` (`managementUrl`) | Manage is now on the paywall too (§6 "when applicable"), and uses the customer-specific URL when the store supplies one. An unreachable store shows **no price and a disabled CTA** with a sentence saying why. |
+| Price, renewal, trial-end date, legal links, Restore, Manage always truthful and reachable | **done** | `src/app/paywall.tsx`, `src/app/(tabs)/you.tsx`, `src/components/read-only-ledger.tsx`, `src/components/trial-reminder-sheet.tsx`, `src/lib/billing/state.ts` (`openSubscriptionManagement`) | 21 Aug: all four Manage controls call ONE entry point, which opens **Customer Center** where the build has it and Apple's subscriptions URL where it does not. An unreachable store still shows **no price and a disabled CTA** with a sentence saying why. |
 | **§2.1** Funnel order (onboarding → paywall → account → trial → import fast path → walkthrough → Today) | **done** | `src/app/index.tsx` (dispatcher), `src/app/paywall.tsx`, `src/app/import-start.tsx`, `src/components/spotlight-tour.tsx` | The whole chain is wired. The walkthrough runs on Today, which a tracker user now reaches *after* import — so §7's "the tour can point at real data" holds by ordering, with no code in the tour. |
 | **§2.1** Personalised paywall headline from a real answer | **done** | `src/app/paywall.tsx` (`headlineFor`) | Unchanged by step 2. |
 | **§2.1** Tracker-import fast path after trial start | **done** | `src/app/import-start.tsx`, `src/lib/onboarding.ts` (`wantsImportFastPath`), `src/app/index.tsx` | Offered once, only to Strong/Hevy users, only when entitled, and only if they did not already say they would rather just write. Skipping is one full-size tap with no confirmation and no second ask — `markImportOffered` fires on arrival, not on success. |
@@ -80,6 +86,12 @@ promise in product-direction §2/§6. None of them is a TODO.
 | **§2.2** Lapsed state distinguishes its reasons | **done** | `src/lib/billing/entitlement.ts` (`LapseReason`), `src/components/read-only-ledger.tsx` (`explanation`) | Beyond the spec, and it earns its keep: telling a paying customer "your subscription ended" when the truth is "we could not reach the App Store" is how a refund request starts. Three branches: `expired`, `never`, `unverified`. |
 | **§2.2** Restore and Manage directly reachable from the lapsed screen | **done** | `src/components/read-only-ledger.tsx` | Restore is listed first — for the `unverified` case it is the single tap that resolves everything. |
 | **§2.2** One honest notice before the charge | **done** | `src/lib/billing/trial.ts` (`REMINDER_LEAD_DAYS`, `trialClockAt`), `src/components/trial-reminder-sheet.tsx`, `src/lib/billing/notifications.ts` | Both instants now come from the store. The window is expressed as a **lead time before the charge**, not "day 5", so it stays correct for a trial of any length — including the compressed sandbox trials the owner will test with. At most one notice; the in-app sheet cancels the scheduled notification. |
+| **21 Aug** Weekly plan supported below the funnel screen | **done** | `src/lib/billing/pricing.ts` (`Plan`, `ALL_PLANS`, `NATIVE_PAYWALL_PLANS`, `PACKAGE_IDS`), `src/lib/billing/store.ts` (`fetchOffer`), `src/lib/billing/pricing.test.ts` | The dashboard offering carries `$rc_weekly`, `$rc_monthly`, `$rc_annual`. All three price, buy and restore. Owner's ruling: `paywall.tsx` stays the **two-card** screen §6 specifies, so weekly is sold only by the hosted paywall. `NATIVE_PAYWALL_PLANS` records that as a decision; four unit tests stop the plan tables drifting apart. |
+| **21 Aug** Entitlement follows the store without being asked | **done** | `src/lib/billing/store.ts` (`subscribeToCustomerInfo`), `src/lib/billing/state.ts` (`watchCustomerInfo`, `applyFreshSnapshot`) | RevenueCat pushes a fresh `CustomerInfo` on every renewal, expiry, cross-device purchase and in-app cancellation. This does **not** weaken the once-per-session rule — Recore still never *asks* the store on a write, it only accepts what the SDK volunteers. Closes the gap where a cancellation read as active until the next cold start. Torn down before `logOut`, so the anonymous customer that `logOut` emits cannot overwrite the cached snapshot. |
+| **21 Aug** A purchase failure says which failure it was | **done** | `src/lib/billing/store.ts` (`classifyPurchaseError`, `PurchaseOutcome`), `src/app/paywall.tsx` (`runPurchase`) | Seven outcomes instead of four. The two that matter: `pending` (Ask to Buy / bank approval — not a failure, and the listener applies it when it clears) and `already-owned` (this Apple Account already pays — the answer is Restore, never a second charge). `offline` and `not-allowed` are separated from a generic failure for the same reason §2.2 separates lapse reasons. |
+| **21 Aug** RevenueCat hosted paywall on the win-back path | **done** | `src/lib/billing/paywall-ui.ts`, `src/lib/billing/state.ts` (`openHostedPaywall`), `src/components/read-only-ledger.tsx` (`handleResubscribe`) | **Additive, not a replacement** (owner's ruling). `paywall.tsx` remains the funnel §6 designs and §2.1 orders. The hosted paywall takes only "Resubscribe" from the lapsed screen — the one audience whose offer is worth changing without shipping a build — and falls back to `/paywall` when there is no key, no pod, or no paywall configured on the offering. Same funnel counters as the native screen, so the two are comparable. **23 Aug:** availability is now decided by `NativeModules.RNPaywalls` / `RNCustomerCenter`, not by whether the JS import resolves. In Expo Go the package imports fine and silently switches to its preview mode, which routes `presentPaywall` to RevenueCat's browser SDK and fails inside the dependency with "This SDK requires a browser environment". Both hosted surfaces now report themselves absent there, so the fallback is taken immediately and nothing reaches that path. The hosted paywall is testable only in a dev build. |
+| **21 Aug** Customer Center for manage, cancel, refund and plan change | **done** | `src/lib/billing/paywall-ui.ts` (`presentCustomerCenter`), `src/lib/billing/state.ts` (`openCustomerCenter`, `openSubscriptionManagement`) | Replaces a link that left the app and reported nothing. §20 still holds: leaving stays exactly as easy as arriving, and the dashboard's survey may not become a retention gauntlet. A cancellation made in there reaches the entitlement immediately, via the listener and an explicit refresh. |
+| **21 Aug** A Test Store key cannot reach a paying customer | **done** | `src/lib/env.ts` (`storeMode`, `REVENUECAT_IOS_KEY`), `src/app/paywall.tsx` (`styles.testStore`) | The configured key is `test_…`: real dashboard offerings, **simulated** purchases. `env.ts` blanks it in any non-`__DEV__` bundle, so a release built with it shows no price and sells nothing rather than granting free entitlements — the loud, recoverable failure CLAUDE.md §2 rule 5 asks for. In development the paywall says "Test Store · purchases are simulated" out loud. **A release still needs the `appl_` key**, so B1 in `TESTFLIGHT_READINESS.md` stays open. |
 
 ---
 
@@ -96,12 +108,12 @@ promise in product-direction §2/§6. None of them is a TODO.
 
 | Requirement | Status | Evidence | Notes |
 |---|---|---|---|
-| **§4.1** Warm-paper light theme, system type, generous space | **done** | `src/lib/theme/color.ts:34–52`, `src/lib/theme/type.ts`, `src/lib/theme/scale.ts` | |
-| **§4.2** Recore blue is a visible product accent (selection, focus, active controls, walkthrough emphasis, recorded-progress charts) | **done** | `src/lib/theme/color.ts:8–23,43`; `src/components/onboarding/tokens.ts`; blue live in `you.tsx`, `calendar-sheet.tsx`, `history-sheet.tsx`, `streak-sheet.tsx`, `progress.tsx` + `charts.tsx` (4 Aug), and the whole funnel (12 Aug) | 12 Aug, owner's mascot-led restyle: onboarding **and** paywall selection are blue — selected option border + check, progress fill, focused text field, the primary CTA, the emphasised bodyweight value, the selected plan card. One accent, declared once in `components/onboarding/tokens.ts`. The flow carries no second hue and no emoji. |
+| **§4.1** Warm-paper light theme, system type, generous space | **done** | `src/lib/theme/color.ts` (`canvas`/`canvasTop`/`canvasBot`), `src/lib/theme/type.ts`, `src/lib/theme/scale.ts` | |
+| **§4.2** Recore blue is a visible product accent (selection, focus, active controls, walkthrough emphasis, recorded-progress charts) | **done** | `src/lib/theme/color.ts` (`brand`); `src/components/onboarding/tokens.ts`; blue live in `you.tsx`, `calendar-sheet.tsx`, `history-sheet.tsx`, `streak-sheet.tsx`, `progress.tsx` + `charts.tsx` (4 Aug), and the whole funnel (12 Aug) | 12 Aug, owner's mascot-led restyle: onboarding **and** paywall selection are blue — selected option border + check, progress fill, focused text field, the primary CTA, the emphasised bodyweight value, the selected plan card. One accent, declared once in `components/onboarding/tokens.ts`. The flow carries no second hue and no emoji. |
 | **§4.2** Charts may use a blue primary series with a soft fill | **done** | `src/components/charts.tsx` (`TrendChart`) | 4 Aug: `TrendChart` draws in `color.trained` with a gradient wash, tint overridable per caller. The bar primitives (`WeekBars`, `MicroBars`) stay ink — they are ledger furniture, not a progression series. |
-| **§4.2** Planned green only on a future prescription, with label | **done** | `src/lib/theme/color.ts:40`, `src/app/(tabs)/next.tsx:196–199,361–364` | |
-| **§4.2** Trend ember as optional secondary comparison | **done** | `src/lib/theme/color.ts:42`, `src/components/exercise-sheet.tsx` | Confined to the one-lift progression card; never on a number. |
-| **§4.2** Red only destructive/errors | **done** | `src/lib/theme/color.ts:51` | |
+| **§4.2** Planned green only on a future prescription, with label | **done** | `src/lib/theme/color.ts` (`signal`), `src/app/(tabs)/next.tsx:196–199,361–364` | |
+| **§4.2** Trend ember as optional secondary comparison | **done** | **retired** — `trend` was deleted 20 Aug 2026; `src/components/exercise-sheet.tsx` draws in `brand` | Confined to the one-lift progression card; never on a number. |
+| **§4.2** Red only destructive/errors | **done** | `src/lib/theme/color.ts` (`error`) | |
 | **§4.3** Press-in/release, sheet spring, chart reveal, single value update | **done** | `src/lib/motion.ts`, `src/components/motion.tsx`, `src/components/bottom-sheet.tsx` | Shared tokens (`DUR`/`EASE`/`SPRING`) are used consistently. |
 | **§4.3** Directional onboarding transitions (forward from right, Back from left) | **done** | `src/app/onboarding/[step].tsx` (`Stack.Screen animation="slide_from_right"`), `src/components/onboarding/OnboardingScreen.tsx` (entrance stagger) | The native stack slides horizontally and the iOS back-swipe returns from the left; the zones crossfade in on top of it (250 ms fade + 12 pt rise, 60 ms apart, in reading order). |
 | **§4.3** Onboarding idle loop on the illustration | **owner-directed exception** | `src/components/onboarding/IllustrationSlot.tsx` (`Idle`) | 12 Aug, owner's spec: the mascot floats ±3 pt and breathes 2 % on a 3.5 s cycle, forever. §4.3's "no autoplaying decoration" reads against it; the owner asked for it by name as the thing that makes the flow feel alive. Transform-only on the UI thread, and Reduce Motion never starts it. Flag it if §4.3 is ever enforced literally. |
@@ -122,7 +134,20 @@ promise in product-direction §2/§6. None of them is a TODO.
 > welcome · current tracker · what stops you tracking (multi) · the parse demo · what gets
 > written gets stronger · main goal · how long lifting · name + gender · training days + how you
 > follow them · key lifts and their loads · gradual overload · 12-week commitment (hold) ·
-> weekly recap · your projection.
+> where you found Recore · weekly recap · your projection.
+>
+> **23 August 2026 — two of those screens changed shape** (owner; full entry in the change log).
+> The parse demo is now the TODAY PAGE (`DemoToday.tsx`), takes two or three exercises and is the
+> one step that does not render inside `OnboardingScreen`. The weekly recap screen opens the real
+> iOS permission dialog, which reverses §5.1's no-prompt rule on the owner's instruction. Emoji
+> are down to two screens — goal and experience. Training days was rebuilt as a week card the same
+> day and put straight back to its seven discs on the owner's ruling.
+>
+> A visual pass over the rest of the flow followed (same entry): the attribution screen is a chip
+> grid, the lesson screens lead with a lede, the overload card and the recap preview are redrawn
+> in the record's own typography, loads are set in the reading face, the content band fades at its
+> bottom edge instead of being cut, the subtext is legible (4.83:1, was 3.79), and the welcome
+> finally uses the template's hero register.
 >
 > **What changed, and why each one is defensible:**
 >
@@ -185,7 +210,7 @@ of drift this repository has actually suffered before.
 | Not a medical intake | **done** | `lib/onboarding.ts`, `prefs.ts` | No injuries, diagnoses or calorie fields anywhere. |
 | No unsupported claim in onboarding copy | **done** | `src/components/onboarding/config.ts` | 12 Aug copy rewrite removed three: the commitment affirm asserted **"Three months is where most lifters see their first real PRs"** (an invented statistic about other people, §2 rule 2); the why-tracking screen asserted **"Lifters who keep a record progress faster"** (a behavioural claim with nothing behind it); and the product-truths headline read **"Why lifters switch to Recore"**, which implied a migration that has not been measured (§3). The replacements state things a reader can check. |
 | Onboarding copy states what the app actually does | **done** | `src/components/onboarding/config.ts` | The parser demo now shows `bench 100kg 5,5,4`, the exact shape covered by `scripts/parse-eval-cases.json` ("rep list commas after weight"), so the screen cannot demo a syntax the parser rejects. The summary's import line says the history *can* come across after sign-in rather than promising an automatic one, and the trial timeline describes the in-app reminder sheet rather than an email. |
-| No permission prompt in onboarding | **done** | `onboarding/index.tsx`, `billing/notifications.ts`, `lib/voice.ts` | Unchanged: notifications ask at trial start, microphone on mic tap. |
+| No permission prompt in onboarding | **reversed by the owner, 23 Aug 2026** | `src/app/onboarding/[step].tsx` (recap branch), `src/lib/recap.ts` (`requestRecapInOnboarding`) | The recap screen's Continue now opens the real iOS notification dialog when the answer is yes. The owner's ruling: this screen draws the message, says what is in it, and asks in the words of the obstacle the person named — so the context the rule protects is present. It is the ONLY OS prompt in the flow; the microphone is still asked on the mic tap and the trial notice still asks at trial start. A denial advances exactly like a grant. §5.1 has not been amended (CLAUDE.md §2 rule 8). |
 | Blue progress rail + position marker | **done** | `src/components/onboarding/ProgressRail.tsx` | 12 Aug: one continuous 4 pt bar, blue fill on ink at 10 %, springing from where it stood on the previous screen (`lastFraction`) so it reads as ground covered rather than a twenty-step countdown. It was a row of dashed ink segments. |
 | One screen template, fixed zones | **done** | `src/components/onboarding/OnboardingScreen.tsx` | 12 Aug restyle: chrome row → illustration on bare paper → eyebrow/headline/subtext → content → the blue CTA pinned to the bottom. Every zone height derives from the WINDOW, never from the step, so the mascot, headline baseline and button do not move between screens; the content band scrolls when it must. Not yet checked on a device. |
 | Mascot illustration renders unframed | **done** | `src/components/onboarding/IllustrationSlot.tsx`, `src/components/onboarding/illustrations.ts` | No card, border, tint, shadow or rounded clip — `contain` on the paper canvas. Only `welcome` has an asset (the looping clip + poster); every other slug still draws the faint placeholder box, which is the one remaining frame in the flow and disappears per-slug as art lands. |
@@ -239,9 +264,10 @@ of drift this repository has actually suffered before.
 |---|---|---|---|
 | Free-text writing is the primary path; parser structures what it understands | **done** | `src/components/note-surface.tsx`, `src/lib/parse/*`, `supabase/functions/parse-workout/` | |
 | Unclear text stays as prose without punishment | **done** | `src/lib/parse/overlay.ts`, `src/components/gutter-value.tsx` | |
+| **The working state speaks on the line's own row** (owner, 29 Aug 2026) | **built, seen on the simulator** | `src/components/gutter-value.tsx` (`ReadingSweep`, `ReadingDots`, `ReadingWord`, `PendingDot` + `tint`/`size`), `src/components/note-surface.tsx` (`PendingCard`, `previewPending`) | The indicator shown while a line is being read was a 40 pt track with a shuttle sliding along it, placed to the RIGHT of the athlete's words — a position no reading has ever landed in, so the whole block re-laid itself out at the instant the parse landed. It is now two marks on the words' OWN row: a beam of `brand` at 16% crossing the WHOLE row behind everything on it (1300 ms, 400 ms beat, travel measured from the row's own width, unclipped so it has no cut edge, veiled top and bottom so it reads as a beam and not a column), and the ⋯ column waving the SAME three dots that become its menu glyph when the reading arrives. Measured on the render: the name lands 15.83 pt into the card exactly where the words sat, and the dots share the glyph's centre to within 0.2 pt. Reduce Motion drops both marks and prints `reading` at the end of the same row; the composer's live line carries the dots alone. |
 | Offline, never blocks a keystroke or finish | **done** | `src/lib/db/*` (SQLite), `src/lib/sync/index.ts`, `src/lib/parse/client.ts` | |
 | Sets shown one per row under the exercise (owner, 4 Aug) | **done** | `src/lib/parse/summarize.ts` (`setTableOf`, + tests in `parse/receipt.test.ts`), `src/components/set-table.tsx`, `note-surface.tsx`, `session-receipt.tsx` | The compact reading (`setsLineText`) stayed exact but had to be decoded once a pyramid appeared: "120·100·90 kg × 10·15·8". The ledger card and the receipt now render a **mini table** — position · load · work · note, tabular mono, one hairline under the header. Warm-ups/drops/skipped stay visible and labelled instead of numbered; the counted totals are unchanged. A lone plain set keeps the one-liner. Compact surfaces (check-in, finish summary, live typing preview) still use `setText`. **Note: `session-receipt.tsx` has no importers — that half of the wiring is inert until the file is adopted or deleted.** |
-| App-wide accessibility pass (owner, 9 Aug) | **done** | `src/lib/theme/scale.ts` (`MAX_FONT_SCALE` 1.5, `FIXED_FONT_SCALE`, `lineFor`), `theme/type.ts`, `theme/color.ts`, 21 screens/components, `src/state/display.ts`, `app/(tabs)/you.tsx` | Three owner decisions, all measured rather than guessed. **(1) Contrast:** `textMuted` went #9AA093 → #82887B, 2.45:1 → 3.33:1, lifting 180+ uses at once; the ledger's informational text (comparison, alias echo, last-session reading, hints) moved to `textSecondary` (4.7:1, AA). The standing rule is in `color.ts` and product-direction §14.3. **(2) Dynamic Type 1.3 → 1.5:** the old cap was a layout limit, not a policy — every line height was hardcoded and could not grow with its glyph. `lineFor()` now scales them by the reader's own setting (all type tokens + 58 literals across 21 files), text-bearing boxes moved from `height` to `minHeight` (15 of them, incl. every `AppButton`), and text locked in geometry (calendar/history day numbers, avatar initials, ring checks) is clamped to `FIXED_FONT_SCALE` 1.2. **(3) In-app choice:** You → Display → "Set readings · Standard/Larger". **Not yet device-QA'd at 1.5 — that is the remaining risk.** |
+| App-wide accessibility pass (owner, 9 Aug) | **done** | `src/lib/theme/scale.ts` (`MAX_FONT_SCALE` 1.5, `FIXED_FONT_SCALE`, `lineFor`), `theme/type.ts`, `theme/color.ts`, 21 screens/components, `src/state/display.ts`, `app/(tabs)/you.tsx` | Three owner decisions, all measured rather than guessed. **(1) Contrast:** `textMuted` went #9AA093 → #82887B, 2.45:1 → 3.33:1, lifting 180+ uses at once; the ledger's informational text (comparison, alias echo, last-session reading, hints) moved to `textSecondary` (4.7:1, AA). The standing rule is in `color.ts` and product-direction §14.3. **(2) Dynamic Type 1.3 → 1.5:** the old cap was a layout limit, not a policy — every line height was hardcoded and could not grow with its glyph. `lineFor()` now carries them (all type tokens + 58 literals across 21 files) and the renderer grows them with the glyph — it scaled them a second time itself until 23 Aug 2026, see that entry, text-bearing boxes moved from `height` to `minHeight` (15 of them, incl. every `AppButton`), and text locked in geometry (calendar/history day numbers, avatar initials, ring checks) is clamped to `FIXED_FONT_SCALE` 1.2. **(3) In-app choice:** You → Display → "Set readings · Standard/Larger". **Not yet device-QA'd at 1.5 — that is the remaining risk.** |
 | Set table readable at low vision (owner, 9 Aug) | **done** | `src/components/set-table.tsx`, `src/state/display.ts` | Measured, not guessed: `textMuted` is **2.45:1** on the paper canvas — below AA (4.5) and below the 3:1 large-text floor — and it was carrying the set numbers and notes. Nothing in the table is muted now (counted work 16:1, everything else `textSecondary` 4.7:1); warm-ups/drops are told apart by their **word**, never by tone alone. Type up ~2 pt per cell; load and work grouped into one short scan instead of opposite edges; header rule moved from `tableRule` (1.11:1, invisible) to `border`. Past `fontScale` 1.2 (1.1 when a note column competes) the columns give way to one spelled-out line per set ("Set 1 · 100 kg · 10 reps"), which wraps instead of cropping and is allowed to grow to 1.6× — the app-wide 1.3 clamp exists to protect layouts that can break, and this one cannot. Live via `useWindowDimensions().fontScale`, so changing the OS text size needs no relaunch. |
 | **§8.1** End-of-session free-text reflection | **done** | `src/components/check-in-sheet.tsx`, `src/lib/reflection.ts` (+ test), `src/lib/db/workouts.ts` (`setReflection`) | A free-text field on one sheet opened by Finish and re-openable from the receipt. Owner's ruling 29 Jul: **one sheet**, not two — so a finish never queues two sheets. **17 Aug: the reflection no longer LEADS it** — see the check-in redesign row below. |
 | **§8.1** Optional prompts ("How did that feel?" etc.) | **superseded** | `src/lib/reflection.ts` (`REFLECTION_PROMPTS`, still exported + asserted verbatim by test) | All four are still the spec'd vocabulary and still tested, but **the check-in no longer renders them**: the owner's 17 Aug ruling replaced the placeholder chips with three preset ANSWERS that write (`REFLECTION_TAGS`). The field's own placeholder is now "Anything about today…". Any future surface that suggests rather than answers should use the four prompts. |
@@ -252,11 +278,23 @@ of drift this repository has actually suffered before.
 | **Visible ⋯ actions on a settled card** (owner ask, 6 Aug) | **done** | `src/components/entry-actions-sheet.tsx`, `src/components/note-surface.tsx` (sideCol, `runEntryAction`), `src/components/icon.tsx` (`ellipsis`, `pencil`) | The card's hidden gestures are now one visible ⋯ (Mobbin-verified logger pattern: Hevy/Gymshark/Bevel per-exercise menu): a BottomSheet with Edit line · Show my words · Note & effort · History · Fix reading · Delete entry (`color.error`, last, own rule). The body's long-press → history was REMOVED — the menu owns it; tap-to-edit stays. Sequencing honours UIKit's one-modal rule: the chosen action fires from `onClosed`, so History/Fix can present their own sheet. Delete routes to the same `deleteNoteLine` the inline editor uses. **12 Aug: two rows added** (words, note) and the ⋯ became the card's only glyph. |
 | **The written line visible on its card** (owner ask, 12 Aug) | **done** | `src/components/note-surface.tsx` (`WordsFlip`, `wordsKey`), `entry-actions-sheet.tsx` (`words` action) | Long-press a settled card — or pick "Show my words" in its ⋯ — and the interpreted SET/KG/REPS table crossfades to the raw line, quoted in mono, exactly as typed. Tap or long-press again to flip back. Read-only display of `raw_text` (§3): no new data, no new column, nothing writable. Both faces are laid out and the words layer reports its height as the wrapper's floor, so flipping never moves the page. `DUR.fast`, instant under Reduce Motion; the hidden face is hidden from VoiceOver rather than merely transparent. |
 | **One reflection prompt per session, not per card** (owner ask, 12 Aug) | **done** | `src/lib/session-activity.ts` (+ test), `src/components/use-session-active.ts`, `note-surface.tsx` (`showReflectionRow`), `session-store.ts` (`finishSession`, `lastActivityAt`, `sessionFinished`), `bottom-toolbar.tsx` | §8.1 asks once, about the session; the note bubble asked once per exercise, five times a session. One quiet row now sits under the ledger — "Add a note about this session" — opening the check-in that already existed. It appears when the session has ENDED: Finish pressed, or 90 quiet minutes with work on the record (so the athlete who never presses Finish is still asked), and disappears once a reflection exists. Finish is remembered per workout in the meta KV (`session_done:<id>`), like receipt mode; writing another line re-opens the session. |
+| **The session's reflection printed under its lifts** (owner ask, 20 Aug) | **done** | `src/components/note-surface.tsx` (`reflection` memo, `reflectNote`/`reflectTags`/`reflectBody`), reads `getReflection` + `splitReflection`/`reflectionTagLine` | The check-in was write-only from Today: the words went into `workouts.reflection` and no screen printed them back, so the prompt row simply vanished and the note was only visible by re-opening the sheet. Now the day prints it where the day's lifts end — the armed tags on one small semibold line, the prose under them, both `textSecondary` a step smaller than a card. It sits **above** the writing line, with the settled record, while the invitation to write it stays below (the prompt row is unchanged and still gated on session-ended + no reflection). Tapping it re-opens the same check-in, so there is still exactly one place the words are written. Day-scoped by construction: `workoutId` follows the selected day, so swiping back shows that day's own note. No new column, no new event, no model. |
+| **Every text field has a way to close the keyboard** (owner ask, 20 Aug) | **done** | `src/components/keyboard-done.tsx` (new), `app/(tabs)/you.tsx`, `app/plan-day.tsx`, `components/check-in-sheet.tsx`, `entry-note-sheet.tsx`, `fix-sheet.tsx`, `planned-checklist.tsx`, `note-surface.tsx` | Audited against three exits — tap outside, return/done, scroll. iOS number pads (`decimal-pad`, `number-pad`) have **no return key**, so the ten fields using one now carry a `Done` accessory bar (`inputAccessoryViewID`); the bar is mounted inside each sheet that needs it, since a `BottomSheet` is its own RN `Modal` window. Five input-bearing ScrollViews gained `keyboardDismissMode="interactive"`. The four sheets whose field is multiline or numeric make their title block a `Keyboard.dismiss()` target (`accessible={false}`, so VoiceOver still reads it as text). The ⋯ sheet's Note row and both reflection rows dismiss before presenting, as the Fix reading row already did. Today's composer is the deliberate exception: return commits a line and a page tap re-focuses, because the page IS the composer — its labelled hide-keyboard button is the exit. |
+| **The accessory bar is three glyphs, drawn by iOS** (owner ask, 20 Aug) | **done** | `src/components/bottom-toolbar.tsx`, `src/components/icon.tsx` (`SF` map, `mic-on`) | Two changes to the bar over the keyboard. **(1) The plan button is removed** — the labelled round that wrote the next prescribed line into the note. It was the "still within reach" clause of the 18 Aug ruling that took the PLANNED strip off Today, and on demand meant a fourth control standing in the row all session for a line most days never have; the bar now holds only what helps someone WRITE (time, voice, a way down) and Today carries no prescription at any depth. `nextPlanLine`/`handlePlan` and the `planRow` style are gone; `checkGhostLine` stays because `ghost-prediction.tsx` still writes through it, and `icon.tsx`'s `plan` glyph + indigo tint stay as vocabulary with no call site. **(2) The three survivors draw as SF Symbols on iOS** — `timer`, `mic` / `mic.fill`, `keyboard.chevron.compact.down` — via one opt-in map inside `Icon`; `SymbolView` renders the existing Ionicons/MCI outline as its own fallback off-iOS, so no call site has a platform branch and the two can't drift. `expo-symbols` was already a dependency and had never been used. The mic gains a FILLED state while listening (`mic-on`, the `note`/`note-on` contract). Only these three are mapped, so no screen shows a mixed pair. |
 | **§8.2** Session-start question on an empty Today (owner ask, 6 Aug) | **done** | `src/components/session-start.tsx`, `src/app/(tabs)/today.tsx`, `src/lib/db/plan.ts` (`getPlanDayChoice`/`setPlanDayChoice`, choice read in `resolveTodayPlanDay`), `src/lib/db/strip.ts` (`PlanStrip.dayId`), `src/state/session-store.ts` (`choosePlanDay`), `src/components/empty-note-cards.tsx` | Shows only with a split AND ≥1 logged session, on today, note empty, keyboard down; otherwise the plain `PlanStrip` rendered as before — **both are gone: the card was removed 17 Aug and the strip 18 Aug (see the change log), so nothing from this row is on Today any more; `getPlanDayChoice`/`setPlanDayChoice` and `PlanStrip.dayId` survive because the calendar sheet and Next's brief still read them.** The chip answer is persisted day-keyed in the local meta KV and read inside `resolveTodayPlanDay`, so the strip, calendar sheet and Next brief agree with it by construction (deliberately not synced — a gym-device answer that expires at midnight). Start only calls `focusNote()`; nothing is written into `raw_text`. The empty-day LAST SESSION peek yields to the card's own last-session line in exactly the card's eligibility condition. Entirely deterministic — no model call, so no §9.4 evaluation needed. No §13 event exists for this surface; none was invented. |
 
 ---
 
 ## Section 9 — Next: the personal training brief
+
+> **28–29 Aug 2026 — the tab was restructured on Symmetry's Workout Detail and every row
+> now explains its own target** (owner; full entry in the change log). The card grammar
+> below describes the shape that was REPLACED: `LiftCard`, its lever chip, its 28 pt load
+> and its WHY/WATCH accordion are gone, and so are `BriefLede` at the top, the `Planned ·`
+> eyebrow, `UnknownLifts` as a separate block and the closing "Nothing counts until you
+> lift it" line. The `Signals` block ("your other lifts") left the tab entirely on 29 Aug —
+> it is folded into Progression's rows now (§10). Read the change-log entry first; treat the
+> rows below as the record of how the screen got here.
 
 > **12 Aug 2026 — presentation refactor (owner).** The tab's *content* is
 > unchanged; where it sits is not. `src/lib/next/sections.ts` is a new PURE,
@@ -339,7 +377,7 @@ of drift this repository has actually suffered before.
 | Requirement | Status | Evidence | Notes |
 |---|---|---|---|
 | Calendar shows trained days in blue and opens the real session | **done** | `src/components/calendar-sheet.tsx:185,204,332`, `src/components/history-sheet.tsx` | |
-| Profile makes onboarding context editable | **partial** | `src/app/(tabs)/you.tsx` (Training section) | Editable: focus, experience, how you train, session style, usual days, writing language, units, smallest plate, bar weight, split, and (6 Aug) body context in place. Still missing: priority movement. |
+| Profile makes onboarding context editable | **done** | `src/app/(tabs)/you.tsx` (About you), `src/components/profile/answer-sheet.tsx`, `lifts-sheet.tsx`, `pref-sheet.tsx`, `recap-sheet.tsx` | **Rewritten against the v2 flow, 28 Aug 2026.** All five v2 answers are editable (goal, experience, sessions a week, split, key lifts + loads), each in the flow's own picker, plus a "Run setup again" row. The settings the flow does *not* ask — units, rest, bar, writing language, set readings, recap — open the same kind of sheet. "Usual days" was deleted: `pref_usual_days` is a v1 question and no code reads it. |
 | Preferred days never become a broken streak or guilt | **done** | `src/lib/streak.ts:7–27`, `src/app/(tabs)/you.tsx` | Streak counts *training days* with a seven-day tolerance and states "Rest days never break it." Deliberate and consistent with CLAUDE.md §2 rule 6. |
 | Import always available in You | **done** | `src/app/(tabs)/you.tsx`, `src/lib/import/pick.ts`, `src/lib/import/formats.ts` | Strong and Hevy CSV. |
 | Subscription management, restore, export, privacy, deletion direct and clear | **done** | `src/app/(tabs)/you.tsx` (Subscription / Your data / Privacy / Account sections), `src/lib/account/delete.ts`, `supabase/functions/delete-account/` | The subscription row now shows the store's own state with the real renewal or charge date; Manage opens the customer-specific URL; Restore is real and reports what it found in the section footnote. |
@@ -355,7 +393,7 @@ of drift this repository has actually suffered before.
 | Emoji only as sparing onboarding choice labels | **done** | `src/app/onboarding/index.tsx:953–957`; `brief-guard.ts:40` and `tour.test.ts` block them elsewhere | |
 | Weight, height, reflections stored with account scoping, export, deletion | **done** | `src/lib/prefs.ts` (`pref_*`), `src/lib/db/workouts.ts`, `supabase/migrations/20260729000000_reflections.sql`, `src/lib/export-json.ts`, `src/lib/account/delete.ts`, `src/lib/legal.ts` | All three exist and all three are covered by construction: body context rides `pref_%` (already exported and wiped), the reflection rides the workout row (already RLS-scoped, cascade-deleted and exported). The privacy policy names both and states what Recore will never do with them. |
 | No model training on user data without consent | **done** | `docs/privacy.html`, `supabase/functions/parse-workout/index.ts` | |
-| **§12.1** Weekly recap notification: one per week, factual, editable time, off in one tap | **built (device-unverified)** | `src/lib/recap.ts`, `src/components/week-recap-card.tsx` (mounted in the composer's empty state, 6 Aug), `src/app/(tabs)/you.tsx` (Notifications section), `src/app/onboarding/[step].tsx` (`setRecapIntent`) | The card greets the first empty open of a new week again. The notification: off by default; offered on the first recap card ONLY to someone whose onboarding answer was yes (exactly the copy promised — "once your first recap is ready"); permission asked in that context, never re-asked after a denial; You → Weekly recap turns it on/off in one tap and edits the Sunday hour in place. Content is factual (sessions of the ending week; an empty week states a neutral fact) and is re-computed + re-scheduled on every Today open and every Finish, so the fired text is as current as the record's last change. Nothing here has run on a device. |
+| **§12.1** Weekly recap notification: one per week, factual, editable time, off in one tap | **built (device-unverified)** | `src/lib/recap.ts`, `src/components/week-recap-card.tsx` (mounted in the composer's empty state, 6 Aug), `src/app/(tabs)/you.tsx` (Notifications section), `src/app/onboarding/[step].tsx` (`setRecapIntent`, and since 23 Aug the OS prompt itself) | The card greets the first empty open of a new week again. The notification: off by default; **since 23 Aug 2026 permission is asked on the onboarding recap screen** for anyone who answers yes, and it turns the recap on only when the OS grants it (nothing is scheduled there — the first Today open computes the pending notice with a real user id). The recap card is now the second door, for anyone who said yes and never got the dialog, and it hides itself once the OS has been asked; never re-asked after a denial; You → Weekly recap turns it on/off in one tap and edits the Sunday hour in place. Content is factual (sessions of the ending week; an empty week states a neutral fact) and is re-computed + re-scheduled on every Today open and every Finish, so the fired text is as current as the record's last change. Nothing here has run on a device. |
 | **§12.1** No other recurring notifications | **done** | `src/lib/billing/notifications.ts`, `src/lib/recap.ts` | The one-shot trial reminder and the single weekly recap; the recap cancels its pending notice the moment it is turned off. |
 
 ---
@@ -891,7 +929,370 @@ src/app/onboarding` → no matches.
 
 ---
 
+## Onboarding v2 sandbox (27 Aug 2026) — what shipped, and what is not verified
+
+> **SUPERSEDED IN PART, 28 August 2026.** v2 is the primary onboarding since that date — see
+> *"v2 becomes the onboarding (28 Aug 2026)"* at the end of this file. Everything below is still
+> an accurate description of the flow itself and of what a **development** run does; the two
+> paragraphs that say none of it is in the product, and that the store has no `persist`
+> middleware, are the parts that no longer hold.
+
+Built to `docs/onboarding-v2-spec.md`, which is the authority for it. **It is a
+development-only experiment and none of it is in the product.** It is listed here so a
+future agent does not mistake it for live behaviour, and so the two onboarding flows in
+the repository are not confused for one.
+
+**What exists.** A second, complete eighteen-screen onboarding at `src/app/onboarding-v2/`
+with its own components (`src/components/onboarding-v2/`), its own motion system
+(`src/lib/motion/`, imported as `@/lib/motion/index` because `src/lib/motion.ts` owns the
+bare specifier) and its own in-memory store (`src/state/onboarding-v2.ts`). Reached only
+from a `DEVELOPMENT` section in the You tab, behind `__DEV__`.
+
+**What it cannot do, by construction.** It has no `persist` middleware and writes no
+`pref_*` key, so it cannot create an account, set the onboarding-complete flag, overwrite
+name / split / key lifts, or reach the paywall or RevenueCat. Every run starts clean
+because there is nothing to clean. The route subtree contains no call to `markOnboardingDone`,
+`setName`, `setGoal` or any billing function. The **existing** flow's dev row is sandboxed
+more weakly — it snapshots every `pref_%` row and restores it on reset — because §0 of the
+spec forbids editing anything under `src/app/onboarding/`.
+
+**Isolation.** v2 reads `src/lib/theme`, `src/lib/analytics`, `src/lib/demo-parse`,
+`src/lib/haptics`, `src/components/icon` and the shared drawings in `assets/new_onboarding/`.
+It imports nothing from `src/app/onboarding/` or `src/components/onboarding/`, and nothing
+outside v2 imports v2 except the three You-tab rows. Deleting either directory leaves the
+other standing.
+
+**Tokens diverge from the live palette, on the owner's instruction (27 Aug 2026).** v2 draws
+`#F4F5EF` / `#FBFCF6` / `#007AFF` / radii 14-18-24 / CTA 50, which is the spec's frozen set,
+not `color.ts`. `#007AFF` measures 3.73:1 on that canvas and is therefore below AA at text
+size in three places; this is recorded in `FINDINGS.md` §1 with a two-line fix if it is ever
+wanted. Green `#547C00` keeps its PLANNED-only contract — its one home in v2 is the
+prescribed loads on screen 17, each printed with its reason.
+
+**Analytics.** Every screen fires `onboarding_screen_view` and `onboarding_screen_complete`
+from the route (not from the screens, so none can be forgotten), plus `onboarding_answer`,
+`onboarding_demo_parsed` / `_failed`, `onboarding_commit_held`, `onboarding_attribution` and
+`onboarding_notifications_choice`. All carry `flow: 'v2'` so v1 and v2 can be told apart in
+the same local queue. No event carries the person's name or their written line.
+
+**Not built, deliberately:** the trial timeline, the paywall and sign-in that §2 describes
+after screen 18. The screen list is fixed at eighteen and §0 forbids touching the paywall,
+RevenueCat and account creation, so the flow ends on a sandbox done screen that says so.
+
+**Gates:** `npm run typecheck` pass, `npm test` 469/469 pass, `npm run lint` pass. No prompt,
+schema or model guard was touched, so no §9.4 evaluation is owed. Disagreements with the spec
+that were resolved rather than followed literally are in `FINDINGS.md`.
+
+---
+
 ## Change log
+
+- **28–29 Aug 2026 — Next is rebuilt on Symmetry's Workout Detail, and every row states the
+  reason for its own target.** The owner studied two screens with us — Symmetry's Workout
+  Detail (`6474446718/oth_paxdh`) for structure, Setgraph's My Workouts (`1209781676/oth_7b9av`)
+  for colour discipline — and set the brief: *"Next is derived from the user's own history, not
+  picked from a catalogue. If a pattern you're borrowing implies the user chooses their workout,
+  it doesn't belong here."* Delivered in ordered commits so a regression in one cannot be
+  confused with another.
+
+  **(1) The row** (new `components/next/lift-row.tsx`; `reasonLine` in `lib/next/sections.ts`,
+  11 new cases). Title left, target right, reason under the target:
+
+      Bench press                            82.5 kg × 5·5·5
+                                              up 2.5 from Sat 8 Aug
+
+  The reason line is secondary type, always present, never a tooltip and never behind a tap —
+  *"a derived plan the user can't audit is a plan they won't trust."* It replaced `LiftCard`,
+  whose WHY/WATCH accordion was itself the claim that the reason was optional; with the reason
+  permanent there is no accordion, and the accordion was the card's only justification against
+  bare rows (skill §Structure). The lever chip went with it: "ADD 2.5 KG" beside "up 2.5 from
+  Sat 8 Aug" is one decision stated twice.
+
+  Templates, all over the engine's own `Move` and `Reason`, never generated: weight → `up 2.5
+  from Sat 8 Aug`; rep → `one more rep than …`; hold → `same weight as …`; backoff → `down 5
+  from …`; plateau → `3 sessions at this weight`, which OUTRANKS the lever because it is the
+  fact that changes what the athlete does (the retired `metaLine` ranked it the same way); no
+  lever but a record → `from 3×8 80 on …`; and `· heaviest yet` appended when the target beats
+  the lift's best. **No prescription, no line** — the slot holds evidence for a number, and a
+  row with no number has none to give (owner, 28 Aug, correcting a draft that put an
+  instruction there). The instruction is said ONCE, under the title block.
+
+  Colour: `signal` is dominant here rather than an accent — the target, and the planned
+  magnitude inside the reason. A backoff's magnitude is amber, not green: a backoff is not
+  progress, and `moveLabel` already gave it that tone. **One measured shortfall is open and
+  flagged:** `signal` #547C00 on the canvas's worst stop is 4.4962:1, so the reason line's
+  11.5 pt figure is four thousandths under AA. It clears at the target's 20 pt (large text,
+  owes 3:1). `color.ts` names the fix (`#4F7500` clears every stop); the owner has not ruled.
+
+  **(2) Two data holes, closed.** `LastSetHint` now carries `day` — the query already selected
+  the workout and threw `performed_at` away — which is what makes "from Sat 8 Aug" checkable.
+  And the GHOST path now carries per-lift reasons: `computeNextSession` always computed a full
+  `Reason` per lift, kept ONE for the session headline and discarded the rest on the way to the
+  database. New **schema v6** local-only column `predictions.lines_json` keeps them, matched
+  back by the record's spelling rather than by index (a cardio line contributes text with no
+  reason, so the lists are not parallel). Local-only because the ghost is a cache any device
+  rebuilds on the next parse; the one cost is that `upsertPredictionFromRemote` CLEARS the
+  column when a remote row overwrites `ghost_text`, since reasons belong to the text they were
+  computed from. `Move`'s backoff variant gained `fromKg` so "down 5" is arithmetic, not a
+  parse. `SessionRow.move` now holds the engine's raw `Move` instead of a pre-phrased
+  `MoveLabel`; `moveLabel()` still makes the words, for VoiceOver.
+
+  **(3) The screen** (`app/(tabs)/next.tsx`, new `components/next/start-bar.tsx`,
+  `lib/next/overrides.ts`; `StubScreen` gained a `trailing` header slot). Title block (what the
+  session is, and when it was last done) → counted summary of what it targets → split chips →
+  ONE list of rows → pinned Start. Removed: `BriefLede` from the top (a paragraph competing
+  with the numbers it summarises), the `Planned ·` eyebrow (with green dominant, a label
+  announcing green is furniture), `UnknownLifts` as a separate counted block (a lift with no
+  history is now a row with an em dash, in the same list), the closing "Nothing counts until
+  you lift it" (the pinned Start says it by doing it), and the header's dateline.
+
+  The summary is COUNTED FACTS — `6 lifts · push, pull`, patterns from the tested lexicon in
+  `lib/split/pattern.ts`, a lift the lexicon does not know simply does not vote. Symmetry's
+  Muscle distribution percentages are a claim about a body that a text log cannot support.
+
+  **Start writes nothing.** It hands the targets to Today as a `PlannedSession` and routes
+  there; `planned-checklist.tsx` is remounted in `today.tsx` for the first time since 18 Aug,
+  which is the "way back is one wire" that note anticipated. A plan filled into `raw_text`
+  would count as performed the instant it landed. Ticking a circle writes the line, through the
+  path a typed line has always taken. The ghost that earned the Start is recorded
+  (`markPredictionAccepted`, adherence §7.2 Gap 3). **The CTA is planned green on the owner's
+  ruling for this screen, and it contradicts skill §Colour ("green never becomes a CTA") and
+  §Decided-1 (primary CTA is brand blue). Flagged in `start-bar.tsx`, not normalised** — it is
+  the first green control in the app. It wears no glow: `shadow.glow` is brand blue.
+
+  **Editing** is Setgraph's placement of Symmetry's Edit Workout bar, lighter: one `Edit` pill
+  in the title block turns every target into a field, and at rest there is no field anywhere.
+  An overridden row loses its reason line AND its green and reads as the athlete's own number
+  — not as decoration but because §4.2 spends green only on a prescription that arrives *"with
+  its label and reason"*, and a typed number has none. It keeps the engine's figure beside it
+  (`your number, was 82.5`) so the argument can be checked in both directions; clearing the
+  field reverts. Overrides live in the local `meta` KV, never in `raw_text`, never synced, and
+  each one remembers the load it displaced — an override whose `was` no longer matches the
+  engine is void on read, so it expires exactly when the argument it made expires.
+
+  **Three states.** No history → `Nothing due yet`, the athlete's onboarding key lifts as rows
+  with em-dash targets (their NAMES only — the working weights they typed about themselves are
+  not prescriptions and would be a fabrication in that column), and `Write today's session`.
+  Today already written → the page shows the NEXT session under `Today is written · 6 lifts`,
+  and the CTA becomes the quiet `Open today's session`; no tick, no congratulation. Flat mode
+  (`split` = `flat`) → title `Due now`, no day name invented, **rows unchanged** — the reason
+  line already answers both of a flat lifter's questions at once, because the date in it IS the
+  staleness.
+
+  **(4) `Signals` moved to Progression, folded rather than transplanted** (29 Aug; new
+  `lib/plateau.ts`, `lib/progression-overview.ts`, `app/(tabs)/progress.tsx`;
+  `components/next/signals.tsx` deleted; `NextSections.standing`/`.moving` and the
+  `StandingRow`/`MovingRow`/`MovingReading` types with them). "Your other lifts" are lifts
+  ACROSS lifts, which is Progression's question, not Next's.
+
+  It did not arrive as a block, because Progression already lists every lift with its delta,
+  its sessions, its last day and a sparkline — a block would have printed a second copy of rows
+  already on the page. Two facts were folded into those rows instead:
+
+  - **The plateau**, which is genuinely new: the list read "12 sessions · last Tue" for a lift
+    that had not moved in three, and now leads with `3 sessions at 100 kg` and wears
+    `attention`. The rule moved into a shared pure module, `lib/plateau.ts`, read by BOTH
+    `findStalls` and `buildOverview` — a plateau that Next calls a plateau and Progression does
+    not would be the two tabs disagreeing about one lift. 9 cases.
+  - **The trust guard.** Next refused to print a delta larger than a quarter of the lift's
+    current e1RM ("+64 kg" over eight weeks is arithmetic, not a claim). Progression's row
+    prints the same class of number, so the guard followed it: `LiftRow.deltaSuspect`, and the
+    row says "climbing"/"falling" with no figure. 6 cases moved to
+    `progression-overview.test.ts`.
+
+  The MOVERS half did not move — three lifts with a delta and a sparkline, where Progression
+  already gives every lift a delta and a sparkline over a named window. Two answers to one
+  question is what the one-exercise-one-home rule exists to prevent; that rule now reads across
+  two TABS instead of across three blocks on one screen, and is unchanged otherwise.
+
+  **A finding this uncovered, NOT fixed.** `lib/brief-prose.ts` prints the mover delta
+  unguarded — *"X is moving — up 56 kg of estimated 1RM in 8 weeks"* — so the absurd figure the
+  retired guard existed to refuse can still reach the brief paragraph on Next. The root cause is
+  in `db/brief.ts#findMovers`: `getE1rmSeries`'s `limit` counts SESSIONS not weeks, so "8 wk"
+  labels an unbounded window, and `first` is a single session, so one rep-out day against a
+  later heavy single manufactures a +56 kg "gain". The TODO now sits on `findMovers` itself.
+  Left alone deliberately: the composed brief is model-rewritten and guard-validated, so
+  changing its numbers is §9.4 territory and the owner's call.
+
+  **(5) The engine schedules by lift for flat mode** (29 Aug; new `lib/predict/flat.ts` with 15
+  cases, `lib/predict/data.ts`). Onboarding screen 14's banner promises *"If you don't follow
+  one, it schedules by lift instead"*, and the app did not do it: `pickNextSession` returns null
+  for a single cluster and `pickBaseWorkout` fell back to the most recent workout, so a lifter
+  who told us they follow no split was handed *repeat your last session* — a split of one day.
+
+  The unit of scheduling is now the LIFT, and the question asked of each is how overdue it is
+  **by its own cadence**: `days since ÷ median gap between its own sessions`. A press trained
+  weekly and last done 10 days ago (1.43) outranks a deadlift trained three-weekly and last done
+  a fortnight ago (0.67) — the judgement a plain sort-by-date gets wrong, and the reason it is a
+  ratio. The median rather than the mean, so one holiday does not redefine how often somebody
+  squats; a lift with under two sessions falls back to a week rather than being dropped. Session
+  length is the median number of movements in the athlete's own recent sessions, clamped 1–8.
+  Ties break on raw days, then on key, so the same record always produces the same session — a
+  ghost that reshuffles between two identical reads is one nobody can trust.
+
+  **Two refusals, both deliberate.** It does not gate on "due": every lift is ranked and the top
+  N taken, because a cutoff would be a training opinion about how often somebody ought to train a
+  movement, and §20 says the app never tells anyone what to train. And a lift with nothing inside
+  the 120-day window is not scheduled at all — after a layoff that long a progression would
+  prescribe weights the lifter may no longer have (§7.4, the rule behind `GHOST_MAX_AGE_DAYS`).
+
+  The ANSWER drives the branch, not the record: `flow.ts` marks that option `drivesBranch`, and
+  §2 rule 2 is to personalise from chosen information — somebody whose sessions happen to cluster
+  is still somebody who told us they follow no split. The per-item prescription was extracted
+  into `prescribeItem` and BOTH paths run through it, so the arithmetic, the plate rounding, the
+  focus fallback and the phrasing are identical and only the roster differs. The flat path also
+  skips `pickBaseWorkout`, which is eleven queries it has no use for.
+
+  **Not covered by a test:** `flatItems` itself — the SQL, the grouping and the day arithmetic —
+  because this repository's suite is pure `node --test` with no SQLite harness. The ranking, the
+  cadence, the gaps and the session length are pure and tested; the read that feeds them is
+  verified only by the gates and needs device QA.
+
+  **(6) The 29 Aug design pass, after the owner saw it on a device** (new `lib/next/groups.ts`
+  with 11 cases, `components/next/groups.tsx`; `next/lift-row.tsx`, `app/(tabs)/next.tsx`,
+  `app/(tabs)/today.tsx`). *"Definitivno mi ni všeč dizajn."* Studied **Tiimo** (`1480220328`,
+  iPhone App of the Year 2025, Apple Design Award finalist 2024, 4.59★) — not fitness, but an AI
+  co-planner, which is this screen's function in another category. Four changes:
+
+  - **Cards, and the reason moved LEFT.** A right-aligned SENTENCE has no left edge to return
+    to; numbers right-align because their shape is stable, prose does not. The card is two
+    columns now — name and reason left, load and scheme right — each internally consistent
+    instead of both ragged against the same edge. And a bare row made a computed plan look like
+    a list the athlete typed: Today is the record and stays bare, Next is a set of objects the
+    app placed off a history it read, and the surface is what says so. That is the
+    justification skill §Structure asks for before a card may exist.
+  - **The decision strip.** `GOING UP · 3` · `HOLDING · 1` · `NEW · 1`, counted off the engine's
+    own `Move`. The athlete already knows which lifts are in their push day; what they do not
+    know is which of them moved. **It counts across the session and never reorders it** — the
+    order somebody trains in is a training opinion the app does not hold (§20).
+  - **Every pill opens the rule behind it** (owner's ask). The row says *what* changed, the pill
+    says *what rule changed it*, in a sheet with the engine's rule in plain language and the
+    lifts it applies to, each carrying the reason it already shows. The copy is fixed text about
+    the ENGINE — what the code does, never a claim about a person — so no model touches it and
+    there is nothing for a guard to validate.
+  - **The split switcher is back, under the title.** The owner asked to see push and pull
+    separately; these chips have always done it and the redesign draft had dropped them.
+
+  **The pinned Start is gone, and the Today checklist with it.** CLAUDE.md §3: *"Training input
+  is free text first. Touch controls repair, inspect, or enrich it; they never replace writing
+  as the primary path."* A full-width green button on Next that filled Today with a checklist
+  was that rule quietly inverted. Next is a briefing you read; Today is where you write, and the
+  18 Aug ruling that Today carries no prescription at any depth is restored intact.
+  `start-bar.tsx`, `session-store#startFromNext` and the `PlannedChecklist` mount stay on disk,
+  unmounted — the wire is one line. **This retires the green-CTA question**: there is no longer a
+  green control anywhere, so the conflict with skill §Colour and §Decided-1 lapses rather than
+  being resolved.
+
+  **No serif.** The owner ruled one type family across the whole app; the warmth comes from the
+  cards, the washes and the air instead.
+
+  Nothing on this screen calls a model, so no §9.4 evaluation is owed, and no §13 event was
+  invented for a control that no longer exists.
+
+- **23 Aug 2026 — text was being cut off at the top: the reader's text scale was applied to
+  every line height TWICE** (`lib/theme/scale.ts`, `lib/theme/index.ts`, `components/note-metrics.ts`,
+  `components/gutter-value.tsx`, `components/sign-in-demo.tsx`, `components/charts.tsx`,
+  `app/paywall.tsx`, `components/fix-sheet.tsx`, `components/onboarding/OnboardingScreen.tsx`,
+  `lib/theme/line-box.test.ts`). Reported by the owner as "some texts are cut off at the top,
+  in onboarding and elsewhere", with a screenshot of the welcome step where the dot of the "i"
+  is shaved flat and the "g" of the line above touches the "i" of the line below.
+  - **The cause.** `lineFor()` multiplied every line height by `osFontScale`, on the premise —
+    written into its own docstring — that "RN scales a Text's fontSize by the OS font scale but
+    leaves an explicit lineHeight exactly where it was written". The renderer we ship says
+    otherwise: `react-native/Libraries/Text/RCTTextAttributes.mm:138` multiplies `_lineHeight`
+    by `effectiveFontSizeMultiplier`, the same multiplier the font size gets, clamped by the
+    Text's own `maxFontSizeMultiplier` (`:236`). So the line box moved with the SQUARE of the
+    reader's setting while the glyph moved linearly.
+  - **What that costs at each setting.** At the default (1.0) the two agree and nothing shows,
+    which is why it shipped and why a year of review missed it. At iOS's xSmall (0.823) every
+    line box in the app is 18 % tighter than its glyphs: `question` 30/34 renders at 0.93 em
+    where a tittle needs 0.95, so the dot of an "i" is cut off by the top of its own line and
+    consecutive lines collide. At the 1.5x ceiling it fails the other way — a body paragraph is
+    set with half a line of extra leading, and every screen's arithmetic for "does this fit" is
+    wrong.
+  - **Read off the owner's screenshot, not inferred.** Pixel-measured: baseline-to-baseline
+    72.5 px against a 76.7 px em on the headline (0.946 em rendered, 1.133 designed) and 54 px
+    against 44.0 px on the subtext (1.227 rendered, 1.471 designed) — one multiplier of 0.834 on
+    both blocks, which is iOS xSmall (0.823) inside measurement error. The absolute sizes agree
+    too: `body` renders at 14.67 pt where `moderateScale(17) x 0.823` = 14.70.
+  - **The fix is one multiplier, applied once, by whoever owns the thing being measured.**
+    `lineFor` returns the unscaled line height and the renderer grows it; a `View` that reserves
+    room for a line of text wraps it in the new `textRoom()`, because nothing grows a view. Six
+    call sites were geometry rather than text and moved to `textRoom` (the paywall's price slot,
+    the fix sheet's words box, the funnel's reserved eyebrow row, the chart's value band, and
+    the note's gutter rows via a new `NOTE_LINE_BOX`). At the default text size the output is
+    identical to before, to the pixel. `MAX_FONT_SCALE` is now enforced where it belongs — the
+    `maxFontSizeMultiplier` on each Text — so a `FIXED_FONT_SCALE` surface finally clamps its
+    line height to 1.2 instead of to the app-wide 1.5.
+  - **The onboarding emoji had a second, unrelated line-box fault** (`OptionRow.tsx`). Pinned to
+    `lineHeight: moderateScale(24)` under a 19 pt glyph: measured with CoreText, SF Pro wants a
+    22.4 pt line at that size and Apple Color Emoji wants 28.2, because an emoji's ink fills the
+    em — 17.9 pt of it above the baseline against 13.5 for a capital. Two device pixels off the
+    top of every emoji at the default size, a third of the glyph at 1.5x. Fixed by setting no
+    line height at all: the face's own box is the one value that cannot be wrong at any text
+    size. The row already centres its children, so only the emoji re-centres.
+  - Both faults are guarded by source tests (`line-box.test.ts`, `emoji-box.test.ts`), because
+    both read as correct in review — `lineHeight: 24` beside `fontSize: 19` looks generous, and
+    a line height that scales with the reader looks like the accessible thing to do.
+  - **The rest of the type scale was measured and is NOT clipping:** the tightest tokens
+    (`displayLarge` 1.07x, `heroNumber` 1.08x, `question` 1.13x) sit under SF Pro's own 1.178x
+    line, but the ink they carry clears the baseline the descent leaves — caps at 0.705 em,
+    tittles at 0.739 — by 4 pt or more at the default setting. Nothing was changed there.
+  - Gates: typecheck 0 · **451/451** · lint 0 · iOS export pass. **Unverified:** arithmetic
+    against measured font metrics and one screenshot, not a device capture — the funnel at
+    Dynamic Type 0.823x and 1.5x still has no QA record (see the 9 Aug accessibility row).
+
+- **21 Aug 2026 — TestFlight readiness audit, and the first two fixes off it.** The audit is
+  `TESTFLIGHT_READINESS.md` at the repository root: a read-only pass over build config, Apple
+  compliance, billing state, backend, failure modes, screen completeness, legal metadata and
+  the tester experience, with every finding tied to a file, line or config key. Its verdict is
+  that the **code** is beta-ready and the **provisioning** is not — five blockers, four of them
+  account work no agent can do (App Store Connect products + a RevenueCat offering, the EAS
+  environment variables, `eas init`, the owner's three strings). It is the authority on release
+  readiness; this section stays the authority on what is implemented.
+  - **Export compliance is answered in the config, once** (`app.json`, `ios.infoPlist`).
+    `ITSAppUsesNonExemptEncryption: false` was absent, so every upload would have parked in App
+    Store Connect as *Missing Compliance* until a human answered the question by hand — per
+    build, forever. Recore uses HTTPS and system crypto only, so `false` is the true answer.
+    Verified with `npx expo config --type introspect`, which also confirms the two dictation
+    strings, `CFBundleDisplayName: Recore` and `UIUserInterfaceStyle: Light` land as intended
+    (the checked-out `ios/` folder is git-ignored and stale; EAS regenerates it from this file).
+  - **There is a last screen** (`components/error-screen.tsx`, exported as `ErrorBoundary` from
+    `app/_layout.tsx`). An uncaught render error in a release bundle used to close the app: no
+    screen, and with no crash reporter installed, no report either — a beta tester cannot send
+    a stack trace they never saw. It now says the one thing that is true and matters (the record
+    is on the device and nothing was lost, because every line is written in the instant it is
+    typed), offers `retry`, and prints the error's own message, selectable, because a screenshot
+    is currently the whole bug report. It mounts BELOW the root layout, so it may not touch
+    `SafeAreaProvider`, `GestureHandlerRootView` or auth — plain views, padding instead of
+    insets — and it dismisses the splash itself, since a crash before the session resolves would
+    otherwise leave the native image on top of it.
+  - **Crash reporting exists, and the fence around it is the feature** (`lib/crash.ts`,
+    `@sentry/react-native` 7.2.0, owner's call on 21 Aug). One SDK, one purpose: the error and
+    where in the code it happened. `sendDefaultPii` off and `setUser` called nowhere, so a
+    report is not attached to an account and two reports cannot be joined into a person;
+    console breadcrumbs dropped at the source, because a breadcrumb trail that echoes console
+    output is exactly how a stray log of note text would escape; `user` / `request` / `extra`
+    stripped in `beforeSend`, after every integration has had its turn; session tracking and
+    tracing off, so nothing is sent about a person who has not crashed. `EXPO_PUBLIC_SENTRY_DSN`
+    empty is the default and a working state — nothing initialises and no socket opens. **§12
+    changed in the same commit**: the privacy policy gained "If Recore crashes" and names Sentry
+    as the fifth processor, `LAST_UPDATED` moved to 21 August 2026, and `npm run build:legal`
+    regenerated `docs/`. The App Privacy answer for Diagnostics is now **Yes, not linked to the
+    user** (`RELEASE.md` §4). There is no in-app switch yet and the policy says so; a toggle in
+    You is the obvious follow-up and is the owner's call.
+  - **The weekly recap row stops implying a standing appointment** (`(tabs)/you.tsx`). `Sundays
+    18:00` is the hour it fires, but `lib/recap.ts` schedules ONE dated notification and re-arms
+    it when Today mounts or a session is finished — so the accordion now states the mechanism
+    where someone deciding reads it. The repeating `CALENDAR` trigger was considered and
+    rejected: the body carries this week's own session count and would go stale. Neutral
+    phrasing on purpose (§2 rule 6 — a missed week is not a lapse).
+  - **Still open from the audit, and none of it is code:** billing provisioning (without it a
+    release build resolves to `lapsed` and Today becomes the read-only ledger for every tester),
+    `EXPO_PUBLIC_*` as EAS environment variables — now four of them — `eas init`, and
+    `SUPPORT_EMAIL` + `HOSTED_BASE_URL`. The analytics sink stays open by design: `flush()` is
+    still a no-op, and wiring a provider remains an owner decision with a privacy consequence
+    (§2 rule 8).
 
 - **20 Aug 2026 — the onboarding conversion pass** (owner ask, nine tasks). Fifteen files, six
   new: `lib/demo-parse.ts` (+ test), `lib/demo-parse-remote.ts`, `lib/onboarding-copy.ts`
@@ -2167,3 +2568,1182 @@ src/app/onboarding` → no matches.
   cut-out mascots against `color.bg` on a real display, and VoiceOver on the new
   primary/outline recap rows. No prompt, schema or guard was touched, so no §9.4 evaluation is
   owed.
+
+---
+
+## 28 August 2026 — the two palettes became one
+
+**Owner's ruling: the v2 onboarding palette wins and becomes the app's palette.**
+
+For a month the repository ran two colour systems. `src/lib/theme/color.ts` held the warm-paper
+set of 20 Aug (`#FCF9F4` canvas, white surface, `#1C1C1E` ink, `#0B5CD6` Volt blue) and
+`src/components/onboarding-v2/tokens.ts` held the set `docs/onboarding-v2-spec.md` §0 froze
+(`#F4F5EF`, `#FBFCF6`, `#171914`, `#007AFF`). The second one is now the only one.
+
+**`color.ts` is the single source.** Token NAMES were kept wherever one already existed, so no
+call site was renamed: v2's `ink` → `textPrimary`/`accent`, `inkSecondary` → `textSecondary`,
+`blue` → `brand`, `planned` → `signal`. Four tokens were added (`brandWash`, `disabled`,
+`track`, `shadowCast`) and four that v2 lacked were **re-derived warm rather than dropped** —
+`surfaceHigh`, `accentPressed`, `border`, `divider` were all OKLCH hue 286°, a blue grey.
+
+**Every neutral is derived, and the derivation is asserted.** The canvas is OKLCH
+L 96.77 % · C 0.008 · H 114°. `surfaceHigh` is that at L × 0.96 (`#E7E8E2`), `divider` L × 0.945,
+`border` L × 0.88 (`#CECFC9`, holding the 20 Aug ruling that a hairline must be findable —
+v2's own 14 % border would have weakened it to 1.34:1). The greys are the ink composited on the
+canvas and frozen opaque: `textSecondary` 64 %, `inkData` 55 %, `textMuted` 50 %, `disabled`
+22 %, `track` 10 %. `color.test.ts` re-runs all of that arithmetic, so a hand-picked
+"nearly the same" grey fails the build.
+
+**Three things the merge cost, all owner-accepted:**
+
+1. **The blue.** `#007AFF` measures **3.66:1 on the canvas**; white on it measures **4.02:1**,
+   where Volt measured 5.53 and 5.97. A filled primary CTA with a white 17 pt label is now
+   below the 4.5:1 AA floor **app-wide**, not only in onboarding. Accepted on the grounds that
+   onboarding already shipped it and the app should not wear two blues.
+2. **`textMuted`.** v2's `inkMuted` at 42 % measured 2.63:1 and failed the 3:1 floor a non-text
+   mark owes. Raised to **50 %** by the owner: 3.30:1 on the canvas, 3.51 on `surface`. It is
+   2.94 on `surfaceHigh` and **must not be drawn on the recessed tone** — the same restriction
+   `attention` already carries.
+3. **`signal` is four thousandths under AA.** `#547C00` on `#F4F5EF` is **4.4962:1**; it was
+   4.57 on the canvas it left. Neither value may move without the owner, so
+   `paper-field.test.ts` carries a TRIPWIRE asserting the ratio sits in [4.49, 4.50) — it fires
+   if the green is fixed *or* if it falls further. `#4F7500` is the value that would clear it.
+
+**The canvas got DARKER, not lighter** (`#F4F5EF` is below `#FCF9F4` on all three channels), so
+every ink gained contrast against the page. `textSecondary` went 4.83 → 5.12. Nothing regressed
+because of the canvas; the two regressions above are the ink and the blue.
+
+**The gradient was re-derived, and the canvas guard was rewritten.** `paper-field.ts` kept the
+old field's own hue endpoints (peach 71°, lavender 326°) and re-solved them at the new paper's
+lightness, then matched each stop on **WCAG luminance** rather than OKLCH lightness — so every
+ink now measures the same on all three stops, which is what `color.ts`'s ladder assumes when it
+says "on canvas". `largestStopContrast` is 1.005:1. The guard's rule 3 was
+`r >= g && r >= b` ("warm-led"), which **rejected the app's own new canvas**: `#F4F5EF` is
+`rgb(244, 245, 239)` and green leads red by one unit — this file's test used to assert
+`isCanvasTone('#F4F5EF') === false` in as many words as "the green-cast paper". Rule 3 is now
+**"blue never leads": `b ≤ max(r, g)`**, which bars the one thing it was ever really barring and
+still rejects `#F2F2F7`, `#F8F9FB`, `#F0F0F0`, white and the brand.
+
+**`onboarding-v2/tokens.ts` holds no colour.** `v2color` is now an alias object over `color.*`,
+marked `@deprecated`. It was kept rather than deleted because twelve of its keys are live across
+22 files and renaming them inside the same change as an app-wide palette shift would put two
+unrelated risks in one unreviewable diff; the values are single-sourced now and the call-site
+rename is a separate mechanical pass. **The isolation rule in its header is retired for COLOUR
+only** — the header says so explicitly. v2's components, flow logic, store and routes stay
+separate, nothing in v2 may read `src/components/onboarding/`, and deleting either onboarding
+directory must still leave the other standing.
+
+**No colour may be named outside `color.ts`.** `color.test.ts` walks `src/`, strips comments,
+and fails with file, line and value on any hex literal. Verified to fail on a planted one.
+Two exemptions, both deliberate: test files (a guard that cannot write down the value it rejects
+asserts nothing) and comments (this repository records the measured ratio beside almost every
+token, and that history is why a future change can be made safely).
+
+Gates: typecheck 0 · **532/532** · lint 0. **Unverified:** device QA — the whole app now renders
+on a different paper, and neither the new gradient nor white-on-`#007AFF` has been seen on
+hardware. No prompt, schema or guard was touched, so no §9.4 evaluation is owed.
+
+---
+
+## 28 August 2026 — Progression rebuilt: one lift, one card per metric
+
+Rebuilt from Lyfta's *Exercise Progress* screens (`6443740936/oth_v4hq9`, `oth_pj6we`; notes and
+measurements in `research/lyfta/screens.md`).
+
+**The axis flipped.** The tab was *one card per lift carrying one metric* — eight weeks of
+estimated 1RM for every qualifying exercise, re-orderable four ways. It is now *one lift, one
+card per metric*: an exercise is selected at the top and the stack below answers several
+questions about that one lift.
+
+| removed | why it is not missed |
+|---|---|
+| Four orderings (Biggest gain / Recent / Stalled / A–Z) | They ranked lifts against each other. With one lift on screen there is nothing to rank. |
+| The card accordion onto the last session's set table | The chevron drills in instead, so a card is a destination, not a container, and the stack keeps its height. |
+| The gain/loss wash chip and the coloured terminal dot | The chart is monochrome. Green is the PLANNED continuation only; blue is a control colour and belongs to the selector. |
+| The `belowFloor` list of under-charted lifts | A thin lift is now selectable like any other and its cards draw the placeholder chart with "No data yet" — a better answer than a footnote, and the same one a new account gets. |
+
+### Live
+
+- `src/lib/progression-metrics.ts` (+ 15 tests) — the pure half: the metric set, the series
+  builder, the selector's list, and `describeSeries` for the one-line sub-label.
+- `src/lib/motion/path.ts` (+ 7 tests) — monotone smoothing.
+- `src/lib/motion/chart.tsx` — `MonotoneSeries`, added beside `DrawnLine`/`GrowingBar`.
+- `src/components/progression/bare-chart.tsx`, `metric-card.tsx`.
+- `src/app/(tabs)/progress.tsx` — rewritten.
+
+**Two metrics of six.** Estimated 1RM and Heaviest set, both straight out of `getLiftSessions`
+with no new SQL. Session volume (bar) and days-between-sessions (bar) are next and need none
+either. Reps-per-session and sets-per-session need one line each in `db/progression.ts`
+(`SUM(s.reps)`, `COUNT(*)`) and are not offered until that lands.
+
+**There is deliberately no "Reps" card.** `topReps` is `MAX(reps)` across a session's counted
+sets — usually the *lightest* set's rep count. A card drawing it would show a number whose
+meaning changes session to session. Asserted in `progression-metrics.test.ts`.
+
+### Four decisions worth not re-litigating
+
+1. **The curve is a Fritsch–Carlson monotone cubic, not a Catmull-Rom.** Catmull-Rom overshoots:
+   a lift that went 100 → 105 draws a curve touching 107. On a decorative chart that is a
+   rounding artefact; here it is a load nobody lifted, inside the app whose first rule is that
+   the record is the source of truth. `path.test.ts` samples every curve it builds and asserts
+   the value between two sessions never leaves the band between them.
+2. **The gridlines are texture, not a scale.** Six evenly spaced hairlines, and the series is
+   laid out in a *taller* band than they occupy, so a peak sits above the top line and a trough
+   below the bottom one. They are drawn with `alpha(textPrimary, 0.09)`, deliberately not with
+   `color.border` — `border` is the app's hairline that has to be FOUND, and this is the
+   opposite object.
+3. **The card is `surfaceHigh` `#E7E8E2`.** Lyfta's `#EEF2FA` is a cool blue-grey on white; the
+   equivalent was re-derived from our own canvas in the 28 Aug palette merge and lands at
+   1.12:1 against the page — the same separation the reference draws, arrived at independently.
+4. **The big number is `textSecondary`, not `textMuted`.** The reference's grey is lighter, but
+   on `surfaceHigh` `textMuted` measures 2.94:1 and `color.ts` bars it there. The sub-label is
+   the same colour for the same reason plus the ladder's standing rule that text carrying
+   information is `textSecondary` or ink. Size alone carries the hierarchy — 48 pt against 15.
+
+### Two things that are honest limitations, not bugs
+
+- **The chevron opens the lift's full history, not a per-metric detail view.** That view does not
+  exist yet. The nearest true destination beats a dead control.
+- **`planned` is always null, so no green tail is drawn yet.** `predict/data.ts` computes a
+  `Prescription` per exercise and discards it into the ghost's *text*, and the cached row stores
+  only that text, so there is no structured planned value to read. `MetricSeries.planned` and
+  `MonotoneSeries`'s dashed green tail both exist, so wiring it is a one-line change rather than
+  a chart rewrite. **Nothing green renders until it is real.**
+
+### The selector — SUPERSEDED the same day
+
+This build put a `ChipRow` of exercises at the top of the tab, capped at the eight most recently
+trained because `ChipRow` wraps and never scrolls. It was flagged here as the weakest part of the
+rebuild, and the owner replaced it the same day with the two-level structure recorded in the next
+entry. **Nothing below this line about a selector is still true.**
+
+Gates: typecheck 0 · **557/557** · lint 0 · iOS export pass. **Unverified: the screen has not
+been seen rendered.** The simulator's app is gated behind the onboarding sign-in and getting
+past it means either authenticating on the owner's account or faking onboarding state, neither
+of which an agent should do. The palette was confirmed rendering on device; this tab was not.
+Device QA still owes: Dynamic Type at the ceiling (a 48 pt number and a wrapping chip row are
+both at risk), VoiceOver over the card's grouped label and the `CountUp` TextInput inside it,
+and Reduce Motion across the draw, the count and the stagger.
+
+---
+
+## 28 August 2026 — Progression becomes two levels
+
+Owner's call, after the one-screen rebuild above shipped with a capped chip-row selector.
+
+**Level one, the tab root (`src/app/(tabs)/progress.tsx`) — "what is moving?"** Every lift in the
+window as a bare `Row`: name, how far it moved in words, session count, last day, its latest
+estimated 1RM, and a sparkline in the trailing slot. Searchable above seven lifts (the same floor
+the Lifts screen uses). Group chips above the list.
+
+**Level two (`src/app/lift/[key].tsx`) — "what is this lift doing?"** The metric-card stack,
+pushed. No selector: the title is the lift's name and the previous screen was the picker.
+
+**This is how the reference actually works.** Lyfta's Exercise Progress screens have no exercise
+selector because they are reached *from* an exercise. The chip row existed only because the cards
+had been put on a tab root that had to choose one somehow, and it cost three things at once — a
+cap at eight visible lifts, a three-row wrap at the Dynamic Type ceiling, and the loss of the
+cross-lift view, so "am I progressing?" could only be asked one exercise at a time. Splitting the
+tab deleted the control and all three problems with it.
+
+### The groups are the athlete's own split, not an anatomy chart
+
+`src/lib/progression-overview.ts` (+ 10 tests). There is **no muscle or body-part column anywhere
+in this schema** — `exercises` carries `canonical`, `aliases`, `modality`, `increment_kg` and
+nothing else — and this screen does not add one. A catalogue of exercise → muscle is a thing our
+own parser immediately outgrows: it takes free text, so a lift someone named themselves would land
+in "Other" on the one screen meant to hold their record.
+
+`predict/split.ts` already knows something truer. It clusters sessions by which exercises appear
+together (Jaccard ≥ 0.5) in order to predict the next session, and that clustering *is* the
+grouping. A group is named after the lift performed most often inside it, in the person's own
+words; two groups that would take the same name are told apart by their second lift, never by a
+number. The strip carries the line "Grouped by what you train together", because a label a person
+cannot account for reads as a category we imposed (CLAUDE.md §2.2: personalise only from chosen
+information — nothing here is asked and nothing is invented).
+
+**One cluster means no groups.** A full-body routine repeated every session yields a single
+cluster, and a strip with one chip is furniture — `groups` comes back empty and it does not render.
+Asserted.
+
+### Two smaller decisions
+
+- **Direction is a word here, not a colour.** The 17 Aug ruling tinted a lift's *delta chip*
+  gain-green or loss-red; that chip is gone with the card it lived on, and the bare `Row` this list
+  is built from tints the **value**, not the delta. Colouring an absolute load by direction would
+  say "116.5 kg is a gain", which is not a thing. So the word carries it — which §14 required
+  beside the colour anyway. Restoring the tinted delta needs a purpose-built row: a deliberate
+  omission, not an oversight.
+- **`exercisesInWindow` and `ExerciseOption` were deleted** from `progression-metrics.ts` with the
+  selector they fed, along with the two tests that only covered them. The properties those tests
+  asserted are covered by `progression-overview.test.ts`.
+
+### Also fixed in the same pass — the card was wrong, and so was its motion
+
+Re-measured against the reference at 3× (`research/lyfta/screens.md`), the card had been built far
+too tight. Every gap is now taken off the still: **32 pt above the name, 17 to the number, 23 to
+the sub-label, 45 to the first gridline, 26 under the chart**, with the number at 44 pt rather than
+48 (the reference's digits measure ~31 pt of cap height). Dots went 3.5 → 4, the stroke 2 → 2.5.
+The air is the design; without it a 44 pt number reads as shouted rather than calm.
+
+**The placeholder was drawn at 13 % ink and looked like a rendering failure.** Every Lyfta screen
+in the research folder is an empty state, so the shape being studied *is* the placeholder — and it
+is drawn at full data weight, about 2.2:1. It is now 38 %: one step under `inkData` rather than
+equal to it, because unlike Lyfta our cards mix (a lift can have an estimated 1RM and no heaviest
+set) and two charts of identical weight would leave the sub-label doing all the work.
+
+**And the charts only animated once.** `MonotoneSeries`'s draw effect did not list the path in its
+dependencies, so the line drew on mount and every later change snapped into place — tapping a
+different lift silently swapped one static curve for another. `d` is in the deps now, so
+**switching lifts re-draws the chart**, and `GrowingBar` carries its value in its key for the same
+reason. There is no motion reference to copy: all six screens of Lyfta's Exercise Detail flow are
+images, not video.
+
+Gates: typecheck 0 · **565/565** · lint 0 · iOS export pass. **Unverified: neither screen has been
+seen rendered.** `src/app/index.tsx` currently carries an uncommitted `return <Redirect
+href="/you" />; // TEMP-INSPECT` and the simulator's app sits behind the onboarding sign-in, so
+getting to the tab means either authenticating on the owner's account or editing their work in
+progress. Device QA still owes Dynamic Type at the ceiling, VoiceOver over the card's grouped
+label and the `CountUp` inside it, and Reduce Motion across the draw, the count and the stagger.
+
+
+---
+
+## 28 August 2026 — v2 becomes the onboarding
+
+The owner's ruling: **the v2 flow is the primary onboarding.** Until today it was a
+development-only sandbox (see *"Onboarding v2 sandbox (27 Aug 2026)"* above), reachable from
+three rows in the You tab and incapable of writing anything. It is now the flow a new person
+meets, and the illustrated v1 funnel at `src/app/onboarding/` — **still present, still working,
+still reachable from the development rows** — is no longer dispatched to.
+
+Nothing was deleted. `docs/onboarding-v2-spec.md` §0 is amended in place with the same ruling.
+
+### What the promotion actually required
+
+A flow that collects for four minutes and discards everything is a demo. Four things had to
+become true before it could be the real one:
+
+| | Before | Now |
+|---|---|---|
+| **Who gets sent there** | Nobody. `app/index.tsx` sent an un-onboarded launch to `/onboarding/<step>` | `/onboarding-v2/<step>`, resumed where a killed app left off |
+| **Does a run survive a kill** | No — the store was in-memory by design ("every run starts clean") | Yes, for a real run: `state/onboarding-v2.ts` persists answers **and position** through the SQLite meta KV under `pref_ob_v2` |
+| **Does anything reach the app** | Nothing. No `pref_*`, no `markOnboardingDone` | One commit, once: `lib/onboarding-v2-commit.ts` |
+| **How it ends** | A done screen that says nothing was saved, then back to You | **On the paywall.** Screen 20's Continue commits and hands the root to the dispatcher; the done screen is development-only now and a real run never sees it |
+| **Getting in with an existing account** | Nowhere — the link on screen 1 opened an alert | Screen 1's "I already have an account" opens the real `/sign-in`; when the session lands the funnel stands aside |
+
+### The commit point
+
+`lib/onboarding-v2-commit.ts` is the only place in the subtree that writes to the app, and it
+runs once, on the way to the done screen. It writes the name; goal, experience, frequency and
+split through `lib/profile-answers.ts` (which also keeps the v1 mirrors `pref_goal` and
+`pref_experience` that the prediction engine, the paywall copy and Profile read); the key lifts
+and their loads; the smallest plate; the tracker; the attribution; and the recap answer. Then
+`markOnboardingDone`, `setObStepCount`, `markOnboardingCompleted`.
+
+Every write is guarded: **an unanswered screen writes nothing rather than a default**, so the
+funnel can still tell "did not say" from "said the first option", and a replay that skips a
+question does not silently replace last month's answer with a guess.
+
+### Two answers needed a translation, and it is pure and tested
+
+`lib/onboarding-v2-map.ts` (+ `onboarding-v2-map.test.ts`):
+
+- **"Hevy or Strong" is one option in v2**, where v1 asked about the two products separately.
+  It is stored as its own value, `ObTracker: 'app'` — mapping it onto either product would put a
+  name on screen that nobody chose. `wantsImportFastPath` offers the §2.1 CSV fast path for it
+  exactly as it does for the two narrow answers, and `import-start.tsx` says "Hevy or Strong"
+  when that is all it was told. Notes / spreadsheet / paper collapse to `notes` (none of them
+  hands the importer a file); "I don't log anywhere" is `none`.
+- **The recap answer has a DAY in it.** Screen 20 asks "Sunday evening or Monday morning", and
+  `lib/recap.ts` scheduled on Sunday for everybody — so the flow asked a question the app then
+  ignored. There is now a `pref_recap_day` (Sunday by default, so no existing install moves) and
+  `lib/recap-schedule.ts` (+ tests) owns the arithmetic: the next fire date for either day, and
+  **which week the notice is about** — a Sunday notice closes the week it lands in, a Monday
+  notice reports the week that ended the night before, and neither counts into a week that has
+  not happened yet. The recap is still switched ON only when iOS actually granted permission on
+  screen 20; an "On" that can never fire would be a lie (§2 rule 5).
+
+### The sandbox promise survives, scoped to a development run
+
+The You rows open `/onboarding-v2/1?dev=1` and every push carries the parameter forward, so the
+mode is a property of the navigation rather than a latch somebody can leave on — an abandoned dev
+run cannot make the next real onboarding write nothing. While it is set: the store's storage
+adapter refuses every write, the commit returns immediately, the funnel's step high-water mark is
+not touched, and the done screen still says plainly that nothing was saved. Leaving a dev run
+rehydrates the real answers, so a replay cannot overwrite them — and the row that launches one
+clears memory only, never the stored row, so showing yourself the funnel cannot delete your own
+onboarding. "Reset sandbox state" still does clear it, says so on the row, and is the only thing
+that does.
+
+### Two surfaces outside the flow had to follow it
+
+- **The paywall's projection strip** (`components/onboarding/ProjectionStrip.tsx`) read the v1
+  answers store, which is empty for everyone who walks v2 — the paywall would have gone back to
+  selling nothing, which is the exact regression that component was built to fix on 20 August. It
+  now falls back to `projectionFor(v2 answers)` and draws **v2's own stepped series**, not a
+  straight ramp: the promise is to reprise the picture the person just saw.
+- **The first session is still the line they wrote.** `lib/onboarding-seed.ts` reads v2's
+  `demoText` first and the v1 answers behind it, so an install that finished the old flow before
+  this build and signs in after it still gets its line.
+- **"Restart onboarding" in You** now replays v2 rather than v1. It keeps the previous answers
+  ticked and commits again through the same single commit point.
+
+### The two ends of the funnel
+
+**The way out** is one call from screen 20: commit, `dismissAll`, `replace('/')`. Both halves are
+needed because the flow is a nested stack — `replace` alone would have left twenty screens sitting
+under the paywall, reachable with a back swipe from the one screen that must not be escapable
+backwards. A `/onboarding-v2/done` reached by a stale or hand-typed URL redirects to the
+dispatcher rather than telling somebody they are set up.
+
+**The way in for people who are not new** is screen 1's footer link. It used to open an alert
+saying sign-in was off (true, in a sandbox); it opens the real `/sign-in` now. Signing in there
+raises a question the funnel could not answer before: the dispatcher's rule was "not onboarded →
+onboarding", and a returning person on a fresh install has no local onboarding flag, so they would
+have been marched back to screen 2 to be asked where they log their training. The rule is now
+"not onboarded **and signed out**", and the flow watches for a session appearing and steps aside
+(guarded on `isOnboardingDone()`, so an entitled subscriber replaying setup from You is not thrown
+out on the first frame). It also fixes a case nobody had reached yet: `ensureLocalUser` wipes this
+device's meta when the account changes, and signed-in-with-no-local-flag is a returning user, not
+a new one.
+
+**After the paywall is unchanged** and was already right: plan → `/sign-in` → the store's purchase
+sheet, with the paywall staying mounted underneath so it finishes the purchase when the session
+lands (§6). The account is created as part of the paywall's forward step, not after the charge.
+
+### What this does NOT do
+
+No account creation, no trial start, no RevenueCat call and no paywall push anywhere in the v2
+subtree. The dispatcher owns what happens after `onboarding_done` is set, exactly as it did for
+v1: no session → `/paywall`; entitled tracker user who was never offered import → `/import-start`;
+otherwise `/today`.
+
+An install part-way through the v1 flow starts v2 from screen 1 rather than resuming a position
+that names a different screen. Its old answers are left untouched.
+
+### The character is out of its box (owner, same day)
+
+The drawings in `assets/new_onboarding/` are 1024×1024 exports with **no alpha channel**: what
+looks like transparency in them is a checkerboard that was flattened into the picture. On the warm
+paper canvas the character therefore arrived inside a grey tiled square, and `contentFit: contain`
+was fitting a canvas that is ~78 % empty, so the figure was also smaller than the box implied.
+`components/profile/identity.tsx` measured and documented this on 28 August and left the asset
+pass for the owner to call; this is that call.
+
+`scripts/cutout-character-art.py` keys the pattern out of all nineteen poses into
+`assets/new_onboarding/cutout/`, trims each to the drawing and caps it at 900 px tall. The
+identification is not a threshold — a region is background if it touches the edge **or carries
+both checker tones**, which is what also removes the enclosed gaps between the legs and under the
+bag strap that a flood from the edge never reaches, while leaving the character's own flat whites
+alone. The originals are untouched.
+
+`character-art.ts` now carries each drawing's aspect ratio and `Character.tsx` sizes by HEIGHT, so
+the number in the code is the character's height on the glass rather than the side of a mostly
+empty square: hero 248 (capped at 32 % of the window on small screens), ring 150, aside/below 104.
+
+### Three small things the walkthrough turned up
+
+- **Screen 1 opened on an empty white disc.** The frame's back-button SPACER reused the button's
+  own style, surface fill and all, so the one screen with nothing to go back to drew a blank
+  circle in the corner. It holds the rail's start position and paints nothing now.
+- **Two VoiceOver labels were still Slovenian** — the progress rail read "Napredek" and the name
+  field "Ime". §0: everything user-facing is English, and a screen reader is user-facing.
+- **The Metro toast during the walkthrough was not this work.** `src/app/paywall-v2/plan.tsx` was
+  mid-edit and failing to transform; it compiles again and the iOS export passes.
+
+### Unverified
+
+**Seen rendered, in the simulator (iPhone 17 Pro Max, iOS 26.5), by deep link:** the welcome,
+name, goal, greeting and building screens, and the cut-out character on all of them — transparent
+on the paper canvas, at the new sizes, including inside the rotating ring. That is a rendering
+check and nothing more.
+
+**Not exercised by a real run:** every transition that needs a tap. Resume after a kill, the
+commit itself, the hand-off from screen 20 to the paywall, the paywall's own plan → sign-in →
+purchase chain, screen 1's sign-in link, and the dev rows still being harmless are all unverified
+outside the type checker and the unit tests. The recap day cannot be verified at all without
+waiting for a real notification to fire. Driving the taps would have meant taking over the
+owner's simulator with UI automation while they were working in it.
+
+Gates: typecheck 0 · **590/590** · lint 0 · iOS export pass.
+
+---
+
+## 28 August 2026 — the three-screen paywall, screen 3 of 3 (plan selection)
+
+**What was asked.** Rebuild the paywall as three screens on the pattern the
+top-grossing catalogue has converged on — trial offer → trial reminder → plan
+selection — and build the plan screen first, "since it decides the other two",
+for review before the other two are started.
+
+**What shipped.** The plan screen only, at a new route that nothing links to.
+
+### Files
+
+| File | What it is |
+|---|---|
+| `src/app/paywall-v2/_layout.tsx` | The three-screen stack. `slide_from_right`, gesture enabled, canvas painted on the navigator. |
+| `src/app/paywall-v2/plan.tsx` | Screen 3. The money screen. |
+| `src/components/paywall-v2/copy.ts` | The headline (from onboarding screen 3's obstacle) and the concrete number (the reveal's first prescribed load). Pure. |
+| `src/components/paywall-v2/timeline.ts` | The trial timeline as data. Pure, `nowMs` injected. |
+| `src/components/paywall-v2/TrialTimeline.tsx` | The vertical timeline: 36 pt brand-blue nodes on a neutral rail. |
+| `src/components/paywall-v2/PlanCard.tsx` | One stacked full-width pricing card. |
+| `src/components/paywall-v2/Check.tsx` | The check glyph, local to this directory. |
+| `src/components/paywall-v2/copy.test.ts` | 14 tests over both pure modules. |
+
+### The research it was built from
+
+`6480417616/pay_8ixcs` (Cal AI, `Trial Plan Selection`) and its five nearest
+library neighbours — Daily Hanzi 0.91, Essembl 0.88, Quran Widgets 0.88,
+Antique Identifier 0.86, Coursology 0.86, in five unrelated categories. Five
+products with nothing in common draw the same anatomy, so it is an industry
+pattern and not one company's taste: back chevron → bold headline → vertical
+trial timeline → two plan cards with annual preselected → a checked "no payment
+due now" → full-width pill CTA → legal fine print. Gravl `6450921637/pay_k0cx3`
+supplied the stacked (rather than side-by-side) card arrangement. Neither
+palette was taken — Cal AI is white, Gravl is navy and neon lime.
+
+### What is Recore's rather than the reference's
+
+- **One accent, spent twice.** Brand blue on the three timeline nodes and on the
+  selected card's border and check. Nothing else on the screen is coloured: the
+  "N DAYS FREE" tab is ink, the saving is grey text, the rail is `color.track`.
+  PLANNED green does not appear — nothing here is a prescribed load.
+- **The copy is the person's own answers.** The headline names the obstacle they
+  picked on onboarding screen 3; the timeline's "Today" row repeats the first
+  prescribed load the reveal printed, computed by the same `firstSessionTargets`
+  call so the two screens cannot disagree about a number.
+- **Nothing is fabricated.** No reviews, no ratings, no user counts, no
+  testimonials, no countdown. The reference's proof band was studied and left
+  out; the "56% OFF" flash became a sentence.
+- **Every price and every day number is the store's.** `fetchOffer` supplies
+  Apple's localized `priceString`; `trialDays` decides whether there is a
+  three-row timeline at all. Against the Test Store today — which serves no
+  introductory offer — the screen renders the honest two-row version, a
+  "Subscribe" CTA and "Cancel any time in the App Store", and promises no trial
+  anywhere.
+
+### Two defects the work found, both fixed at the source
+
+1. **`firstSessionTargets` prescribes a load for a lift nobody weighed.** It
+   treats a missing entry as 0 kg and returns `0 + increment`, so a lift picked
+   on screen 15 and never given a weight came back as a finite 2.5 kg. On the
+   reveal that sits beside a stepper and is obviously editable; on a paywall it
+   is the sentence "your squat at 2.5 kg" said to someone who typed nothing.
+   `copy.ts` now guards on `currentKg`, and a test holds it there.
+2. **The legal fine print was `textMuted`** — 3.45:1, a token reserved for what
+   the eye may skip. A subscription's renewal terms are not that. Now
+   `textSecondary`.
+
+### Verified
+
+Typecheck 0 · lint 0 · **14/14** new tests, and the full suite unchanged.
+Rendered on an iPhone 17 Pro Max (iOS 26.5) in five states: store-live (no
+trial), forced seven-day trial, with and without onboarding answers, and at
+Dynamic Type `accessibility-large` — where a fixed-height badge row clipped its
+label and was changed to size to its content.
+
+### Not verified, and why
+
+393 pt phones, and the full-motion pass. Both need a tap sent to a simulator,
+and both are blocked on a macOS Accessibility permission this machine has not
+granted. The layout was tightened by line-height arithmetic to clear the fold at
+852 pt rather than measured there. Written up in `FINDINGS.md` §27 rather than
+left implicit.
+
+### Deliberately not built
+
+- **Screens 1 and 2** (trial offer, trial reminder). The brief asked for screen
+  3 first and for review before continuing.
+- **Nothing links to the route.** `src/app/paywall.tsx` is still the funnel's
+  paywall and still the only one the dispatcher, You and the lapsed state know
+  about. `markPaywallShown()` and `markPlanSelected()` are therefore NOT called
+  from the new screen — those counters are the denominator of every conversion
+  number in §13, and polluting them before the swap would make the before/after
+  comparison the swap exists to produce unreadable. `track('paywall_view')` and
+  `track('paywall_cta_tap')` do fire, tagged `variant: 'v2'`.
+- **Gravl's exit downsell.** On instruction. `FINDINGS.md` §26 records what it
+  is and the condition for building it.
+
+### Open question for the owner
+
+§2's "Then:" line says the paywall repeats "the number from screen 17". Screen
+17 was the reveal when that was written and is the commitment now. Built to the
+reveal, for the three reasons in `FINDINGS.md` §25; one function changes it.
+
+---
+
+## 28 August 2026 — Profile, rewritten against the v2 flow
+
+The owner's ask: go through the whole You/Profile page, keep what the new
+onboarding actually feeds, delete what it does not, and make everything editable
+open a **sheet like the other rows** rather than an inline control.
+
+### The audit, row by row
+
+Every editable value on the page was checked against two questions: does the v2
+flow produce it, and does any code read it.
+
+| Value | Asked by v2? | Read by? | Ruling |
+|---|---|---|---|
+| goal, experience, sessions/week, split, key lifts + loads | yes | `predict/data.ts`, `db/strip.ts`, paywall, empty-note cards | keep — already sheets |
+| smallest plate | yes (screen 15) | `plates.ts` via `predict`, `db/brief.ts`, `db/strip.ts` | keep — in the lifts sheet |
+| weekly recap (day + hour) | yes (screen 20) | `lib/recap.ts` | keep, **and fix** — see below |
+| units | no (v2 writes kg; locale default if unset) | `fix-sheet.tsx`, `empty-note-cards.tsx` | keep as a setting |
+| rest timer | no | `bottom-toolbar.tsx` | keep as a setting |
+| bar weight | no (`flow.ts` assumes 20 kg) | `ghost-prediction.tsx` | keep as a setting |
+| writing language | no (v2 takes the locale) | `brief-explain.ts`, `empty-note-cards.tsx` | keep as a setting |
+| set readings | no | `state/display.ts` → the ledger | keep as a setting |
+| **usual training days** | **no** — v2 asks how MANY sessions, not which days | **nothing** | **deleted** |
+
+### What was deleted
+
+1. **The "Training days" row.** `pref_usual_days` is a v1 onboarding question.
+   The v2 flow asks "How many sessions a week?", which is already the "Sessions
+   a week" row, and grep found no reader of `getUsualDays` anywhere outside the
+   row itself. A control that writes a value no code consumes is a setting that
+   does nothing. The days a person actually trains on are named in the split
+   (the "Session types" row → `/split`). `prefs.ts` keeps the accessor and the
+   v1 flow keeps its write — that flow is dev-only legacy and was not touched.
+2. **One of the two development sections.** There were two (`Dev` and
+   `Development`), and each carried a row that ran the v1 illustrated flow. They
+   were not equivalent: one snapshotted every `pref_%` row first, the other
+   reset the answers and pushed straight in — and the v1 flow *writes as it
+   goes*, so the second one overwrote the developer's real settings with nothing
+   to restore from. Two near-identically-labelled rows, one of them destructive,
+   is a trap. Now one section, one row per thing, and the destructive copy is
+   gone.
+3. **Every inline accordion editor**, replaced by sheets (below).
+
+### The bug the audit found
+
+**Profile could not show the recap answer.** The v2 flow's screen 20 asks
+Sunday evening / Monday morning, `commitV2Onboarding` writes `pref_recap_day`,
+and `lib/recap.ts` has scheduled on it since v2 became primary — but the You row
+was hard-coded to `Sundays HH:00`. Somebody who chose Monday morning, and who
+was receiving a Monday-morning notification, opened Profile and was told it
+arrives on Sunday. A settings screen that misreports a live setting is CLAUDE.md
+§2 rule 5 in its smallest form. `recapRowValue()` now prints the stored day, and
+the picker is the flow's own two options read from `flow.ts` and mapped through
+`recapChoiceFor` — the same function the commit uses, so onboarding and Profile
+cannot disagree about what "Sunday evening" means.
+
+### One way to change a value, not two
+
+Before this pass Profile had two vocabularies on one list of rows: the five
+onboarding answers opened `AnswerSheet` (the flow's own full-width picker), and
+everything else expanded inline into a segmented control — different control,
+different gesture, different tap-target size. The inline one was also the weaker:
+a segmented control sets its width by its longest label, so "Slovenščina"
+squeezed the other two languages into two thirds of a row.
+
+- **`src/components/profile/pref-sheet.tsx`** (new) — one sheet driven by an id
+  for the five single-choice settings (units, rest, bar, writing language, set
+  readings). One table owns each setting's copy, options and accessors, and
+  `prefLabel()` is what the Profile row prints, so a row and the sheet it opens
+  cannot show different words for the same stored value. Writes through on the
+  tap and closes a beat later — `AnswerSheet`'s exact contract.
+- **`src/components/profile/recap-sheet.tsx`** (new) — the day (the flow's own
+  rows, with its marks), the hour under it, and the permission request. It
+  closes on **Done**, not on the tap, because it carries a second control and
+  can raise a system dialog — `LiftsSheet`'s contract. "On" is still only
+  claimed when iOS actually granted it.
+- **`settings-rows.tsx`** — `Row` gained the `reading` prop `AccordionRow`
+  already had, so a rest length or a bar weight keeps the reading face now that
+  it is a plain row. `AccordionRow` and `Segmented` are untouched and still used
+  (`Segmented` by the lifts and recap sheets, `AccordionRow` by `/aliases`).
+
+### Regrouped
+
+- **Training** = units, rest timer, bar weight, weekly recap. None is an
+  onboarding answer; all four change how a session works.
+- **Preferences** (new, replacing the one-row "Display" card) = writing language
+  and set readings — how Recore reads what you write and how it prints it back.
+  The language row's own comment had asked for this group since 12 Aug.
+- **"Run setup again"** moved out of Support — it sat between the privacy policy
+  and the build number, a filing cabinet for things that change nothing, while
+  the row rewrites every answer above it. It is now the last row of "About you",
+  under the answers it replays.
+
+### Verified by the repository gates
+
+Typecheck 0 · lint 0 · **609/609** tests pass, unchanged.
+
+### Not verified
+
+Not run on a device or simulator: the two new sheets' presentation, the recap's
+permission path, and VoiceOver over the regrouped sections. Both sheets are
+built from components already shipping on this surface (`BottomSheet`,
+`OptionRow`, `GhostRow`, `Segmented`, `AppButton`), and the recap's enable path
+is `enableRecap` unchanged — but the dialog itself has not been raised here.
+
+---
+
+## 28 August 2026 — the v2 paywall becomes the funnel's paywall, and its spare space is spread over the page
+
+The owner's ask, in two parts: go over the whole paywall design and fix its
+vertical rhythm — "the lower part is offset" — and make the flow walkable during
+a Test Store run, so a simulated purchase carries you to sign-in and into the
+app instead of dead-ending on the buy screen.
+
+### The layout: the surplus, in three placements, measured
+
+`plan.tsx` collected all of a tall phone's spare vertical space in a single
+elastic spacer between the timeline and the cards, capped at `GROUP + 40`. Every
+number below is from an iPhone 17 Pro Max at default type, read off the
+screenshots rather than judged by eye.
+
+1. **All of it in one gap** (what was there): **69 pt against the other three at
+   24–31**. Two halves that had drifted apart, and everything under the hole
+   read as displaced. The cap existed because an *un*capped spacer turned the
+   no-trial timeline's missing row into ~250 pt of canyon — the same mistake at
+   a different size.
+2. **All of it split above and below the block** (`justifyContent: 'center'`):
+   every gap equal at 26, and the whole screen sat as one tight object in the
+   middle with bare canvas at both ends. Correct, and rejected by the owner —
+   "not centred; spread over the whole screen".
+3. **All of it divided between the groups** (`justifyContent: 'space-between'`,
+   shipped): the headline starts under the chevron, the legal row finishes above
+   the home indicator, and the three gaps between the four groups are equal —
+   each `GROUP` plus an identical share of what is left. Measured: **47.7 / 50.0
+   / 51.7** with no introductory offer, **27.0 / 27.0 / 27.4** with one, where
+   the spread inside each set is line-height leading rather than layout.
+
+`GROUP` is still the floor and still the only vertical value written down. A
+screen with nothing spare — a small phone, accessibility type — gets exactly it,
+`space-between` has nothing to distribute, and the screen scrolls as before.
+
+### Three layout-check overrides reverted
+
+`trialDays = 7`, `annualBadge = '7 DAYS FREE'` and an unconditional
+`<Redirect href="/paywall-v2/plan" />` at the top of the dispatcher were in the
+working tree so the screen could be looked at with a trial the Test Store does
+not serve. All three are gone: the trial length and the badge come from the
+store's own introductory offer again (`selected.trialDays`, `annual.trialDays`),
+and the dispatcher routes by session and entitlement as it always did. The
+badge is **null when the store offers no trial**, and then neither card draws or
+reserves one.
+
+### The swap (owner's ruling, 28 August 2026)
+
+`/paywall-v2/plan` is the funnel's paywall. The dispatcher, the You tab's
+"Recore Pro" row and the lapsed ledger's resubscribe path all land there;
+`src/app/paywall.tsx` is not deleted and not broken, and is reachable from the
+You tab's development rows the way the illustrated onboarding beside it is.
+Everything commercial is shared code — one `fetchOffer`, one `purchase`, one
+entitlement — so what changed is the picture, not a promise. `markPaywallShown`
+and `markPlanSelected` now fire from the new screen: it is the funnel's paywall,
+so it owns the denominator of every conversion number in §13.
+
+### The purchase that could not complete, and why
+
+A **race**, not a store problem. `resolveEntitlement` attaches the RevenueCat
+customer to the Supabase account from `AuthProvider` the moment a session
+appears; the paywall runs its deferred purchase off the same event. When the
+purchase won that race, `purchasePlan` found no attached customer and refused to
+buy — correctly, §2 forbids an anonymous receipt — and the screen said "that
+plan is not available on your App Store account right now". That is the first
+tap after sign-in, i.e. every new account on the device.
+
+`state.ts` now has one `ensureStoreAccount(userId)` — attach, count, start the
+customer-info watch, idempotent — and `purchase(plan, userId)` and
+`restore(userId)` await it before they act. Both paywalls pass
+`session?.user.id`. Signed out, the CTA still opens sign-in first and finishes
+the purchase when the session lands; that order is §2's, and it is unchanged.
+
+### Two development doors, both `__DEV__`-only
+
+- **DEV · SKIP** in the header, the twin of the one on `paywall.tsx`: signed
+  out it lands on sign-in — the app needs a Supabase user in development too —
+  and signed in it enters the app. It skips the purchase and nothing else.
+- **The Test Store marker** under the CTA: "purchases are simulated, nothing is
+  charged". Without it a simulated buy is indistinguishable from a real one on
+  screen, which is the confusion §2 rule 5 is written against. `env.ts` blanks a
+  `test_` key outside `__DEV__`, so neither the key nor the label can ship.
+
+### Verified
+
+Typecheck 0 · lint 0 · **609/609** tests pass. Rendered on an iPhone 17 Pro Max
+simulator (iOS 26.5) against the live Test Store in both states — no
+introductory offer, and with one forced on temporarily to see the three-row
+timeline — and every gap in the section above measured from those screenshots.
+
+### Not verified
+
+The purchase itself was not tapped through on this machine: the Test Store's
+simulated sheet, the sign-in hand-off and the landing on Today are the owner's
+to walk. The race fix is reasoned from the two call sites and is `await`ed on a
+path that already existed; nothing about it is observable from the screenshots
+above.
+
+---
+
+## 28 August 2026 — Progression takes the blue, and the charts draw themselves
+
+**Owner's ask:** *"popravi to pri progression, dodaj neke barve — npr. to modro
+ki je v onboardingu — in naredi lepše animacije grafov."*
+
+Half a day earlier, `bare-chart.tsx` had shipped monochrome on the grounds that
+the Lyfta screens it was measured from are. That was a reading of the reference,
+not of Recore: the skill's colour section has said since 20 August that **one
+brand blue does every job, chart lines included** — and that the lift sheet's
+progression line draws in `brand` precisely so the same lift reads the same way
+on every surface. The Progression tab was the one place still opting out. It no
+longer does.
+
+### What is blue now
+
+| Surface | Was | Is |
+|---|---|---|
+| Progression list, the row sparkline (`(tabs)/progress.tsx`) | `inkData` grey | `brand`, with a wash under it |
+| One lift, the line charts (`progression/bare-chart.tsx`) | `inkData` grey | `brand`, wash at 16 % fading to nothing at the floor |
+| One lift, the bar charts | one grey for every bar | `brand` on the newest session, `brand` at 34 % behind it |
+
+**`#007AFF` measures 3.26:1 on `surfaceHigh`** — the tinted card these charts sit
+on — past the 3:1 a non-text mark that carries information owes. On the canvas,
+where the list's sparklines are, it is the 3.66:1 already recorded in
+`color.ts`.
+
+Four things deliberately stayed where they were, and the prose in each file now
+says why: **the placeholder shape is ink** (an empty card must not be able to
+read as a record, and hue is the cheapest way to keep them apart), **the
+gridlines are ink** (they are texture, and tinting them would make the card's
+background argue with its data), **the planned tail is `signal` green**
+(CLAUDE.md §3 — a load not yet lifted is never the recorded hue), and **every
+piece of text is untouched**: the metric card's 44 pt number, its unit and its
+sub-label are still grey, because colour marks and ink speaks, and a value never
+wears the hue of its own chart.
+
+### The animations
+
+`MonotoneSeries` (`lib/motion/chart.tsx`) already drew left to right in 800 ms
+with each dot landing as the pen reached it. Two things were added on top, and
+one thing that did not exist before:
+
+1. **The wash is revealed by the pen, not by a fade.** A clip rectangle follows
+   the stroke's own x, so the fill arrives under the line exactly where the line
+   already is. Its width is *not* `width × progress`: progress is measured along
+   the path's ARC, and a steep segment is longer than a flat one, so a linear
+   mapping runs the fill ahead of the pen on every climb. `interpolate()` maps
+   the point fractions onto the points' own x and undoes that — plain number
+   arrays closed over by the worklet, no `alpha()` anywhere near it.
+2. **The newest reading lands.** The terminal dot is 1.4× the others, arrives on
+   the `arrive` spring after the pen stops, and is knocked out of its own line
+   with the card's colour so it reads as the head of the series. One ring leaves
+   it and fades over 620 ms. It fires **once** and never repeats — the skill
+   bans looping celebration, and this is a full stop, not a party.
+3. **`Sparkline` can draw itself** (`components/charts.tsx`). Given a `delay` it
+   runs on in 520 ms — a glance, not a journey — with the dot landing in the last
+   12 % and an optional wash resolving underneath. The Progression list hands
+   each row's line the row's own stagger plus 150 ms, so the list writes itself
+   down the screen instead of arriving with eight finished decorations on it.
+   Without `delay` it is the static line it has always been, which is what the
+   Next tab's tiles still get.
+
+Reduce Motion: every one of these is fully present on mount, and the ring never
+draws at all.
+
+### One hedge, recorded rather than hidden
+
+The wash's own `fillOpacity` ramps over the first fifth of the draw. With the
+clip working that is a soft entry and nothing more. It is also the honest
+fallback: `<ClipPath>` with an animated child is a first use in this repository,
+and if a platform ever stops propagating an animated prop from inside one, the
+record still gains its body instead of losing it entirely. The clip rect also
+declares a static `width` for the same reason — a rect whose width arrived only
+from the animation renders empty on frame one.
+
+### Verified
+
+Typecheck 0 · lint 0 · **609/609** tests pass.
+
+### Not verified
+
+**Not seen on a device.** The simulator on this machine sits behind the paywall
+with no onboarding completed and no logged history, so neither the Progression
+list nor a metric card can be reached from it without tapping through by hand.
+The colours are measured arithmetic and the motion is reasoned from the two
+primitives it extends; the *look* of the blue on the tinted card, the wash's
+weight and the reveal edge tracking the pen are the owner's to confirm on the
+first run.
+
+---
+
+## 28 August 2026 — the sign-in buttons become Apple's and Google's
+
+**Owner's ask:** *"dej pri sign up naredi tko, da je ta prijava tam kjer j apple
+črna in tm pri continue with google isto nekaj v tej smeri, in premisli a je
+obvezno tudi da se doda poseb sign up — sepravi da obstaja možnost da se prijavi
+nekdo brez da ima apple al google acc."*
+
+### What was on the screen
+
+`sign-in.tsx` rendered `AppButton` twice: `variant="primary"` for Apple and
+`variant="secondary"` for Google. In this palette that is **a blue brand pill
+wearing the app's blue glow, and a pale-blue tinted pill under it** — two shades
+of `#007AFF` where the two most recognised buttons in consumer software should
+be. The file's own header comment had claimed "Apple (primary ink-fill) and
+Google (bordered secondary)" since 23 July; the code had never done that.
+
+The mistake underneath it is worth naming, because it is the one a design system
+makes: a sign-in button is not a Recore CTA that happens to say *Apple*. It is a
+piece of somebody else's identity, and it is the one control on any screen a
+person recognises **before** they read it. Painting it in the host app's accent
+spends exactly the recognition it exists for.
+
+### What is there now
+
+A new `components/provider-button.tsx`, used by `sign-in.tsx` and nothing else.
+
+| | Fill | Border | Label + mark |
+|---|---|---|---|
+| **Sign in with Apple** | `#000000` | — | white label, white Apple mark |
+| **Continue with Google** | `#FFFFFF` | 1 px `#747775` | `#1F1F1F` label, the four-colour "G" |
+
+Both are their owners' published specs, not choices: Apple's HIG allows the
+Sign in with Apple button in **black, white, or white-with-outline and nothing
+else**, at a 44 pt minimum height, with a corner radius free anywhere from
+square to half the height. Google's light button is a white surface with a
+`#747775` stroke and `#1F1F1F` text, and its mark is the four-colour G, which
+**may not be recoloured** — which is why the button draws its own SVG instead of
+reaching for `Icon`'s monochrome `logo-google`, and why `GoogleMark` takes no
+tint prop: a prop that could break the spec is a prop somebody eventually uses.
+
+Apple's fill is **pure black, not the app's warm `#171914` ink**. Three
+appearances are allowed and a near-black of our own is not one of them.
+
+Everything else is still Recore's, so the pair reads as one family: `CTA_HEIGHT`
+56, `radius.md` 14, the headline label at 600, the 0.98 press scale with a
+darker pressed **fill** rather than an opacity flash, the same spinner, the same
+0.4 disabled dip. The blue `shadow.glow` is gone from both — it belongs to a
+brand CTA and neither of these is one.
+
+The eleven foreign hex values live in `theme/color.ts` as a **separate
+`provider` export**, not in `color`. `color.test.ts` fails the build on a hex
+typed anywhere outside that file, so they had to come here; they are quarantined
+from the palette so that `color.googleBlue` never appears in autocomplete beside
+`color.brand` and invites a screen to reach for `#4285F4`.
+
+This is the same exception `onboarding-v2/BrandIcon.tsx` already makes and one
+step further. There, six attribution marks draw in a single ink *because* a row
+of full-colour logos would read as an endorsement. Here there are two buttons,
+**each is the endorsement**, and each wears its owner's colours.
+
+### The second question: is a separate email sign-up obligatory?
+
+**No — and the app is right as it stands.** Recorded here because it will be
+asked again at review time.
+
+- **App Store guideline 4.8** is the rule that could have forced something. It
+  says an app offering a third-party login (Google) must *also* offer a login
+  that limits data collection to name and email, lets the person hide their
+  email, and does not track. **Sign in with Apple is that option**, and it is
+  already the primary button. 4.8 asks for the privacy-equivalent alternative,
+  never for an email/password path on top of it.
+- **"Someone with neither account" is close to unreachable on iOS.** Installing
+  this app requires an Apple ID, and Sign in with Apple works with any of them.
+- **The one real hole** is an Apple ID with two-factor turned off, which Sign in
+  with Apple refuses outright. Those people still have Google, and the screen
+  already degrades correctly: `AppleAuthentication.isAvailableAsync()` gates the
+  Apple button, so when it is unavailable Google stands alone rather than the
+  screen offering something that cannot work.
+- **If that hole ever needs closing, close it with an email magic link** —
+  Supabase already speaks OTP, so it is a link and a code field, not an auth
+  rewrite. Never a password: the caption under these buttons promises "No
+  passwords", and adding one would make a shipped line untrue. That reasoning is
+  now in `sign-in.tsx`'s header so the next person does not re-derive it.
+
+Nothing about guideline **5.1.1(v)** changed here and it is still open: the
+funnel requires an account before Today, and this pass did not touch that.
+
+### Verified
+
+Typecheck 0 · lint 0 · **609/609** tests pass. `color.test.ts` was the gate that
+shaped the change — it caught all eleven literals on the first run and is the
+reason the `provider` export exists.
+
+### Not verified
+
+**Not seen on a device.** Both buttons are static geometry the app already
+ships at these numbers, and the colours are transcribed from the two published
+specs rather than measured against this canvas — deliberately, since neither
+button is a surface Recore writes on. What the owner should confirm on the first
+run is the *weight of the pair on cream*: pure black at 56 pt is the heaviest
+object anywhere in this app, and whether the white Google button below it holds
+its own against that, or wants Google's neutral `#F2F2F2` surface instead, is a
+judgement only the rendered screen can settle.
+
+---
+
+## 29 August 2026 — every onboarding answer reaches Profile, and Profile reaches back
+
+The v2 flow asks seven questions about the person and the commit carried five of
+them out. The other two — **where do you log now** and **what gets in the way** —
+were asked, used inside the run, and then lost: nothing outside
+`state/onboarding-v2.ts` could read either of them, so Profile could not show
+what was said and nobody could change their mind about it later. This pass
+closes that, and closes the return leg, which turned out to be the more
+expensive half.
+
+### The two answers that evaporated
+
+- **`pref_current_tracker`** (new) — screen 2's own option id, written by
+  `commitV2Onboarding` through `setAnswer('tracker', …)`. It had always been
+  asked and had always decided something real, but the only thing that survived
+  it was the DERIVED `pref_ob_tracker` enum, where four flow options collapse
+  onto three values (`notes` / `excel` / `paper` → `notes`). That mapping has no
+  inverse, so "Paper notebook" could not be printed back and could not be
+  changed. `setAnswer` writes the derived enum beside the answer, exactly as it
+  already did for goal and experience, so `wantsImportFastPath` and
+  `import-start.tsx` follow an edit made in Profile rather than going on naming
+  a tracker the person has left.
+- **`pref_obstacles`** (new) — screen 3's list, capped by the screen's own `max`,
+  validated against its own options. It decides which value proposition leads on
+  the reveal and on the paywall, and it was the one product-shaping answer the
+  commit never wrote anywhere.
+
+Both keys are `pref_*`, so they inherit §12's export and deletion guarantees the
+moment they are written: `export-json.ts` carries every `pref_%` row and
+`account/delete.ts` drops the whole `meta` table. No further work anywhere.
+
+### The bug this pass found: Profile edits could be silently undone
+
+**"Run setup again" replayed the store, not the record.** The row promises "your
+answers already ticked", and what it ticked was whatever the v2 store had
+persisted at the end of the *last run*. Change your goal in Profile in
+September, replay the flow in October, and screen 9 opens on the answer you
+replaced — and finishing that replay committed the stale answer straight back
+over the edit. A settings screen whose edits can be undone by a button on the
+same screen is not a settings screen.
+
+**The paywall quoted the old answers for the same reason.**
+`paywall-v2/plan.tsx` builds its copy from `useV2` — the store, not the record —
+and that paywall is reachable from Profile's own subscription row. The page
+could open naming a goal the person had changed two rows above.
+
+- **`src/lib/onboarding-v2-seed.ts`** (new) — `seedV2FromRecord()`, the return
+  leg of `onboarding-v2-commit.ts`. It projects the answers of record back into
+  the flow's store and is called from exactly two places: every landed Profile
+  edit (`noteAnswerChanged`) and the replay row. Both bugs above read the same
+  store, so one projection fixes both, and the store is never further behind the
+  record than one write.
+- It writes **only what the record actually holds**. An install that onboarded
+  before today has its tracker and obstacles in the store and nowhere else;
+  overwriting those with "unanswered" would destroy the only copy in existence.
+  Same rule as the commit keeps in the other direction — a skipped question never
+  replaces a real answer with a guess.
+- It is a **no-op during a dev run**. §0's sandbox promise cuts both ways: a
+  clean run must not open half-filled with the person's real answers.
+- **`recapAnswerFor()`** (`onboarding-v2-map.ts`) — `recapChoiceFor` read
+  backwards, so the replay opens screen 18 on the choice actually in force.
+  Round-tripped in `onboarding-v2-map.test.ts` over every option the screen
+  offers, plus the case that matters: Sunday is the default day for everybody
+  (`getRecapDay`), so the day alone must never be mistaken for a yes.
+
+### Two new rows in "About you"
+
+- **Where you log now** — `AnswerSheet`, the flow's own screen 2, ghost row and
+  all.
+- **What gets in the way** — `src/components/profile/obstacles-sheet.tsx` (new).
+  The second answer on this surface that is not a single choice, so it follows
+  `LiftsSheet` rather than `AnswerSheet`: `OptionRow` in multi mode, oldest out
+  at the cap (a tap that lands nowhere reads as a broken control), write-through,
+  closes on **Done**. The row's value is a count — "One thing" / "2 things" —
+  because the value column is one line wide and these options are sentences; the
+  frustrations themselves are named on the row's second line.
+
+They sit under the training answers rather than in the flow's order, so the
+thing a person opens this section for — their goal — stays at the top of it.
+
+### Verified by the repository gates
+
+Typecheck 0 · lint 0 · **622/622** tests pass (two added: the recap round trip
+and the never-answered case) · `npx expo export --platform ios` **pass**.
+
+### Not verified
+
+Not run on a device or simulator: the obstacles sheet's presentation, and the
+replay itself — that a seeded run really does open with every previous answer
+ticked, screen by screen, and commits back what was confirmed. The projection is
+covered only by the map's round-trip test; the seed function itself reads SQLite
+and the zustand store and has no node-runnable test, which is the same position
+`onboarding-v2-commit.ts` is in.
+
+---
+
+## The parse-pending state (owner ask, 29 Aug 2026) — what shipped, and what is still unverified
+
+The ask was for the "AI thinking" moment on Today — the seconds between writing
+a set and the reading coming back — to be properly animated and properly
+placed. The placement turned out to be the whole of it.
+
+### What was wrong
+
+`ParseIndicator` drew a 40 pt track with a shuttle easing along it, and the two
+surfaces that mount it put it in a place no answer arrives at:
+
+- **The settled card** draws its reading UNDER the exercise name (`exValue` /
+  `SetTable`), and the pending card put the shuttle to the RIGHT of the words in
+  a two-column row of its own. On the card the whole block re-laid itself out at
+  the instant the parse landed: the words moved, the reading appeared a line
+  lower, and the ⋯ column pushed in from the right.
+- A sliding shuttle on a track is the shape of a **progress bar**, and there is
+  no progress to report: the parse is one round trip and there is nothing to be
+  40 % of.
+
+### The first attempt, and why it was rejected
+
+The first fix moved the word `reading` into the slot the reading itself would
+occupy — a line BELOW the words, in the reading's own face and size, so the swap
+cost no layout. The geometry was right and the owner rejected the look the same
+day: *"sploh ni tko v isti vrsti"* — the line the athlete wrote is the line the
+app is working on, and that is where the app should say so. Four variants were
+built and shown side by side, animated, before the second attempt was written.
+
+### What it is now
+
+Two marks, both on the words' own row, with a division of labour:
+
+- **`ReadingSweep`** passes a beam of `brand` at 16 % across the WHOLE row —
+  rail to ⋯ column, behind every other child, absolutely placed so the row
+  measures as if it were not there. 1300 ms, `Easing.inOut(Easing.cubic)`, then
+  a 400 ms beat of stillness, so it reads as a line being read and then read
+  again rather than a strobe. The travel is measured from the row's own
+  `onLayout` width, so it crosses exactly the entry it is reading at any Dynamic
+  Type setting and on any device. Widened from the words to the whole row on the
+  owner's call: what is being read is the entry, not the word.
+- **`ReadingMark`** puts the machine's own working mark in the ⋯ column's slot,
+  on the words' own row and centred on their line. It is the SAME THREE DOTS the
+  settled card carries as its ⋯ menu. They wave while the line is read;
+  when the reading lands they stop and that identical glyph is the button.
+  Nothing new appears on the row, and nothing moves at the handover — which is
+  the whole reason the mark is dots rather than a spinner. It reuses the
+  `PendingDot` already in the file, which gained a `tint` and a `size` so it can
+  speak in the menu glyph's ink and at the menu glyph's metrics.
+
+The pending card is otherwise the settled card minus the answer: same rail, same
+body, and the ⋯ column already at full width, so the glyph appears in a place
+that was being held rather than shoving the words leftward.
+
+**The composer's live line carries the dots alone.** There are no committed
+words there for a light to pass under — the line is still in the field above —
+and moving anything under a cursor mid-sentence is the one thing §14 rules out
+outright.
+
+**Reduce Motion** drops both marks and prints `reading` at the end of the same
+row — decided by one hook inside `ReadingMark`, so the row cannot fall silent.
+Three still dots are not a fallback: they would read as the ⋯ button, and a
+control that does nothing is worse than no control.
+
+### Five things the simulator found that the code review had not
+
+Each was invisible in the source and obvious in a screenshot.
+
+1. **The dots were twice the width of the glyph they become.** The gutter's own
+   4.5 pt dot on a 4.5 pt pitch measured 26 pt across; `Icon`'s ellipsis at 17 pt
+   measures 14. The mark was moving two dots' worth at the handover. It now
+   carries the glyph's metrics — 3 pt dots on a 3 pt pitch.
+2. **The beam met the clip as a chip.** While any part of the band was outside
+   the row, `overflow: hidden` cut it down the middle and printed a hard vertical
+   edge against the canvas. The track is no longer clipped at all: the band
+   starts a band's width off the row and ends a band's width past it, so its own
+   soft ends are the only edges the eye ever meets.
+3. **It read as a column, not a beam.** A `LinearGradient` fades in one direction
+   only, so the band's top and bottom arrived as straight lines — and two pending
+   lines stacked in a ledger merged into one tall bar crossing both. A second
+   gradient lays `canvas` back over the band's top and bottom, fading to nothing
+   across its middle, giving the light its second axis.
+4. **The dots sat under the line, not on it** (owner, 29 August). They were
+   centred in the ⋯ column's 36 pt button box, which is top-aligned to a card
+   three lines tall — so on a one-line pending card they landed 31.5 pt from the
+   card's top, below the descenders, reading as a footnote to the line rather
+   than as its status. The ⋯ column now lives INSIDE the words' row rather than
+   beside it, at the same width and behind the same gap, so the mark keeps the
+   glyph's x and gains the line's own centre: measured on the render, the dots'
+   centre is 113.17 pt against a baseline of 117.67 pt and a figure height of
+   12.00 — the x-height centre to a third of a point.
+5. **Reduce Motion could leave the row silent.** The marks read
+   `useReducedMotion()` themselves while the card chose the word from a
+   `reduceMotion` prop. In production those agree; with the OS setting on and the
+   prop still false, the simulator showed the dots gone, the word never rendered,
+   and a working row saying nothing at all. `ReadingMark` now makes the decision
+   once, and is the only thing a caller mounts.
+
+### The alignment, measured rather than eyeballed
+
+Off the rendered frame, comparing a pending row against the settled row it turns
+into (points; the render is 3× device pixels):
+
+| | ring centre x | words / name left | text top into card | mark centre x |
+|---|---|---|---|---|
+| Pending | 41.2 | 68.00 | 15.83 | 359.67 |
+| Settled | 41.2 | 68.00 | 15.83 | 359.67 |
+
+The name lands exactly where the words sat, and the mark keeps the glyph's
+column to within 0.2 pt — a third of a device pixel. (Rows beginning `o` or `i`
+measure 15.50–15.67 pt rather than 15.83: those are ascender differences in the
+glyphs, not the layout.)
+
+**Vertically the two marks no longer agree, deliberately.** The pending dots
+centre on the words' line (113.17 pt, against a baseline of 117.67); the settled
+⋯ centres in its 36 pt button, 7.5 pt below the ring. So the glyph arrives about
+4 pt below where the dots were waving. That is the owner's call of 29 August and
+it is the right one: the mark is read for the whole time the line is pending and
+glanced at once when it lands. Aligning the settled card's ⋯ to its name row
+would buy back a pixel-still handover and is the obvious follow-up, but it
+changes a shipped surface nobody asked about.
+
+### One decision recorded so it is not silently re-litigated
+
+**The pending card animates IN but not OUT.** A `FadeOut` exit is the obvious way
+to cross-fade into the read card, and it is wrong here: a view animating out
+still holds its place in the layout, so for the length of the fade the ledger
+would stand one card taller and then collapse — the exact reflow this change
+exists to remove. The exchange is carried by the read card's own `FadeInDown`
+arrival instead.
+
+**No progress theatre, and the research says why.** In the Appllama catalogue
+every captured "analysing" state in a top-grossing app is a full screen with a
+progress ring, a percentage and testimonials beside it (MadMuscles, Solid Starts,
+Carb Manager, MyNetDiary's scan spinner). Recore cannot use that shape: a
+percentage would be a number nobody computed, which §3 calls fabrication. The
+nearest honest analogue in the library is Foodvisor's *Quick Add*, where the
+typed sentence stays the user's own object and the machine answers in a separate
+block under a quiet status line — the shape all four variants took.
+
+### Verified by the repository gates
+
+Typecheck 0 · lint 0 · **661/661** tests pass · `npx expo export --platform ios`
+**pass**. (`expo lint` also reports one warning in `src/app/index.tsx` — a
+`// TEMP: simulator verification pass` redirect belonging to another session's
+work in progress, untouched here.)
+
+### Seen on the simulator, and what was not
+
+iPhone 17 Pro, Release build, through six rebuilds. Rendered and measured: the
+pending card, the row it becomes, two pending lines stacked as a session shows
+them, the composer's value column, and the row under a real OS-level Reduce
+Motion. Every number above comes off those frames. Frames were sampled across the
+1700 ms cycle and ranked by the blue they put into the row, because the beam is
+invisible for the 400 ms beat and a hand-picked screenshot lands there more often
+than not.
+
+**`ReadingMark` itself has not been on a screen.** It was written after the last
+frame was captured, to close the silent-row defect that frame exposed, and the
+build that would show it never ran: a concurrent session held Xcode's build
+database for the rest of the sitting, and with 1.7 GB free there was no room for
+a second `derivedDataPath`. Its motion path renders exactly what those frames
+show — the same dots, in the same slot, in the same row — so what is unverified
+is narrow: that with Reduce Motion on, the word now appears where the dots were.
+It is one branch of one component and it is gate-clean, but nobody has looked
+at it.
+
+### Still not verified
+
+Nothing here has been seen on a physical device, and no one has watched it during
+a real parse. What a device would settle: whether 16 % on the warm canvas holds
+up in daylight rather than on a desk display, whether the 400 ms beat is right at
+real parse latencies (a slow network holds this state for seconds, not
+milliseconds), and whether the dots→⋯ handover reads as still to a person who is
+looking at the line rather than measuring it.

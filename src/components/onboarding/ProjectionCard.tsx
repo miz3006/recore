@@ -1,9 +1,10 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { COMMIT_WEEKS, projectionSeries } from '@/lib/onboarding';
-import { alpha, color, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
+import { color, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
 
 import { formatLoad } from './LiftLoadRow';
+import { ProjectionChart } from './ProjectionChart';
 import { CARD_FILL } from './tokens';
 
 /**
@@ -21,14 +22,21 @@ import { CARD_FILL } from './tokens';
  * training that did not happen is banned, and a chart of what the person just
  * told the app they want is a different object with a different label.
  *
- * The bars therefore carry NO axis and NO values. They are the SHAPE of a
- * straight line between two numbers that are both printed above them in full;
- * a gridline would be an invitation to read week seven off the picture, and
- * week seven is not a thing this screen knows.
+ * ## It is a LINE now (owner, 23 Aug 2026)
  *
- * The early bars are paler, which is the design's own device and an honest one:
- * the far end of a projection is the part the person controls, and the near end
- * is the part that is nearly already true.
+ * Twelve bars of increasing opacity became the chart the rest of the app draws:
+ * a brand-blue line with a soft wash under it, which draws itself once on
+ * arrival (`ProjectionChart`). The owner's words were "make a real chart, like
+ * the one in progression, and animate it" — and the argument for it is stronger
+ * than taste: this screen is a promise about the progression chart, so making
+ * the promise in a different visual language than the one it will be kept in
+ * was the picture disagreeing with the sentence.
+ *
+ * The chart carries NO axis and NO values. It is the SHAPE of a straight line
+ * between two numbers that are both printed above it in full, with its two ENDS
+ * marked and nothing in between; a gridline, or a dot per week, would be an
+ * invitation to read week seven off the picture, and week seven is not a thing
+ * this screen knows.
  */
 export function ProjectionCard({
   lift,
@@ -44,11 +52,6 @@ export function ProjectionCard({
   unit: string;
 }) {
   const series = projectionSeries(start, target);
-  // The bars are drawn against a floor a little under the starting load rather
-  // than against zero: from zero a 20 % rise is a flat row of near-identical
-  // bars, which says less about the shape than it pretends to.
-  const floor = start * 0.82;
-  const ceiling = Math.max(target, floor + 1);
 
   return (
     <View
@@ -75,19 +78,8 @@ export function ProjectionCard({
         ) : null}
       </View>
 
-      <View style={styles.chart} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        {series.map((value, i) => (
-          <View
-            key={i}
-            style={[
-              styles.bar,
-              {
-                height: `${Math.max(8, ((value - floor) / (ceiling - floor)) * 100)}%`,
-                backgroundColor: alpha(color.brand, 0.35 + (0.65 * i) / (series.length - 1)),
-              },
-            ]}
-          />
-        ))}
+      <View style={styles.chart}>
+        <ProjectionChart series={series} height={CHART_HEIGHT} delay={CHART_DELAY} />
       </View>
 
       <View style={styles.axis}>
@@ -106,15 +98,13 @@ export function ProjectionCard({
  * The projection when no starting load was ever typed: the RATE, over the same
  * horizon, with no absolute number anywhere on the card.
  *
- * The bars are an index — 100 to 100 + percent — so the shape is the same shape
+ * The line is an index — 100 to 100 + percent — so the shape is the same shape
  * the absolute card draws and the axis is still absent. Nothing here can be
  * read as a weight, which is the point: the caption says where the weight comes
  * from, and it comes from the person's first written session.
  */
 export function RelativeProjectionCard({ lift, percent }: { lift: string; percent: number }) {
   const series = projectionSeries(100, 100 + percent);
-  const floor = 100 * 0.82;
-  const ceiling = 100 + percent;
 
   return (
     <View
@@ -132,19 +122,8 @@ export function RelativeProjectionCard({ lift, percent }: { lift: string; percen
         </Text>
       </View>
 
-      <View style={styles.chart} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        {series.map((value, i) => (
-          <View
-            key={i}
-            style={[
-              styles.bar,
-              {
-                height: `${Math.max(8, ((value - floor) / (ceiling - floor)) * 100)}%`,
-                backgroundColor: alpha(color.brand, 0.35 + (0.65 * i) / (series.length - 1)),
-              },
-            ]}
-          />
-        ))}
+      <View style={styles.chart}>
+        <ProjectionChart series={series} height={CHART_HEIGHT} delay={CHART_DELAY} />
       </View>
 
       <Text style={styles.baseline} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -186,6 +165,9 @@ export function ProjectionRow({
 }
 
 const CHART_HEIGHT = moderateScale(96);
+/** One beat after the card itself has settled — the chart reveals AFTER its
+ * data, never with it (design skill §Motion). */
+const CHART_DELAY = 260;
 
 const styles = StyleSheet.create({
   card: {
@@ -242,16 +224,7 @@ const styles = StyleSheet.create({
     color: color.onInk,
   },
   chart: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: moderateScale(4),
-    height: CHART_HEIGHT,
     marginTop: spacing.lg,
-  },
-  bar: {
-    flex: 1,
-    borderRadius: moderateScale(3),
-    borderCurve: 'continuous',
   },
   axis: {
     flexDirection: 'row',

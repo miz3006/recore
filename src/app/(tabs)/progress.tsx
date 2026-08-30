@@ -1,43 +1,31 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { TrendChart } from '@/components/charts';
+import { Sparkline } from '@/components/charts';
 import { ChipRow } from '@/components/chip-row';
 import { Icon } from '@/components/icon';
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
-import { AppButton, Badge, Eyebrow } from '@/components/primitives';
+import { AppButton, Eyebrow, Row } from '@/components/primitives';
 import { StubScreen } from '@/components/stub-screen';
-import { shiftDayKey, todayKey, type DayKey } from '@/lib/db/dates';
-import { getWorkoutDetail, type WorkoutSet } from '@/lib/db/insights';
+import { shiftDayKey, todayKey } from '@/lib/db/dates';
 import { getLiftSessions } from '@/lib/db/progression';
-import { mondayOf } from '@/lib/db/stats';
 import { markImportCompleted, markImported, markImportStarted } from '@/lib/funnel';
 import { tap } from '@/lib/haptics';
 import { pickAndImportCsv } from '@/lib/import/pick';
+import { stagger } from '@/lib/motion';
 import { rowCountBucket } from '@/lib/onboarding';
-import { recachePredictionFromLatest } from '@/lib/predict/cache';
 import { fmtNumber } from '@/lib/parse/summarize';
+import { STALL_SESSIONS } from '@/lib/plateau';
+import { recachePredictionFromLatest } from '@/lib/predict/cache';
+import { describeDelta } from '@/lib/progression';
+import { buildOverview, type LiftRow } from '@/lib/progression-overview';
 import {
-  buildProgression,
-  daysBetween,
-  describeDelta,
-  describeStall,
-  sortLifts,
-  stallOf,
-  STALL_RUN_MIN,
-  type LiftBrief,
-  type LiftProgression,
-  type LiftSort,
-} from '@/lib/progression';
-import {
+  MAX_FONT_SCALE,
   alpha,
   color,
-  MAX_FONT_SCALE,
   moderateScale,
   radius,
-  readingStyle,
-  shadow,
   spacing,
   TAB_BAR_CLEARANCE,
   type,
@@ -45,151 +33,110 @@ import {
 import { labelForDay, useSession } from '@/state/session-store';
 
 /**
- * Progression (product-direction §10 — "Am I progressing, and what is the
- * evidence?"), the third tab.
+ * PROGRESSION, LEVEL ONE — "what is moving?" (28 August 2026).
  *
- * The screen is **one card per lift**, and it answers exactly one question at a
- * time by re-ordering, never by re-labelling:
+ * The tab is two screens now. This root answers the question ACROSS lifts;
+ * `app/lift/[key].tsx` answers it inside one, with the metric cards measured off
+ * Lyfta's Exercise Progress screens.
  *
- *   a counted cadence line  →  four orderings  →  ranked cards
- *   →  the sets behind the latest point
+ * ## Why it is two screens
  *
- * ## The 17 August shape (owner mockup)
+ * The first pass at this rebuild put the metric cards straight on the tab with a
+ * chip row on top to choose the lift. That was wrong in three ways at once: the
+ * row capped the app at eight visible lifts, it wrapped into three rows at the
+ * Dynamic Type ceiling, and — worst — it deleted the cross-lift view without
+ * replacing it, so "am I progressing?" could only be asked one exercise at a
+ * time. Splitting the tab restores the overview, removes the cap, and matches
+ * how the reference is actually reached: **from** an exercise, which is why it
+ * has no selector.
  *
- * 1. **One reading, no chrome.** The range picker (8W / 6M / 1Y) and the metric
- *    tabs (Est. 1RM / Heaviest / Volume) are gone, and so is the summary card.
- *    The screen is eight weeks of estimated 1RM, full stop, and the header's
- *    one counted line stands in for the summary. Every figure a person reads
- *    here is now about the same window, which is the thing three simultaneous
- *    switches kept costing.
- * 2. **A fourth ordering: Stalled.** "What is stuck?" is the other half of "am
- *    I progressing?", and it should not require reading to the bottom of a list
- *    sorted the other way. It re-orders on the TAIL of each series
- *    (`stallOf`) — falling first, then held longest — and re-labels nothing.
- * 3. **Direction is a colour now, as well as a word** — reversing the §10 rule
- *    that a lift which fell drew in exactly the same blue as one that rose.
- *    Gains are `color.gain`, regressions `color.loss`, and the mockup's own
- *    caption is the guard rail: **red only when truly regressing**. A single
- *    lighter session is ink; `STALL_RUN_MIN` consecutive drops is red. A lift
- *    holding its load is ink and an em-dash, never red — maintenance is not
- *    failure. The words ("up 12%", "down 5%", "no change in 4 sessions") say
- *    the same thing beside every one of those colours, so colour is never the
- *    only carrier (§14).
+ * ## The groups are the athlete's own split
  *
- * A card carries a LINE chart in **the brand blue** — straight segments between
- * real sessions, up and down (owner, 4 Aug 2026; `TrendChart`'s `shape` prop
- * restores the §10 step in one word). The line was one neutral ink until
- * 20 Aug 2026; v6 gives a recorded progression the app's one blue, which is
- * the single place a hue earns a LINE (design skill §Reuse). The rule the ink
- * was protecting is untouched: **only the terminal dot takes a direction hue**,
- * the eight weeks behind it are the shape of the record, and one dot answers
- * "and now?". Its two ends read `date · value`, so the chart's own numbers sit
- * under the chart rather than in a gutter beside it.
+ * There is no muscle column in this schema and this screen does not invent one.
+ * `lib/progression-overview.ts` reuses `predict/split.ts`'s clustering — which
+ * exercises are performed together — and names each group after the lift done
+ * most often inside it. Somebody who benches, presses and dips on one day has a
+ * push day whether or not anyone calls it that (CLAUDE.md §2.2: personalise only
+ * from chosen information). One cluster means no groups and no strip.
  *
- * Tapping a card opens the set table of the session that made its last point.
- * Lifts too shallow to chart are listed below the cards rather than dropped, so
- * nothing a person logged disappears from their own record.
+ * ## Next's "other lifts" arrived here on 29 August 2026
  *
- * Both sheets it opens (`ExerciseSheet`, `SessionSheet`) are mounted once in
- * `_layout.tsx`, so this file only dispatches.
+ * Not as a block — that would have printed a second copy of rows already in
+ * this list — but as two facts folded into them: a PLATEAU where the record has
+ * one, and the trust guard that came with the delta it protects
+ * (`lib/progression-overview.ts`). A stalled lift leads its detail line with
+ * the plateau and wears `attention`, the app's colour for one everywhere else;
+ * the word says it too, so the hue is never the only carrier (§14).
+ *
+ * ## Direction is a word here, not a colour
+ *
+ * The 17 Aug ruling coloured a lift's DELTA chip gain-green or loss-red. That
+ * chip is gone with the card it lived on, and the bare `Row` this list is built
+ * from tints the *value* rather than the delta — colouring an absolute load by
+ * direction would say "116.5 kg is a gain", which is not a thing. So the
+ * direction is carried by the word alone ("up 7.5 kg"), which §14 required
+ * beside the colour anyway. Restoring the tinted delta means a purpose-built
+ * row; it is a deliberate omission, not an oversight.
  */
 
-/** Eight weeks. One window, named once — the header, the cards and the cadence
- * average all measure the same stretch because they all read this. */
+/** Eight weeks. One window, named once — the counted line, the groups and every
+ * lift row measure the same stretch, and so does level two. */
 const RANGE_DAYS = 56;
 
-const SORTS: { key: LiftSort; label: string }[] = [
-  { key: 'gain', label: 'Biggest gain' },
-  { key: 'recent', label: 'Recent' },
-  { key: 'stalled', label: 'Stalled' },
-  { key: 'name', label: 'A–Z' },
-];
+/** Below this many lifts a search field is furniture, not a tool — the same
+ * floor the Lifts screen uses, so the two behave alike. */
+const SEARCH_FLOOR = 7;
 
-const CHART_H = moderateScale(64);
-const CHART_H_OPEN = moderateScale(104);
-/** Beyond this the rep cap makes an Epley estimate dishonest (matches the
- * parser-side rule in `getE1rmSeries`). */
-const E1RM_REP_CAP = 12;
-/** Under two weeks of record a per-week average is arithmetic noise, so the
- * cadence line drops it rather than dividing by a fortnight it never had. */
-const MIN_DAYS_FOR_RATE = 14;
+/** The chip that clears the group filter. Not a group, so it cannot collide
+ * with one named after a lift. */
+const ALL = '__all__';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const SPARK_W = moderateScale(54);
+const SPARK_H = moderateScale(26);
 
 /**
- * How far a pressed row's highlight bleeds past its content, toward the card's
- * edge — and it is rounded (`radius.sm`) on the way out. A fill drawn on the
- * row's own box is a hard-cornered grey rectangle floating inside the card's
- * padding, which reads as a mis-drawn box rather than as the row lighting up.
- * Content never moves: the margin is paid back as padding.
+ * The row cadence, named once so the sparkline can ride it.
+ *
+ * `Stagger` below is given exactly these numbers, and each line then starts
+ * `ROW_STAGGER_LEAD` after its own row's entrance began — far enough behind
+ * that the row has arrived and the pen is drawing on something already there,
+ * close enough that it reads as one event rather than as a chart animating by
+ * itself. `stagger()`'s cap is what keeps a fifty-lift list from spending four
+ * seconds assembling.
  */
-const PRESS_BLEED = spacing.sm;
-
-/** Which way a card reads. `flat` is the ink default — it is also what a single
- * lighter session gets, because one session is not a trend (`STALL_RUN_MIN`). */
-type Tone = 'up' | 'down' | 'flat';
-
-/** "Jul 13" from a DayKey — a chart endpoint, never a full date. */
-function monthDay(day: DayKey): string {
-  const [, m, d] = day.split('-').map(Number);
-  return `${MONTHS[(m ?? 1) - 1]} ${d}`;
-}
+const ROW_STAGGER = 40;
+const ROW_STAGGER_CAP = 8;
+const ROW_STAGGER_LEAD = 150;
 
 /**
- * The share a lift moved, as a WORD — the same ruling `describeDelta` keeps
- * (§5.1): never a leading minus. Sub-1% moves say so instead of rounding
- * themselves to "same", which would make a chip disagree with the chart above
- * it. Returns null when nothing moved: the mockup shows no chip at all there,
- * and an "up 0%" chip is noise pretending to be news.
+ * The row's second line: how far it moved, then how much record there is.
+ * `describeDelta` owns the phrasing, so a deload never arrives as "−5 kg".
+ *
+ * A PLATEAU LEADS IT. A lift that has not moved in three sessions was reading
+ * "12 sessions · last Tue" here, which is the one thing about it that is not
+ * worth knowing; the plateau is the fact that changes what the athlete does,
+ * and Next has ranked it that way since 12 August.
+ *
+ * A delta the guard refuses is spoken as a direction and printed as no figure
+ * (`deltaSuspect`).
  */
-function percentText(delta: number, percent: number): string | null {
-  if (delta === 0) return null;
-  const dir = delta > 0 ? 'up' : 'down';
-  const size = Math.abs(percent);
-  if (size === 0) return dir; // a move with no starting value to be a share of
-  if (size < 1) return `${dir} <1%`;
-  return `${dir} ${Math.round(size)}%`;
-}
-
-/**
- * The one counted line under the title. Two facts, both distinct training days
- * off stored rows: this calendar week, and the average per week across as much
- * of the window as the record actually reaches back (so a three-week-old
- * account never reads "8-week average"). No model, no adjectives (§2, rule 6).
- */
-function cadenceLine(days: string[], today: DayKey, historyDays: number): string | undefined {
-  if (days.length === 0) return undefined;
-  const monday = mondayOf(today);
-  const thisWeek = days.filter((d) => d >= monday).length;
-  const head =
-    thisWeek === 0
-      ? 'No sessions yet this week'
-      : `${thisWeek} ${thisWeek === 1 ? 'session' : 'sessions'} this week`;
-  if (historyDays < MIN_DAYS_FOR_RATE) return head;
-  const weeks = Math.min(8, Math.max(1, Math.round((historyDays + 1) / 7)));
-  return `${head} · ${weeks}-week average ${(days.length / weeks).toFixed(1)}`;
-}
-
-function setText(s: WorkoutSet): string {
-  if (s.weightKg != null && s.reps != null) return `${fmtNumber(s.weightKg)} kg × ${s.reps}`;
-  if (s.weightKg != null) return `${fmtNumber(s.weightKg)} kg`;
-  if (s.reps != null) return `${s.reps} reps`;
-  return '—';
-}
-
-/** The estimate beside a set, when the set can honestly carry one. */
-function setEstimate(s: WorkoutSet): string {
-  if (s.weightKg == null || s.reps == null || s.reps > E1RM_REP_CAP) return '';
-  const e1rm = Math.round((s.weightKg * (1 + s.reps / 30)) / 0.5) * 0.5;
-  return `e1RM ${fmtNumber(e1rm)}`;
+function detailOf(l: LiftRow): string {
+  const count = `${l.sessions} ${l.sessions === 1 ? 'session' : 'sessions'}`;
+  const when = `last ${labelForDay(l.lastDay)}`;
+  if (l.stalledAt != null) {
+    return `${STALL_SESSIONS} sessions at ${fmtNumber(l.stalledAt)} kg · ${when}`;
+  }
+  if (l.delta == null) return `${count} · ${when}`;
+  if (l.deltaSuspect) {
+    return `${l.direction === 'down' ? 'falling' : 'climbing'} · ${count} · ${when}`;
+  }
+  return `${describeDelta(l.delta, 'kg', 'the first', fmtNumber)} · ${count} · ${when}`;
 }
 
 export default function Progress() {
   const router = useRouter();
   const userId = useSession((s) => s.userId);
   const hydrate = useSession((s) => s.hydrate);
-  const openExerciseSheet = useSession((s) => s.openExerciseSheet);
-  const openSessionSheet = useSession((s) => s.openSessionSheet);
 
   // Cheap synchronous SQLite reads — re-run on every focus so a CSV import or a
   // session finished on Today lands here without a relaunch.
@@ -200,12 +147,8 @@ export default function Progress() {
     }, []),
   );
 
-  const [sort, setSort] = useState<LiftSort>('gain');
-  /** The key of the ONE open card. An accordion, so the screen stays short. */
-  const [openKey, setOpenKey] = useState<string | null>(null);
-  // The empty state's import runs RIGHT HERE — the button used to push /you
-  // and leave the person to find the row themselves, which promised an action
-  // it didn't perform. Same flow as /import-start and You.
+  const [group, setGroup] = useState<string>(ALL);
+  const [query, setQuery] = useState('');
   const [importBusy, setImportBusy] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
 
@@ -223,7 +166,7 @@ export default function Progress() {
           markImportCompleted(rowCountBucket(outcome.sets));
           recachePredictionFromLatest(userId); // tomorrow's ghost reads the import
           hydrate(userId); // Today's store sees the history too
-          setRefresh((n) => n + 1); // re-read → the cards replace this card
+          setRefresh((n) => n + 1); // re-read → the list replaces this card
           return;
         case 'cancelled':
           // They closed the file picker. Not an error, not phrased as one.
@@ -242,40 +185,23 @@ export default function Progress() {
   };
 
   /* eslint-disable react-hooks/exhaustive-deps */
-  // The whole aggregated history, once. The window and every ordering are
-  // derived from it in pure code, so switching a chip costs no query.
   const rows = useMemo(() => (userId ? getLiftSessions(userId) : []), [userId, refresh]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
-  const today = todayKey();
-  const fromDay = shiftDayKey(today, -RANGE_DAYS);
-  // Rows arrive oldest-first, so the first row is where the record begins.
-  const historyDays = rows.length > 0 ? daysBetween(rows[0]!.day, today) : 0;
+  const fromDay = shiftDayKey(todayKey(), -RANGE_DAYS);
+  const view = useMemo(() => buildOverview(rows, fromDay), [rows, fromDay]);
 
-  const view = useMemo(() => buildProgression(rows, 'e1rm', fromDay), [rows, fromDay]);
-  const ranked = useMemo(() => sortLifts(view.lifts, sort), [view.lifts, sort]);
-
-  // Distinct training days inside the window — the cadence line's only input.
-  const trainedDays = useMemo(
-    () => Array.from(new Set(rows.filter((r) => r.day >= fromDay).map((r) => r.day))),
-    [rows, fromDay],
-  );
-  const cadence = cadenceLine(trainedDays, today, Math.min(RANGE_DAYS, historyDays));
-
-  // The open card's evidence: the counted sets of the session behind its latest
-  // point. Read only while a card is open, never for the whole list.
-  const evidence = useMemo(() => {
-    if (!openKey) return null;
-    const lift = view.lifts.find((l) => l.key === openKey);
-    if (!lift) return null;
-    const detail = getWorkoutDetail(lift.workoutId);
-    if (!detail) return null;
-    const sets = detail.exercises
-      .filter((e) => e.canonical.toLowerCase() === lift.key)
-      .flatMap((e) => e.sets)
-      .filter((s) => s.kind !== 'warmup' && s.kind !== 'drop' && s.kind !== 'skipped');
-    return { lift, sets };
-  }, [openKey, view]);
+  // A group that vanishes (the record re-clustered after a new session) falls
+  // back to All rather than filtering the list down to nothing.
+  const activeGroup = group !== ALL && view.groups.some((g) => String(g.id) === group) ? group : ALL;
+  const needle = query.trim().toLowerCase();
+  const shown = view.lifts.filter((l) => {
+    if (activeGroup !== ALL) {
+      const g = view.groups.find((x) => String(x.id) === activeGroup);
+      if (g && !g.liftKeys.includes(l.key)) return false;
+    }
+    return needle === '' || l.canonical.toLowerCase().includes(needle);
+  });
 
   // §12.1: an empty state says what will fill it and never reports a lack.
   if (rows.length === 0) {
@@ -288,7 +214,7 @@ export default function Progress() {
               Your training, measured.
             </Text>
             <Text style={styles.emptyBody} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              Log one session — or import your history — and every lift you name gets a line
+              Log one session — or import your history — and every lift you name gets a card
               here showing where it started and where it is now.
             </Text>
             {importMessage ? (
@@ -312,79 +238,103 @@ export default function Progress() {
     );
   }
 
+  const subtitle = `Last 8 weeks · ${view.lifts.length} ${
+    view.lifts.length === 1 ? 'lift' : 'lifts'
+  } · ${view.sessions} training ${view.sessions === 1 ? 'day' : 'days'}`;
+
   return (
-    <StubScreen title="Progression" subtitle={cadence} back={false} large>
+    <StubScreen title="Progression" subtitle={subtitle} back={false} large>
+      {view.lifts.length >= SEARCH_FLOOR ? (
+        <TextInput
+          style={styles.search}
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search your lifts"
+          placeholderTextColor={color.textMuted}
+          autoCorrect={false}
+          autoCapitalize="none"
+          clearButtonMode="while-editing"
+          returnKeyType="search"
+          accessibilityLabel="Search your lifts"
+          maxFontSizeMultiplier={MAX_FONT_SCALE}
+        />
+      ) : null}
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}>
-        {/* Order — the ranking is the default, never the only way in. The
-            control itself is `ChipRow`, shared with the Next tab's split days
-            since 18 Aug: one pill row in the app, not two that drifted. */}
-        <ChipRow
-          items={SORTS.map((s) => ({ key: s.key, label: s.label, spoken: `Sort by ${s.label}` }))}
-          activeKey={sort}
-          onSelect={(key) => {
-            setSort(key as LiftSort);
-            setOpenKey(null);
-          }}
-          hint="Re-orders the lifts below"
-        />
-
-        {view.counted === 0 ? (
-          <FadeSlideIn>
-            <Text style={styles.thin} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              Two more sessions of the same lift and there&apos;s a trend to show here.
+        {view.groups.length > 0 ? (
+          <View style={styles.groups}>
+            <ChipRow
+              items={[
+                { key: ALL, label: 'All', spoken: `All ${view.lifts.length} lifts` },
+                ...view.groups.map((g) => ({
+                  key: String(g.id),
+                  label: g.name,
+                  spoken: `${g.name}, ${g.liftKeys.length} lifts, ${g.sessions} sessions`,
+                })),
+              ]}
+              activeKey={activeGroup}
+              onSelect={setGroup}
+              hint="Filters the lifts below"
+            />
+            {/* The grouping is derived, so it says where it came from. A label
+                a person cannot account for reads as a category we imposed. */}
+            <Text style={styles.groupNote} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              Grouped by what you train together.
             </Text>
-          </FadeSlideIn>
+          </View>
+        ) : null}
+
+        {shown.length === 0 ? (
+          <Text style={styles.thin} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {needle ? `Nothing matches “${query.trim()}”.` : 'No lifts in this group yet.'}
+          </Text>
         ) : (
-          <Stagger step={55} initialDelay={60}>
-            {ranked.map((lift, i) => (
-              <LiftCard
-                key={lift.key}
-                lift={lift}
-                // The banner names what the sort just claimed, and only when the
-                // claim is true: a "biggest gain" that lost weight is flattery.
-                leading={i === 0 && sort === 'gain' && lift.delta > 0}
-                open={openKey === lift.key}
-                sets={evidence && evidence.lift.key === lift.key ? evidence.sets : []}
-                onToggle={() => {
+          <Stagger step={ROW_STAGGER} initialDelay={ROW_STAGGER_LEAD - 90}>
+            {shown.map((l, i) => (
+              <Row
+                key={l.key}
+                name={l.canonical}
+                // A plateau is the app's one amber state, here as everywhere.
+                tone={l.stalledAt != null ? 'attention' : 'ink'}
+                detail={detailOf(l)}
+                value={l.latest != null ? fmtNumber(l.latest) : undefined}
+                unit={l.latest != null ? 'kg' : undefined}
+                spoken={[
+                  l.canonical,
+                  l.latest != null ? `${fmtNumber(l.latest)} kilograms estimated one rep max` : 'no estimate yet',
+                  detailOf(l),
+                ].join(', ')}
+                trailing={
+                  l.spark.length > 1 ? (
+                    <Sparkline
+                      values={l.spark}
+                      width={SPARK_W}
+                      height={SPARK_H}
+                      tint={color.brand}
+                      wash
+                      // Each line draws just after its own row has landed, so
+                      // the list writes itself down the screen instead of
+                      // arriving with eight finished decorations on it.
+                      delay={ROW_STAGGER_LEAD + stagger(i, ROW_STAGGER, ROW_STAGGER_CAP)}
+                    />
+                  ) : (
+                    // A lift with one reading has no line to draw. The slot is
+                    // held so the column of readings stays a column.
+                    <View style={styles.sparkHole} />
+                  )
+                }
+                onPress={() => {
                   tap();
-                  setOpenKey((k) => (k === lift.key ? null : lift.key));
-                }}
-                onOpenSession={() => {
-                  tap();
-                  openSessionSheet(lift.workoutId);
-                }}
-                onOpenHistory={() => {
-                  tap();
-                  openExerciseSheet(lift.canonical);
+                  router.push({ pathname: '/lift/[key]', params: { key: l.key } });
                 }}
               />
             ))}
           </Stagger>
         )}
-
-        {view.belowFloor.length > 0 ? (
-          <FadeSlideIn>
-            <View style={styles.building}>
-              <Eyebrow>{`Not enough sessions yet · ${view.belowFloor.length}`}</Eyebrow>
-              {view.belowFloor.map((lift) => (
-                <BuildingRow
-                  key={lift.key}
-                  lift={lift}
-                  onPress={() => {
-                    tap();
-                    openExerciseSheet(lift.canonical);
-                  }}
-                />
-              ))}
-              <Text style={styles.buildingNote} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                Three sessions of the same lift inside eight weeks and it gets its own chart.
-              </Text>
-            </View>
-          </FadeSlideIn>
-        ) : null}
 
         <PressableScale
           haptic="none"
@@ -395,229 +345,28 @@ export default function Progress() {
           }}
           accessibilityRole="button"
           accessibilityLabel="All lifts"
+          accessibilityHint="Every lift you have ever logged, including outside these eight weeks"
           style={styles.allLiftsRow}>
           <Text style={styles.allLiftsLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             All lifts
           </Text>
-          <Icon name="chevron-forward" size={moderateScale(14)} tint={color.textMuted} />
+          <Icon name="chevron-forward" size={moderateScale(14)} tint={color.textSecondary} />
         </PressableScale>
       </ScrollView>
     </StubScreen>
   );
 }
 
-function LiftCard({
-  lift,
-  leading,
-  open,
-  sets,
-  onToggle,
-  onOpenSession,
-  onOpenHistory,
-}: {
-  lift: LiftProgression;
-  leading: boolean;
-  open: boolean;
-  sets: WorkoutSet[];
-  onToggle: () => void;
-  onOpenSession: () => void;
-  onOpenHistory: () => void;
-}) {
-  const spoken = describeDelta(lift.delta, 'kg', monthDay(lift.firstDay), fmtNumber);
-  const share = percentText(lift.delta, lift.percent);
-  const value = fmtNumber(lift.latest);
-
-  // Two readings, deliberately independent. `tone` is the WINDOW — where the
-  // lift went over eight weeks, which is what the chip and the delta report.
-  // `stall` is the TAIL — what the last sessions did, which is what the meta
-  // line and the terminal dot report. When they disagree ("up 12%" over a card
-  // that says "down 2 sessions running") that disagreement is the single most
-  // useful thing this screen can tell someone, so neither is allowed to
-  // overwrite the other.
-  const tone: Tone = lift.delta > 0 ? 'up' : lift.delta < 0 ? 'down' : 'flat';
-  const stall = stallOf(lift.points);
-  const stallNote = describeStall(stall);
-  const regressing = stall.kind === 'down' && stall.sessions >= STALL_RUN_MIN;
-  const dotTone: Tone = stall.kind === 'up' ? 'up' : regressing ? 'down' : 'flat';
-
-  return (
-    <View style={[styles.card, leading && styles.cardLeading]}>
-      {leading ? (
-        <Text style={styles.leadTag} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          Biggest gain
-        </Text>
-      ) : null}
-      <PressableScale
-        haptic="none"
-        activeScale={0.98}
-        onPress={onToggle}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        // Spelled out in full, so VoiceOver never depends on the hue that the
-        // chip and the dot use to say the same thing (§14).
-        accessibilityLabel={[
-          lift.canonical,
-          `${value} kilograms`,
-          spoken,
-          share ?? 'no change',
-          stallNote ?? `${lift.sessions} sessions`,
-          `last ${labelForDay(lift.lastDay)}`,
-          lift.isBest ? 'personal record' : '',
-        ]
-          .filter(Boolean)
-          .join(', ')}
-        style={styles.cardBody}>
-        <View style={styles.cardTop}>
-          <View style={styles.cardName}>
-            <View style={styles.nameLine}>
-              <Text style={styles.liftName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {lift.canonical}
-              </Text>
-              {/* `Badge tone="wash"` — the app's one sanctioned filled chip
-                  (skill §Decided-4), the same object Next's lever is. `share`
-                  is null when the window is flat (`percentText` returns null on
-                  a zero delta), so this is only ever a gain or a loss and there
-                  is no third, unpaired fill to express. */}
-              {share ? <Badge tone="wash" wash={tone === 'up' ? 'gain' : 'loss'} label={share} /> : null}
-              {lift.isBest ? (
-                <View style={styles.prChip}>
-                  <Text style={styles.prChipText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    PR
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-            <Text style={styles.liftMeta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {stallNote ?? `${lift.sessions} sessions · last ${labelForDay(lift.lastDay)}`}
-            </Text>
-          </View>
-          <View style={styles.heroBox}>
-            <Text style={styles.hero} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {value}
-              <Text style={styles.heroUnit}> kg</Text>
-            </Text>
-            <Text
-              style={[styles.heroDelta, styles[`ink_${tone}`]]}
-              maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {lift.delta === 0 ? '—' : spoken}
-            </Text>
-          </View>
-        </View>
-
-        {/* THE LINE IS BRAND BLUE (v6, skill §Reuse: "`TrendChart` brand —
-            never green"). It was one neutral ink, on the 17 Aug reasoning that
-            the eight weeks of history should not judge; that reasoning is
-            intact and the terminal dot still carries the verdict alone. What
-            changed is that the SHAPE of a recorded progression is the one place
-            the app's blue earns a line, so the tint and its wash come off the
-            component's own defaults rather than being overridden here.
-
-            `ground` is the white card this sits in, so the dot is knocked out
-            of the line in the surface it actually stands on. */}
-        <TrendChart
-          points={lift.points}
-          best={lift.best}
-          height={open ? CHART_H_OPEN : CHART_H}
-          showPrevious={open}
-          dots
-          ground={color.surface}
-          lastTint={TONE_INK[dotTone]}
-        />
-
-        <View style={styles.ends}>
-          <Text style={styles.endLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {`${monthDay(lift.firstDay)} · ${fmtNumber(lift.first)} kg`}
-          </Text>
-          <Text style={styles.endLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {`${monthDay(lift.lastDay)} · ${value} kg`}
-          </Text>
-        </View>
-      </PressableScale>
-
-      {open ? (
-        <FadeSlideIn>
-          <View style={styles.cardRule} />
-          <PressableScale
-            haptic="none"
-            activeScale={0.98}
-            onPress={onOpenSession}
-            accessibilityRole="button"
-            accessibilityLabel={`Open the full session from ${labelForDay(lift.lastDay)}`}
-            style={styles.evHead}>
-            <Eyebrow>{`${monthDay(lift.lastDay)} · what made it`}</Eyebrow>
-            <Icon name="chevron-forward" size={moderateScale(13)} tint={color.textMuted} />
-          </PressableScale>
-
-          {sets.length === 0 ? (
-            <Text style={styles.thin} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              That session&apos;s sets are still syncing.
-            </Text>
-          ) : (
-            sets.map((s, i) => (
-              <View key={`${s.position}-${i}`} style={styles.setRow}>
-                <Text style={styles.setIndex} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {`Set ${i + 1}`}
-                </Text>
-                <Text style={styles.setValue} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {setText(s)}
-                </Text>
-                <Text style={styles.setEstimate} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {setEstimate(s)}
-                </Text>
-              </View>
-            ))
-          )}
-
-          <View style={styles.cardRule} />
-          <PressableScale
-            haptic="none"
-            activeScale={0.98}
-            onPress={onOpenHistory}
-            accessibilityRole="button"
-            accessibilityLabel={`Full history for ${lift.canonical}`}
-            style={styles.opener}>
-            <Text style={styles.openerLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              Full history
-            </Text>
-            <Icon name="chevron-forward" size={moderateScale(13)} tint={color.textMuted} />
-          </PressableScale>
-        </FadeSlideIn>
-      ) : null}
-    </View>
-  );
-}
-
-/** A lift with one or two sessions in range: named, counted, and openable —
- * just not charted, because two points are a line and not yet a trend. */
-function BuildingRow({ lift, onPress }: { lift: LiftBrief; onPress: () => void }) {
-  return (
-    <PressableScale
-      haptic="none"
-      activeScale={0.98}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${lift.canonical}, ${lift.sessions} ${
-        lift.sessions === 1 ? 'session' : 'sessions'
-      }, latest ${fmtNumber(lift.latest)} kilograms`}
-      style={styles.buildRow}>
-      <Text style={styles.buildName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {lift.canonical}
-      </Text>
-      <Text style={styles.buildMeta} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {`${lift.sessions} · ${fmtNumber(lift.latest)} kg`}
-      </Text>
-    </PressableScale>
-  );
-}
-
-/** The terminal dot's fill per tone — SVG takes a colour, not a style. */
-const TONE_INK: Record<Tone, string> = {
-  up: color.gain,
-  down: color.loss,
-  flat: color.accent,
-};
-
 const styles = StyleSheet.create({
+  search: {
+    ...type.body,
+    color: color.textPrimary,
+    backgroundColor: color.surfaceHigh,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.lg,
+  },
   scroll: {
     flex: 1,
     marginHorizontal: -spacing.xxl, // StubScreen pads the body; the scroll owns it
@@ -629,259 +378,56 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.huge + TAB_BAR_CLEARANCE,
     gap: spacing.lg,
   },
-
-  // The four orderings live in `components/chip-row.tsx` now — see the ChipRow
-  // call above. Nothing on this screen styles a chip any more.
-
-  // --- lift card --------------------------------------------------------------
-  // A card, and an accordion like Next's: it opens onto the sets behind the
-  // latest point, so the surface is what says where that disclosure begins and
-  // ends. `radius.xl` 24 — a card and a sheet are the same kind of object.
-  card: {
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.divider,
-    borderRadius: radius.xl,
-    borderCurve: 'continuous',
-    padding: spacing.lg,
-    // No marginBottom: the content container's own `gap` separates the cards.
-    // Carrying both stacked 16 + 12 between every pair, which read as a list
-    // coming apart rather than as one stack.
-    ...shadow.card,
+  groups: {
+    gap: spacing.sm,
   },
-  cardLeading: {
-    borderColor: alpha(color.brand, 0.4),
-  },
-  leadTag: {
+  groupNote: {
     ...type.footnote,
-    fontWeight: '700',
-    // 5.97:1 on the card. The border above it is a soft outline and does not
-    // have to carry the meaning on its own — the words "Biggest gain" are
-    // printed inside it (skill §Colour: colour is never the only carrier).
-    color: color.brand,
-    marginBottom: spacing.xs,
-  },
-  cardBody: {
-    gap: spacing.sm,
-  },
-  cardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  cardName: {
-    flexShrink: 1,
-  },
-  nameLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  liftName: {
-    ...type.headline,
-    flexShrink: 1,
-    fontWeight: '700',
-    color: color.textPrimary,
-  },
-  // The window's reading is `Badge tone="wash"` now — this screen styles no
-  // chip of its own. `chip_flat` went with it and was never drawn anyway:
-  // `percentText` returns null on a zero delta, so a flat window has no chip.
-  // The three `ink_*` entries stay — they still colour the HERO DELTA under the
-  // reading, where the word beside them carries the direction and the hue only
-  // repeats it, which is what keeps a colourblind reading complete.
-  ink_up: { color: color.gain },
-  ink_down: { color: color.loss },
-  ink_flat: { color: color.textSecondary },
-  // A PR is a SHAPE, never a colour (§5.1) — an outlined mono label, so it
-  // survives colourblindness and never competes with the green beside it.
-  prChip: {
-    borderWidth: 1,
-    borderColor: color.border,
-    borderRadius: 5,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-  },
-  prChipText: {
-    ...readingStyle('700'),
-    fontSize: moderateScale(11),
-    letterSpacing: 0.5,
-    color: color.textPrimary,
-  },
-  liftMeta: {
-    ...readingStyle('400'),
-    fontSize: moderateScale(11.5),
-    marginTop: 3,
-    color: color.textSecondary,
-  },
-  heroBox: {
-    alignItems: 'flex-end',
-    flexShrink: 0,
-  },
-  hero: {
-    ...readingStyle('700'),
-    fontSize: moderateScale(28),
-    letterSpacing: -0.5,
-    color: color.textPrimary,
-  },
-  heroUnit: {
-    fontSize: type.caption.fontSize,
-    fontWeight: '400',
-    color: color.textSecondary,
-  },
-  heroDelta: {
-    ...readingStyle('600'),
-    fontSize: moderateScale(12.5),
-    marginTop: 2,
-  },
-  ends: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  endLabel: {
-    ...readingStyle('400'),
-    fontSize: moderateScale(11),
-    color: color.textSecondary,
-  },
-
-  // --- the evidence, inside an open card --------------------------------------
-  cardRule: {
-    height: 1,
-    backgroundColor: color.border,
-    marginVertical: spacing.md,
-  },
-  evHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: moderateScale(28),
-    marginHorizontal: -PRESS_BLEED,
-    paddingHorizontal: PRESS_BLEED,
-    borderRadius: radius.sm,
-    borderCurve: 'continuous',
-  },
-  // THE RECORD, so it takes none of the record's chrome: the hairline under
-  // every set is gone (skill §Structure) and the row breathes instead. This is
-  // the same treatment `set-table.tsx` carries on Today.
-  setRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  setIndex: {
-    ...readingStyle('400'),
-    fontSize: type.footnote.fontSize,
-    // Which set it is, is information — muted is for what the eye may skip.
-    color: color.textSecondary,
-    width: moderateScale(42),
-  },
-  setValue: {
-    ...readingStyle('400'),
-    fontSize: type.footnote.fontSize,
-    flex: 1,
-    color: color.textPrimary,
-  },
-  setEstimate: {
-    ...readingStyle('400'),
-    fontSize: type.footnote.fontSize,
-    color: color.textSecondary,
-  },
-  opener: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: moderateScale(28),
-    marginHorizontal: -PRESS_BLEED,
-    paddingHorizontal: PRESS_BLEED,
-    borderRadius: radius.sm,
-    borderCurve: 'continuous',
-  },
-  openerLabel: {
-    ...type.caption,
-    color: color.textSecondary,
-  },
-
-  // --- lifts still building a record ------------------------------------------
-  building: {
-    gap: spacing.xs,
-  },
-  buildRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    minHeight: moderateScale(52),
-    marginHorizontal: -PRESS_BLEED,
-    paddingHorizontal: PRESS_BLEED,
-    borderRadius: radius.sm,
-    borderCurve: 'continuous',
-  },
-  buildName: {
-    ...type.subhead,
-    flexShrink: 1,
-    color: color.textPrimary,
-  },
-  buildMeta: {
-    ...readingStyle('400'),
-    fontSize: moderateScale(11),
-    // "3 · 82.5 kg" is a READING. A value in muted is a bug at the call site.
-    color: color.textSecondary,
-  },
-  buildingNote: {
-    ...type.caption,
-    marginTop: spacing.xs,
     color: color.textMuted,
   },
+  sparkHole: {
+    width: SPARK_W,
+    height: SPARK_H,
+  },
+  thin: {
+    ...type.body,
+    color: color.textSecondary,
+  },
 
-  // --- tail + states ----------------------------------------------------------
+  // --- all lifts ---------------------------------------------------------------
   allLiftsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: moderateScale(44),
-    marginHorizontal: -PRESS_BLEED,
-    paddingHorizontal: PRESS_BLEED + spacing.xs,
-    borderRadius: radius.sm,
-    borderCurve: 'continuous',
+    paddingVertical: spacing.md,
+    marginTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: alpha(color.textPrimary, 0.06),
   },
   allLiftsLabel: {
-    ...type.caption,
-    color: color.textSecondary,
+    ...type.headline,
+    color: color.textPrimary,
   },
-  thin: {
-    ...type.subhead,
-    // It carries information, so it is secondary ink rather than muted.
-    color: color.textSecondary,
-    paddingVertical: spacing.md,
-  },
+
+  // --- empty state -------------------------------------------------------------
   emptyCard: {
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: color.border,
-    // A card's radius, not a button's.
-    borderRadius: radius.xl,
-    borderCurve: 'continuous',
-    padding: spacing.lg,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   emptyTitle: {
-    ...type.headline,
-    fontWeight: '600',
+    ...type.title2,
     color: color.textPrimary,
   },
   emptyBody: {
-    ...type.subhead,
+    ...type.body,
     color: color.textSecondary,
   },
   emptyMessage: {
-    ...type.footnote,
-    color: color.textSecondary,
+    ...type.subhead,
+    color: color.attention,
+    marginTop: spacing.sm,
   },
   emptyActions: {
-    flexDirection: 'row',
-    marginTop: spacing.xs,
+    marginTop: spacing.lg,
+    alignItems: 'flex-start',
   },
 });

@@ -6,6 +6,7 @@ import {
   projectionSubject,
   RECAP_NEUTRAL,
   recapSubtext,
+  weekReadback,
   WHY_WRITTEN_NEUTRAL,
   WHY_WRITTEN_REST,
   whyWrittenBody,
@@ -56,12 +57,43 @@ test('the projection headline carries the goal, and nothing when there is none',
   assert.equal(projectionSubject('nonsense'), null);
 });
 
+test('the week card reads its own count back, singular and plural', () => {
+  assert.equal(weekReadback(4, 'structured').title, '4 days a week');
+  assert.equal(weekReadback(1, 'structured').title, '1 day a week');
+  assert.match(weekReadback(4, 'structured').detail, /Next tab/);
+  assert.match(weekReadback(4, 'flexible').detail, /never counts a miss/);
+});
+
+test('an empty week is an answer when the person decides on the day', () => {
+  assert.equal(weekReadback(0, 'flexible').title, 'No fixed days');
+  assert.match(weekReadback(0, 'flexible').detail, /follows what you write/);
+  // Nothing chosen at all is still an invitation, never a demand.
+  assert.equal(weekReadback(0, null).title, 'Pick your days');
+  assert.match(weekReadback(0, undefined).detail, /change it any time/);
+});
+
+test('nothing the week card says can be read as a target', () => {
+  for (const days of [0, 1, 3, 7]) {
+    for (const feel of ['structured', 'flexible', null]) {
+      const { title, detail } = weekReadback(days, feel);
+      for (const line of [title, detail]) {
+        assert.ok(!/\btarget\b|\bgoal\b|\bstreak\b|\bmissed\b/i.test(line), `"${line}" scores the week`);
+      }
+    }
+  }
+});
+
 test('every line in the file keeps the §12 tone', () => {
   const lines = [
     WHY_WRITTEN_NEUTRAL,
     ...WHY_WRITTEN_REST,
     ...['strong', 'hevy', 'notes', 'sheet', 'none', null].map(whyWrittenOpening),
     ...[['forget'], ['target'], []].map(recapSubtext),
+    ...[
+      weekReadback(4, 'structured'),
+      weekReadback(0, 'flexible'),
+      weekReadback(0, null),
+    ].flatMap((r) => [r.title, r.detail]),
     projectionHeadline('Marko', 'strength'),
   ];
   for (const line of lines) {

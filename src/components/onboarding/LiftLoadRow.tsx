@@ -3,9 +3,19 @@ import { useAnimatedStyle } from 'react-native-reanimated';
 
 import { PressableScale } from '@/components/motion';
 import type { WeightUnit } from '@/lib/prefs';
-import { color, MAX_FONT_SCALE, moderateScale, radius, shadow, spacing, type } from '@/lib/theme';
+import {
+  color,
+  lineFor,
+  MAX_FONT_SCALE,
+  moderateScale,
+  radius,
+  readingStyle,
+  shadow,
+  spacing,
+  type,
+} from '@/lib/theme';
 
-import { CARD_FILL } from './tokens';
+import { CARD_FILL, INK_TRACK } from './tokens';
 import { useSelectFill } from './use-select-fill';
 
 /**
@@ -22,9 +32,17 @@ import { useSelectFill } from './use-select-fill';
  * `minus` is a quiet white disc and `plus` is the blue one: adding weight is
  * the direction this screen exists for, and the design draws the asymmetry.
  *
- * The value is `textPrimary` at a mono-ish weight because it is a NUMBER a
- * person has to read (the 9 Aug ink ladder), and both discs are 44 pt targets
- * even where they are drawn smaller.
+ * The value is set in the READING FACE, in full ink, with the unit a step down
+ * and a weight lighter — a number and its unit are typographically two things
+ * (skill §Structure, §Decided-5). It was the sans headline face, which is the
+ * app's speaking voice: every other load in Recore is reported in the reading
+ * face, and the one place a person SETS one should not be the exception.
+ *
+ * The quiet disc is `INK_TRACK`, not white. It was `color.surface` on a card
+ * that is itself `color.surface` — a control with neither border nor shadow on
+ * a surface of its own colour, which is invisible by definition (skill
+ * §Spacing, radii, elevation); all that was left of the minus button was its
+ * glyph floating on the row. Both discs are 44 pt targets either way.
  *
  * ## Motion (19 August 2026)
  *
@@ -75,7 +93,8 @@ export function LiftLoadRow({
       </Text>
       <MinusDisc lift={lift} disabled={current <= step} onPress={() => bump(-step)} />
       <Text style={styles.value} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {current > 0 ? `${formatLoad(current)} ${unit}` : `— ${unit}`}
+        {current > 0 ? formatLoad(current) : '—'}
+        <Text style={styles.unit}>{` ${unit}`}</Text>
       </Text>
       <PressableScale
         onPress={() => bump(step)}
@@ -173,11 +192,17 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
   value: {
-    ...type.headline,
-    fontWeight: '700',
+    ...readingStyle('700'),
+    fontSize: moderateScale(17),
+    lineHeight: lineFor(22),
     color: color.textPrimary,
-    minWidth: moderateScale(64),
+    minWidth: moderateScale(70),
     textAlign: 'center',
+  },
+  unit: {
+    ...readingStyle('500'),
+    fontSize: moderateScale(13),
+    color: color.textSecondary,
   },
   disc: {
     width: DISC,
@@ -186,8 +211,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /** A recessed disc on a white card — see the note above on why it may not be
+   * `surface`. `INK_TRACK` is the same ink-at-10 % the progress bar's empty
+   * track uses, which is what "a control that is off" looks like in this flow. */
   discQuiet: {
-    backgroundColor: color.surface,
+    backgroundColor: INK_TRACK,
   },
   discBlue: {
     backgroundColor: color.brand,

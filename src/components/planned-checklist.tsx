@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeInDown, useReducedMotion } from 'react-native-reanimated';
 
 import { tap, tapMedium } from '@/lib/haptics';
@@ -30,6 +30,7 @@ import { useSession } from '@/state/session-store';
 
 import { MonoTag } from './gutter-value';
 import { BottomSheet } from './bottom-sheet';
+import { DONE_ACCESSORY, KeyboardDoneBar } from './keyboard-done';
 import { PressableScale } from './motion';
 
 /**
@@ -239,12 +240,17 @@ function EditSetSheet({ set, onClose }: { set: PlannedSet | null; onClose: () =>
         onClose();
       }}
       sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
-      <Text style={styles.sheetTitle} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {set?.exercise ?? ''}
-      </Text>
-      <Text style={styles.sheetCaption} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        Set {set?.index ?? 1} — log what you actually did
-      </Text>
+      {/* Both fields open a NUMBER PAD, which has no return key, and this
+          sheet has no scroll view to swipe — so the head is a tap target that
+          puts the keyboard down, and the Done bar below is the other way out. */}
+      <Pressable accessible={false} onPress={Keyboard.dismiss}>
+        <Text style={styles.sheetTitle} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {set?.exercise ?? ''}
+        </Text>
+        <Text style={styles.sheetCaption} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          Set {set?.index ?? 1} — log what you actually did
+        </Text>
+      </Pressable>
 
       <View style={styles.fields}>
         <Field label="Weight (kg)" value={weight} onChange={setWeight} />
@@ -262,6 +268,9 @@ function EditSetSheet({ set, onClose }: { set: PlannedSet | null; onClose: () =>
           Save to the record
         </Text>
       </PressableScale>
+
+      {/* Inside the sheet: a `BottomSheet` is its own RN `Modal` window. */}
+      <KeyboardDoneBar />
     </BottomSheet>
   );
 }
@@ -284,6 +293,7 @@ function Field({
         value={value}
         onChangeText={onChange}
         keyboardType="decimal-pad"
+        inputAccessoryViewID={DONE_ACCESSORY}
         selectTextOnFocus
         placeholder="—"
         placeholderTextColor={color.textMuted}

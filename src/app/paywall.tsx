@@ -1,7 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -36,11 +35,11 @@ import { useSelectFill } from '@/components/onboarding/use-select-fill';
 import { Eyebrow } from '@/components/primitives';
 import { useAuth } from '@/lib/auth/provider';
 import { perMonth, savePct, type Plan } from '@/lib/billing/pricing';
-import { purchase, restore } from '@/lib/billing/state';
+import { openSubscriptionManagement, purchase, restore } from '@/lib/billing/state';
 import {
   fetchOffer,
   isStoreConfigured,
-  managementUrl,
+  isTestStore,
   type StoreOffer,
   type StorePlan,
 } from '@/lib/billing/store';
@@ -62,6 +61,7 @@ import {
   readingStyle,
   shadow,
   spacing,
+  textRoom,
   type,
 } from '@/lib/theme';
 
@@ -212,7 +212,7 @@ function CloseGlyph() {
 function CheckGlyph() {
   return (
     <Svg width={moderateScale(11)} height={moderateScale(11)} viewBox="0 0 16 16">
-      <Path d="M3 8.5L6.5 12 13 4.5" stroke="#FFFFFF" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <Path d="M3 8.5L6.5 12 13 4.5" stroke={color.onInk} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </Svg>
   );
 }
@@ -353,7 +353,7 @@ export default function Paywall() {
     setBusy('purchase');
     setNotice(null);
     try {
-      const outcome = await purchase(plan);
+      const outcome = await purchase(plan, session?.user.id);
       switch (outcome.status) {
         case 'purchased':
           // The entitlement is already applied; the dispatcher takes it from
@@ -363,6 +363,24 @@ export default function Paywall() {
         case 'cancelled':
           // A person closing Apple's sheet chose something. It is not an error
           // and it is never phrased as one (§12).
+          return;
+        case 'pending':
+          // Ask to Buy, or a bank's approval step. Apple has the request and
+          // nobody has said yes yet — that is not a failure and the person has
+          // nothing left to do. The customer-info listener applies it the
+          // moment it clears, on whatever screen they are on.
+          setNotice('Apple is waiting for approval. Nothing is charged yet, and Recore opens as soon as it goes through.');
+          return;
+        case 'already-owned':
+          // NEVER "purchase failed" here: this Apple Account already pays, and
+          // a second charge is the one outcome that must not happen.
+          setNotice('This Apple Account already has Recore. Tap Restore below — you will not be charged twice.');
+          return;
+        case 'offline':
+          setNotice('Recore could not reach the App Store. Nothing was charged.');
+          return;
+        case 'not-allowed':
+          setNotice('Purchases are turned off on this device. Nothing was charged.');
           return;
         case 'unavailable':
           setNotice('That plan is not available on your App Store account right now.');
@@ -412,7 +430,7 @@ export default function Paywall() {
     setBusy('restore');
     setNotice(null);
     try {
-      const outcome = await restore();
+      const outcome = await restore(session?.user.id);
       if (outcome.status === 'restored') {
         router.replace('/');
         return;
@@ -429,9 +447,8 @@ export default function Paywall() {
 
   const handleManage = () => {
     tap();
-    void managementUrl()
-      .then((url) => Linking.openURL(url))
-      .catch(() => {});
+    // Customer Center where it exists, Apple's subscriptions page otherwise.
+    void openSubscriptionManagement();
   };
 
   const handleDismiss = () => {
@@ -626,6 +643,19 @@ export default function Paywall() {
           {notice ? (
             <Text style={styles.notice} maxFontSizeMultiplier={MAX_FONT_SCALE}>
               {notice}
+            </Text>
+          ) : null}
+
+          {/* DEVELOPMENT ONLY, and it must stay that way. A RevenueCat Test
+              Store key prices real packages from the dashboard but SIMULATES
+              the purchase — no App Store sheet, no receipt, no money. Without
+              this line a simulated buy is indistinguishable from a real one on
+              screen, which is precisely the confusion CLAUDE.md §2 rule 5 is
+              written against. `env.ts` blanks a test_ key outside __DEV__, so
+              neither the key nor this label can reach a release build. */}
+          {__DEV__ && isTestStore() ? (
+            <Text style={styles.testStore} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              Test Store · purchases are simulated, nothing is charged
             </Text>
           ) : null}
 
@@ -998,6 +1028,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: spacing.sm,
   },
+  testStore: {
+    marginTop: spacing.sm,
+    ...type.footnote,
+    lineHeight: lineFor(18),
+    color: color.textSecondary,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
   timeline: {
     marginTop: spacing.xxl,
   },
@@ -1099,7 +1138,7 @@ const styles = StyleSheet.create({
     ...readingStyle('700'),
     fontSize: moderateScale(9.5),
     letterSpacing: 0.8,
-    color: '#FFFFFF',
+    color: color.onInk,
   },
   planTitle: {
     ...type.headline,
@@ -1112,7 +1151,9 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
   planPerSlot: {
-    height: lineFor(16),
+    // A VIEW holding one line of text, so it grows itself (`textRoom`): the
+    // renderer grows the line inside it and nothing grows the box.
+    height: textRoom(lineFor(16)),
     justifyContent: 'center',
   },
   planPer: {

@@ -52,7 +52,13 @@ export default function ImportStart() {
   const [message, setMessage] = useState<string | null>(null);
   const [tracker] = useState(() => getObTracker());
 
-  const appName = tracker === 'hevy' ? 'Hevy' : 'Strong';
+  /**
+   * v2 asks "Hevy or Strong" as one option, so `app` is all this screen may be
+   * told — and naming one of the two would put a product on screen that nobody
+   * chose. The narrow answers still come from installs onboarded before 28 Aug
+   * 2026 and from the v1 flow.
+   */
+  const appName = tracker === 'hevy' ? 'Hevy' : tracker === 'app' ? 'Hevy or Strong' : 'Strong';
 
   /**
    * Offered means SHOWN, not completed. Marked on mount so a person who taps

@@ -12,6 +12,15 @@ export interface PredictionRow {
   accepted_at: string | null;
   /** followed | edited | ignored — settled after the day's session parsed. */
   outcome: string | null;
+  /**
+   * LOCAL ONLY (v6). `GhostLine[]` as JSON: the engine's own reason and lever
+   * for each lift in `ghost_text`, so Next's rows can explain their targets on
+   * the ghost path the way the declared-split path already does. Null on a row
+   * written before v6, and on any row a remote pull overwrote — see
+   * `upsertPredictionFromRemote`. A row that cannot explain itself says
+   * nothing; it never guesses.
+   */
+  lines_json: string | null;
   dirty: number;
 }
 
@@ -43,16 +52,26 @@ export function getPredictionForOpen(userId: string, today: DayKey): PredictionR
   );
 }
 
-export function upsertPrediction(userId: string, day: DayKey, ghostText: string, reason: string | null) {
+export function upsertPrediction(
+  userId: string,
+  day: DayKey,
+  ghostText: string,
+  reason: string | null,
+  /** `GhostLine[]` as JSON — the per-lift reasons behind `ghostText`. Written
+   * in the SAME statement as the text they explain, so the two can never drift
+   * apart by one parse. */
+  linesJson: string | null = null,
+) {
   getDb().runSync(
-    `INSERT INTO predictions (id, user_id, for_date, ghost_text, reason, created_at, dirty)
-     VALUES (?, ?, ?, ?, ?, ?, 1)
+    `INSERT INTO predictions (id, user_id, for_date, ghost_text, reason, created_at, lines_json, dirty)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1)
      ON CONFLICT(user_id, for_date) DO UPDATE SET
        ghost_text = excluded.ghost_text,
        reason = excluded.reason,
        created_at = excluded.created_at,
+       lines_json = excluded.lines_json,
        dirty = 1`,
-    [newId(), userId, day, ghostText, reason, nowIso()],
+    [newId(), userId, day, ghostText, reason, nowIso(), linesJson],
   );
 }
 
@@ -107,7 +126,11 @@ export function upsertPredictionFromRemote(row: {
        reason = excluded.reason,
        created_at = excluded.created_at,
        accepted_at = excluded.accepted_at,
-       outcome = excluded.outcome
+       outcome = excluded.outcome,
+       -- The reasons belong to the ghost text they were computed from, and a
+       -- remote row carries none (the column is local). Keeping the old ones
+       -- would attach a confident sentence to a number it never explained.
+       lines_json = NULL
      WHERE predictions.dirty = 0`,
     [
       row.id,

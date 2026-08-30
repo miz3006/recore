@@ -11,7 +11,7 @@ import { todayKey } from '@/lib/db/dates';
 import { tap } from '@/lib/haptics';
 import { groupThousands } from '@/lib/parse/estimate';
 import { getRecapIntent, isRecapEnabled } from '@/lib/prefs';
-import { enableRecap } from '@/lib/recap';
+import { enableRecap, recapPermissionAsked } from '@/lib/recap';
 import { color, MAX_FONT_SCALE, moderateScale, radius, readingStyle, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
@@ -26,11 +26,14 @@ import { Icon } from './icon';
  * one Done — then it's gone until next Monday. Silence when last week didn't
  * train.
  *
- * It is also where the §12.1 notification is OFFERED, exactly as onboarding
- * promised ("We'll ask for permission once your first recap is ready — not
- * before"): a person who answered yes sees one quiet action here; tapping it
- * asks the OS in context and turns the Sunday notice on. Everyone keeps full
- * control in You → Weekly recap.
+ * It is also the SECOND place the §12.1 notification can be turned on. Since
+ * 23 Aug 2026 the onboarding recap screen asks iOS directly, so most people
+ * arrive here already answered — the offer below is for the ones who said yes
+ * and never got the dialog (Expo Go, an interrupted flow, a system-level
+ * refusal that has since been lifted in Settings). It never appears once the
+ * recap is on, and never once the OS has already been asked and said no: an
+ * action whose only possible outcome is nothing happening is not an offer.
+ * Everyone keeps full control in You → Weekly recap.
  */
 const seenKey = (weekStart: string) => `recap_seen:${weekStart}`;
 
@@ -41,11 +44,11 @@ export function WeekRecapCard() {
   const cardRef = useRef<View>(null);
   const [dismissed, setDismissed] = useState(false);
   const [branding, setBranding] = useState(false);
-  // The §12.1 notification offer: only for someone who said yes in onboarding
-  // and hasn't turned it on yet. A denial hides it for good — control stays
-  // in You, and this card never asks twice.
+  // The §12.1 notification offer: only for someone who said yes in onboarding,
+  // hasn't got it on, and whose OS has not already been asked. A denial hides
+  // it for good — control stays in You, and this card never asks twice.
   const [notifState, setNotifState] = useState<'offer' | 'on' | 'hidden'>(() =>
-    isRecapEnabled() ? 'hidden' : getRecapIntent() === 'yes' ? 'offer' : 'hidden',
+    isRecapEnabled() || recapPermissionAsked() || getRecapIntent() !== 'yes' ? 'hidden' : 'offer',
   );
 
   const handleEnableNotif = async () => {

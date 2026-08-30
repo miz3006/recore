@@ -1,4 +1,4 @@
-import { moderateScale, osFontScale, spacing, type } from '@/lib/theme';
+import { moderateScale, osFontScale, spacing, textRoom, type } from '@/lib/theme';
 
 /**
  * Shared metrics for the note body so the editor text, the right-gutter value,
@@ -11,12 +11,24 @@ import { moderateScale, osFontScale, spacing, type } from '@/lib/theme';
 export const NOTE_FONT_SIZE = type.body.fontSize;
 
 /**
- * Generous, paper-like line spacing (task §2). Multiplied by the clamped OS font
- * scale so the rhythm stays proportional when Dynamic Type grows the glyphs. The
- * SAME value is used by the editor, the measuring mirror, and the gutter so all
- * three stay locked to one baseline grid.
+ * Generous, paper-like line spacing (task §2). The SAME value is used by the
+ * editor, the measuring mirror, and the gutter so all three stay locked to one
+ * baseline grid.
+ *
+ * This is the value a `lineHeight` is set to; the renderer grows it by the
+ * reader's own text setting, exactly as it grows the glyph (see `lineFor`). It
+ * used to carry `osFontScale` itself, which meant the text scaled twice while
+ * the gutter ROWS beside it scaled once — so at any setting but the default the
+ * two grids drifted apart by that factor, a line at a time.
  */
-export const NOTE_LINE_HEIGHT = Math.round(NOTE_FONT_SIZE * osFontScale * 1.75);
+export const NOTE_LINE_HEIGHT = Math.round(NOTE_FONT_SIZE * 1.75);
+
+/**
+ * The same line as a BOX — the gutter row that has to sit on the note's own
+ * baseline, and anything else drawn as a `View` beside the text. A view is not
+ * grown by the reader's setting, so it takes the scale by hand.
+ */
+export const NOTE_LINE_BOX = textRoom(NOTE_LINE_HEIGHT);
 
 /**
  * Interpreted readings sit a full step smaller than the written ink (design

@@ -2,20 +2,13 @@ import { useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { tap } from '@/lib/haptics';
-import {
-  color,
-  hairline,
-  MAX_FONT_SCALE,
-  moderateScale,
-  monoText,
-  spacing,
-  type,
-} from '@/lib/theme';
+import { type GutterSignal } from '@/lib/parse/types';
+import { color, hairline, lineFor, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 
 import { BottomSheet } from './bottom-sheet';
+import { EntrySheetHeader } from './entry-sheet-header';
 import { Icon, type IconName } from './icon';
 import { PressableScale } from './motion';
-import { Eyebrow } from './primitives';
 
 /**
  * The card's own action sheet (owner, 6 August 2026) — opened from the ⋯
@@ -61,8 +54,6 @@ interface ActionRow {
   action: EntryAction;
   icon: IconName;
   label: string;
-  /** One quiet line for the action whose name alone doesn't explain it. */
-  caption?: string;
 }
 
 /**
@@ -85,12 +76,7 @@ interface ActionRow {
  */
 function rowsFor(hasNote: boolean): ActionRow[] {
   return [
-    {
-      action: 'fix',
-      icon: 'wrench',
-      label: 'Fix this entry',
-      caption: 'your words stay — correct what Recore read',
-    },
+    { action: 'fix', icon: 'wrench', label: 'Fix this entry' },
     {
       action: 'note',
       icon: hasNote ? 'note-on' : 'note',
@@ -103,7 +89,8 @@ function rowsFor(hasNote: boolean): ActionRow[] {
 export function EntryActionsSheet({
   visible,
   target,
-  hasNote = false,
+  note = null,
+  signal = null,
   alsoOnLine = NO_SIBLINGS,
   onClose,
   onSelect,
@@ -111,8 +98,12 @@ export function EntryActionsSheet({
   visible: boolean;
   /** The card the ⋯ was tapped on; kept by the parent through the exit. */
   target: { exercise: string; setText: string } | null;
-  /** That entry already carries the athlete's own remark. */
-  hasNote?: boolean;
+  /** That entry already carries the athlete's own remark — the row says "Edit"
+   * rather than "Add", and the header quotes it. */
+  note?: string | null;
+  /** This entry's comparison against the last session, for the header's PR
+   * label and its "up 2.5 kg vs last" line. */
+  signal?: GutterSignal | null;
   /**
    * The OTHER entries the parser read from the SAME physical line, if any.
    *
@@ -131,7 +122,7 @@ export function EntryActionsSheet({
   onSelect: (action: EntryAction) => void;
 }) {
   const pending = useRef<EntryAction | null>(null);
-  const rows = rowsFor(hasNote);
+  const rows = rowsFor(note !== null);
   const shared = alsoOnLine.length > 0;
 
   const choose = (action: EntryAction) => {
@@ -150,17 +141,13 @@ export function EntryActionsSheet({
         if (action) onSelect(action);
       }}
       sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
-      <Eyebrow tone="muted" style={styles.eyebrow}>
-        This entry
-      </Eyebrow>
-      <Text style={styles.title} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-        {target?.exercise ?? ''}
-      </Text>
-      {target?.setText ? (
-        <Text style={styles.sets} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {target.setText}
-        </Text>
-      ) : null}
+      <EntrySheetHeader
+        eyebrow="This entry"
+        exercise={target?.exercise ?? ''}
+        setText={target?.setText}
+        signal={signal}
+        note={note}
+      />
 
       <View style={styles.rows}>
         {rows.map((row, i) => (
@@ -180,19 +167,29 @@ export function EntryActionsSheet({
                 <Text style={styles.rowLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                   {row.label}
                 </Text>
-                {row.caption ? (
-                  <Text style={styles.rowCaption} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {row.caption}
-                  </Text>
-                ) : null}
               </View>
             </PressableScale>
           </View>
         ))}
 
-        {/* Destructive last, under its own rule — never a neighbour a thumb
-            can miss onto. */}
-        <View style={styles.rowRule} />
+        {/* THE PROMISE, ONCE, INSTEAD OF A CAPTION ON ONE ROW.
+            "Fix this entry" carried a line explaining that it does not rewrite
+            what you wrote — a real fact, and the only reason anyone hesitates
+            over that row. But one captioned row among three bare ones reads as
+            one important action among two lesser ones, and there is nothing
+            true to say under "History" that would even the rhythm out; copy
+            invented to fill a shape is decoration. So the rows are four bare
+            labels and the promise is stated once, for both actions it covers,
+            in the air that separates them from Delete. */}
+        <Text style={styles.promise} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          Fixing and noting never change your written words.
+        </Text>
+
+        {/* Destructive last, under a rule that runs the FULL width. The inset
+            hairline between the rows above means "another one of these", which
+            is the one thing Delete is not — it needs air and a line the eye
+            stops at, not the same separator as its safe neighbours. */}
+        <View style={styles.dangerRule} />
         <PressableScale
           onPress={() => choose('delete')}
           haptic="none"
@@ -230,23 +227,6 @@ const styles = StyleSheet.create({
     backgroundColor: color.surface,
     paddingHorizontal: spacing.xl,
   },
-  eyebrow: {
-    marginTop: spacing.sm,
-  },
-  // `title` (27) is the screen-hero size; this is a header over a four-row
-  // menu, so it sits one notch down. `title2` matches the note sheet's header,
-  // which opens straight out of this one — the name must not resize mid-flow.
-  title: {
-    marginTop: spacing.xs,
-    ...type.title2,
-    color: color.textPrimary,
-  },
-  sets: {
-    marginTop: spacing.xs,
-    ...monoText,
-    fontSize: moderateScale(13),
-    color: color.textSecondary,
-  },
   rows: {
     marginTop: spacing.lg,
   },
@@ -262,6 +242,20 @@ const styles = StyleSheet.create({
   rowRule: {
     height: hairline,
     marginLeft: ICON_COL_W + spacing.sm,
+    backgroundColor: color.border,
+  },
+  promise: {
+    marginTop: spacing.md,
+    ...type.footnote,
+    lineHeight: lineFor(16),
+    color: color.textSecondary,
+  },
+  // Full width and preceded by air, unlike `rowRule`: an inset sibling
+  // separator says "another one of these", and Delete is not.
+  dangerRule: {
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+    height: hairline,
     backgroundColor: color.border,
   },
   iconCol: {
@@ -283,8 +277,8 @@ const styles = StyleSheet.create({
     color: color.error,
   },
   // Muted is the 3.3:1 ink, and the measured scale reserves it for what may be
-  // skipped. These captions are the only sentence that says what an action
-  // does, and what the delete row takes with it — they are READ, so secondary.
+  // skipped. The one caption left is the delete row's warning about the entries
+  // that leave with it — the most READ line on the sheet, so secondary.
   rowCaption: {
     ...type.caption,
     color: color.textSecondary,

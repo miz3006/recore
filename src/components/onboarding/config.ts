@@ -44,9 +44,9 @@ import type { OnboardingSlug } from './illustration-layout';
  *    the one answer that decides what the whole flow is competing with.
  *  · A new OBSTACLES screen (multi-select) — the person names the friction, and
  *    the demo two screens later lands as the answer to what they just said.
- *  · Goal, experience and the recap question carry an emoji and a second line
- *    (product-direction §12: "Emoji may appear sparingly as an onboarding
- *    choice label when they improve scanning").
+ *  · Goal and experience carry an emoji and a second line (product-direction
+ *    §12: "Emoji may appear sparingly as an onboarding choice label when they
+ *    improve scanning"). Only those two — see `StepOption.emoji`.
  *  · Name and gender share ONE screen; days and plan-style share another. Two
  *    weak screens became two halves of a strong one.
  *  · The priority movement became KEY LIFTS: up to three, with the load they
@@ -78,12 +78,25 @@ export type StepOption = {
    * A leading glyph. Sanctioned by product-direction §12 — "Emoji may appear
    * sparingly as an onboarding choice label when they improve scanning".
    *
-   * ONE PER OPTION, ON EVERY SCREEN THAT ASKS SOMETHING (owner, 20 Aug 2026),
-   * and nowhere the app REPORTS: not on the lesson screens, not on the day
-   * circles or the load steppers, not on the commitment, the projection or the
-   * paywall. The rule is the boundary between choosing and reading, and it is
-   * the whole rule — a flow where two of eight choice screens carry glyphs
-   * reads as an oversight rather than as restraint.
+   * TWO SCREENS CARRY ONE, AND NO OTHERS (owner, 23 Aug 2026): **goal** and
+   * **experience**. The 20 Aug ruling put a glyph on every option of every
+   * screen that asks something, and on a device that is what "sparingly" stops
+   * meaning: eight screens of pictograms in a row, where a spreadsheet, a
+   * snail and a padlock are each standing in for a word that was already
+   * written next to them.
+   *
+   * The two that stay are the two where the glyph does the job the §12 clause
+   * names — SCANNING. Goal and experience are the flow's ladders (strength →
+   * muscle → both → hybrid; under a year → 1–3 → 3+), the answers people
+   * arrive already knowing, and a glyph per rung is how the eye finds its own
+   * rung without reading four labels. Everywhere else — what you track today,
+   * what stops you, your gender, how you follow a week, where you found us,
+   * whether you want a Sunday message — the label IS the answer and a picture
+   * beside it is decoration.
+   *
+   * Still nowhere the app REPORTS: not on the lesson screens, not on the day
+   * cells or the load steppers, not on the commitment, the projection or the
+   * paywall. That half of the rule is unchanged.
    */
   emoji?: string;
 };
@@ -144,6 +157,13 @@ export type Step = {
   /** A last quiet line under the content band. */
   footnote?: string;
   options?: readonly StepOption[];
+  /**
+   * How a `choice` screen draws its answers. `rows` is the flow's own
+   * full-width option row and the default; `chips` is the wrapped pill grid
+   * (`ChoiceChips`) for a LIGHT question — many short answers, none of which
+   * changes what the app does. Exactly one screen asks for it: attribution.
+   */
+  layout?: 'rows' | 'chips';
   storeKey?: AnswerKey;
   /** A second, labelled question on the same page (about-you, days). */
   secondary?: {
@@ -197,11 +217,11 @@ export const STEPS: readonly Step[] = [
     headline: 'Where do you track today?',
     subtext: 'So Recore knows what you are switching from.',
     options: [
-      { id: 'strong', emoji: '\u{1F4F1}', label: 'Strong' },
-      { id: 'hevy', emoji: '\u{1F4F2}', label: 'Hevy' },
-      { id: 'notes', emoji: '\u{1F4D3}', label: 'Notes or paper' },
-      { id: 'sheet', emoji: '\u{1F4CA}', label: 'A spreadsheet' },
-      { id: 'none', emoji: '\u{1F331}', label: 'Nowhere yet' },
+      { id: 'strong', label: 'Strong' },
+      { id: 'hevy', label: 'Hevy' },
+      { id: 'notes', label: 'Notes or paper' },
+      { id: 'sheet', label: 'A spreadsheet' },
+      { id: 'none', label: 'Nowhere yet' },
     ],
     storeKey: 'tracker',
   },
@@ -214,31 +234,40 @@ export const STEPS: readonly Step[] = [
     headline: 'What stops you from tracking?',
     subtext: 'This decides what Recore fixes first.',
     options: [
-      { id: 'slow', emoji: '\u{1F40C}', label: 'The grid is too slow between sets' },
-      { id: 'forget', emoji: '\u{1F4AD}', label: 'I forget to log it' },
-      { id: 'shapes', emoji: '\u{1F9E9}', label: "Supersets and dropsets don't fit" },
-      { id: 'target', emoji: '\u{1F3AF}', label: 'I never know what to beat' },
-      { id: 'none', emoji: '\u{1F463}', label: "Nothing — I'm just starting" },
+      { id: 'slow', label: 'The grid is too slow between sets' },
+      { id: 'forget', label: 'I forget to log it' },
+      { id: 'shapes', label: "Supersets and dropsets don't fit" },
+      { id: 'target', label: 'I never know what to beat' },
+      { id: 'none', label: "Nothing — I'm just starting" },
     ],
     storeKey: 'obstacles',
   },
   {
-    // The example is the exact shape `parse-eval-cases.json` covers ("rep list
-    // commas after weight"), so the screen shows a line the parser genuinely
-    // reads — a demo of a syntax that did not work would be the worst possible
-    // first impression.
+    // THIS SCREEN IS THE TODAY PAGE (owner, 23 Aug 2026). It is the one step
+    // that does not render inside `OnboardingScreen`: `DemoToday` draws the
+    // canvas, the wordmark row and the composer, and lines settle into records
+    // as they are written. See that file for why the template is set aside here
+    // and nowhere else.
     //
-    // The design's line reads "hold the mic"; the mic here and on the Today
-    // toolbar is a TAP toggle, so the copy says tap. A screen that teaches a
-    // gesture the app does not have is worse than one that says nothing.
+    // IT HAS NO SUBTEXT, and the headline is not printed (owner, 23 Aug 2026:
+    // "grey 'write your training' with an example in brackets — the rest is not
+    // needed"). The instruction is the composer's PLACEHOLDER, which is the one
+    // place a person about to write is already looking, and the example in it —
+    // `DEMO_EXAMPLE` — is the exact shape `parse-eval-cases.json` covers ("rep
+    // list commas after weight"), so the screen cannot demonstrate a syntax the
+    // parser rejects.
     //
-    // The subtext asks for a LINE, not for a tap: the field on this screen is
-    // live now, and it is the person's own last session that the rest of the
-    // flow is built out of.
+    // The headline is still resolved, and `DemoToday` gives it to VoiceOver as
+    // the composer's label: a screen may lose its printed question without
+    // losing what it is asking.
+    //
+    // The screen asks for TWO OR THREE exercises because the flow after it is
+    // built out of them — up to three key-lift chips with their loads, the
+    // overload card, the projection, and after signup the first real session in
+    // the record. Skip is in the chrome row for anyone with nothing to write.
     slug: 'demo',
     kind: 'demo',
     headline: "Write it like you'd say it",
-    subtext: 'Type a line from your last session. Or tap the mic.',
     cta: "That's the whole app",
   },
   {
@@ -322,24 +351,36 @@ export const STEPS: readonly Step[] = [
       // §5: illustration variants and wording only. Never a different number,
       // never a different prescription.
       options: [
-        { id: 'female', emoji: '\u{1F6BA}', label: 'Female' },
-        { id: 'male', emoji: '\u{1F6B9}', label: 'Male' },
-        { id: 'other', emoji: '\u{1F512}', label: 'Prefer not to say' },
+        { id: 'female', label: 'Female' },
+        { id: 'male', label: 'Male' },
+        { id: 'other', label: 'Prefer not to say' },
       ],
       storeKey: 'gender',
     },
   },
   {
+    /**
+     * THE SEVEN DISCS STAY (owner, 23 Aug 2026). A week card with wider cells
+     * and a segmented sub-question was built and taken straight back out on the
+     * owner's ruling: this screen keeps the design it had. `WeekPicker.tsx` and
+     * `Segmented.tsx` stay on disk, unmounted, the way every other rolled-back
+     * surface here does.
+     *
+     * What survived is COPY, not layout: `weekReadback` answers a person who
+     * trains on no fixed days ("No fixed days — Recore follows what you write")
+     * instead of leaving "Pick your days" under an answered screen, and the
+     * subtext no longer calls a rhythm a target (§11).
+     */
     slug: 'days',
     kind: 'days',
     headline: 'When do you train?',
-    subtext: 'Be honest — this sets your weekly target, not your ambition.',
+    subtext: 'Tap the days you usually train — a rhythm, never a target.',
     storeKey: 'trainingDays',
     secondary: {
       label: 'HOW YOU FOLLOW IT',
       options: [
-        { id: 'structured', emoji: '\u{1F4CB}', label: 'I follow a fixed plan' },
-        { id: 'flexible', emoji: '\u{1F3B2}', label: 'I decide on the day' },
+        { id: 'structured', label: 'I follow a fixed plan' },
+        { id: 'flexible', label: 'I decide on the day' },
       ],
       storeKey: 'sessionFeel',
     },
@@ -413,18 +454,23 @@ export const STEPS: readonly Step[] = [
      *
      * Skippable, and never required — Continue does not wait for it, and an
      * unanswered screen stores null rather than "other".
+     *
+     * IT IS DRAWN AS CHIPS (23 Aug 2026), not as six full-width rows: the
+     * weight of a control should match the weight of the question, and this is
+     * the lightest question in the flow (`ChoiceChips`).
      */
     slug: 'attribution',
     kind: 'choice',
+    layout: 'chips',
     headline: 'Where did you find Recore?',
     subtext: "One tap. It helps us know what's working.",
     options: [
-      { id: 'appstore', emoji: '\u{1F50D}', label: 'App Store search' },
-      { id: 'video', emoji: '\u{1F4F1}', label: 'TikTok / Reels / Shorts' },
-      { id: 'x', emoji: '\u{1F4AC}', label: 'X / Twitter' },
-      { id: 'reddit', emoji: '\u{1F465}', label: 'Reddit' },
-      { id: 'friend', emoji: '\u{1F91D}', label: 'A friend' },
-      { id: 'other', emoji: '\u{1F30D}', label: 'Somewhere else' },
+      { id: 'appstore', label: 'App Store search' },
+      { id: 'video', label: 'TikTok / Reels / Shorts' },
+      { id: 'x', label: 'X / Twitter' },
+      { id: 'reddit', label: 'Reddit' },
+      { id: 'friend', label: 'A friend' },
+      { id: 'other', label: 'Somewhere else' },
     ],
     storeKey: 'attribution',
     cta: 'Continue',
@@ -433,22 +479,26 @@ export const STEPS: readonly Step[] = [
     slug: 'recap',
     kind: 'recap',
     headline: 'Want a recap every Sunday?',
-    // §5.1: no permission prompt belongs in onboarding. This answer is INTENT;
-    // the OS prompt happens when the first recap actually exists (§12.1).
+    // THE OS PROMPT HAPPENS HERE (owner, 23 Aug 2026), on Continue, and only
+    // for a yes. It reverses §5.1's "no permission prompt in onboarding": the
+    // rule exists so nobody is asked before the reason is on the glass, and on
+    // this screen the reason is the whole screen — the message is drawn above
+    // the question, in the words of the obstacle the person named themselves.
+    // The footnote says the dialog is coming, so the system sheet is never a
+    // surprise. `lib/recap.ts` holds the rest of the argument.
     //
     // THE OBSTACLES ANSWER LANDS HERE: someone who said they forget to log is
     // told what the message is for, in their own words.
     subtext: (answers) => recapSubtext(parseList(answers.obstacles)),
+    footnote: 'Choosing yes asks iOS for permission on the next tap.',
     options: [
       {
         id: 'yes',
-        emoji: '\u{1F4EC}',
         label: 'Yes, send it',
         detail: 'one message a week, nothing else',
       },
       {
         id: 'no',
-        emoji: '\u{1F515}',
         label: 'Not now',
         detail: 'you can turn it on any time',
       },

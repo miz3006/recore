@@ -1,4 +1,5 @@
 import { entryNoteKey } from '@/lib/entry-note';
+import { stalledWeight, STALL_SESSIONS } from '@/lib/plateau';
 
 import { getAdherenceRecord, getE1rmSeries, type AdherenceRecord } from './insights';
 import { noteForLift, recentEntryNotes } from './entry-notes';
@@ -7,7 +8,8 @@ import type { PlanDayRow } from './plan';
 import { getLastSetHint } from './last-set';
 import { getPredictionForOpen } from './predictions';
 import { listLifts } from './lifts';
-import { roundToPlate } from '@/lib/predict/engine';
+import type { GhostLine } from '@/lib/predict/data';
+import { DEFAULT_SMALLEST_PLATE_KG, roundToPlate } from '@/lib/predict/engine';
 import type { Move } from '@/lib/plan/prescribe';
 import { getSmallestPlateKg } from '@/lib/prefs';
 
@@ -41,8 +43,6 @@ import { getDb } from './index';
 /** How many recent lifts to examine for stalls and movement. Bounded on purpose:
  * this runs on open, and a briefing that scans a five-year history is a hitch. */
 const SCAN_LIFTS = 10;
-/** A lift is "standing still" after this many sessions at the same top weight. */
-const STALL_SESSIONS = 3;
 /** The window a mover has to have moved within. */
 const MOVER_WEEKS = 8;
 const MOVER_MIN_KG = 2.5;
@@ -68,6 +68,14 @@ export interface BriefLine {
    * reads as the FROM of a from → to pair, so the row shows its work. Silence
    * when the name doesn't resolve or there is no history. */
   last?: string | null;
+  /**
+   * The LOCAL DAY `last` was performed — the other half of the reason line.
+   *
+   * "up 2.5" is a claim; "up 2.5 from Fri 8 Aug" is a claim with the record it
+   * came from attached, and Next's rows print the second. Null whenever `last`
+   * is null, and for the same reason: the name never resolved to history.
+   */
+  lastDay?: DayKey | null;
   /** The heaviest counted set ever recorded for this lift, or null. */
   bestKg?: number | null;
   /** The prescribed load as a NUMBER — the engine's own `PlanRow.weightKg`,
@@ -208,35 +216,63 @@ function topSetsFor(userId: string, canonicals: string[], perLift: number): Map<
  * the honest thing to surface — it is not a new opinion about training, it is
  * the app showing its work before it acts.
  */
+/**
+ * THE DELOAD TARGET NO LONGER DEPENDS ON AN OPTIONAL ANSWER (owner, 30 Aug
+ * 2026 — found on a device).
+ *
+ * `deloadTo` was null whenever the gym profile carried no plate size, and
+ * `sessionRowsOf` drops a stall whose `deloadTo` is null — so the plateau
+ * line, "3 sessions at this weight", **never appeared at all** for anyone who
+ * skipped that step of onboarding. They lost the single most decision-changing
+ * fact on the screen, silently, and nothing said why.
+ *
+ * The engine never had this problem: `roundToPlate` has carried
+ * `DEFAULT_SMALLEST_PLATE_KG` as a default parameter since it was written, and
+ * every prescription already rounds through it. Only the display refused to.
+ * It now falls back to the same 1.25 the engine uses, so a stated plate size
+ * makes the figure more accurate and its absence no longer makes it vanish.
+ */
 function findStalls(tops: Map<string, TopRow[]>, display: Map<string, string>): BriefStall[] {
-  const plate = getSmallestPlateKg();
+  const plate = getSmallestPlateKg() ?? DEFAULT_SMALLEST_PLATE_KG;
   const out: BriefStall[] = [];
 
   for (const [key, rows] of tops) {
-    if (rows.length < STALL_SESSIONS) continue;
-    const window = rows.slice(0, STALL_SESSIONS);
-    const weight = window[0]!.weight_kg;
-    if (weight == null || weight <= 0) continue;
-    if (!window.every((r) => r.weight_kg === weight)) continue;
-    // Reps must be flat or falling — a rising rep count IS progress at the same
-    // weight, and calling that a stall would be wrong about the sport.
-    const reps = window.map((r) => r.reps);
-    const improving = reps.some(
-      (r, i) => i > 0 && r != null && reps[i - 1] != null && reps[i - 1]! > r,
-    );
-    if (improving) continue;
+    // The rule itself lives in `lib/plateau.ts` since 29 Aug 2026, because
+    // Progression prints the same plateau now and two definitions of "stuck"
+    // is two tabs disagreeing about one lift.
+    const weight = stalledWeight(rows.map((r) => ({ weight: r.weight_kg, reps: r.reps })));
+    if (weight == null) continue;
 
     out.push({
       canonical: display.get(key) ?? key,
       weight,
       sessions: STALL_SESSIONS,
-      deloadTo: plate != null ? roundToPlate(weight * 0.9, plate) : null,
+      deloadTo: roundToPlate(weight * 0.9, plate),
     });
   }
   return out.sort((a, b) => b.weight - a.weight).slice(0, 3);
 }
 
-/** Lifts whose estimated 1RM has genuinely climbed inside the window. */
+/**
+ * Lifts whose estimated 1RM has genuinely climbed inside the window.
+ *
+ * TODO(est-1rm-window) — inherited 29 Aug 2026 from `next/sections.ts`, whose
+ * display-layer guard was retired with the Moving section it protected (the
+ * guard itself lives on as `progression-overview.ts#deltaSuspect`, beside the
+ * delta Progression now prints).
+ *
+ * The root cause is here and is unfixed. `delta` is `last.e1rm - first.e1rm`
+ * over whatever `getE1rmSeries` (`db/insights.ts`) returned, and that
+ * function's `limit` counts SESSIONS, not weeks — so "8 wk" is a label over a
+ * window nobody bounded to eight weeks. Worse, `first` is a SINGLE session: one
+ * rep-out day (3×12 at 60 → e1RM 84) against a later heavy single (3×5 at 120 →
+ * e1RM 140) produces a +56 kg "gain" out of two honest sessions.
+ *
+ * **`lib/brief-prose.ts` prints this figure unguarded** — "X is moving — up 56
+ * kg of estimated 1RM in 8 weeks" reaches the brief paragraph on Next. A
+ * baseline over the earliest few points, and a window measured in days, would
+ * settle it at the source and make every consumer safe at once.
+ */
 function findMovers(userId: string, canonicals: string[]): BriefMover[] {
   const cutoff = Date.now() - MOVER_WEEKS * 7 * 86_400_000;
   const out: BriefMover[] = [];
@@ -305,6 +341,7 @@ function enrichLines(
       ...line,
       canonical: hint.canonical,
       last: hint.echo,
+      lastDay: hint.day,
       bestKg: best,
       loadKg: target,
       note,
@@ -334,6 +371,31 @@ export function planDayLines(userId: string, planDay: PlanDayRow): BriefLine[] {
   }));
   const prescribed = strip.rows.map((r) => r.weightKg ?? null);
   return enrichLines(userId, lines, prescribed, recentEntryNotes(userId)).lines;
+}
+
+/**
+ * The cached per-lift reasons, keyed the way every other surface keys a lift.
+ *
+ * Best-effort by design: the column is a local cache of a projection, so a row
+ * written before v6, one a remote pull cleared, or one holding anything this
+ * build does not recognise resolves to an EMPTY map — the rows then print their
+ * targets with no reason under them, which is the honest outcome. It never
+ * throws into `buildBrief`, because a briefing that fails to open is worse than
+ * one that explains less.
+ */
+function ghostLinesOf(json: string | null): Map<string, GhostLine> {
+  const out = new Map<string, GhostLine>();
+  if (!json) return out;
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (!Array.isArray(parsed)) return out;
+    for (const line of parsed as GhostLine[]) {
+      if (line && typeof line.canonical === 'string') out.set(entryNoteKey(line.canonical), line);
+    }
+  } catch {
+    // a malformed cache explains nothing; it never breaks the briefing
+  }
+  return out;
 }
 
 export function buildBrief(userId: string): Brief {
@@ -368,21 +430,48 @@ export function buildBrief(userId: string): Brief {
     // `typedNameOf`, so the numbers survive verbatim — this is the text the
     // composer would accept, and reformatting it here would let the briefing
     // and the note disagree about one session.
+    //
+    // THE VALUE MUST START WITH A DIGIT (29 Aug 2026). The pattern was
+    // `^([^\d]+?)\s+(.*)$`, and the non-greedy run of non-digits stopped at
+    // the FIRST space: "bench press 3×5  85 kg" came apart as name "bench",
+    // value "press 3×5  85 kg". Every multi-word lift on the ghost path lost
+    // its surname — on screen, and worse, as the key everything downstream
+    // matches on. `lines_json` never matched, so no row had a lever or a
+    // reason; `getLastSetHint` never resolved, so no row had a date; and
+    // `patternOf` could not read "bench" either, so the session summary was
+    // wrong too. Anchoring the value on `\d` makes the name backtrack to the
+    // whole of it.
+    //
+    // THE REASONS RIDE ALONGSIDE (28 Aug 2026). `ghost_text` is the writable
+    // half and stays untouched; `lines_json` is the engine's own `why`, lever,
+    // scheme and load for each of those lifts, matched back by the RECORD's
+    // spelling rather than by position — a cardio line contributes text and no
+    // reason, so the two lists are not index-parallel and never were.
+    const explained = ghostLinesOf(prediction.lines_json);
     lines = prediction.ghost_text
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
       .map((l) => {
-        const m = /^([^\d]+?)\s+(.*)$/.exec(l);
+        const m = /^(.+?)\s+(\d.*)$/.exec(l);
+        const name = (m?.[1] ?? l).trim();
+        const found = explained.get(entryNoteKey(name));
         return {
-          name: (m?.[1] ?? l).trim(),
+          name,
           value: (m?.[2] ?? '').trim() || null,
-          why: null,
+          why: found?.why ?? null,
+          move: found?.move ?? null,
+          scheme: found?.scheme ?? null,
         };
       });
-    // Ghost strength lines end in "… 82.5 kg" (`strengthLine` in
-    // predict/data.ts); bodyweight and cardio lines carry no kg and stay null.
+    // The engine's own figure when the cache carries it (§7.7: display text is
+    // never parsed back into a number). A row cached before v6, or one a remote
+    // pull cleared, falls back to reading the kg out of the line it wrote —
+    // ghost strength lines end in "… 82.5 kg" (`strengthLine`), bodyweight and
+    // cardio lines carry no kg and stay null.
     prescribed = lines.map((l) => {
+      const found = explained.get(entryNoteKey(l.name));
+      if (found?.weightKg != null) return found.weightKg;
       const m = l.value?.match(/(\d+(?:[.,]\d+)?)\s*kg\b/i);
       return m ? parseFloat(m[1]!.replace(',', '.')) : null;
     });

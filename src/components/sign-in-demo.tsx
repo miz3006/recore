@@ -13,7 +13,7 @@ import Animated, {
 import { alpha, color, ink, MAX_FONT_SCALE, moderateScale, radius, readingStyle, spacing } from '@/lib/theme';
 
 import { GutterPending } from './gutter-value';
-import { NOTE_FONT_SIZE, NOTE_LINE_HEIGHT } from './note-metrics';
+import { NOTE_FONT_SIZE, NOTE_LINE_BOX, NOTE_LINE_HEIGHT } from './note-metrics';
 
 /**
  * The front door demos the product before asking for anything: a note types
@@ -124,7 +124,7 @@ export function SignInDemo() {
               {revealed ? (
                 <DemoSignal text={entry.signal} pr={entry.pr} />
               ) : thinking ? (
-                <GutterPending rowHeight={NOTE_LINE_HEIGHT} />
+                <GutterPending rowHeight={NOTE_LINE_BOX} />
               ) : null}
             </View>
           </View>
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: NOTE_LINE_HEIGHT,
+    height: NOTE_LINE_BOX, // a VIEW on the note's grid, so it scales itself
   },
   line: {
     fontSize: NOTE_FONT_SIZE,

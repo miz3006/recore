@@ -9,7 +9,12 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.recore.app",
-      "usesAppleSignIn": true
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSSpeechRecognitionUsageDescription": "Recore transcribes your dictation on-device to log your workout.",
+        "NSMicrophoneUsageDescription": "Recore uses the microphone so you can dictate your workout."
+      }
     },
     "android": {
       "package": "com.recore.app",
@@ -19,7 +24,10 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -46,11 +54,19 @@
           "speechRecognitionPermission": "Recore transcribes your dictation on-device to log your workout."
         }
       ],
-      "expo-video"
+      "expo-video",
+      "@sentry/react-native"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "cf4674e8-a097-4d6c-8464-22070ba683ed"
+      }
+    },
+    "owner": "miz16"
   }
 }

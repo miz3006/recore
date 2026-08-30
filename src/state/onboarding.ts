@@ -65,8 +65,36 @@ export type AnswerKey =
    *
    * Null when the demo was never completed, or when all the person saw was the
    * canned fallback — nothing the app invents is ever stored here.
+   *
+   * Since 23 Aug 2026 it is the LEAD of a page rather than the only line —
+   * `leadDemoEntry` picks it out of `demoEntries`. Every reader it already had
+   * keeps working unchanged.
    */
   | 'demoEntry'
+  /**
+   * EVERY LINE OF THE DEMO PAGE THAT READ, as a JSON array of `DemoEntry`
+   * (`serializeDemoEntries`), in the order it was written.
+   *
+   * The demo screen is the Today page now (owner, 23 Aug 2026) and asks for two
+   * or three exercises, so the flow knows more than one movement about this
+   * person before it asks which lifts matter: the key-lift screen pre-selects
+   * up to three chips from here, with the load each line carried.
+   */
+  | 'demoEntries'
+  /**
+   * THE DEMO PAGE AS WRITTEN — every line the person typed, verbatim,
+   * newline-joined, whether or not the offline grammar could read it.
+   *
+   * It exists because the reading is not the record: `raw_text` is (CLAUDE.md
+   * §3), and a line the demo's small grammar missed is a line the real parser
+   * may well read. This is what `lib/onboarding-seed.ts` writes as the first
+   * session, so what lands in the database is the person's own page and not
+   * the subset of it this flow happened to understand.
+   *
+   * Never the canned example: a line the app typed for them is a
+   * demonstration, not their training.
+   */
+  | 'demoText'
   /**
    * WHERE THEY FOUND RECORE — one tap, late in the flow, and skippable.
    *
@@ -102,6 +130,8 @@ export const EMPTY_ANSWERS: Answers = {
   keyLifts: null,
   liftLoads: null,
   demoEntry: null,
+  demoEntries: null,
+  demoText: null,
   attribution: null,
 };
 

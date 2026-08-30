@@ -16,8 +16,11 @@ import {
   stepBody,
   stepHeadline,
   stepSubtext,
+  type Step,
 } from '@/components/onboarding/config';
+import { ChoiceChips } from '@/components/onboarding/ChoiceChips';
 import { DayPicker } from '@/components/onboarding/DayPicker';
+import { DemoToday } from '@/components/onboarding/DemoToday';
 import { Enter } from '@/components/onboarding/Enter';
 import { HoldHint, HoldToCommit } from '@/components/onboarding/HoldToCommit';
 import { formatLoad, LiftLoadRow } from '@/components/onboarding/LiftLoadRow';
@@ -31,7 +34,6 @@ import {
   SectionLabel,
   StatCard,
 } from '@/components/onboarding/panels';
-import { ParseDemo } from '@/components/onboarding/ParseDemo';
 import {
   ProjectionCard,
   ProjectionRow,
@@ -43,14 +45,19 @@ import { PUSH_MS } from '@/components/onboarding/tokens';
 import { setUserProperty, track } from '@/lib/analytics';
 import {
   inWrittenUnit,
+  leadDemoEntry,
   matchKeyLift,
+  parseDemoEntries,
   parseDemoEntry,
+  serializeDemoEntries,
   serializeDemoEntry,
   type DemoEntry,
 } from '@/lib/demo-parse';
 import { markObStepReached, markOnboardingCompleted, setObStepCount } from '@/lib/funnel';
 import { defaultLanguage } from '@/lib/locale';
+import { requestRecapInOnboarding } from '@/lib/recap';
 import { DUR } from '@/lib/motion';
+import { weekReadback } from '@/lib/onboarding-copy';
 import {
   COMMIT_WEEKS,
   dayCount,
@@ -120,8 +127,13 @@ import { useOnboardingAnswers, type AnswerKey } from '@/state/onboarding';
  * The flow ends on the PROJECTION, which completes (every answer with a
  * validated home written through prefs, done + completed marked) and hands back
  * to the dispatcher: a fresh user meets the paywall there; an entitled replay
- * returns to Today. Per §5.1 no OS permission is requested here — the recap
- * answer is intent, asked for real when the first recap exists.
+ * returns to Today.
+ *
+ * ONE OS PROMPT NOW LIVES IN THE FLOW (owner, 23 Aug 2026): the recap screen's
+ * Continue asks iOS for notification permission when the answer is yes. It is
+ * the only one — the microphone is still asked on the mic tap, and nothing else
+ * here asks for anything. See the recap branch and `lib/recap.ts` for why the
+ * §5.1 rule it reverses is satisfied rather than ignored.
  */
 
 /**
@@ -213,18 +225,34 @@ export default function OnboardingStep() {
   const step = STEPS[stepNumber - 1]!;
   const isIntro = step.kind === 'intro';
 
+  /** True only while the iOS notification dialog is on the glass (recap step). */
+  const [asking, setAsking] = useState(false);
+
   const answers = useOnboardingAnswers((s) => s.answers);
   const setAnswer = useOnboardingAnswers((s) => s.setAnswer);
   const setStep = useOnboardingAnswers((s) => s.setStep);
 
   /**
-   * The demo screen's button does not exist until a record has landed on it
-   * (`ParseDemo`), so "That's the whole app" reads as the consequence of the
-   * moment rather than as a way past it. Local, not stored: coming BACK to the
-   * demo means doing it again, which is the only honest state for a screen
-   * whose whole content is a thing you just did.
+   * THE DEMO PAGE, STORED (23 Aug 2026 — the demo screen is Today now).
+   *
+   * Three writes, because the page is three things to the flow: the LEAD entry
+   * every screen after it was already built out of (`demoEntry`), every line
+   * that read (`demoEntries` — the key-lift screen pre-selects from it), and
+   * the raw page verbatim (`demoText`), which is what becomes the first real
+   * session after signup. The reading is not the record; the words are.
+   *
+   * Memoised because `DemoToday` hands the page up from an effect: an unstable
+   * callback would make that effect run on every keystroke.
    */
-  const [demoSettled, setDemoSettled] = useState(false);
+  const onDemoPage = useCallback(
+    ({ entries, text }: { entries: DemoEntry[]; text: string }) => {
+      const lead = leadDemoEntry(entries);
+      setAnswer('demoEntry', lead ? serializeDemoEntry(lead) : '');
+      setAnswer('demoEntries', serializeDemoEntries(entries));
+      setAnswer('demoText', text);
+    },
+    [setAnswer],
+  );
 
   // Record the position so a killed app resumes on this step, the funnel's
   // high-water mark (1-based in this flow) so drop-off is measurable, and the
@@ -302,32 +330,56 @@ export default function OnboardingStep() {
   const headline = stepHeadline(step, answers);
   const subtext = stepSubtext(step, answers);
 
-  const demoEntry = useMemo(() => parseDemoEntry(answers.demoEntry), [answers.demoEntry]);
+  /**
+   * The demo page's readings. `demoEntries` since 23 Aug 2026; the lone
+   * `demoEntry` is the fallback so a flow resumed from a snapshot written by
+   * the previous build still arrives with its line.
+   */
+  const demoEntries = useMemo(() => {
+    const page = parseDemoEntries(answers.demoEntries);
+    if (page.length > 0) return page;
+    const lone = parseDemoEntry(answers.demoEntry);
+    return lone ? [lone] : [];
+  }, [answers.demoEntries, answers.demoEntry]);
 
   /**
-   * THE DEMO LINE ARRIVES ON THE KEY-LIFT SCREEN.
+   * THE DEMO PAGE ARRIVES ON THE KEY-LIFT SCREEN.
    *
    * Somebody who wrote `deadlift 140kg 5,5,5` four screens ago has already
    * answered "which lifts matter most" and "what do you work with now" — asking
-   * again is the questionnaire the flow is trying to stop being. So the chip is
-   * lit and the stepper is loaded when the screen opens, and every part of it is
-   * still theirs to change.
+   * again is the questionnaire the flow is trying to stop being. So the chips
+   * are lit and the steppers are loaded when the screen opens, and every part
+   * of it is still theirs to change.
+   *
+   * Up to three of them now (`MAX_KEY_LIFTS`), because the demo screen asks for
+   * two or three exercises and the chips it can answer are the same six the
+   * screen offers. A movement the chips do not carry ("incline db press") is
+   * simply skipped here — it is still on the page and still in the record.
    *
    * ONCE, and only on an untouched screen: `keyLifts` is null until the person
    * has been here, and the seed writes it, so this cannot fight a choice — not
    * even the choice to clear the screen (which leaves an empty string, not null).
    */
   useEffect(() => {
-    if (step.kind !== 'lifts' || answers.keyLifts != null || !demoEntry) return;
-    const lift = matchKeyLift(demoEntry.exerciseName, step.suggestions ?? []);
-    if (!lift) return;
-    setAnswer('keyLifts', serializeList([lift]));
-    if (demoEntry.weightKg != null && demoEntry.weightKg > 0) {
-      const unitNow = resolveWeightUnit(answers);
-      setAnswer('liftLoads', serializeLiftLoads({ [lift]: inWrittenUnit(demoEntry.weightKg, unitNow) }));
+    if (step.kind !== 'lifts' || answers.keyLifts != null || demoEntries.length === 0) return;
+    const unitNow = resolveWeightUnit(answers);
+    const max = step.maxChoices ?? MAX_KEY_LIFTS;
+    const lifts: string[] = [];
+    const loads: Record<string, number> = {};
+    for (const entry of demoEntries) {
+      const lift = matchKeyLift(entry.exerciseName, step.suggestions ?? []);
+      if (!lift || lifts.includes(lift)) continue;
+      lifts.push(lift);
+      if (entry.weightKg != null && entry.weightKg > 0) {
+        loads[lift] = inWrittenUnit(entry.weightKg, unitNow);
+      }
+      if (lifts.length >= max) break;
     }
+    if (lifts.length === 0) return;
+    setAnswer('keyLifts', serializeList(lifts));
+    if (Object.keys(loads).length > 0) setAnswer('liftLoads', serializeLiftLoads(loads));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step.kind, answers.keyLifts, demoEntry]);
+  }, [step.kind, answers.keyLifts, demoEntries]);
 
   const chosenLifts = useMemo(() => parseList(answers.keyLifts), [answers.keyLifts]);
   const liftLoads = useMemo(() => parseLiftLoads(answers.liftLoads), [answers.liftLoads]);
@@ -391,11 +443,64 @@ export default function OnboardingStep() {
     }
   };
 
+  /**
+   * THE ONE STEP THAT IS NOT THE TEMPLATE (owner, 23 Aug 2026).
+   *
+   * The parse demo is the Today page now — the canvas, the wordmark row, the
+   * blank page, records settling as lines are written (`DemoToday`). It returns
+   * before `OnboardingScreen` is built because what it demonstrates IS a page,
+   * and a page inside another page's content band is a screenshot. It keeps the
+   * flow's back circle, its progress rail and its CTA, so nothing about being
+   * inside a funnel is lost.
+   */
+  if (step.kind === 'demo') {
+    return (
+      <>
+        <Stack.Screen options={stackOptions} />
+        <DemoToday
+          headline={headline}
+          written={answers.demoText ?? undefined}
+          progress={{ total: PROGRESS_TOTAL, completed: progressFilled(stepNumber) }}
+          onBack={goBack}
+          onSkip={goNext}
+          onContinue={goNext}
+          onPage={onDemoPage}
+          cta={step.cta ?? 'Continue'}
+        />
+      </>
+    );
+  }
+
+  /**
+   * THE SECOND QUESTION ON A PAGE — the flow's own option rows, one per line,
+   * on both screens that ask two things (about-you, days).
+   *
+   * One function rather than two copies of the same JSX. A segmented control
+   * was tried here on 23 Aug and taken back out the same day (owner: the days
+   * screen keeps its earlier design); `Segmented.tsx` stays on disk, unmounted.
+   */
+  const secondaryQuestion = (secondary: NonNullable<Step['secondary']>, from: number) => (
+    <View style={styles.stack} accessibilityRole="radiogroup" accessibilityLabel={secondary.label}>
+      {secondary.options.map((option, i) => (
+        <Enter key={option.id} delay={contentDelay(from + i)}>
+          <OptionRow
+            label={option.label}
+            emoji={option.emoji}
+            selected={answers[secondary.storeKey] === option.id}
+            onPress={() =>
+              answer(secondary.storeKey, option.id, `${step.slug}.${secondary.storeKey}`)
+            }
+          />
+        </Enter>
+      ))}
+    </View>
+  );
+
   // What sits in the content band, how many staggered items it holds (the CTA
   // lands one beat after the last of them), and what the button does.
   let content: React.ReactNode = null;
   let contentCount = 1;
-  let cta: { label: string; onPress: () => void; disabled?: boolean } | null = {
+  let cta: { label: string; onPress: () => void; disabled?: boolean; loading?: boolean } | null = {
     label: step.cta ?? 'Continue',
     onPress: goNext,
     disabled: REQUIRED.includes(step.slug) && !selected,
@@ -415,6 +520,20 @@ export default function OnboardingStep() {
           Already have an account? <Text style={styles.signInLink}>Sign in</Text>
         </Text>
       </Pressable>
+    );
+  } else if (step.kind === 'choice' && step.options && step.layout === 'chips') {
+    // A light question, drawn light: the whole grid arrives on one beat rather
+    // than staggering six pills, because a wrapped row is one object.
+    contentCount = 1;
+    content = (
+      <Enter delay={contentDelay(0)}>
+        <ChoiceChips
+          options={step.options}
+          value={selected}
+          accessibilityLabel={headline}
+          onChange={(id) => step.storeKey && chooseOption(step.storeKey, id)}
+        />
+      </Enter>
     );
   } else if (step.kind === 'choice' && step.options) {
     contentCount = step.options.length;
@@ -452,21 +571,6 @@ export default function OnboardingStep() {
         ))}
       </View>
     );
-  } else if (step.kind === 'demo') {
-    contentCount = 2;
-    // The button waits for the record. The template still RESERVES the CTA
-    // band, so nothing on the page moves when it finally arrives.
-    cta = demoSettled ? { label: step.cta ?? 'Continue', onPress: goNext } : null;
-    content = (
-      <Enter delay={contentDelay(0)}>
-        <ParseDemo
-          onResult={(entry: DemoEntry | null) =>
-            setAnswer('demoEntry', entry ? serializeDemoEntry(entry) : '')
-          }
-          onSettled={() => setDemoSettled(true)}
-        />
-      </Enter>
-    );
   } else if (step.kind === 'essay') {
     const body = stepBody(step, answers);
     contentCount = body.length;
@@ -474,7 +578,8 @@ export default function OnboardingStep() {
       <View style={styles.prose}>
         {body.map((paragraph, i) => (
           <Enter key={paragraph} delay={contentDelay(i)}>
-            <Paragraph>{paragraph}</Paragraph>
+            {/* The opening line leads; the argument under it is body copy. */}
+            <Paragraph lede={i === 0}>{paragraph}</Paragraph>
           </Enter>
         ))}
       </View>
@@ -503,31 +608,14 @@ export default function OnboardingStep() {
             <SectionLabel>{secondary.label}</SectionLabel>
           </View>
         </Enter>
-        <View
-          style={styles.stack}
-          accessibilityRole="radiogroup"
-          accessibilityLabel={secondary.label}>
-          {secondary.options.map((option, i) => (
-            <Enter
-              key={option.id}
-              delay={contentDelay(2 + i)}
->
-              <OptionRow
-                label={option.label}
-                emoji={option.emoji}
-                selected={answers[secondary.storeKey] === option.id}
-                onPress={() =>
-                  answer(secondary.storeKey, option.id, `${step.slug}.${secondary.storeKey}`)
-                }
-              />
-            </Enter>
-          ))}
-        </View>
+        {secondaryQuestion(secondary, 2)}
       </View>
     );
   } else if (step.kind === 'days') {
     const secondary = step.secondary!;
-    const picked = dayCount(dayMask);
+    // The card's own two lines, and the one place the empty week is answered
+    // rather than nagged (`weekReadback`).
+    const readback = weekReadback(dayCount(dayMask), answers[secondary.storeKey]);
     contentCount = 3 + secondary.options.length;
     content = (
       <View style={styles.stack}>
@@ -545,15 +633,14 @@ export default function OnboardingStep() {
         </Enter>
         <Enter delay={contentDelay(1)}>
           {/* The week read straight back. Nothing here counts a miss (§11) —
-              it is the shape of a week, not a target. */}
+              it is the shape of a week, not a target, and `weekReadback` has
+              its own words for a person who trains on no fixed days. */}
           <View>
             <Text style={styles.derived} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {picked > 0 ? `${picked} ${picked === 1 ? 'day' : 'days'} a week` : 'Pick your days'}
+              {readback.title}
             </Text>
             <Text style={styles.derivedBody} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {picked > 0
-                ? 'Recore builds your Next tab around this rhythm.'
-                : 'Roughly is fine — you can change it any time.'}
+              {readback.detail}
             </Text>
           </View>
         </Enter>
@@ -562,26 +649,7 @@ export default function OnboardingStep() {
             <SectionLabel>{secondary.label}</SectionLabel>
           </View>
         </Enter>
-        <View
-          style={styles.stack}
-          accessibilityRole="radiogroup"
-          accessibilityLabel={secondary.label}>
-          {secondary.options.map((option, i) => (
-            <Enter
-              key={option.id}
-              delay={contentDelay(3 + i)}
->
-              <OptionRow
-                label={option.label}
-                emoji={option.emoji}
-                selected={answers[secondary.storeKey] === option.id}
-                onPress={() =>
-                  answer(secondary.storeKey, option.id, `${step.slug}.${secondary.storeKey}`)
-                }
-              />
-            </Enter>
-          ))}
-        </View>
+        {secondaryQuestion(secondary, 3)}
       </View>
     );
   } else if (step.kind === 'lifts') {
@@ -635,7 +703,7 @@ export default function OnboardingStep() {
       <View style={styles.prose}>
         {body.map((paragraph, i) => (
           <Enter key={paragraph} delay={contentDelay(i)}>
-            <Paragraph>{paragraph}</Paragraph>
+            <Paragraph lede={i === 0}>{paragraph}</Paragraph>
           </Enter>
         ))}
         <Enter delay={contentDelay(body.length)}>
@@ -691,17 +759,45 @@ export default function OnboardingStep() {
       </View>
     );
   } else if (step.kind === 'recap' && step.options) {
-    // A VISIBLE DEFAULT. Recap intent is not a permission — §5.1 keeps the OS
-    // prompt for the moment the first recap exists — so a preselected "yes" is
-    // honest here in a way it would never be for a system dialog, and Continue
-    // writes whatever the screen is showing rather than nothing at all.
+    /**
+     * A VISIBLE DEFAULT, and since 23 Aug 2026 A REAL PERMISSION PROMPT.
+     *
+     * The preselected "yes" is honest because the screen is showing exactly
+     * what it will send. Continue writes whatever the screen shows and then, if
+     * that is yes, opens the iOS dialog (`requestRecapInOnboarding`) — the
+     * owner's reversal of §5.1's no-prompt-in-onboarding rule, on the grounds
+     * that this screen IS the context the rule asks for.
+     *
+     * The flow never waits on the answer being GRANTED: a denial advances
+     * exactly like a grant, the intent is stored either way, and You keeps the
+     * row. The button shows its loading state only for the moment the system
+     * dialog is up, so nobody taps Continue twice into a modal they cannot see
+     * behind.
+     */
     const recap = selected ?? 'yes';
-    cta = { label: step.cta ?? 'Continue', onPress: () => {
-      setAnswer('notifications', recap);
-      track('onboarding_notifications_choice', { value: recap });
-      goNext();
-    } };
-    contentCount = 1 + step.options.length;
+    cta = {
+      label: step.cta ?? 'Continue',
+      loading: asking,
+      onPress: () => {
+        if (asking) return;
+        setAnswer('notifications', recap);
+        if (recap !== 'yes') {
+          track('onboarding_notifications_choice', { value: recap });
+          goNext();
+          return;
+        }
+        setAsking(true);
+        void requestRecapInOnboarding()
+          .then((granted) => {
+            track('onboarding_notifications_choice', { value: recap, granted });
+          })
+          .finally(() => {
+            setAsking(false);
+            goNext();
+          });
+      },
+    };
+    contentCount = 2 + step.options.length;
     content = (
       <View style={styles.stack}>
         <Enter delay={contentDelay(0)}>
@@ -729,6 +825,14 @@ export default function OnboardingStep() {
             </Enter>
           ))}
         </View>
+        {/* The system sheet is never a surprise: the screen says it is coming
+            before the finger is on the button that opens it. Only under a yes —
+            "Not now" opens nothing. */}
+        {step.footnote && recap === 'yes' ? (
+          <Enter delay={contentDelay(1 + step.options.length)}>
+            <Footnote>{step.footnote}</Footnote>
+          </Enter>
+        ) : null}
       </View>
     );
   } else if (step.kind === 'projection') {
@@ -801,6 +905,13 @@ export default function OnboardingStep() {
         kicker={step.kicker}
         headline={headline}
         subtext={subtext}
+        // THE WELCOME IS THE ONE HERO (23 Aug 2026). The template has carried a
+        // `hero` register — `type.display`, 38 pt — since the 12 Aug restyle and
+        // nothing ever passed it, so screen one of the funnel was set at exactly
+        // the same size as "how long have you been lifting?". The first thing a
+        // person sees is the one line in the flow that is a promise rather than
+        // a question, and the scale is what says so.
+        hero={isIntro}
         centered={isIntro}
         progress={
           isIntro ? null : { total: PROGRESS_TOTAL, completed: progressFilled(stepNumber) }
