@@ -3747,3 +3747,115 @@ up in daylight rather than on a desk display, whether the 400 ms beat is right a
 real parse latencies (a slow network holds this state for seconds, not
 milliseconds), and whether the dots→⋯ handover reads as still to a person who is
 looking at the line rather than measuring it.
+
+## 6 September 2026 — the check-in stops imitating a sheet and becomes one
+
+The end-of-session check-in (§8.1) moved from the app's own `<BottomSheet>` chrome to a real UIKit
+form sheet on a route. Nothing inside it was redesigned: the same title, the same "How each lift
+felt" rows, the same reflection field, tags and footer, the same tokens. What changed is who
+presents it.
+
+### Files
+
+- **`src/app/check-in.tsx`** — new. The `/check-in` route. It renders the sheet body and owns
+  `checkInOpen`.
+- **`src/app/_layout.tsx`** — registers the screen inside the signed-in guard with
+  `presentation: 'formSheet'`, `sheetAllowedDetents: [0.6, 1]`, `sheetInitialDetentIndex: 0`,
+  `sheetGrabberVisible: true`, `sheetCornerRadius: radius.xl`, and
+  `contentStyle: { backgroundColor: color.surface }`.
+- **`src/components/check-in-sheet.tsx`** — the `<BottomSheet>` wrapper is gone; the root is a flex
+  box, the scroll takes `flex: 1`, and the footer now pays the bottom safe-area inset itself.
+- **`src/app/(tabs)/today.tsx`** — the permanent `<CheckInSheet />` mount is gone.
+- **`src/state/session-store.ts`** — `openCheckIn` is now `router.push('/check-in')` and nothing
+  else; `closeCheckIn` is replaced by `setCheckInOnScreen`, which only the route calls.
+- **`src/app/(tabs)/you.tsx`** — Sign out asks first (below).
+
+### Four decisions, recorded so they are not silently re-litigated
+
+1. **`[0.6, 1]`, not `[0.6, 0.92]`** (owner, 6 September 2026). The old sheet carried
+   `maxHeight: '92%'` because it drew its own card and had to leave the status bar alone. The
+   system's large detent already insets from the top, so re-applying 92% here would stack our inset
+   on UIKit's and render a visible gap. `1` is the correct equivalent of the old 92%.
+2. **`fitToContents` was rejected.** The content is a fixed head, a scroll that grows by one row per
+   unrated lift, and a fixed footer. `fitToContents` forbids the `flex: 1` that layout needs, and the
+   height is genuinely unbounded.
+3. **`color.surface`, not `color.canvas`** (owner, 6 September 2026). The sheet has always been the
+   warm near-white that floats above the paper canvas, and this is a presentation change, not a
+   restyle. The colour is set in `contentStyle` **and** on the root view, so no frame of UIKit's
+   system grey or translucent material can show while the screen mounts.
+4. **One writer for `checkInOpen`** (owner, 6 September 2026). The route sets it on mount and clears
+   it on unmount; `openCheckIn` only navigates. Two writers would leave the flag stuck true after a
+   swipe-dismiss — which the opener never hears about — and `bottom-toolbar.tsx` would silently stop
+   raising the App Store review prompt forever, with nothing on screen to explain why.
+
+### The modal-nesting audit, and what it found
+
+A form sheet is presented by the ROOT navigator, so a caller that fires while an RN `Modal` (any
+`bottom-sheet.tsx` sheet) is still mounted would render it BEHIND that modal — invisible, in the same
+way UIKit refuses a second modal. All five call sites were checked:
+
+| call site | in a modal? | outcome |
+|---|---|---|
+| `bottom-toolbar.tsx:247` (Finish) | no — the keyboard accessory bar, on the page; `revealReceipt` is a `scrollToEnd`, not a presentation | direct push |
+| `note-surface.tsx:495` and `:651` | no — both in `NoteSurface`'s own return; its only sheet is a sibling below them | direct push |
+| `session-receipt.tsx:409` | **dead code** — `SessionReceipt` is exported and imported by nobody | none |
+| `session-summary-sheet.tsx:114` | **dead code** — unreachable since 18 August 2026; its only opener, `SummaryPill`, is imported by nobody | left as-is; its `onClosed` sequencing is already the correct pattern |
+
+No live caller needs the close-then-push dance. The rule is written into `openCheckIn`'s comment for
+whoever adds the next caller.
+
+### Persistence across a swipe-dismiss
+
+The old sheet routed its drag-dismiss through `onClose`, so the × , Skip, the backdrop and the swipe
+all ran the same commit. A form sheet pops the route from UIKit and tells JS nothing beyond the
+unmount, so `commit` was split out of `commitAndClose` and also runs from an unmount cleanup. It is
+idempotent — the write is guarded on the composed value differing from `stored.current` — so the
+button path and the unmount path together write once and count the §13 event once. The ref it reads
+is deliberately declared **before** the load effect, so a mount-unmount-mount cycle cannot commit an
+empty draft over a stored reflection.
+
+### Sign out asks first
+
+`you.tsx` had Sign out sitting between "Clear local cache" and "Delete account" — both of which have
+always confirmed — as the one row in the destructive zone that fired on the first tap. It is now a
+system alert like every other confirmation in the app, `destructive` on the verb and `cancel` on the
+way out. The message is honest: the record stays on the device and on the server; this is not
+deletion.
+
+**Every other destructive confirmation was audited and left alone.** `aliases.tsx:58`,
+`you.tsx:438` and `:504`, `fix-sheet.tsx:392` and `note-surface.tsx:177` are already real
+`UIAlertController`s with `style: 'destructive'` and `style: 'cancel'`. `@expo/ui` was considered and
+rejected: it is present in `node_modules` only as a transitive dependency of `expo-router`, adding it
+directly would cost a native rebuild, and it buys nothing over what is already native. The export
+chooser at `you.tsx:325` is the one place an action sheet from the bottom would read better; the
+owner put it out of scope for this pass.
+
+### Verified by the repository gates
+
+`tsc --noEmit`, `node --test` (690 pass, 0 fail), `expo lint` (0 errors; the one warning on
+`check-in-sheet.tsx` is the pre-existing `setState`-in-effect on the reflection load, unchanged by
+this pass) and `expo export --platform ios` all pass.
+
+### What remains unverified — none of it can be closed from this machine
+
+No simulator or device was available. Three things need a screen: `color.surface` reading edge to
+edge at both detents with no system grey or translucent material bleeding through; a reflection typed
+and then swipe-dismissed surviving; and whether `sheetCornerRadius: 24` is honoured (the prop
+documents itself as "will try to render with"). No AI prompt, response schema, guard or summary
+changed, so CLAUDE.md §5's owner-run §9.4 evaluation is not owed by this pass.
+
+**Two risks were closed in code rather than left for the device** (owner, 6 September 2026):
+
+- **The bottom inset is no longer trusted.** `RNSScreen.mm` carries an open
+  `// TODO: register for UIKeyboard notifications` on its safe-area provider, and a form sheet is a
+  presentation the inset can be reported into late or as zero. The footer pads
+  `spacing.lg + Math.max(insets.bottom, spacing.xxl)`, so a footer under the home indicator is
+  impossible in either case; 24 over-pays on a device that genuinely has no indicator, which is the
+  harmless direction to be wrong in.
+- **The multiline field needs nothing, and deliberately gets nothing.** `react-native-screens`
+  documents the behaviour in `src/types.tsx:482`: "On iOS, the native implementation might resize the
+  sheet w/o explicitly changing the detent level, e.g. in case of keyboard appearance." That is
+  `UISheetPresentationController` lifting the sheet for a first responder, which is precisely the
+  case UIKit owns. The old `<BottomSheet>` needed a `KeyboardAvoidingView` because an RN `Modal` is a
+  plain window UIKit gives no such help to; keeping one here would stack our lift on UIKit's and push
+  the content too far. Nothing was added.

@@ -5,7 +5,6 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { BottomToolbar } from '@/components/bottom-toolbar';
 import { DaySwipe } from '@/components/day-swipe';
-import { CheckInSheet } from '@/components/check-in-sheet';
 import { EntryNoteSheet } from '@/components/entry-note-sheet';
 import { FixSheet } from '@/components/fix-sheet';
 import { InsightHeader } from '@/components/insight-header';
@@ -207,13 +206,6 @@ export default function Today() {
           the composer's own, so it stays here — opened from a card's alias
           echo or the inline editor's "fix reading". */}
       <FixSheet />
-
-      {/* The end-of-session check-in (§8.1) — the reflection and the effort
-          scale on one surface. Opened by Finish, and again from the receipt.
-          It renders whenever there is a session to attach a note to, and
-          deliberately does NOT wait for a parse: offline there are no effort
-          rows and the check-in still has to work. */}
-      <CheckInSheet />
 
       {/* One ledger entry's own sheet (owner, 4 Aug) — how hard that lift was
           (which moves the next load) and the athlete's words about it (which

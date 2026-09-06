@@ -9,7 +9,7 @@ import { ExerciseSheet } from '@/components/exercise-sheet';
 import { SessionSheet } from '@/components/session-sheet';
 import { AuthProvider, useAuth } from '@/lib/auth/provider';
 import { initCrashReporting, wrapRoot } from '@/lib/crash';
-import { color, loadReadingFont } from '@/lib/theme';
+import { color, loadReadingFont, radius } from '@/lib/theme';
 
 // Hold the splash until the persisted session is restored from the Keychain —
 // the user never sees a sign-in flash when they're already signed in.
@@ -147,6 +147,40 @@ function RootNavigator() {
               talks about its training. */}
           <Stack.Screen name="aliases" />
           <Stack.Screen name="health" />
+          {/* The end-of-session check-in (§8.1), as a real UIKit form sheet.
+              Behind the guard because it writes into the account's own record,
+              and on the ROOT stack rather than inside `(tabs)` so the one push
+              works from Today, from the ledger and from anywhere later.
+
+              THE DETENTS ARE [0.6, 1]. The content is a fixed head, a scroll
+              that grows by one row per unrated lift, and a fixed footer, so
+              `fitToContents` is out — it forbids the `flex: 1` the scroll
+              needs. 0.6 opens on the question, the first lift and the top of
+              the reflection field; 1 is the system's own large detent, which
+              already insets from the top (the sheet's old `maxHeight: '92%'`
+              here would stack our inset on UIKit's and show a gap). Two
+              detents, so the config is valid on Android's max of three.
+
+              No header: native stack headers are unsupported inside a form
+              sheet, and this one has carried its own title, × and Skip since
+              the day it was drawn. `headerShown: false` is the root default
+              anyway.
+
+              `contentStyle` paints the sheet `color.surface` — the same warm
+              near-white the sheet has always been, and the thing that keeps
+              UIKit's system grey and its translucent material off the
+              canvas. */}
+          <Stack.Screen
+            name="check-in"
+            options={{
+              presentation: 'formSheet',
+              sheetAllowedDetents: [0.6, 1],
+              sheetInitialDetentIndex: 0,
+              sheetGrabberVisible: true,
+              sheetCornerRadius: radius.xl,
+              contentStyle: { backgroundColor: color.surface },
+            }}
+          />
         </Stack.Protected>
 
         {/* Sign-in is the LAST step of the funnel; gone once you're in. */}

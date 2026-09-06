@@ -1,5 +1,7 @@
+import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getReflection, getWorkoutById, setReflection } from '@/lib/db/workouts';
 import {
@@ -35,7 +37,6 @@ import {
 } from '@/lib/theme';
 import { useCurrentNote, useSession } from '@/state/session-store';
 
-import { BottomSheet } from './bottom-sheet';
 import { Icon } from './icon';
 import { AppButton } from './primitives';
 import { PressableScale } from './motion';
@@ -85,10 +86,27 @@ import { PressableScale } from './motion';
  * NOT A HEALTH ASSESSMENT (§8.1, §12). Nothing read here becomes a number, a
  * chart, a streak or a verdict. Step 4 may let the guarded brief quote a recent
  * reflection; it will never let one change a load.
+ *
+ * ## IT IS A NATIVE FORM SHEET (6 September 2026)
+ *
+ * The body below is the whole of the `/check-in` route (`app/check-in.tsx`); the
+ * presentation — detents, grabber, corner radius, the cream surface — is the
+ * `Stack.Screen` config in `app/_layout.tsx`. Nothing inside changed with the
+ * move except what the new container forces:
+ *
+ * - **No `<BottomSheet>` wrapper.** The grabber, the scrim and the drag are
+ *   UIKit's now, so the root is a plain flex box and the ScrollView between the
+ *   fixed head and the fixed footer takes `flex: 1`.
+ * - **The sheet no longer floats clear of the home indicator.** A form sheet is
+ *   anchored to the screen edge at every detent, so the footer pays the bottom
+ *   inset itself — `bottom-sheet.tsx` used to own that gap and its callers were
+ *   forbidden from adding it.
+ * - **A swipe down is a route pop, and it calls nothing.** `commit` therefore
+ *   also runs from an unmount cleanup; see it for why that cannot lose or
+ *   duplicate a reflection.
  */
 export function CheckInSheet() {
-  const open = useSession((s) => s.checkInOpen);
-  const close = useSession((s) => s.closeCheckIn);
+  const insets = useSafeAreaInsets();
   const receipt = useSession((s) => s.receipt);
   const workoutId = useSession((s) => s.workoutId);
   const setLineEffort = useSession((s) => s.setLineEffort);
@@ -104,14 +122,33 @@ export function CheckInSheet() {
   // fires on a genuinely NEW reflection rather than on every edit.
   const stored = useRef<string | null>(null);
 
+  /**
+   * What is on the sheet right now, readable from a cleanup that closes over
+   * nothing. Written in an effect rather than during render: the React Compiler
+   * is on (`app.json` experiments) and a render-phase ref write is exactly the
+   * thing it is allowed to reorder.
+   *
+   * IT IS DECLARED BEFORE THE LOAD EFFECT ON PURPOSE. Effects run in definition
+   * order, so on the mount pass this one writes the empty initial state FIRST
+   * and the load below then overwrites it with what was stored. The other order
+   * leaves a mount-unmount-mount cycle (StrictMode) holding an empty draft
+   * against a real `stored.current`, and the unmount commit would erase a
+   * reflection nobody touched.
+   */
+  const latest = useRef({ text: '', tags: [] as string[], workoutId });
   useEffect(() => {
-    if (!open || !workoutId) return;
+    latest.current = { text, tags, workoutId };
+  });
+
+  useEffect(() => {
+    if (!workoutId) return;
     const existing = getReflection(workoutId);
     stored.current = existing;
     const parts = splitReflection(existing);
+    latest.current = { text: parts.text, tags: parts.tags, workoutId };
     setText(parts.text);
     setTags(parts.tags);
-  }, [open, workoutId]);
+  }, [workoutId]);
 
   /**
    * Freeze the question set. Deliberately NOT a plain derivation of the note:
@@ -122,10 +159,6 @@ export function CheckInSheet() {
    * finishes fast, and offline it may never land at all).
    */
   useEffect(() => {
-    if (!open) {
-      setAskLines(null);
-      return;
-    }
     if (!receipt) return;
     setAskLines((prev) => {
       if (prev !== null) return prev;
@@ -139,7 +172,7 @@ export function CheckInSheet() {
       }
       return next;
     });
-  }, [open, receipt, note]);
+  }, [receipt, note]);
 
   // One entry per lift still to rate, carrying whatever marker its line has
   // right now. Read from the note rather than held in state, so the sheet and
@@ -187,7 +220,53 @@ export function CheckInSheet() {
     // The workout row's timestamps move with every keystroke; re-read whenever
     // the parse behind the receipt does.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [receipt, workoutId, open]);
+  }, [receipt, workoutId]);
+
+  /**
+   * Persist, and nothing else. Runs for Save session, for Skip, for the × —
+   * and, through the cleanup below, for a swipe down, because all four mean the
+   * same thing: keep exactly what is on the sheet.
+   *
+   * Skip is not a discard. Words a person typed are never thrown away by the
+   * app — and a Skip tapped on an untouched sheet stores nothing anyway, which
+   * is what makes skipping free (`composeReflection` resolves empty to null).
+   *
+   * IT IS IDEMPOTENT, which is what lets the button path and the unmount path
+   * both call it: the write is guarded on the composed value differing from
+   * `stored.current`, so committing twice writes once and counts once.
+   */
+  const commit = () => {
+    const { text: t, tags: g, workoutId: id } = latest.current;
+    if (!id) return;
+    const next = composeReflection(g, t);
+    if (next === stored.current) return;
+    setReflection(id, next);
+    // Counted only when a note appears where there was none. An edit is not a
+    // new reflection, and a deletion is certainly not one.
+    if (next !== null && stored.current === null) markReflectionAdded();
+    stored.current = next;
+  };
+
+  const commitRef = useRef(commit);
+  useEffect(() => {
+    commitRef.current = commit;
+  });
+
+  /**
+   * THE SWIPE IS A REAL WAY OUT, and it calls none of the buttons. The old
+   * `<BottomSheet>` routed its drag-dismiss through `onClose`; a form sheet
+   * pops the route from UIKit and tells JS nothing beyond the unmount. So the
+   * unmount IS the last honest moment to keep what was typed.
+   */
+  useEffect(() => () => commitRef.current(), []);
+
+  /**
+   * Nothing to attach a note to. The route should not have been pushed, and an
+   * empty sheet is a worse answer than no sheet: leave rather than present one.
+   */
+  useEffect(() => {
+    if (!workoutId && router.canGoBack()) router.back();
+  }, [workoutId]);
 
   // The sheet renders whenever there is a session to attach a note to. It must
   // NOT wait for a parse: offline, or before the edge function answers, there
@@ -196,25 +275,9 @@ export function CheckInSheet() {
 
   const charsLeft = reflectionCharsLeft(text);
 
-  /**
-   * Persist and close. Runs for Save session, for Skip, for the × and for a
-   * swipe-dismiss, because all four mean the same thing: keep exactly what is
-   * on the sheet.
-   *
-   * Skip is not a discard. Words a person typed are never thrown away by the
-   * app — and a Skip tapped on an untouched sheet stores nothing anyway, which
-   * is what makes skipping free (`composeReflection` resolves empty to null).
-   */
   const commitAndClose = () => {
-    const next = composeReflection(tags, text);
-    if (next !== stored.current) {
-      setReflection(workoutId, next);
-      // Counted only when a note appears where there was none. An edit is not a
-      // new reflection, and a deletion is certainly not one.
-      if (next !== null && stored.current === null) markReflectionAdded();
-      stored.current = next;
-    }
-    close();
+    commit();
+    router.back();
   };
 
   const toggleTag = (t: string) => {
@@ -223,10 +286,13 @@ export function CheckInSheet() {
   };
 
   return (
-    <BottomSheet
-      visible={open}
-      onClose={commitAndClose}
-      sheetStyle={[styles.sheet, { paddingBottom: spacing.lg }]}>
+    // `Math.max`, not a bare inset: `RNSScreen.mm` has an open TODO to register
+    // for keyboard notifications on its safe-area provider, and a form sheet is
+    // a presentation the inset can be reported into late or as zero. A footer
+    // under the home indicator is unreadable; 24 over-pays on a device that
+    // genuinely has no indicator, which is the harmless direction to be wrong in
+    // (`spacing.xxl` alone clears the ~21 pt the indicator occupies).
+    <View style={[styles.sheet, { paddingBottom: spacing.lg + Math.max(insets.bottom, spacing.xxl) }]}>
       {/* Two ways out, both honest: × leaves the sheet, Skip says there is
           nothing to add. Neither loses anything already on it. */}
       <View style={styles.topRow}>
@@ -409,15 +475,22 @@ export function CheckInSheet() {
           You can change any of this later.
         </Text>
       </View>
-    </BottomSheet>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   sheet: {
+    // `flex: 1`, not a maxHeight: the form sheet's own detent decides the
+    // height now, and the root has to FILL it or the footer floats mid-sheet.
+    // The colour is also on `contentStyle` in `_layout.tsx`; keeping it here
+    // means no frame of system grey can show while the screen mounts.
+    flex: 1,
     backgroundColor: color.surface,
     paddingHorizontal: spacing.xl,
-    maxHeight: '92%',
+    // Clearance under the native grabber, which replaced the old sheet's own
+    // handle (it padded 8 over and 6 under).
+    paddingTop: spacing.md,
   },
   topRow: {
     marginTop: spacing.xs,
@@ -446,6 +519,8 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   scroll: {
+    // Takes the room left between the fixed head and the fixed footer.
+    flex: 1,
     marginTop: spacing.xl,
   },
   scrollContent: {

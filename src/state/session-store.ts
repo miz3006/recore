@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { create } from 'zustand';
 
 import { shiftDayKey, todayKey, type DayKey } from '@/lib/db/dates';
@@ -202,13 +203,20 @@ interface SessionState {
    */
   checkInOpen: boolean;
   openCheckIn: () => void;
-  closeCheckIn: () => void;
+  /**
+   * The ROUTE reports its own presence, and is the ONLY writer of
+   * `checkInOpen` — see `app/check-in.tsx`. Two writers for one flag is how it
+   * ends up stuck true and `bottom-toolbar` silently stops asking for ratings.
+   */
+  setCheckInOnScreen: (on: boolean) => void;
   /** Enter / leave inline edit of a committed line (tap a card → Edit). */
   startEditLine: (line: number) => void;
   stopEditLine: () => void;
   openFixSheet: (line: number) => void;
   closeFixSheet: () => void;
-  submitFix: (exercise: string, sets: ParsedSet[]) => void;
+  /** `remember` teaches the parser the athlete's phrase; only ever meaningful
+   * when the EXERCISE changed, and the sheet defaults it on. */
+  submitFix: (exercise: string, sets: ParsedSet[], remember?: boolean) => void;
   /** Drop the open fix target's READING (its parsed sets) while leaving the
    * written line untouched — see the action for why that is one and the same
    * correction path. */
@@ -678,8 +686,21 @@ export const useSession = create<SessionState>((set, get) => ({
   },
 
   checkInOpen: false,
-  openCheckIn: () => set({ checkInOpen: true }),
-  closeCheckIn: () => set({ checkInOpen: false }),
+  /**
+   * The check-in is a native form sheet on the root stack (`app/check-in.tsx`),
+   * so opening it is a NAVIGATION, not a flag flip. It deliberately does not
+   * touch `checkInOpen`: the route sets that on mount and clears it on unmount,
+   * which is the only way a swipe-dismiss can leave it honest.
+   *
+   * ONE CALLER RULE. The sheet is presented by the root navigator, so pushing
+   * it while an RN `Modal` (any `bottom-sheet.tsx` sheet) is still on screen
+   * would render it BEHIND that modal — invisible, exactly like UIKit refusing
+   * a second modal. Every live caller today is a control on the page, which by
+   * construction cannot be tapped while a modal covers it. A caller inside a
+   * sheet must close its host first and push from `onClosed`.
+   */
+  openCheckIn: () => router.push('/check-in'),
+  setCheckInOnScreen: (on) => set({ checkInOpen: on }),
 
   startEditLine: (line) => set({ editingLine: line, sheetExercise: null, sheetLine: null }),
   stopEditLine: () => set({ editingLine: null }),

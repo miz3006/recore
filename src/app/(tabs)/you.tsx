@@ -380,8 +380,35 @@ export default function Settings() {
     );
   };
 
-  const handleSignOut = async () => {
+  /**
+   * Sign out ASKS FIRST (6 September 2026). It sat between "Clear local cache"
+   * and "Delete account" — both of which have always confirmed — as the one row
+   * in the destructive zone that fired on the first tap, and it is a one-way
+   * door for anyone signed in with Apple who does not remember which Apple
+   * Account they used.
+   *
+   * It is a system alert, like every other confirmation in the app: a real
+   * `UIAlertController`, `destructive` on the verb and `cancel` on the way out,
+   * so the app has one destructive voice (`note-surface.tsx` says the same).
+   *
+   * The message is the honest one — the record is on the device and on the
+   * server, and signing out is not deletion. It does not try to talk anybody
+   * out of it (§20: never harder to leave than to arrive).
+   */
+  const handleSignOut = () => {
     if (busy) return;
+    tap();
+    Alert.alert(
+      'Sign out?',
+      'Your training stays on this device and on the server. You will need to sign in again to reach it.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out', style: 'destructive', onPress: () => void runSignOut() },
+      ],
+    );
+  };
+
+  const runSignOut = async () => {
     tapMedium();
     setBusy('signout');
     try {
@@ -916,7 +943,7 @@ export default function Settings() {
             chevron={false}
             divider
             disabled={busy !== null}
-            onPress={() => void handleSignOut()}
+            onPress={handleSignOut}
           />
         </Section>
 
