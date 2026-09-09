@@ -265,15 +265,43 @@ function reasonForReceipt(userId: string, day: DayKey): string | null {
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** The date pill's label: Today, Yesterday, or a quiet short date. */
-export function labelForDay(day: DayKey): string {
-  const today = todayKey();
-  if (day === today) return 'Today';
-  if (day === shiftDayKey(today, -1)) return 'Yesterday';
+/** The day DATED, always — "Sep 6", and carrying the year when it is not this
+ * one. The half of `labelForDay` that a relative word replaces. */
+function datedDay(day: DayKey): string {
   const [y, m, d] = day.split('-').map(Number);
   const monthName = MONTHS_SHORT[(m ?? 1) - 1];
   const yearSuffix = y === new Date().getFullYear() ? '' : ` ${y}`;
   return `${monthName} ${d}${yearSuffix}`;
+}
+
+/** A day named the way a person names it: Today, Yesterday, or a quiet short
+ * date. Used wherever a day is a label — history rows, sheet titles, prose
+ * (`lib/day-phrase.ts` handles the grammar of dropping it into a sentence). */
+export function labelForDay(day: DayKey): string {
+  const today = todayKey();
+  if (day === today) return 'Today';
+  if (day === shiftDayKey(today, -1)) return 'Yesterday';
+  return datedDay(day);
+}
+
+/**
+ * THE DAY PILL SAYS BOTH (owner, 6 September 2026): "Today · Sep 6".
+ *
+ * The pill is the only place in the app where the open day is named as a
+ * PLACE rather than mentioned in a sentence — it is what the calendar opens
+ * from, and what tells you where you landed after swiping days. "Today" alone
+ * is the one thing a person never needs told, and a bare "Sep 4" two swipes
+ * back leaves them counting; the pill has room for both, so it carries both
+ * and nothing is lost either way.
+ *
+ * Every other surface keeps `labelForDay`: "last Today · Sep 6" on Progress
+ * and a sheet titled "Yesterday · Sep 5" would be the same fact printed twice
+ * beside itself.
+ */
+export function dayPillLabel(day: DayKey): string {
+  const label = labelForDay(day);
+  const dated = datedDay(day);
+  return label === dated ? dated : `${label} · ${dated}`;
 }
 
 /** Load a day's note + cached parse state straight from SQLite (synchronous). */
@@ -719,11 +747,11 @@ export const useSession = create<SessionState>((set, get) => ({
   /** Persist the user's fix, then re-read the day from the (rebuilt) cache so
    * the gutter reflects the corrected structure immediately. `fixRevision`
    * lets read-side caches (the last-time hint) drop stale resolutions. */
-  submitFix: (exercise, sets) => {
+  submitFix: (exercise, sets, remember = true) => {
     const { userId, selectedDay, fixTarget } = get();
     if (!userId || !fixTarget) return;
 
-    const changed = applyCorrection(userId, fixTarget, { exercise, sets });
+    const changed = applyCorrection(userId, fixTarget, { exercise, sets, remember });
     set({
       fixTarget: null,
       ...(changed ? { ...loadDay(userId, selectedDay), fixRevision: get().fixRevision + 1 } : {}),

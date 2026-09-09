@@ -28,6 +28,8 @@ import { labelForDay, useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
 import { seriesPathD } from './charts';
+import { COMPARISON_SUBLINES_ON } from './gutter-value';
+import { E1RM_LABEL } from './e1rm-sheet';
 import { ThoughtProcessCard } from './thought-process';
 
 /**
@@ -73,11 +75,34 @@ function sessionValue(s: ExerciseSession): string {
   return s.topReps != null ? `${s.setCount}×${s.topReps}` : `${s.setCount} sets`;
 }
 
-/** The archival comparison subline (§9) — weight or rep delta vs the previous
- * session, "first recorded" for the oldest. Real data only; never a fabricated
- * reason. */
-function sessionSubline(s: ExerciseSession, older: ExerciseSession | undefined): string | null {
-  if (!older) return 'first recorded';
+/**
+ * The archival comparison subline (§9) — weight or rep delta vs the previous
+ * session, "first recorded" for the lift's opening entry. Real data only; never
+ * a fabricated reason.
+ *
+ * `firstDay` is passed rather than inferred from `older` being absent, and the
+ * difference is a correctness one: the table draws a WINDOW of the last ten
+ * sessions, so the oldest row on screen is only the first-ever entry when the
+ * lift has ten or fewer. A lift with twenty-four sessions was printing "first
+ * recorded" against its fifteenth (4 September 2026).
+ *
+ * It is also the quiet marker that stands in for the PR badge on that row —
+ * the badge is suppressed there, and this says what the entry actually is.
+ *
+ * The DELTA half is off with the card's comparison (`gutter-value.tsx`, 6
+ * September 2026): the history table is a list of what was lifted on each day,
+ * and every row telling the reader how it measured up against the row beneath
+ * it was the same running commentary, one level down. "first recorded" is a
+ * fact about the entry and stays.
+ */
+function sessionSubline(
+  s: ExerciseSession,
+  older: ExerciseSession | undefined,
+  firstDay: DayKey | null,
+): string | null {
+  if (s.day === firstDay) return 'first recorded';
+  if (!older) return null;
+  if (!COMPARISON_SUBLINES_ON) return null;
   if (s.topWeight != null && older.topWeight != null) {
     const d = s.topWeight - older.topWeight;
     if (d === 0) return `same load · ${labelForDay(older.day)}`;
@@ -520,9 +545,25 @@ export function ExerciseSheet() {
                   <View style={styles.chartHead}>
                     <Eyebrow tone="muted">{chart.isWeighted ? 'Progression' : chart.title}</Eyebrow>
                     {chartCurrent ? (
-                      <Text style={styles.chartCurrent} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                        {chartCurrent}
-                      </Text>
+                      <View style={styles.chartCurrentGroup}>
+                        {/* ONLY THE ESTIMATE IS NAMED HERE, and the asymmetry is
+                            the point: "220 kg" under Heaviest weight and "8"
+                            under Top reps are what they look like, while a bare
+                            e1RM is read as a load somebody put on a bar. The
+                            chip below says which metric is plotted, but a chip
+                            is a control — the reading says what it is itself
+                            (`(tabs)/progress.tsx`, 4 September 2026). */}
+                        {chart.metric === 'e1rm' ? (
+                          <Text
+                            style={styles.chartCurrentLabel}
+                            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                            {E1RM_LABEL}
+                          </Text>
+                        ) : null}
+                        <Text style={styles.chartCurrent} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                          {chartCurrent}
+                        </Text>
+                      </View>
                     ) : null}
                   </View>
                   {/* Metric chips — swap the plotted series on a fixed axis
@@ -570,9 +611,17 @@ export function ExerciseSheet() {
                   History
                 </Eyebrow>
                 {ordered.map((s, i) => {
+                  // A baseline is not a PR (§15 — the word has to keep meaning
+                  // something). `isBaseline` is the record book's own test:
+                  // this lift's heaviest day is also the first day it was ever
+                  // written down, so nothing was beaten to get there.
                   const isPr =
-                    pr != null && s.topWeight != null && s.day === pr.day && s.topWeight === pr.weightKg;
-                  const subline = sessionSubline(s, ordered[i + 1]);
+                    pr != null &&
+                    !pr.isBaseline &&
+                    s.topWeight != null &&
+                    s.day === pr.day &&
+                    s.topWeight === pr.weightKg;
+                  const subline = sessionSubline(s, ordered[i + 1], stats.firstDay);
                   const hasNotes = s.notes.length > 0;
                   return (
                     <View key={s.day}>
@@ -805,6 +854,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
+  },
+  chartCurrentGroup: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.xs,
+    flexShrink: 0,
+  },
+  /** What the reading is — a step under it, and `textSecondary` because it
+   * carries information the number cannot carry alone. */
+  chartCurrentLabel: {
+    ...type.footnote,
+    color: color.textSecondary,
   },
   chartCurrent: {
     ...readingStyle('600'),

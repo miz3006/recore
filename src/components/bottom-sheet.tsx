@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SHEET_INSET,
   },
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   sheet: {
     backgroundColor: color.surface,

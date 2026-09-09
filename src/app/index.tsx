@@ -53,8 +53,9 @@ export default function Dispatcher() {
    *
    * THE FLOW BEHIND THIS CHANGED ON 28 AUGUST 2026 (owner's ruling): v2 is the
    * primary onboarding and the illustrated funnel at `/onboarding/` is no
-   * longer dispatched to. It is still reachable from the You tab's development
-   * rows and still works; nothing was deleted. An install that was part-way
+   * longer dispatched to. It still works and nothing was deleted, but its last
+   * door — a You tab development row — was removed on 31 August 2026, so it is
+   * now reachable by typing the route and no other way. An install that was part-way
    * through the old flow starts the new one from screen 1 rather than resuming
    * a position that names a different screen — its answers are untouched, and
    * the new flow asks its own questions anyway.
@@ -70,7 +71,6 @@ export default function Dispatcher() {
    * `ensureLocalUser` wiped this device's meta on an account switch — signed in
    * with no local onboarding flag is a returning user, not a new one.
    */
-  return <Redirect href="/next" />; // SIMPASS
   if (!onboarded && !session) return <Redirect href={`/onboarding-v2/${resumeStep}`} />;
   /**
    * Onboarding is done but there's still no account → the paywall is the gate,
@@ -78,8 +78,8 @@ export default function Dispatcher() {
    * development too — the paywall's DEV·SKIP goes to sign-in, not past it.
    *
    * **v2 IS THE FUNNEL'S PAYWALL SINCE 28 AUGUST 2026** (owner's ruling). The
-   * screen at `src/app/paywall.tsx` is not deleted and still works; it is
-   * reachable from the You tab's development rows, exactly like the illustrated
+   * screen at `src/app/paywall.tsx` is not deleted and still works; its You tab
+   * development row was removed on 31 August 2026, exactly like the illustrated
    * onboarding it shipped beside. Everything commercial about the two is the
    * same code — one `fetchOffer`, one `purchase`, one entitlement — so the swap
    * changes what the screen LOOKS like and nothing about what it promises.

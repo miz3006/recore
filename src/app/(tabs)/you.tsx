@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stagger } from '@/components/motion';
+import { PaperField } from '@/components/paper-field';
 import { EDGE_FADE, ScrollEdgeHeader } from '@/components/scroll-edge';
 import { AnswerSheet } from '@/components/profile/answer-sheet';
 import { Identity } from '@/components/profile/identity';
@@ -43,9 +44,7 @@ import {
   type AnswerId,
 } from '@/lib/profile-answers';
 import { seedV2FromRecord } from '@/lib/onboarding-v2-seed';
-import { resetSandbox, snapshotPrefs } from '@/lib/onboarding-v2-sandbox';
-import { useOnboardingAnswers } from '@/state/onboarding';
-import { beginSandboxRun } from '@/state/onboarding-v2';
+import { simulateFreshInstall } from '@/lib/dev-fresh-install';
 import { tap, tapMedium } from '@/lib/haptics';
 import { pickAndImportCsv } from '@/lib/import/pick';
 import type { LegalDocId } from '@/lib/legal';
@@ -445,6 +444,43 @@ export default function Settings() {
     router.push('/onboarding-v2/1');
   };
 
+  /**
+   * THE ONE DEVELOPMENT ENTRANCE (owner's ask, 31 August 2026): put the device
+   * back to the second after a download and walk the whole funnel —
+   * onboarding → paywall → sign-in → Today.
+   *
+   * It asks first, and the alert states the two things the label cannot: that
+   * this is not a sandboxed replay (it really does clear the answers and sign
+   * out) and that the training record survives. A destructive dev row that
+   * reads like a preview is how somebody loses an afternoon of settings.
+   *
+   * The navigation is a belt-and-braces `replace`, not the thing that makes it
+   * work: `simulateFreshInstall` ends by dropping the session, which closes
+   * `_layout.tsx`'s guard and leaves the dispatcher — with no onboarding flag
+   * and no session — sending us to screen 1 on its own. Being explicit costs
+   * nothing and removes a frame of whatever the fallback would have been.
+   */
+  const handleFreshInstall = () => {
+    tap();
+    Alert.alert(
+      'Simulate a fresh install?',
+      'Clears every onboarding answer and preference on this device and signs you out, then starts the funnel from screen 1. This is the real flow, not a sandboxed replay. Your training record is not touched.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start over',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              await simulateFreshInstall();
+              router.replace('/onboarding-v2/1');
+            })();
+          },
+        },
+      ],
+    );
+  };
+
   const handleManage = () => {
     tap();
     // The customer-specific URL when the store has one, Apple's generic
@@ -533,6 +569,13 @@ export default function Settings() {
 
   return (
     <View style={styles.root}>
+      {/* The canvas — the same field every other screen draws (skill §Canvas:
+          one canvas runs the whole app). It is an `absoluteFill` and therefore
+          anchored to the VIEWPORT, not to the scroll: the peach corner stays put
+          while the list travels through it, which is what makes it a page rather
+          than wallpaper on the content. */}
+      <PaperField />
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -947,84 +990,43 @@ export default function Settings() {
           />
         </Section>
 
-        {/* DEVELOPMENT — the onboarding flows side by side, sandboxed, plus the
-            one billing state that has no other way in until a sandbox
-            subscription can expire (docs/onboarding-v2-spec.md §0, PLAN B4).
-            `__DEV__` compiles the whole thing out of a release build; to expose
-            it in TestFlight, change this one condition.
+        {/* DEVELOPMENT — ONE funnel entrance, plus the one billing state that
+            has no other way in until a sandbox subscription can expire
+            (docs/onboarding-v2-spec.md §0, PLAN B4). `__DEV__` compiles the
+            whole thing out of a release build; to expose it in TestFlight,
+            change this one condition.
 
-            IT WAS TWO SECTIONS UNTIL 28 AUGUST 2026 — "Dev" and "Development" —
-            and they each carried a row that ran the v1 flow. The two were not
-            the same: one snapshotted every `pref_%` row first, the other reset
-            the answers and pushed straight into the flow, which WROTE AS IT
-            WENT over the real settings with nothing to restore from. Two rows
-            with near-identical labels, one of them destructive, is a trap
-            rather than a convenience. One section, one row per thing.
+            IT WAS FIVE ROWS UNTIL 31 AUGUST 2026 (owner's ask): run v2
+            sandboxed, run the illustrated v1 flow, reset the sandbox, open the
+            v1 paywall, and the lapsed toggle. The first four each simulated a
+            PIECE of the funnel and none of them could reach the joins between
+            the pieces, which is the part that actually breaks. The sandboxed v2
+            row could not even get to the paywall, because a run that commits
+            nothing never satisfies the dispatcher.
 
-            v2 IS THE PRIMARY FLOW SINCE 28 AUGUST 2026, so its row is not "the
-            other one" — it is a sandboxed replay of what a new person meets.
-            `?dev=1` is what makes it sandboxed: the store refuses to persist and
-            the flow refuses to commit while it is set, so a replay creates no
-            account, completes no onboarding and overwrites no answer. */}
+            One row replaces the four, and it is NOT sandboxed on purpose: it
+            wipes the device, drops the session, and walks the real thing —
+            onboarding → paywall → sign-in → Today. `lib/dev-fresh-install.ts`
+            says what it clears and what it refuses to.
+
+            THIS LEAVES TWO SCREENS WITHOUT A DOOR: the illustrated funnel at
+            `src/app/onboarding/` and the v1 paywall at `src/app/paywall.tsx`.
+            Both still exist, still work and are still registered in
+            `app/_layout.tsx`; nothing was deleted. Their only entrance was the
+            two rows removed here, so they are now reachable by typing the route
+            and no other way. CLAUDE.md still describes them as reachable from
+            these development rows — that line is now stale and is the owner's
+            to rule on (§8), not this change's to rewrite. */}
         {__DEV__ ? (
           <Section
             label="Development"
-            footnote="Neither onboarding row creates an account, completes onboarding or opens the paywall.">
+            footnote="The simulation is the real funnel, not a replay: it clears this device's answers and signs you out. Your training record is not touched.">
             <Row
               icon="wrench"
-              label="Run onboarding (v2 — the real one)"
-              sub="Replays the primary flow. Nothing is saved or committed"
+              label="Simulate a fresh install"
+              sub="Wipes onboarding and signs out, then walks the funnel: onboarding → paywall → sign-in → Today"
               chevron={false}
-              onPress={() => {
-                tap();
-                // NOT `resetSandbox()`: that row clears the stored answers, and
-                // launching a replay must not delete the real ones. Sandbox
-                // mode goes on first, so the blank slate is memory only.
-                beginSandboxRun();
-                router.push({ pathname: '/onboarding-v2/[step]', params: { step: '1', dev: '1' } });
-              }}
-            />
-            <Row
-              icon="wrench"
-              label="Run illustrated onboarding (v1)"
-              sub="The legacy flow. It writes as it goes, so your answers are snapshotted first"
-              chevron={false}
-              divider
-              onPress={() => {
-                tap();
-                snapshotPrefs();
-                useOnboardingAnswers.getState().reset();
-                router.push('/onboarding/1');
-              }}
-            />
-            <Row
-              icon="wrench"
-              label="Reset sandbox state"
-              sub="Clears the v2 answers on this device and restores the snapshot"
-              chevron={false}
-              divider
-              onPress={() => {
-                tap();
-                const { restored } = resetSandbox();
-                setSettingsRevision((n) => n + 1);
-                Alert.alert(
-                  'Sandbox reset',
-                  restored > 0
-                    ? `${restored} settings restored.`
-                    : 'v2 answers cleared. There was no snapshot to restore.',
-                );
-              }}
-            />
-            <Row
-              icon="wrench"
-              label="Open the paywall (v1)"
-              sub="The illustrated buy screen v2 replaced on 28 August. It still works; this row is the only way in"
-              chevron={false}
-              divider
-              onPress={() => {
-                tap();
-                router.push('/paywall');
-              }}
+              onPress={handleFreshInstall}
             />
             <Row
               icon="wrench"

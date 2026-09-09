@@ -3,7 +3,7 @@ import { getDb, nowIso } from '@/lib/db/index';
 import { getWorkoutById } from '@/lib/db/workouts';
 import { isSupabaseConfigured } from '@/lib/env';
 import { bumpParsedItems } from '@/lib/funnel';
-import { devLog } from '@/lib/log';
+import { devLog, errorText } from '@/lib/log';
 import { settlePredictionOutcome } from '@/lib/predict/adherence';
 import { recachePrediction } from '@/lib/predict/cache';
 import { supabase } from '@/lib/supabase';
@@ -88,6 +88,24 @@ export async function parseWorkout(userId: string, workoutId: string): Promise<P
 
   if (!isSupabaseConfigured()) return null;
 
+  /**
+   * NO SESSION, NO REQUEST.
+   *
+   * `parse-workout` sits behind `verify_jwt` AND runs its own `getUser()` check
+   * (`supabase/config.toml`), so signed out it can only refuse. Asking first
+   * costs nothing and keeps the pre-account funnel at zero network — the same
+   * rule `demo-parse-remote.ts` already follows for the same function.
+   *
+   * The workout keeps `needs_parse = 1`, so the first sync pass after sign-in
+   * reads it through `retryPendingParses`. Nothing is dropped; the reading
+   * simply arrives with the account, which is when it could first have existed.
+   */
+  const { data: auth } = await supabase.auth.getSession();
+  if (!auth.session) {
+    devLog('parse skipped: no session yet — queued until sign-in');
+    return null;
+  }
+
   // Client-side input cap mirrors the server's.
   const capped = rawText.slice(0, MAX_RAW_TEXT_CHARS);
 
@@ -96,7 +114,9 @@ export async function parseWorkout(userId: string, workoutId: string): Promise<P
       body: { raw_text: capped },
     });
     if (error || !data) {
-      devLog('parse failed, will retry on sync');
+      // The function's own words. "will retry on sync" said what happens next
+      // and never what went wrong, so a 401 and a dead network read alike.
+      devLog('parse failed, will retry on sync:', error ? errorText(error) : 'empty response');
       return null;
     }
 

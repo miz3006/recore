@@ -24,6 +24,14 @@ import { Eyebrow } from './primitives';
  * Both numbers here come from `src/lib/streak.ts`, so the sheet and the top bar
  * can never disagree, and the copy says "training days" because that is what is
  * being counted — a rest day is not a miss.
+ *
+ * AND THE LABEL SAYS SO (owner, 4 September 2026). It read "N training days in
+ * a row", which `currentStreak` has never computed: the function walks back
+ * over the DAYS THAT WERE TRAINED while no gap between two of them exceeds a
+ * week, so three sessions in one week read 3 — and "3 training days in a row"
+ * is a claim about the calendar that the record contradicts on its face. The
+ * number is unchanged and correct; only the words were wrong. "training days ·
+ * streak unbroken" states the two halves separately, which is what they are.
  */
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;
 
@@ -43,7 +51,6 @@ export function StreakSheet({ visible, onClose }: { visible: boolean; onClose: (
     return { best: longestStreak([...days]), week };
   }, [userId, visible]);
 
-  const unit = streak === 1 ? 'training day' : 'training days';
 
   return (
     <BottomSheet
@@ -65,7 +72,7 @@ export function StreakSheet({ visible, onClose }: { visible: boolean; onClose: (
           maxFontSizeMultiplier={MAX_FONT_SCALE}
         />
         <Text style={styles.heroUnit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {streak > 0 ? `${unit} in a row` : 'training days'}
+          {streak > 0 ? 'training days · streak unbroken' : 'training days'}
         </Text>
       </View>
       <Text style={styles.sub} maxFontSizeMultiplier={MAX_FONT_SCALE}>

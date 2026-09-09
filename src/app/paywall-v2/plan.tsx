@@ -305,7 +305,19 @@ export default function PaywallV2Plan() {
       router.replace('/');
       return;
     }
-    router.push('/sign-in');
+    /**
+     * `next: 'home'` is the difference between this and the CTA above, and it
+     * matters because of what sign-in leaves behind. Sign-in lives inside
+     * `guard={session === null}`, so the instant a session lands the screen is
+     * removed and whatever pushed it is on top again — this paywall. The CTA
+     * WANTS that (its `pendingPurchase` effect fires on exactly that return and
+     * opens Apple's sheet). A skip has no purchase to resume, so the same
+     * behaviour just strands the user back on the screen they skipped.
+     *
+     * The parameter says which of the two happened. It is not a general
+     * post-sign-in destination: the purchase path still returns here on purpose.
+     */
+    router.push({ pathname: '/sign-in', params: { next: 'home' } });
   };
 
   const openLegal = (doc: LegalDocId) => {

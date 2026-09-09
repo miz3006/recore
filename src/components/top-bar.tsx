@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { color, HIT, MAX_FONT_SCALE, moderateScale, radius, readingStyle, shadow, spacing, type } from '@/lib/theme';
-import { labelForDay, useSession } from '@/state/session-store';
+import { dayPillLabel, useSession } from '@/state/session-store';
 
 import { CalendarSheet } from './calendar-sheet';
 import { Icon } from './icon';
@@ -56,9 +56,14 @@ export function TopBar() {
           activeScale={0.96}
           style={styles.dayPill}
           accessibilityRole="button"
-          accessibilityLabel={`Open calendar — ${labelForDay(selectedDay)}`}>
-          <Text style={styles.dayPillText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {labelForDay(selectedDay)}
+          // The separator is a comma to VoiceOver: a middle dot is read out
+          // as one, and "Today middle dot Sep 6" is not what the pill says.
+          accessibilityLabel={`Open calendar — ${dayPillLabel(selectedDay).replace(' · ', ', ')}`}>
+          <Text
+            style={styles.dayPillText}
+            numberOfLines={1}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {dayPillLabel(selectedDay)}
           </Text>
           <Icon name="chevron-down" size={moderateScale(14)} tint={color.textSecondary} />
         </PressableScale>
@@ -119,6 +124,10 @@ const styles = StyleSheet.create({
   dayPill: {
     flexDirection: 'row',
     alignItems: 'center',
+    // It carries two facts now ("Today · Sep 6"), so it is allowed to give
+    // ground before the wordmark and the session count do — the label
+    // ellipsizes inside a pill that still fits the row at any type size.
+    flexShrink: 1,
     gap: spacing.xs,
     paddingLeft: spacing.lg,
     paddingRight: spacing.md,

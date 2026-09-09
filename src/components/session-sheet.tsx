@@ -12,11 +12,12 @@ import { color, lineFor, MAX_FONT_SCALE, moderateScale, radius, readingStyle, sp
 import { labelForDay, useSession } from '@/state/session-store';
 
 import { BottomSheet } from './bottom-sheet';
+import { E1RM_LABEL } from './e1rm-sheet';
 
 /**
  * SessionSheet (progress spec §3.7) — the forensic floor of the drill-down.
  * Tap a recorded session anywhere and this answers "what were the exact sets
- * that day?": every counted set as `100 kg × 8 · e1RM 125`, warm-ups dimmed and
+ * that day?": every counted set as `100 kg × 8 · est. 1RM 125`, warm-ups dimmed and
  * excluded, drops indented under their parent, supersets flagged by their
  * shared group. The parser's RIR reading rides along in the quiet INTERPRETED
  * voice (mono, muted) — never dressed up as the user's verbatim words. RECORDED
@@ -63,10 +64,17 @@ export function SessionSheet() {
 
   // All-time bests, to mark the set that set a record (same rule as the lift
   // sheet: heaviest counted set on the day it was set).
+  //
+  // A BASELINE IS SKIPPED ENTIRELY (4 September 2026). When a lift's heaviest
+  // day is also the first day it was ever written down, nothing was beaten to
+  // get there, and a "PR" on it makes the word worthless everywhere else it
+  // appears. Dropped from the map rather than filtered at the row, so there is
+  // one place this rule lives on this screen.
   const prMap = useMemo(() => {
     const m = new Map<string, { weightKg: number; day: string }>();
     if (!userId) return m;
     for (const p of getAllTimePRs(userId, PR_SCAN)) {
+      if (p.isBaseline) continue;
       m.set(p.canonical.toLowerCase(), { weightKg: p.weightKg, day: p.day });
     }
     return m;
@@ -149,7 +157,15 @@ export function SessionSheet() {
                           style={[styles.setValue, isWarm && styles.setValueMuted]}
                           maxFontSizeMultiplier={MAX_FONT_SCALE}>
                           {setValue(s)}
-                          {e != null ? <Text style={styles.setMeta}>{`  ·  e1RM ${fmtNumber(e)}`}</Text> : null}
+                          {/* One wording for this label everywhere it is
+                              printed (4 September 2026) — the Progression row,
+                              the lift sheet and this set all say `est. 1RM`.
+                              The number keeps the SET's kilograms: it sits
+                              inside a reading that already carries a unit, and
+                              a second one on the same line would be noise. */}
+                          {e != null ? (
+                            <Text style={styles.setMeta}>{`  ·  ${E1RM_LABEL} ${fmtNumber(e)}`}</Text>
+                          ) : null}
                           {!isWarm && s.rir != null ? (
                             <Text style={styles.setMeta}>{`  ·  RIR ${fmtNumber(s.rir)}`}</Text>
                           ) : null}

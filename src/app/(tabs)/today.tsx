@@ -107,9 +107,13 @@ export default function Today() {
           and never animates"), so there is nothing here for Reduce Motion to
           turn off. It renders behind everything and takes no touches.
 
-          Today is still the only screen that mounts it; every other screen
-          draws the flat `color.canvas`, which is the middle stop of this very
-          gradient, so the two never disagree by more than 1.007:1. */}
+          Every screen mounts it — the field IS the canvas (skill §Canvas: "one
+          canvas runs the whole app"), and the flat `color.canvas` under it is
+          the fill for wherever a gradient cannot render, not an alternative to
+          one. Today was the only screen drawing it until 31 August 2026, which
+          made switching tabs a visible step in HUE: the stops are matched on
+          luminance, so what the eye caught was peach against paper, never light
+          against dark. */}
       <PaperField />
 
       <SafeAreaView

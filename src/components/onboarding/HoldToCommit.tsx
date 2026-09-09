@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
   /** The sweep — the CTA's own pressed blue, so the button never introduces a
    * colour the rest of the flow does not already have. */
   fill: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: color.brandPressed,
     transformOrigin: 'left',
   },

@@ -1,4 +1,4 @@
-import { Icon, Label, NativeTabs } from 'expo-router/unstable-native-tabs';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
 /**
  * The four surfaces (CLAUDE.md §5.1) on the system tab bar (§5.2).
@@ -28,9 +28,10 @@ import { Icon, Label, NativeTabs } from 'expo-router/unstable-native-tabs';
  * Liquid Glass recolours itself against whatever is behind it and gives no
  * callback, so a hardcoded colour goes illegible over some content (§5.2).
  *
- * Android icons are deliberately absent for now — this SDK's `Icon` takes a
- * `drawable` resource name or an `androidSrc` require(), neither of which exists
- * until Android is dressed. iOS is the design target and Android follows (§24).
+ * Android icons are deliberately absent for now — this SDK's
+ * `NativeTabs.Trigger.Icon` takes a `drawable` resource name or a `src`
+ * require(), neither of which exists until Android is dressed. iOS is the
+ * design target and Android follows (§24).
  *
  * Route note: Today is `today.tsx`, not `index.tsx`. `app/index.tsx` (the funnel
  * dispatcher) and `app/(tabs)/index.tsx` both resolve to `/`, so the two cannot
@@ -41,23 +42,23 @@ export default function TabLayout() {
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="today">
-        <Icon sf="square.and.pencil" />
-        <Label>Today</Label>
+        <NativeTabs.Trigger.Icon sf="square.and.pencil" />
+        <NativeTabs.Trigger.Label>Today</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="next">
-        <Icon sf="arrow.forward" />
-        <Label>Next</Label>
+        <NativeTabs.Trigger.Icon sf="arrow.forward" />
+        <NativeTabs.Trigger.Label>Next</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="progress">
-        <Icon sf="chart.xyaxis.line" />
-        <Label>Progress</Label>
+        <NativeTabs.Trigger.Icon sf="chart.xyaxis.line" />
+        <NativeTabs.Trigger.Label>Progress</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="you">
-        <Icon sf={{ default: 'person', selected: 'person.fill' }} />
-        <Label>You</Label>
+        <NativeTabs.Trigger.Icon sf={{ default: 'person', selected: 'person.fill' }} />
+        <NativeTabs.Trigger.Label>You</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

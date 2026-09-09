@@ -99,6 +99,21 @@ export function markOnboardingDone() {
   setMeta(KEYS.onboardingDone, '1');
 }
 
+/**
+ * Unset it — the funnel has never been finished on this device.
+ *
+ * **`onboardingDone` is the one key in `KEYS` that is not `pref_*`**, despite
+ * the comment above the map. A caller wiping the funnel with the usual
+ * `DELETE ... WHERE key LIKE 'pref_%'` net therefore misses exactly this flag
+ * and leaves the dispatcher believing onboarding is done, which is the whole
+ * difference between a fresh install and a signed-out one. That is why this
+ * exists rather than the caller spelling the key out: the string stays in the
+ * module that owns it.
+ */
+export function clearOnboardingDone() {
+  setMeta(KEYS.onboardingDone, null);
+}
+
 /** OB name — an optional first name used to personalize the flow ("Ready,
  * Marko?"). Purely for warmth; every screen degrades gracefully to no name. */
 export function setName(name: string) {

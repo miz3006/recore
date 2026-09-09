@@ -12,6 +12,7 @@ import {
 
 import { searchExercises } from '@/lib/db/exercises';
 import { tap, tapMedium } from '@/lib/haptics';
+import { typedNameOf } from '@/lib/parse/receipt';
 import { MAX_RIR, MIN_RIR, type ParsedSet } from '@/lib/parse/types';
 import { getWeightUnit } from '@/lib/prefs';
 import {
@@ -65,9 +66,11 @@ import { AppButton, Eyebrow } from './primitives';
  *    the previous set's numbers forward), and a reading the parser invented
  *    outright can be removed entirely — see `removeReading` below for why that
  *    does not touch a single character of what the athlete wrote.
- * 4. **The alias offer is conditional.** "Always read X as Y" only exists once
- *    the Exercise field has actually changed, with the real target named. Fixing
- *    a weight never again shows a radio group asking about a word.
+ * 4. **The alias offer is conditional.** It only exists once the Exercise field
+ *    has actually changed, with the real target named. Fixing a weight never
+ *    again shows a control asking about a word. (Rewritten 4 September 2026 —
+ *    see the "Remember this" row below for what replaced the radio pair and
+ *    why the old one was answering nothing.)
  *
  * ## The 20 August 2026 pass — THE READING IS A READING AGAIN (owner)
  *
@@ -206,6 +209,18 @@ export function FixSheet() {
    * this replaced.
    */
   const [openSet, setOpenSet] = useState<number | null>(null);
+  /**
+   * TEACH THE PARSER THIS WORD — on by default, and only ever asked once the
+   * exercise itself has changed.
+   *
+   * Defaulting to ON is the point of the flywheel: the common case by a long
+   * way is "you read my word wrong", and a person who has just corrected it
+   * should not have to opt into never doing it again. The case the toggle
+   * exists for is the rarer one — a typo they fixed on this line and nowhere
+   * else — and turning it off leaves this line corrected while every other
+   * note keeps reading the way it did.
+   */
+  const [remember, setRemember] = useState(true);
   const exerciseRef = useRef<TextInput>(null);
 
   /**
@@ -231,6 +246,7 @@ export function FixSheet() {
     // One set has no list to scan, so the row that would be tapped first opens
     // itself. Two or more and the reading leads — you look before you edit.
     setOpenSet(fixTarget.item.sets.length === 1 ? 0 : null);
+    setRemember(true);
     setWordsMode(false);
     // Prefilled from the note as it stands, not from the parse snapshot: the
     // athlete edits the line that is on their screen right now.
@@ -267,6 +283,9 @@ export function FixSheet() {
     submitFix(
       exercise,
       drafts.map((d) => setOf(d, unit)),
+      // A phrase-less line was never offered the choice, so it must not carry
+      // a silent yes into the store.
+      canRemember && remember,
     );
   };
 
@@ -387,24 +406,28 @@ export function FixSheet() {
     );
   };
 
-  // Scope, DERIVED from the one thing the existing logic keys on: whether the
-  // typed exercise differs from the parsed one. Changing the name IS the alias
-  // scope; leaving it is "only this line". The radios state it — they never
-  // fork behavior applyCorrection doesn't have.
   const original = fixTarget?.item.exercise ?? '';
   const exerciseChanged =
     exercise.trim().length > 0 && normalize(exercise) !== normalize(original);
-  const shorthand = fixTarget?.item.aliases_seen[0] ?? original;
 
-  const selectLineOnly = () => {
-    if (!exerciseChanged) return;
-    tap();
-    setExercise(original);
-  };
+  /**
+   * THEIR PHRASE, not the model's.
+   *
+   * `typedNameOf` is the words before the first digit on the line they actually
+   * wrote — "incline db 30x10" → "incline db". It is what the offer names and
+   * what `aliasPhrasesOf` keys the override on, so the sentence on screen and
+   * the row in the store are the same string. A line that opens with a number
+   * has no name portion; the parse's own reported shorthand is the fallback,
+   * and with neither there is nothing honest to offer, so nothing is offered.
+   */
+  const phrase = fixTarget
+    ? typedNameOf(fixTarget.lineText) || (fixTarget.item.aliases_seen[0] ?? '')
+    : '';
+  const canRemember = exerciseChanged && phrase.length > 0;
 
-  const selectAlias = () => {
+  const toggleRemember = () => {
     tap();
-    exerciseRef.current?.focus();
+    setRemember((on) => !on);
   };
 
   // Nothing to save until something moved. The comparison runs through the same
@@ -570,6 +593,44 @@ export function FixSheet() {
           </View>
         ) : null}
 
+        {/* REMEMBER THIS — the flywheel, asked out loud (4 September 2026).
+            Directly under the field it is about, because it is a question
+            about the word that was just changed and nothing below it.
+
+            It replaced a two-option "scope" radio group that sat under the set
+            list and answered nothing: the second option was permanently
+            selected and the first one silently reverted the Exercise field,
+            so there was no way to correct a name WITHOUT teaching the parser
+            forever. This is one checkbox with a real answer behind it. */}
+        {canRemember ? (
+          <Pressable
+            onPress={toggleRemember}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: remember }}
+            accessibilityLabel={`Remember this. “${phrase}” means ${exercise.trim()}`}
+            accessibilityHint="Applies to future readings too"
+            style={styles.rememberRow}>
+            {/* The app's one checked shape — a filled square with a tick,
+                the same object the planned checklist and the plan strip
+                draw. Unchecked is the same box as an outline. */}
+            <View style={[styles.check, remember && styles.checkOn]}>
+              {remember ? (
+                <Text style={styles.checkMark} allowFontScaling={false}>
+                  ✓
+                </Text>
+              ) : null}
+            </View>
+            <View style={styles.rememberBody}>
+              <Text style={styles.rememberTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                Remember this — “{phrase}” means {exercise.trim()}
+              </Text>
+              <Text style={styles.rememberSub} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                applies to future readings too
+              </Text>
+            </View>
+          </Pressable>
+        ) : null}
+
         <View style={styles.sectionHead}>
           <Eyebrow tone="muted">Sets</Eyebrow>
           {/* The one line of teaching this sheet needs. A disclosure with no
@@ -634,36 +695,9 @@ export function FixSheet() {
           </Text>
         </Pressable>
 
-        {/* Scope — shown ONLY once the name actually changed, because that is
-            the only time there are two different things this fix could mean.
-            Correcting a weight gets the plain sentence instead: a radio group
-            with one possible answer is a question that isn't being asked. */}
-        {exerciseChanged ? (
-          <View style={styles.scopes}>
-            <Pressable style={styles.scopeRow} onPress={selectLineOnly}>
-              <View style={styles.radio} />
-              <View style={styles.scopeBody}>
-                <Text style={styles.scopeTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  Only this line
-                </Text>
-                <Text style={styles.scopeSub} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  Keep reading “{shorthand}” the way it does now.
-                </Text>
-              </View>
-            </Pressable>
-            <Pressable style={styles.scopeRow} onPress={selectAlias}>
-              <View style={[styles.radio, styles.radioSelected]} />
-              <View style={styles.scopeBody}>
-                <Text style={styles.scopeTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  Always read “{shorthand}” as {exercise.trim()}
-                </Text>
-                <Text style={styles.scopeSub} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  Future parsing only · never rewrites your words.
-                </Text>
-              </View>
-            </Pressable>
-          </View>
-        ) : (
+        {/* The scope, said once, for the fix that has only one. A name change
+            already carries its own sentence up beside the field it changed. */}
+        {exerciseChanged ? null : (
           <Text style={styles.scopeOnly} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             Applies to this session’s reading.
           </Text>
@@ -1408,37 +1442,50 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: color.textSecondary,
   },
-  scopes: {
-    marginTop: spacing.lg,
-    gap: spacing.md - 2,
-  },
-  scopeRow: {
+  /** The offer to learn the word, under the field it is about. 44 pt of
+   * height for the finger, `flex-start` so a wrapped two-line sentence keeps
+   * the box beside its first line rather than centred against both. */
+  rememberRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
+    minHeight: moderateScale(44),
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  radio: {
+  check: {
     width: moderateScale(20),
     height: moderateScale(20),
-    borderRadius: moderateScale(10),
+    borderRadius: moderateScale(6),
     borderCurve: 'continuous',
     borderWidth: 1.5,
     borderColor: color.textMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 1,
   },
-  radioSelected: {
-    borderWidth: moderateScale(6.5),
+  /** Checked is INK, not brand: this is an answer the athlete gave, the same
+   * fill the planned checklist gives a ticked set. */
+  checkOn: {
+    backgroundColor: color.accent,
     borderColor: color.accent,
   },
-  scopeBody: {
+  checkMark: {
+    fontSize: moderateScale(13),
+    lineHeight: moderateScale(15),
+    fontWeight: '700',
+    color: color.onInk,
+  },
+  rememberBody: {
     flex: 1,
   },
-  scopeTitle: {
+  rememberTitle: {
     fontSize: moderateScale(14.5),
+    lineHeight: lineFor(20),
     fontWeight: '600',
     color: color.textPrimary,
   },
-  scopeSub: {
+  rememberSub: {
     fontSize: type.caption.fontSize,
     color: color.textSecondary,
     marginTop: 1,

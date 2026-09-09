@@ -51,6 +51,29 @@ const TAG_PAD_V = 2;
 const KG_DELTA_RE = /^[+-]\d+(?:\.\d+)?$/;
 
 /**
+ * THE COMPARISON SUBLINE IS OFF (owner, 6 September 2026).
+ *
+ * "down 20 kg vs last" arrives under every entry that has a history, it is
+ * loudest on exactly the days a load comes down on purpose, and it is the one
+ * line on the record that says something about the athlete rather than about
+ * what they wrote. The owner pulled it to bring the comparison back in another
+ * form later — so the sentence stays COMPOSED here rather than deleted: one
+ * switch, and the phrasing (with its "same as last · Fri 8 Aug" rule, which
+ * cost a ruling of its own) is intact for whatever replaces it.
+ *
+ * What is NOT off: anything that states what an entry IS rather than how it
+ * measures up — the PR label on the card and in the receipt, and the receipt's
+ * "first recorded" — and the gutter's own ↑ / ↓ reading, which is the parse
+ * speaking, not a hint.
+ *
+ * Read by every surface that prints the sentence (`session-receipt.tsx`,
+ * `exercise-sheet.tsx`), because two surfaces disagreeing about whether the
+ * comparison exists is the same defect as two of them disagreeing about what
+ * it says.
+ */
+export const COMPARISON_SUBLINES_ON = false;
+
+/**
  * The archival comparison subline of a card ("up 2.5 kg vs last"). PR carries a
  * chip instead, so it returns null here.
  *
@@ -67,6 +90,7 @@ const KG_DELTA_RE = /^[+-]\d+(?:\.\d+)?$/;
  */
 export function comparisonOf(signal: GutterSignal | null): string | null {
   if (!signal) return null;
+  if (!COMPARISON_SUBLINES_ON) return null;
   switch (signal.kind) {
     case 'up':
     case 'down': {
@@ -627,7 +651,7 @@ const styles = StyleSheet.create({
    * stray onto the record above or below.
    */
   sweepTrack: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   /** No radius and no clip: the veil above softens all four edges to nothing,
    * so there are no corners left to round. */

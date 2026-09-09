@@ -77,6 +77,13 @@ export async function signInWithApple(): Promise<void> {
  * never ride in the URL.
  */
 export async function signInWithGoogle(): Promise<void> {
+  // The redirect this build resolves to, printed where a developer will look
+  // for it. `makeRedirectUri()` answers `recore://` in a development or release
+  // build and `exp://<lan-ip>:8081/--/` inside Expo Go — two different URLs,
+  // and Supabase rejects whichever of them is not in the project's redirect
+  // allow-list. That rejection used to surface as four generic words.
+  devLog('google sign-in redirectTo:', redirectTo);
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo, skipBrowserRedirect: true },
@@ -85,8 +92,30 @@ export async function signInWithGoogle(): Promise<void> {
   if (!data.url) throw new Error('No OAuth URL returned');
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+  /**
+   * A BROWSER THAT CAME BACK EMPTY IS NOT THE SAME AS A PERSON WHO CHANGED
+   * THEIR MIND (4 September 2026).
+   *
+   * Every non-success type used to become `SignInCancelledError`, which the
+   * caller deliberately shows nothing for — cancelling is not a failure. But
+   * `dismiss` also lands here when the redirect never reached the app at all:
+   * if `redirectTo` is not on the Supabase project's **Redirect URLs** list,
+   * Supabase falls back to the project's Site URL, so the browser finishes on
+   * whatever that is — a default project still points at `http://localhost:3000`,
+   * which on a phone is a "cannot connect to the server" page. The person then
+   * closes the browser, and the app said nothing, because closing a browser is
+   * what cancelling looks like from in here.
+   *
+   * `cancel` is the only type iOS reports for an actual tap on Done, so that
+   * stays silent. Everything else carries the type, and a developer gets the
+   * word that tells them where to look.
+   */
+  if (result.type === 'cancel') throw new SignInCancelledError();
   if (result.type !== 'success') {
-    throw new SignInCancelledError();
+    devLog('google sign-in returned without a redirect:', result.type, '· expected', redirectTo);
+    throw new Error(
+      `the browser closed without returning to ${redirectTo} — check the Supabase project's Redirect URLs`,
+    );
   }
 
   await createSessionFromUrl(result.url);

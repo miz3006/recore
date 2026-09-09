@@ -110,6 +110,30 @@ test('the heaviest set closes the paragraph with its estimate', () => {
   assert.match(out, /heaviest working set in the record is 100 kg × 5, on Jun 22, for an estimated 1RM of 116\.5 kg\./);
 });
 
+test('a relative day drops the "on" and the comma before it', () => {
+  const out = liftProse({
+    ...base,
+    sessionCount: 12,
+    bestWeight: 120,
+    bestReps: 12,
+    bestDayLabel: 'Today',
+    e1rmBest: 168,
+  });
+  // "on Today" is not a sentence; "today" is.
+  assert.ok(!/on Today/.test(out), out);
+  assert.match(
+    out,
+    /heaviest working set in the record is 120 kg × 12 today, for an estimated 1RM of 168 kg\./,
+  );
+});
+
+test('the rep-only best takes the same grammar', () => {
+  const abs = liftProse({ ...base, sessionCount: 4, bestReps: 14, bestDayLabel: 'Jun 22' });
+  assert.match(abs, /The best set in the record is 14 reps, on Jun 22\./);
+  const rel = liftProse({ ...base, sessionCount: 4, bestReps: 14, bestDayLabel: 'Yesterday' });
+  assert.match(rel, /The best set in the record is 14 reps yesterday\./);
+});
+
 test('the paragraph never prescribes and never praises', () => {
   const out = liftProse({
     ...base,

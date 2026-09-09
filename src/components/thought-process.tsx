@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
    *     lost to a reader who needs larger type.
    */
   ringValue: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     ...readingStyle('600'),
     fontSize: type.subhead.fontSize,
     lineHeight: RING,

@@ -76,8 +76,11 @@ export function WeekRecapCard() {
         : null;
 
     // All-time bests whose date fell inside last week — the PRs that stuck.
+    // A lift written down for the first time last week has a heaviest set by
+    // definition and beat nothing to get it; this card is shareable, so a
+    // baseline dressed as a record would be a claim leaving the app.
     const prs = getAllTimePRs(userId, 1000).filter(
-      (pr) => pr.day >= lastWeek.weekStart && pr.day < thisMonday,
+      (pr) => !pr.isBaseline && pr.day >= lastWeek.weekStart && pr.day < thisMonday,
     );
 
     return { thisMonday, lastWeek, delta, prs };

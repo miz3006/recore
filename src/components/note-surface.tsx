@@ -488,18 +488,22 @@ export function NoteSurface() {
             words are written. */}
         {reflection ? (
           <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(220)}>
-            <Pressable
+            <PressableScale
               onPress={() => {
                 tap();
                 Keyboard.dismiss(); // the check-in brings its own field
                 openCheckIn();
               }}
+              haptic="none"
+              activeScale={ROW_SCALE}
+              wash
+              washStyle={styles.rowWash}
               accessibilityRole="button"
               accessibilityLabel={`Your note about this session: ${[reflection.tags, reflection.text]
                 .filter((part) => part.length > 0)
                 .join('. ')}`}
               accessibilityHint="Opens the check-in to edit it"
-              style={({ pressed }) => [styles.reflectNote, pressed && styles.cardPressed]}>
+              style={styles.reflectNote}>
               {reflection.tags.length > 0 ? (
                 <Text style={styles.reflectTags} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                   {reflection.tags}
@@ -510,7 +514,7 @@ export function NoteSurface() {
                   {reflection.text}
                 </Text>
               ) : null}
-            </Pressable>
+            </PressableScale>
           </Animated.View>
         ) : null}
 
@@ -579,14 +583,21 @@ export function NoteSurface() {
               // Last session's real sets — a dim record read to accept verbatim
               // (tap or return) or overwrite by typing your own numbers.
               <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(180)}>
-                <Pressable onPress={acceptPrefill} hitSlop={spacing.xs} style={styles.prefillRow}>
+                <PressableScale
+                  onPress={acceptPrefill}
+                  haptic="none"
+                  hitSlop={spacing.xs}
+                  activeScale={ROW_SCALE}
+                  wash
+                  washStyle={styles.rowWash}
+                  style={styles.prefillRow}>
                   <Text
                     style={styles.prefillReading}
                     numberOfLines={1}
                     maxFontSizeMultiplier={MAX_FONT_SCALE}>
                     {lastPrefill.reading}
                   </Text>
-                </Pressable>
+                </PressableScale>
                 <Text style={styles.previewHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                   last session · return to log the same
                 </Text>
@@ -633,19 +644,23 @@ export function NoteSurface() {
             once there is a note it stops asking, because the answer is in. */}
         {showReflectionRow ? (
           <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(220)}>
-            <Pressable
+            <PressableScale
               onPress={() => {
                 tap();
                 Keyboard.dismiss(); // the check-in brings its own field
                 openCheckIn();
               }}
+              haptic="none"
+              activeScale={ROW_SCALE}
+              wash
+              washStyle={styles.rowWash}
               accessibilityRole="button"
               accessibilityLabel="Add a note about this session"
-              style={({ pressed }) => [styles.reflectRow, pressed && styles.cardPressed]}>
+              style={styles.reflectRow}>
               <Text style={styles.reflectText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 Add a note about this session
               </Text>
-            </Pressable>
+            </PressableScale>
           </Animated.View>
         ) : null}
 
@@ -807,15 +822,20 @@ export function ExerciseCard({
     <Animated.View
       entering={reduceMotion ? undefined : FadeInDown.duration(220).delay(Math.min(order, 6) * 20)}
       style={styles.card}>
-      {/* The check is its own tap target: done ↔ not-done, never deletes. */}
-      <Pressable
+      {/* The check is its own tap target: done ↔ not-done, never deletes.
+          It DIPS rather than washing: the target is a 22 pt ring, and a grey
+          box fading up around a circle would read as a button appearing under
+          it. A ring that takes the finger is the whole feedback it needs. */}
+      <PressableScale
         onPress={onToggle}
+        haptic="none"
+        activeScale={0.88}
         hitSlop={spacing.sm}
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done }}
         style={styles.rail}>
         <AnimatedCheck done={done} reduceMotion={reduceMotion} />
-      </Pressable>
+      </PressableScale>
       {/* The body edits the line; everything else lives behind the visible ⋯
           (owner, 6 Aug — the long-press it replaces was a gesture nobody could
           see). While the written words are showing, a tap puts them away again
@@ -825,9 +845,10 @@ export function ExerciseCard({
         onLongPress={onToggleWords}
         haptic="none"
         activeScale={0.98}
+        wash
+        washStyle={styles.bodyWash}
         accessibilityHint={showWords ? 'Shows the reading again' : 'Long press to show your words'}
-        style={styles.cardBody}
-        pressedStyle={styles.cardPressed}>
+        style={styles.cardBody}>
         <View style={styles.cardHead}>
           <Text
             style={[styles.exName, !done && styles.exNameUndone]}
@@ -838,8 +859,10 @@ export function ExerciseCard({
           {alias ? (
             // The echoed word is the auto-fix made visible — tapping it opens
             // the correction sheet, so a wrong guess is one tap from repaired.
-            <Pressable
+            <PressableScale
               onPress={onFix}
+              haptic="none"
+              activeScale={0.94}
               hitSlop={spacing.sm}
               accessibilityRole="button"
               accessibilityLabel={`Recore read “${alias}” as ${row.exercise}. Fix reading`}
@@ -850,7 +873,7 @@ export function ExerciseCard({
                 maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 · “{alias}”
               </Text>
-            </Pressable>
+            </PressableScale>
           ) : null}
           {isPr ? <PrLabel animate /> : null}
         </View>
@@ -892,16 +915,20 @@ export function ExerciseCard({
           itself still shows on the card below; that is the record, not a
           prompt. */}
       <View style={styles.sideCol}>
-        <Pressable
+        <PressableScale
           onPress={onActions}
+          haptic="none"
+          activeScale={0.9}
           hitSlop={spacing.xs}
+          wash
+          washStyle={styles.btnWash}
           accessibilityRole="button"
           // FOUR, because the sheet has four (owner, 12 Aug). "Edit line" and
           // "Show my words" left that day; VoiceOver kept announcing them.
           accessibilityLabel={`More on ${row.exercise} — fix reading, note, history, delete`}
-          style={({ pressed }) => [styles.sideBtn, pressed && styles.cardPressed]}>
+          style={styles.sideBtn}>
           <Icon name="ellipsis" size={moderateScale(17)} tint={color.textMuted} />
-        </Pressable>
+        </PressableScale>
       </View>
     </Animated.View>
   );
@@ -1043,29 +1070,35 @@ function EditRow({
             allowFontScaling
             maxFontSizeMultiplier={MAX_FONT_SCALE}
           />
-          <Pressable
+          <PressableScale
             onPress={onDelete}
+            haptic="none"
+            activeScale={0.94}
             hitSlop={spacing.sm}
-            style={({ pressed }) => [styles.deleteBtn, pressed && styles.deletePressed]}>
+            wash
+            washStyle={styles.btnWash}
+            style={styles.deleteBtn}>
             <Text style={styles.deleteText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
               Delete
             </Text>
-          </Pressable>
+          </PressableScale>
         </View>
         <View style={styles.editHintRow}>
           <Text style={styles.previewHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             editing · return saves · re-reads automatically
           </Text>
           {onFix ? (
-            <Pressable
+            <PressableScale
               onPress={onFix}
+              haptic="none"
+              activeScale={0.94}
               hitSlop={{ top: spacing.md, bottom: spacing.md, left: spacing.sm, right: spacing.sm }}
               accessibilityRole="button"
               accessibilityLabel="Fix how Recore read this line">
               <Text style={styles.fixLink} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 fix reading
               </Text>
-            </Pressable>
+            </PressableScale>
           ) : null}
         </View>
       </View>
@@ -1111,10 +1144,14 @@ function PendingCard({
     // collapse — the exact reflow this card was reshaped to remove. The
     // exchange is carried by the read card's own arrival instead.
     <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(DUR.fast)}>
-      <Pressable
+      <PressableScale
         onPress={onPress}
+        haptic="none"
+        activeScale={ROW_SCALE}
+        wash
+        washStyle={styles.rowWash}
         accessibilityLabel={`${text} — reading`}
-        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
+        style={styles.card}>
         {/* The light crosses the WHOLE row, rail to ⋯ column, behind every
             other child — it is drawn first so the words always paint over it,
             and it is absolutely placed so the row measures as if it were not
@@ -1142,14 +1179,20 @@ function PendingCard({
               decides, so this row can never end up silent. */}
           <ReadingMark />
         </View>
-      </Pressable>
+      </PressableScale>
     </Animated.View>
   );
 }
 
 function NoteCard({ text, onPress }: { text: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
+    <PressableScale
+      onPress={onPress}
+      haptic="none"
+      activeScale={ROW_SCALE}
+      wash
+      washStyle={styles.rowWash}
+      style={styles.card}>
       <View style={styles.rail} />
       <View style={styles.cardBody}>
         <Text style={styles.proseText} numberOfLines={3} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -1159,12 +1202,24 @@ function NoteCard({ text, onPress }: { text: string; onPress: () => void }) {
           kept as a note · not counted
         </Text>
       </View>
-    </Pressable>
+    </PressableScale>
   );
 }
 
 const RAIL_W = moderateScale(34);
 const MARK = moderateScale(22);
+
+/**
+ * A RECORD ROW DOES NOT DIP (6 September 2026).
+ *
+ * The ledger's rows answer a press with the wash alone. A full-bleed row that
+ * shrinks 2 % drags its check mark and its ⋯ inward with it, which reads as the
+ * whole page flexing rather than as one line being held — and the record's own
+ * promise is that it holds still. Small controls inside the row (the ring, the
+ * ⋯, Delete) still dip, because a control is an object you push and a row is a
+ * surface you touch.
+ */
+const ROW_SCALE = 1;
 
 const styles = StyleSheet.create({
   body: {
@@ -1186,8 +1241,39 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: spacing.md,
   },
-  cardPressed: {
-    opacity: 0.6,
+  /**
+   * THE PRESSED ROW IS WASHED, NOT FADED (6 September 2026).
+   *
+   * Every touchable on this page used to answer with `opacity: 0.6` — a hard
+   * cut down and a hard cut back, applied through a React state flip, which is
+   * `:active { opacity: .6 }` with extra steps. Two things were wrong with it
+   * beyond the mechanism: it faded the RECORD, and the record is the one thing
+   * on this screen that must never look like it is going away; and it could
+   * not fade, so a fast tap was a blink.
+   *
+   * The wash is the design system's `surfaceHigh` rising behind the content on
+   * the UI thread (`PressableScale`), so the paper darkens under the finger and
+   * the ink stays exactly where it is. It bleeds past the text horizontally the
+   * way a list-row highlight does, and it insets vertically so two adjacent
+   * records never touch.
+   */
+  rowWash: {
+    top: spacing.xs,
+    bottom: spacing.xs,
+    left: -spacing.sm,
+    right: -spacing.sm,
+  },
+  /** The card BODY is one column of three, so its wash reaches out toward the
+   * rail and the ⋯ — the entry is held, not the middle of it. */
+  bodyWash: {
+    top: -spacing.xs,
+    bottom: -spacing.xs,
+    left: -spacing.sm,
+    right: -spacing.sm,
+  },
+  /** A control's wash is its own box, at its own radius. */
+  btnWash: {
+    borderRadius: moderateScale(8),
   },
   rail: {
     width: RAIL_W,
@@ -1395,9 +1481,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: moderateScale(8),
     borderCurve: 'continuous',
-  },
-  deletePressed: {
-    opacity: 0.6,
   },
   deleteText: {
     fontSize: moderateScale(13),

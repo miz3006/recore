@@ -1,5 +1,6 @@
 import { fmtNumber } from './parse/summarize.ts';
 import { describeDelta, type LiftSession } from './progression.ts';
+import { displayLoad, type WeightUnit } from './units.ts';
 
 /**
  * Progression metrics — the pure half of the rebuilt Progression tab
@@ -9,8 +10,9 @@ import { describeDelta, type LiftSession } from './progression.ts';
  * 1RM, four orderings). It is now **one lift, one card per metric**: an exercise
  * is chosen at the top and the stack below it answers "what is this lift doing?"
  * from several angles at once. This module turns the rows `db/progression.ts`
- * already aggregates into those series. Zero imports beyond a type, so it is
- * unit-tested under plain `node --test` exactly like `progression.ts`.
+ * already aggregates into those series. Every import is a relative `.ts` path
+ * into another pure module, so it is unit-tested under plain `node --test`
+ * exactly like `progression.ts`.
  *
  * Three rules it exists to keep honest:
  *
@@ -158,6 +160,39 @@ export function buildSeries(
 /** Every metric for one lift, in card order. */
 export function buildMetrics(sessions: LiftSession[]): MetricSeries[] {
   return METRICS.map((def) => buildSeries(sessions, def));
+}
+
+/**
+ * The same series, read in the athlete's own unit (4 September 2026).
+ *
+ * A DISPLAY step at the very end, deliberately: everything above it is
+ * kilograms, which is what the record stores and what every comparison in this
+ * module is computed on, so the unit cannot leak backwards into arithmetic. It
+ * converts the whole series at once — points, latest, first, delta, planned —
+ * because a card that plotted kilograms under a pound reading would be one lift
+ * drawn twice.
+ *
+ * **A metric that is not a load is returned untouched.** The guard is on
+ * `series.unit`, not on the metric's name: `topWeight` and `e1rm` are both
+ * kilograms and both convert, and the reps and days-between metrics that are
+ * still to come must not be multiplied by 2.2 the day they land.
+ *
+ * `delta` converts as a load because it IS one — the difference of two loads —
+ * and `describeSeries` then reads it off `unit`, so the sub-label follows with
+ * nothing to change.
+ */
+export function seriesInUnit(series: MetricSeries, unit: WeightUnit): MetricSeries {
+  if (unit === 'kg' || series.unit !== 'kg') return series;
+  const load = (v: number | null) => (v == null ? null : displayLoad(v, unit));
+  return {
+    ...series,
+    unit,
+    points: series.points.map((p) => ({ ...p, value: displayLoad(p.value, unit) })),
+    latest: load(series.latest),
+    first: load(series.first),
+    delta: load(series.delta),
+    planned: load(series.planned),
+  };
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     borderCurve: 'continuous',
   },
   markFill: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: color.brand,
     alignItems: 'center',
     justifyContent: 'center',

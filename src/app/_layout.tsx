@@ -88,7 +88,7 @@ function RootNavigator() {
   // The app needs a real account — even in development. The paywall's DEV·SKIP
   // chip only jumps the purchase screen; it still lands on sign-in, because a
   // no-account mode leaves the parser (JWT-gated, §7.3) permanently dead.
-  const signedIn = true; // SIMPASS
+  const signedIn = session !== null;
 
   return (
     <>
@@ -113,9 +113,9 @@ function RootNavigator() {
         {/* THE FUNNEL'S PAYWALL since 28 Aug 2026 (owner's ruling), and a
             nested stack of its own (`paywall-v2/_layout.tsx`) like the flow it
             continues, so the root names the DIRECTORY. `paywall` below is the
-            illustrated screen it replaced: still working, still reachable from
-            the You tab's development rows, and outside the guard for the same
-            reason — the account is the funnel's last step, not its first. */}
+            illustrated screen it replaced: still working, still registered, but
+            without a door since 31 August 2026 — and outside the guard for the
+            same reason — the account is the funnel's last step, not its first. */}
         <Stack.Screen name="paywall-v2" />
         <Stack.Screen name="paywall" />
         {/* Terms / Privacy / How parsing works. OUTSIDE the guard on purpose:

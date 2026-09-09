@@ -361,6 +361,8 @@ of drift this repository has actually suffered before.
 | Time ranges 8 weeks / 6 months / 1 year | **done** | `progress.tsx` (`RANGES`) | Longer ranges dim until the record reaches back. |
 | Card per lift with underlying sessions one tap away | **done** | `progress.tsx` (`LiftCard`), `src/components/exercise-sheet.tsx`, `src/components/session-sheet.tsx` | |
 | Metrics: e1RM, heaviest, volume | **done** | `progress.tsx` (`METRICS`), `src/lib/db/progression.ts` | |
+| **An estimate is labelled as one, everywhere it is printed** | **done** | `src/components/e1rm-sheet.tsx` (`E1RM_LABEL`, `E1rmSheet`), `Row.valueLabel`/`onValuePress` in `src/components/primitives.tsx`, `src/app/(tabs)/progress.tsx`, `src/components/exercise-sheet.tsx`, `src/components/session-sheet.tsx` | 4 Sep. The Progression row prints `est. 1RM` over the figure and opens a two-paragraph explainer on tap; VoiceOver reaches the same sheet through a rotor action, because a pressable `Row` is one accessible element and would swallow a nested button. One string for the label app-wide. The computation is untouched. |
+| **Progression reads in the athlete's kg/lb setting** | **partial** | `src/lib/units.ts` (`displayLoad`, `spokenUnit`), `src/lib/progression-metrics.ts` (`seriesInUnit`), `src/app/(tabs)/progress.tsx`, `src/app/lift/[key].tsx` | 4 Sep, and partial ON PURPOSE (owner). Both Progression screens honour `pref_weight_unit` — figure, plateau weight, delta, cards, sub-labels, charts. **The lift sheet, day sheet, Lifts list, Today ledger, Next and the recap still print kilograms**, so a pound reader sees two systems in one app until those are migrated. Storage is kilograms everywhere and nothing stored was converted. |
 | Metrics: reps at a load, sport/hybrid workload | **missing** | — | No sport/hybrid data model exists (see §5 screen 5). |
 | Continuous line, every vertex a real session, no overshoot (§10 as amended 6 Aug 2026) | **done** | `src/components/charts.tsx` (`seriesPathD`, `SeriesShape`), `TrendChart` + `ProgressionChart` both call it with the `linear` default | Owner replaced the step-only rule ("ne stopnice, ampak lepo linearno … ker želim smooth"); §10 and §14.3 now carry the amended wording. Straight segments between consecutive sessions, dotted vertices, no spline anywhere, `shape="step"` still available. |
 | **Blue primary line with a soft contextual fill** | **done** | `charts.tsx` (`TrendChart`, `tint`/`fill` props) | 4 Aug: blue (`color.trained`) line with a gradient wash, per-session dots, and a surface-ringed latest point. Range segment and metric underline moved to the same blue, so control and chart read as one system. |
@@ -986,6 +988,353 @@ that were resolved rather than followed literally are in `FINDINGS.md`.
 ---
 
 ## Change log
+
+- **4 Sep 2026 — a development door past sign-in, and it signs in for real.** The owner, blocked
+  behind a Google redirect that needs a dashboard change: *"dej naredi obhod mimo prijave"*.
+
+  **The shape of this is a direct answer to what the three `SIMPASS` markers cost.** All three,
+  found and removed earlier the same day, did the same thing: made the app BEHAVE as though
+  somebody were signed in while no session existed. The third was the expensive one — a
+  fabricated user id attached to no `auth.users` row, so the sync loop was refused on every
+  pass, `parse-workout` could only answer no, and `ensureLocalUser` saw the id flip on every
+  cold start and deleted the whole local database. None of it looked like a bug; it looked like
+  a bad network.
+
+  The lesson is not "never add a bypass". It is that **a bypass must produce a real session
+  rather than an imitation of one.** RLS, the edge functions, the sync loop and the local
+  database's scoping all key off a JWT: give them a genuine one and every path behaves exactly
+  as it does in production. So `signInAsDeveloper()` (`lib/auth/dev-sign-in.ts`) actually signs
+  in — it just does not need Apple or Google to do it. The project has email signups enabled
+  with `mailer_autoconfirm` on (`/auth/v1/settings`), so `signUp` returns a session in the same
+  response and there is no confirmation link to click. The dev account is created on first use
+  and signed into afterwards; it is an ordinary user of the project, with the same RLS and its
+  own training data.
+
+  **Three properties keep it out of a release, and the third was measured rather than assumed:**
+
+  1. **`__DEV__` and nothing else** — not an env var, not a preference, not a remote flag, any
+     of which can be switched on in a shipped binary. The function also re-checks it and throws,
+     because a guard you can read at the top of a function is worth more than one you trust the
+     bundler for.
+  2. **It is visible** — a labelled row under a rule on the sign-in screen, saying what it is.
+     A door nobody can see is how the last three survived as long as they did.
+  3. **Verified stripped.** `NODE_ENV=production expo export --platform ios`, then grep of the
+     8.9 MB Hermes bundle: `Development sign-in`, `dev@recore.invalid` and the password literal
+     are all **absent**, while the control strings `Sign in with Apple` and `No passwords` are
+     present — so the grep works and the absence means something. The only survivor is the
+     guard's own refusal message, which is the belt-and-braces check and is unreachable.
+
+  It writes no product state: no preference, no funnel event, no entitlement. It obtains a
+  session and everything downstream runs the ordinary way, including the claim of whatever the
+  funnel wrote. It routes home unconditionally — it has no purchase to resume, and getting past
+  the screen is the whole reason it was pressed.
+
+  The credential is shared and hardcoded on purpose: the alternative is a per-developer secret
+  in a file somebody eventually commits, and this one protects nothing but a development
+  project's own dev account.
+
+  Files: `lib/auth/dev-sign-in.ts` (new), `app/sign-in.tsx`.
+
+- **4 Sep 2026 — "the server is down" is the OAuth redirect landing on `localhost:3000`.** The
+  owner could not finish a Google sign-in and the browser reported a dead server. The server is
+  not dead. Measured against the project directly:
+
+  | Probe | Result |
+  |---|---|
+  | `GET /auth/v1/health` | reachable, **168 ms** |
+  | `GET /auth/v1/settings` | `google: true`, `apple: true`, signups enabled |
+  | `GET /auth/v1/authorize?provider=google` | **302** to `accounts.google.com` |
+  | following that URL | Google serves its **sign-in page** — no `redirect_uri_mismatch`, no `invalid_client` |
+
+  Every server-side link in the chain is healthy, including the Google OAuth client and its
+  registered `redirect_uri`. What is not configured is where Supabase sends the browser
+  **afterwards**. Probing `/auth/v1/callback` with three different `redirect_to` values —
+  the app's own, `recore://`, and a deliberately hostile `https://evil.example.com` — returns
+  the same `location` for all three: **`http://localhost:3000`**, an untouched default Site URL.
+  That is the fallback Supabase uses when a `redirect_to` is not on the project's **Redirect
+  URLs** allow-list, and on a phone it is a page that cannot load. Hence "the server is down".
+
+  **The fix is in the Supabase dashboard, not in this repository** — Authentication → URL
+  Configuration → Redirect URLs needs `recore://**` (development build and release) and
+  `exp://**` (Expo Go, whose redirect carries the machine's LAN IP and therefore changes with
+  the network). Recorded here because the next person to hit it will start by reading this file.
+
+  **What DID change in code: a dead redirect stopped impersonating a cancelled one.**
+  `signInWithGoogle` turned every non-`success` result from `openAuthSessionAsync` into
+  `SignInCancelledError`, and the sign-in screen shows nothing for that on purpose — changing
+  your mind is not a failure. But `dismiss` lands there too, and that is exactly what a
+  redirect into a dead page produces: the person closes a browser showing an error, and from
+  inside the app that is indistinguishable from tapping Done. So the app said nothing at all
+  about the one failure it could have explained. `cancel` — the only type iOS reports for a
+  real Done tap — still throws the silent class; everything else now throws a named error that
+  says the browser never came back to the expected URL and points at the Redirect URLs list.
+  In a release build the athlete still reads `Sign-in failed. Try again.`; the detail is
+  `__DEV__`-only, on the path added earlier today.
+
+  Files: `lib/auth/sign-in.ts`.
+
+- **4 Sep 2026 — the third `SIMPASS` is found: the app was running its networked data layer
+  with no account.** The owner's device log, in an unbroken column:
+  `parse failed, will retry on sync` · `sync pass failed (offline?)`, repeating.
+
+  Neither was a network fault. `lib/auth/provider.tsx:58` read
+  `state.session?.user.id ?? 'sim-verify-user'; // SIMPASS` — **the third of three markers left
+  by the simulator-verification pass**, the other two of which were found and removed earlier
+  the same day (`app/index.tsx`'s redirect and `app/_layout.tsx`'s pinned-open guard, both
+  documented above). Every consumer under it treated that fabricated id as a signed-in user,
+  and the one that mattered was `startSync(userId)`.
+
+  So, signed out, the sync loop pushed rows for a user that exists in no `auth.users` table,
+  with the anon key and no JWT, into tables that are RLS-scoped to `auth.uid()`. Refused on
+  every pass, re-queued, repeat. The parser failed in the same breath and for the same reason:
+  `parse-workout` sits behind `verify_jwt` **and** runs its own `getUser()` check
+  (`supabase/config.toml`), so with no session it can only ever answer no.
+
+  **Nothing was lost** — the dirty flags kept every row queued and the first pass after sign-in
+  pushes all of it. What it cost was the log: an app reporting a network problem it did not
+  have, for work it was never allowed to do, standing exactly where a real fault would show.
+
+  **The fix keeps local-first and drops only the pointless half.** The local id stays: the
+  funnel writes before an account exists (onboarding answers, the seeded first session, a plan)
+  and SQLite has to be scoped to somebody from the first screen — that is CLAUDE.md §3 working
+  as designed, and it is now named `LOCAL_USER_ID` and documented as a scope rather than a
+  session. What waits for a real session is the PUSH: `startSync` only when
+  `state.session != null`, `stopSync` otherwise. `parseWorkout` gained the same guard
+  `demo-parse-remote.ts` has always had for the same edge function — no session, no request —
+  and the workout keeps `needs_parse = 1`, so `retryPendingParses` reads it on the first pass
+  after sign-in. The reading arrives with the account, which is when it could first have
+  existed.
+
+  **Three logs stopped lying.** `errorText()` (new, `lib/log.ts`) reads whatever a client
+  throws — `PostgrestError` is a plain object, and a `FunctionsHttpError` carries its status on
+  a `context` Response rather than in `message`, so the repository's
+  `err instanceof Error ? err.message : ''` printed an empty string more often than not. That
+  is why `sync pass failed (offline?)` was followed by nothing at all, and a 401 from RLS read
+  identically to a gym with no signal. `sync pass failed:` and `parse failed, will retry on
+  sync:` now print the cause.
+
+  Files: `lib/auth/provider.tsx`, `lib/db/index.ts`, `lib/parse/client.ts`, `lib/sync/index.ts`,
+  `lib/log.ts`.
+
+  ### Two data-loss bugs the `SIMPASS` had been hiding, both fixed in the same change
+
+  - **A cold start wiped a signed-in athlete's entire local record.** `getSession()` reads the
+    Keychain asynchronously, so the first render of every launch has `session: null`. With the
+    fallback standing in for it, this effect ran with the LOCAL id, `ensureLocalUser` saw a
+    change of user and **deleted every table** — then the session landed a tick later and it
+    wiped again on the way back. `state.loading` was already being tracked for the splash and
+    simply was not read here; the effect now waits for it. No scope decision is made on a
+    placeholder any more. This is the most serious thing in this entry and it was invisible
+    from the outside, because the re-scope and the re-seed hid it behind an app that merely
+    looked emptier than it should.
+  - **Sign-in deleted what the funnel wrote; it claims it now** (owner's ruling). Same
+    function, second path: at the instant sign-in succeeds the id goes from `LOCAL_USER_ID` to
+    the account's uuid, and every table plus `meta` went with the change — the plan, the funnel
+    counters, and every `pref_*` onboarding answer, since `prefs.ts` stores those in the meta KV
+    and its own header says *"ensureLocalUser wipes meta on user switch"*. `ensureLocalUser`
+    takes an optional `claimFrom` now: when the outgoing scope is exactly that id, the six
+    `user_id`-owning tables are re-pointed at the account and marked `dirty = 1` (the server has
+    never seen them — the sync loop was stopped), and `meta` is **kept whole** with only its
+    `user_id` key moved. `items`, `sets` and `parse_cache` follow their parents by foreign key.
+    A NULL `user_id` on `exercises` is a GLOBAL row and is never claimed.
+
+    **Two real accounts on one device still wipe, and must** — that boundary is the on-device
+    mirror of the server's RLS. The caller names the id it is claiming FROM, so the function
+    cannot be talked into the general case.
+
+  ### One thing this change did NOT fix
+
+  - **Sign-OUT still resets nothing.** The `else` branch in `provider.tsx` calls `stopSync()`,
+    `releaseEntitlement()` and `reset()` and is unreachable, because `userId` is never null —
+    it falls back to `LOCAL_USER_ID`. Its own comment names the cost: *"the next account signed
+    in on this device inherits the previous one's entitlement"*. Handling it needs sign-out
+    modelled as a TRANSITION (session → none) rather than a state, because pre-account is also
+    "no session" and must not reset anything. Left as-is deliberately; it is billing behaviour,
+    and §6 puts that in its own change.
+
+- **4 Sep 2026 — the Apple button is allowed to be absent, not silent.** The owner, on a
+  device: *"appla sploh ni kot možnost da se logira"*. It was not a broken provider — it was
+  a screen that hid one without saying so.
+
+  **Why it disappeared.** `expo-apple-authentication` resolves through
+  `requireOptionalNativeModule`; when the native module is not in the running binary the
+  package hands back a stub whose `isAvailableAsync()` returns `false` forever. **Expo Go
+  does not carry that module**, and this project has been on Expo Go since the SDK 57 upgrade
+  (see the entry below). `sign-in.tsx` rendered the button on that boolean and rendered
+  nothing at all when it was false — so the screen offered Google alone, while the caption two
+  lines under it went on promising Face ID and a hidden email. Google is unaffected because
+  its path is `expo-web-browser` + Supabase OAuth, which is JavaScript.
+
+  **What changed, and what did not.** `lib/auth/sign-in.ts`'s auth logic is untouched: PKCE,
+  the identity-token exchange, the first-authorization profile write, the cancel class. The
+  screen now holds availability as `probing | present | absent` instead of a boolean, and
+  `absent` PRINTS where the button would have been rather than collapsing. `probing` still
+  renders nothing — the native call answers in a frame or two and a note that flashes and
+  vanishes is worse than a moment of nothing.
+
+  **The note says only what was measured.** The probe reports that the native module did not
+  answer; it cannot report why. So `absentNote()` prints "missing from this runtime — a
+  development build carries it", which is true whatever the cause, rather than naming a client
+  as a diagnosis. Off iOS it is developer-only ("Sign in with Apple is iOS only.") and absent
+  from release builds: an Apple-platform API missing on Android is not a fault, and a user has
+  nothing to do with the sentence.
+
+  The caption is conditional now, for the same reason the note exists — it was promising a
+  control that was not on the screen.
+
+  **Three silences closed while in here.** The availability probe's `.catch(() => {})`
+  swallowed its rejection whole and is now a `devLog`. A failed sign-in showed
+  `Sign-in failed. Try again.` for every cause; in `__DEV__` it appends the provider's own
+  message, so a redirect the Supabase project has not allow-listed and a missing native module
+  stop reading identically. And `signInWithGoogle` logs the redirect it resolved to —
+  `makeRedirectUri()` answers `recore://` in a development or release build and
+  `exp://<lan-ip>:8081/--/` inside Expo Go, and only one of those is usually in the allow-list.
+
+  **This does not make Sign in with Apple work inside Expo Go, and nothing in code can.**
+  `app.json` is already correct — the `expo-apple-authentication` plugin is registered and
+  `ios.usesAppleSignIn` is true — so a development build (`npx expo run:ios`) or an `eas go`
+  build carries it and the button appears with no further change. The screen's job was to say
+  that instead of looking broken, and it does.
+
+  Files: `app/sign-in.tsx`, `lib/auth/sign-in.ts`.
+
+- **4 Sep 2026 — four corrections: alias learning becomes a choice, the streak label stops
+  claiming the calendar, a relative day loses its preposition, and a baseline stops being a
+  PR.** Four independent defects, none of which changed a computation.
+
+  **(1) "Remember this" — the fix sheet asks before it teaches (§6.2 flywheel).** The alias
+  override store (`db/alias-overrides.ts`), the parser's consult-it-first rule
+  (`db/exercises.ts` `resolveExercise` step 1) and the management screen (`app/aliases.tsx`,
+  reached from You → Reading corrections) have all existed since the flywheel shipped. What
+  did not exist was a way to say NO. `fix-sheet.tsx` drew a two-option "scope" radio group
+  under the set list whose second option was permanently selected and whose first one
+  silently reverted the Exercise field — it forked no behaviour `applyCorrection` had, which
+  its own comment admitted. So correcting a name always taught the parser forever, and a
+  one-off typo repair rewrote how every future note read that word.
+
+  It is now one checkbox, **defaulted on**, sitting directly under the Exercise field it is
+  about instead of under the sets it is not: `Remember this — "<phrase>" means <Exercise>` /
+  `applies to future readings too`. `CorrectionSubmit` gained `remember?: boolean`
+  (defaulting true, so `removeReading` and every other caller are unchanged) and
+  `applyCorrection` gates the override write on it. With it off, steps 1 and 2 still happen —
+  the line is corrected and the correction row re-applies on every re-parse of that line —
+  and no other line changes its reading.
+
+  **The phrase is the athlete's, not the model's.** The offer used to name
+  `item.aliases_seen[0]`, which is what the parse reported seeing, while the store keyed on
+  the same array. Both now go through `aliasPhrasesOf()`, which leads with
+  `typedNameOf(lineText)` — the words before the first digit on the line they actually wrote —
+  so the sentence on screen and the row in the store are the same string. A line that opens
+  with a number has no name portion; with no phrase at all the offer is not shown and no
+  alias is written, rather than a checkbox naming nothing. The footer's promise is unchanged
+  and still literally true: nothing here edits `raw_text`.
+
+  **(2) The consistency sheet said something the record contradicts.** `currentStreak()` walks
+  back over the DAYS THAT WERE TRAINED while no gap between two of them exceeds a week — it
+  has never counted consecutive calendar days, and the module has said so since 28 July. The
+  sheet printed "N training days in a row", so three sessions in one week read "3 training
+  days in a row": not a rounding problem, a claim the same screen's own week grid disproves
+  two lines below it. The number is correct and untouched; the label is now
+  `training days · streak unbroken`, which states the two halves separately. The explanatory
+  caption is unchanged. Audited: this was the only "in a row" in the app — the top bar shows
+  a session TOTAL, not the streak (11 Aug ruling), and there are no widgets or share cards
+  carrying it.
+
+  **(3) "on Today" (new `lib/day-phrase.ts`).** `labelForDay` returns two different kinds of
+  answer — an absolute date, or the relative words "Today"/"Yesterday" — and `lift-prose.ts`
+  dropped either into `, on <label>,`. English takes no preposition before "today" and does
+  not capitalise it mid-sentence. `isRelativeDayLabel` / `onDayPhrase` / `lastDayPhrase` are
+  the grammar, pure and tested; the preposition lives INSIDE the returned phrase, because a
+  caller deciding whether to print "on" would be re-deriving the rule. The lift summary now
+  reads `…120 kg × 12 today, for an estimated 1RM of 145 kg.` and keeps `, on Sep 4,` for a
+  dated one. The same defect one preposition over — `last Today` on Progress
+  (`detailOf`) and on the per-lift screen — is fixed by `lastDayPhrase`. `lift-summary.ts`'s
+  `heaviestLine` needed nothing: it runs on `shortDayLabel`, which is always absolute.
+
+  This also retires a workaround rather than adding to it. `exercise-sheet.tsx` still DELETES
+  its "since …" clause whenever the label is relative, with the comment *"since Today" is not
+  a sentence about a record* — a fact thrown away to dodge a grammar problem. That clause is
+  left as it stands (logging a lift "once since today" is worth omitting on its own merits),
+  but the helper now exists for anything else that would otherwise reach for the same trick.
+
+  **(4) A baseline is not a PR (§15).** Two of the three PR surfaces read `getAllTimePRs()`,
+  which returns each lift's heaviest counted set with no regard for how much record stands
+  behind it — so the first session of a new lift carried a "PR" badge, and so did the opening
+  session of a lift whose heaviest day is still its first. `PrRecord` gained `firstDay` (a
+  window `MIN` over the same partition, so it costs no second query and cannot disagree with
+  the row it rides on) and `isBaseline`. The lift sheet's history table, the session sheet's
+  set rows and the weekly recap — which is **shareable**, so a baseline dressed as a record
+  would be a claim leaving the app — all skip it now.
+
+  **The third surface was already right, and this is the audit the task asked for.** The
+  gutter and receipt PR (`db/history.ts` `signalFor`) requires a PREVIOUS session and compares
+  against the all-time max computed strictly BEFORE the day in question, so it has never been
+  able to fire on a first entry. `charts.tsx` draws the all-time reference as an **unlabeled**
+  hairline on purpose — "the outlined mono label owns the word PR, a line does not get to say
+  it" — so no chart needed changing either.
+
+  **And the quiet marker that replaces it was itself wrong.** The lift sheet's "first
+  recorded" subline keyed on `ordered[i + 1] === undefined`, but that table draws a WINDOW of
+  the last ten sessions — so a lift with twenty-four sessions was printing "first recorded"
+  against its fifteenth. It keys on `stats.firstDay` now. The session sheet gets no
+  replacement caption: "first recorded" beside one SET would be a claim about the lift printed
+  in the wrong place.
+
+  Files: `lib/parse/correct.ts`, `state/session-store.ts`, `components/fix-sheet.tsx`,
+  `components/streak-sheet.tsx`, `lib/day-phrase.ts` + test (new), `lib/lift-prose.ts` +
+  test, `app/(tabs)/progress.tsx`, `app/lift/[key].tsx`, `lib/db/insights.ts`,
+  `components/exercise-sheet.tsx`, `components/session-sheet.tsx`,
+  `components/week-recap-card.tsx`. No prompt, response schema, model guard or AI-summary
+  change, so no §9.4 evaluation is owed. No §13 event has a documented name for any of these
+  surfaces and none was invented.
+
+- **4 Sep 2026 — the estimate says it is an estimate.** The Progression list printed a lift's
+  latest e1RM as a bare figure with a unit and nothing else, so somebody who had logged 100 kg
+  read "140 kg" against their own bench and concluded the record was wrong. Nothing about the
+  computation changed — it is still Epley over the best counted set at or under twelve reps,
+  half-kilo grain, in `db/progression.ts`'s one grouped scan.
+
+  **(1) The row names its reading.** `Row` gained `valueLabel`, which prints a `footnote` /
+  `textSecondary` word above the number — small enough that the figure keeps the hierarchy,
+  never `textMuted`, which the skill reserves for what the eye may skip. Only a DERIVED reading
+  gets one: the Lifts list still prints `100 kg × 8` bare, because a logged top set beside a
+  lift's name is what it looks like.
+
+  **(2) Tapping the reading says where it comes from.** `Row.onValuePress` + the new
+  `components/e1rm-sheet.tsx` — the app's one sheet chrome carrying a title and a paragraph and
+  **no number**, since every figure it could quote is on the row behind it and a definition that
+  restates a value is a second place for the two to disagree. The copy is the owner's, verbatim,
+  and ends on *"It is an estimate, not a test."*
+
+  A pressable `Row` is ONE accessible element, so a nested button would have been silently
+  unreachable by VoiceOver: the inner target opts out of the tree and the row publishes the same
+  action on the rotor instead (`accessibilityActions`, "What is est. 1RM?"). `PressableScale`
+  carries the four props that shape needs. 44 pt is reached with `hitSlop` rather than by
+  widening the block into the lift's name.
+
+  **(3) The label is one string everywhere it is printed** (`E1RM_LABEL`). The lift sheet's
+  current reading gains it — and only when the e1RM metric is plotted, because "220 kg" under
+  Heaviest weight and "8" under Top reps are what they look like — and the day sheet's per-set
+  `e1RM 125` becomes `est. 1RM 125`. The level-two metric card already titled itself
+  *Estimated 1RM* and is unchanged.
+
+  **(4) The Progression tab reads in the athlete's own unit.** `pref_weight_unit` has existed
+  since onboarding and, until today, `units.ts`'s own header was accurate that the correction
+  sheet was the *first* reading surface to honour it — every other surface printed stored
+  kilograms. The two Progression screens now honour it: the row's figure, the plateau weight and
+  the delta in its detail line, and level two's cards, sub-labels and charts (`seriesInUnit`,
+  applied as the last step so the unit cannot leak backwards into arithmetic). New
+  `displayLoad` reads pounds whole — 140 kg is 308.647 lb, and two decimals is false precision
+  on an estimate.
+
+  **This is deliberately partial and the gap is named** (owner's ruling, 4 Sep 2026, choosing it
+  over both "label only" and a full migration): the lift sheet, the day sheet, the Lifts list,
+  the Today ledger, Next and the recap still print kilograms, so a pound reader sees
+  `est. 1RM 309 lb` on Progression and `100 kg × 8` in the history below it. Migrating the rest
+  is its own change. Storage is kilograms throughout and no stored value moved.
+
+  Gates: typecheck, lint and 684 tests pass (`units.test.ts` +3, `progression-metrics.test.ts`
+  +3). No model call, prompt or guard is involved, so §9.4's evaluation does not apply.
 
 - **28–29 Aug 2026 — Next is rebuilt on Symmetry's Workout Detail, and every row states the
   reason for its own target.** The owner studied two screens with us — Symmetry's Workout
@@ -3714,39 +4063,514 @@ block under a quiet status line — the shape all four variants took.
 
 ### Verified by the repository gates
 
-Typecheck 0 · lint 0 · **661/661** tests pass · `npx expo export --platform ios`
+Typecheck 0 · lint 0 · **678/678** tests pass · `npx expo export --platform ios`
 **pass**. (`expo lint` also reports one warning in `src/app/index.tsx` — a
 `// TEMP: simulator verification pass` redirect belonging to another session's
 work in progress, untouched here.)
 
-### Seen on the simulator, and what was not
+### Seen on the simulator
 
-iPhone 17 Pro, Release build, through six rebuilds. Rendered and measured: the
+iPhone 17 Pro, Release build. Rendered and measured twice: first on 29 August,
+then again on **31 August against the v6 tree**, after `v6 faza 2b`, `v6 faza 3`
+and `89f7cfd` had restyled Today underneath this card. Both passes covered the
 pending card, the row it becomes, two pending lines stacked as a session shows
-them, the composer's value column, and the row under a real OS-level Reduce
-Motion. Every number above comes off those frames. Frames were sampled across the
-1700 ms cycle and ranked by the blue they put into the row, because the beam is
-invisible for the 400 ms beat and a hand-picked screenshot lands there more often
-than not.
+them, and the row under a real OS-level Reduce Motion. Frames were sampled across
+the 1700 ms cycle and ranked by the blue they put into the row, because the beam
+is invisible for the 400 ms beat and a hand-picked screenshot lands there more
+often than not.
 
-**`ReadingMark` itself has not been on a screen.** It was written after the last
-frame was captured, to close the silent-row defect that frame exposed, and the
-build that would show it never ran: a concurrent session held Xcode's build
-database for the rest of the sitting, and with 1.7 GB free there was no room for
-a second `derivedDataPath`. Its motion path renders exactly what those frames
-show — the same dots, in the same slot, in the same row — so what is unverified
-is narrow: that with Reduce Motion on, the word now appears where the dots were.
-It is one branch of one component and it is gate-clean, but nobody has looked
-at it.
+**The re-measurement matters, because v6 moved the ground.** Its larger type
+scale grew the mark from 15.00 pt wide to 23.33 — and grew the settled card's ⋯
+to 23.33 as well, so the two still match to the pixel; both still centre on
+x 360.17. The words still start at x 68.00 in both rows. With the bigger type a
+long line now wraps to two lines and the mark centres on the block rather than on
+a single line, which is the behaviour the row was built to have. Against the
+first line's own metrics — cap height 16.67, baseline 127.00 — the dots sit at
+116.50, two points above the cap centre: on the line, not under it.
+
+**Reduce Motion was verified with the OS setting, not a prop.** With it on, the
+beam and the dots go and `reading` stands at the end of the same row. That is the
+branch `ReadingMark` exists to guarantee, and it is now the branch that has been
+looked at.
 
 ### Still not verified
 
 Nothing here has been seen on a physical device, and no one has watched it during
-a real parse. What a device would settle: whether 16 % on the warm canvas holds
-up in daylight rather than on a desk display, whether the 400 ms beat is right at
-real parse latencies (a slow network holds this state for seconds, not
-milliseconds), and whether the dots→⋯ handover reads as still to a person who is
-looking at the line rather than measuring it.
+a real parse — both simulator passes drove the components directly rather than
+typing a line and waiting for the parser. What remains open: whether 16 % on the
+warm canvas holds up in daylight rather than on a desk display, whether the
+400 ms beat is right at real parse latencies (a slow network holds this state for
+seconds, not milliseconds), and whether the dots→⋯ handover reads as still to a
+person who is looking at the line rather than measuring it.
+
+---
+
+## 31 August 2026 — the canvas becomes the canvas: the paper field mounts on every tab
+
+Until today the diagonal paper field rendered on **Today alone**. Next, Progression, Lifts and
+You drew the flat `color.canvas` instead, and switching tabs stepped visibly from a peach corner
+onto flat paper.
+
+**This was a migration gap, not a design decision.** The design skill's §Canvas has said the
+opposite since v6: *"One canvas runs the whole app — Today, list screens, sheets' backdrop,
+settings, every onboarding step"*, and its token table describes `canvas` as *"the flat fill
+**wherever a gradient cannot render**"*. The flat colour is the field's fallback. Reading the
+code as the authority had it backwards.
+
+### Why it was visible at all, when the stops are matched
+
+`lib/paper-field.ts` solves the three stops so every one of them carries the same WCAG relative
+luminance as `canvas` (0.9077 ± 0.0043) — `largestStopContrast` is **1.005:1**, and every ink in
+the app measures the same on all three. That is what let a `today.tsx` comment claim the two
+"never disagree by more than 1.007:1" and treat the mixture as invisible.
+
+The metric was measuring the wrong axis for this comparison. The stops differ by **hue alone**,
+which is exactly the property a luminance ratio cannot see — and a tab switch puts the peach end
+of one screen directly against the flat paper of the next, back to back, with no intervening
+content. The eye resolves a hue step in that arrangement far below the threshold at which it
+resolves a lightness step. The guard was never wrong about contrast; it simply does not answer
+the question "will someone notice this".
+
+### What changed
+
+Two mount points, because `StubScreen` carries three screens:
+
+- **`src/components/stub-screen.tsx`** — Next, Progression and `/lifts`.
+- **`src/app/(tabs)/you.tsx`** — mounted ahead of the `ScrollView`.
+
+Both keep `backgroundColor: color.canvas` on the root, which is the documented fallback for
+wherever the gradient cannot render, not a second opinion about the colour.
+
+### The Yoga trap this pass walked into and out of
+
+`StubScreen`'s root was a `SafeAreaView`, and the first attempt mounted the field inside it.
+**Yoga offsets an absolutely positioned child by its parent's padding** — and safe-area padding
+is the whole of what that component adds. The field would have stopped short of the status bar
+and the home indicator and left a flat strip at each end: a worse seam than the one being fixed,
+in the two places a phone puts a user's attention. The root is now a plain `View` with the field
+behind a fill-less `SafeAreaView`, which is the shape `today.tsx` has always had.
+
+### It also fixes the tab bar, which was not the stated goal
+
+`NativeTabs` renders a real `UITabBarController`, and on iOS 26 that is Liquid Glass — it
+refracts whatever is behind it and takes no tint from us on purpose (`(tabs)/_layout.tsx`).
+Today handed it the lavender bottom stop; the other three handed it flat paper. The bar was
+therefore refracting a different ground on every tab. It now refracts one.
+
+### Verified by the repository gates
+
+Typecheck 0 · lint 0 · **678/678** tests pass · `npx expo export --platform ios`
+**pass**. (`expo lint` reports the same one warning in `src/app/index.tsx` that the
+entry above names — another session's `// TEMP:` redirect, untouched here.)
+
+### Not verified
+
+**Nothing here has been on a device or a simulator.** Three things need eyes, and none of them
+is answerable from the source:
+
+1. **The field does not scroll.** It is an `absoluteFill` anchored to the viewport, so on
+   Progression and You the peach corner stays pinned while a long list travels through it. That
+   is the correct behaviour — it is a page, not wallpaper on the content — but Today never had
+   enough scroll for it to be a question and now two screens do.
+2. **`surfaceHigh` on a tinted ground.** `progress.tsx`'s recessed blocks take `color.surfaceHigh`,
+   which `theme/color.ts` derives by darkening the *flat* canvas in OKLCH at fixed hue. Sitting on
+   the peach stop it is a warm-derived neutral on a warmer ground and should read a shade cooler
+   than it does on flat paper. At 1.005:1 between stops this is very likely below threshold, but
+   it is the one place where the ladder's "everything is measured on `canvas`" assumption meets a
+   different local ground.
+3. **Banding over a taller run.** The three stops are deliberately few, to keep an 8-bit display
+   from banding across a long gentle ramp. The field's height has not changed — it is the
+   viewport on every screen — so this should be exactly as it is on Today, but it has been
+   confirmed on one screen only.
+
+### A divergence noticed, not fixed
+
+The skill and the code disagree about the canvas values. §Canvas lists `canvas #FCF9F4`,
+`canvasTop #FDF6EE`, `canvasBot #F9F5F9` and `surfaceHigh #E5E5EA`; `theme/color.ts` has
+`#F4F5EF`, `#FBF3EC`, `#F7F4F7` and derives `surfaceHigh` from the canvas rather than pinning it
+to a grouped grey. This is the trail of the 28 August palette merge, which was never written back
+into the skill. The skill is binding, so someone has to reconcile the two — and since the merge
+re-derived the whole ink ladder onto the new paper, the reconciliation is the skill catching up,
+not the code. **Out of scope here and left open deliberately.**
+
+---
+
+## 31 August 2026 — the funnel runs end to end again, behind one development door
+
+The owner asked for the funnel to work start to finish — onboarding → paywall → sign-in → Today —
+and for the You tab's development rows to collapse into a single "someone just downloaded this"
+button.
+
+### Two hardcoded overrides were holding the funnel open
+
+Neither was a design decision; both were left behind by a simulator verification pass.
+
+| Where | Was | Effect |
+|---|---|---|
+| `src/app/index.tsx:74` | `return <Redirect href="/next" />; // SIMPASS` | The dispatcher answered **every** launch with the Next tab. Onboarding, the paywall and the import fast path were unreachable from `/`, and every line below it was dead — which is what `expo lint` had been reporting as `no-unreachable` for days, and what `implementation-status` twice wrote off as "another session's work in progress". |
+| `src/app/_layout.tsx:91` | `const signedIn = true; // SIMPASS` | The auth guard was pinned open, so the whole `(tabs)` group, `import-start`, `split`, `plan-day`, `lifts`, `aliases` and `health` were mounted **with no session**. "Only after a successful sign-in" was not true of any screen in the app. |
+
+Both are gone. `signedIn` is `session !== null` again, and the dispatcher's four-way routing runs.
+**The lint warning that vanished with them was the symptom, not a coincidence.**
+
+### The join nobody had walked: what happens after sign-in
+
+Sign-in lives inside `guard={session === null}`, so the moment a session lands the screen is
+removed and whatever pushed it is on top again. For the paywall's **CTA** that is exactly right —
+the paywall is still mounted underneath and its `pendingPurchase` effect fires on that return to
+open Apple's sheet. For the paywall's **DEV·SKIP** it is wrong: there is no purchase to resume, so
+the same mechanism drops the user back on the screen they just skipped.
+
+An unconditional `router.replace('/')` in sign-in would have fixed the skip and **broken the
+purchase**, because the paywall below stays mounted and would race its own sheet against the
+navigation. So the caller says which case it is: `DEV·SKIP` pushes `/sign-in` with `next: 'home'`,
+and sign-in honours only that. The purchase path is untouched.
+
+### One door instead of five
+
+`src/lib/dev-fresh-install.ts` is new. `simulateFreshInstall()` discards the sandbox, resets both
+flow stores, deletes every `pref_%` row, clears `onboarding_done`, drops every cached billing
+fact, and signs out — in that order, because the session is what the guard watches and everything
+else has to be true before it changes.
+
+Each key is cleared by the module that owns it, so the reset cannot drift from the writes:
+`clearOnboardingDone()` in `prefs.ts`, `devResetBillingState()` in `billing/state.ts`,
+`discardSandbox()` in `onboarding-v2-sandbox.ts`.
+
+**`onboarding_done` is the one key in `prefs.ts`'s `KEYS` that carries no `pref_` prefix**, despite
+the comment above that map stating "EVERY KEY HERE IS `pref_*` ON PURPOSE". A wipe using the usual
+`pref_%` net misses exactly the flag the dispatcher reads, and the result would have been a device
+that looks signed-out but claims to be onboarded. `clearOnboardingDone()` exists for that one
+reason. **The comment is still wrong and is left alone deliberately** — it also claims the key is
+covered by `export-json.ts`'s `pref_%` export, which it is not.
+
+**The record is not touched, and neither is the store.** A real fresh install has no workouts
+either, but deleting a ledger is irreversible and no part of the funnel reads it;
+`account/delete.ts` is the honest way to do that and it asks first. `devResetBillingState()` drops
+the local cache only — a subscription is the store's fact, not ours.
+
+### Two screens now have no door
+
+Removing the v1 rows leaves `src/app/onboarding/` and `src/app/paywall.tsx` reachable only by
+typing the route. Both still exist, still work and are still registered in `app/_layout.tsx`;
+nothing was deleted. **CLAUDE.md §1 still describes both as "reachable only from the You tab's
+development rows", which is now false.** Under §8 that line is the owner's to change, not this
+change's, so it is recorded here rather than rewritten there.
+
+`resetSandbox`, `snapshotPrefs`, `restorePrefs`, `hasSnapshot` and `beginSandboxRun` lost their
+last callers with those rows. They are left in place: a device carrying a snapshot from an earlier
+v1 dev run would otherwise have no way back to its own preferences, and deleting working dev
+machinery is not what "remove the extra rows" asked for.
+
+### Verified by the repository gates
+
+Typecheck 0 · lint 0 · **678/678** tests pass · `npx expo export --platform ios` **pass**.
+**`expo lint` is now clean** — the `no-unreachable` warning in `src/app/index.tsx` that the two
+entries above this one attributed to another session was the `SIMPASS` redirect, and it went with it.
+
+### Not verified — and one part of the ask does not land where it sounds like it should
+
+**Nothing here has been run.** No simulator, no device; the funnel has been read, not walked.
+
+**The skip does not reach a working Today, and that is the app being truthful.** `.env` carries a
+`test_`-prefixed RevenueCat key, so `isStoreConfigured()` is true and `devOverride()` declines to
+invent an entitlement (it only does so when no store is configured at all). A fresh account that
+has never purchased gets `active: false, productId: null` from the Test Store, which
+`decideEntitlement` reads as `lapsed / never` — and `today.tsx` answers `entitlement === 'lapsed'`
+with `ReadOnlyLedger`. So the routing the owner asked for is exactly right (the skip does land on
+`/today`), and the screen that renders there is the read-only one.
+
+Closing that gap means deciding what "skippable" means commercially, which is §2 billing and the
+owner's call, not this change's:
+
+1. **Leave it.** Skipping means no subscription, and the app says so. Honest, and the simulation
+   still proves every route.
+2. **A separate, explicitly-labelled dev entitlement override** — the inverse of the existing
+   "Simulate lapsed subscription" toggle. Honest, because it says what it is, but it is a second
+   development row and the ask was for one.
+3. **Make DEV·SKIP grant entitlement.** Rejected without asking: it would make a skip mean "you
+   now have a subscription", which is a billing fact the app would be inventing about itself.
+
+---
+
+## 4 September 2026 — SDK 54 → 57, and what that costs Expo Go
+
+The owner asked for SDK 57 "for Expo Go". Both halves of that sentence moved: the repository is
+now on Expo SDK 57, and **Expo Go is no longer the frictionless part of it.**
+
+### The version set is Expo's own, not a guess
+
+`expo` 57.0.20, React Native 0.86.3, React 19.2.3, Reanimated 4.5.1, worklets 0.10.1,
+expo-router 57.0.19, and every other `expo-*` at the version SDK 57's `bundledNativeModules.json`
+names. Three third-party packages are not in that map and were moved deliberately:
+`react-native-purchases` and `react-native-purchases-ui` to 10.9.0, and `expo-speech-recognition`
+to 57.0.0 (that package adopted SDK-aligned versioning). `node_modules` and `package-lock.json`
+were deleted and rebuilt rather than upgraded in place, because three SDK majors in one step
+leaves stale transitive native deps behind otherwise.
+
+`npx expo install --fix` afterwards reports **"Dependencies are up to date"**, and
+`npx expo-doctor` reports **21/21 checks passed**. Nothing in `app.json` needed changing —
+`experiments.reactCompiler` and `typedRoutes` both survive, and the fields SDK 55 removed
+(`newArchEnabled`, `edgeToEdgeEnabled`, the top-level `notification` block) were never in it.
+
+### Four API breaks, and only four
+
+Everything else compiled unchanged. What did not:
+
+| Break | Where | Fix |
+|---|---|---|
+| `StyleSheet.absoluteFillObject` was removed from React Native 0.86, runtime and types both. | 10 spreads across `paywall`, `bottom-sheet`, `scroll-edge`, `gutter-value`, `thought-process`, both `HoldToCommit`s, `ProgressRail`, `OptionRow`, `motion/bar`. | `StyleSheet.absoluteFill`, which in 0.86 **is** the plain frozen object the old name used to hold. Identical values; not a behaviour change. |
+| `expo-router/unstable-native-tabs` no longer exports bare `Icon` and `Label`. | `app/(tabs)/_layout.tsx`. | `NativeTabs.Trigger.Icon` / `NativeTabs.Trigger.Label`. Same `sf` props, same four tabs, same absence of a tint. |
+| Reanimated 4.5 returns an `AnimatedStyleHandle`, which a `StyleProp<ViewStyle>` no longer accepts. | Seven callers handing a `useAnimatedStyle` result to `PressableScale`. | One typing change at the definition — `PressableScaleProps.style` and `.pressedStyle` are `StyleProp<AnimatedStyle<ViewStyle>>`. No call site moved. |
+| `withInitialValues` rejects a readonly transform tuple. | `onboarding/Enter.tsx`'s `FROM`. | Typed tuple instead of `as const`. Same twelve points of rise. |
+
+### Forty React Compiler findings arrived with the linter, and they are not this change's
+
+`eslint-config-expo` went 10 → 57, which pulled `eslint-plugin-react-hooks` 5 → 7 and switched on
+the React Compiler's own diagnostics: `set-state-in-effect` (19), `immutability` (13), `refs` (5),
+`preserve-manual-memoization` (2), `purity` (1). Every one of them flags code that shipped weeks
+ago and that this upgrade did not touch — sheets seeding draft state in an effect, Reanimated
+shared values written from a `useCallback`, the spotlight tour reading a ref during render.
+
+**They are set to `warn`, not off** (`eslint.config.js` carries the reasoning). All forty print
+with file and line on every `npm run lint`. Clearing them means restructuring effects in roughly
+twenty files, most of them sheets and onboarding — behaviour changes that need device QA and that
+have nothing to do with an SDK number, so under CLAUDE.md §6 they are separate work. **This is
+open, not done.** Raise the five rules back to `error` in the change that clears them.
+
+### Expo Go: the pin existed for a reason, and the reason is still true
+
+`AGENTS.md` pinned this project to SDK 54 and named the Expo Go constraint. That constraint has
+not gone away — **the App Store build of Expo Go is still SDK 54**, and has been since Apple
+stopped approving updates. On SDK 57 it will refuse to open this project. What works instead:
+
+- **iOS Simulator and Android** — the CLI fetches the matching SDK 57 Expo Go itself. `npm run go`
+  (added; `expo start --go`) forces Expo Go mode, which the plain `start` script does not, because
+  `expo-dev-client` is installed and the CLI assumes a development build.
+- **A physical iPhone** — `eas go` builds an Expo Go carrying SDK 57 and puts it on the owner's own
+  TestFlight. It needs the Apple Developer Program membership the project already has.
+
+`AGENTS.md` has been rewritten to say this rather than the SDK 54 pin.
+
+Two modules still do not exist inside any Expo Go and never did: `react-native-purchases` and
+`expo-speech-recognition`. Both were already fenced — `billing/paywall-ui.ts` probes the native
+module before requiring the JS, `voice.ts` uses `requireOptionalNativeModule` — so Expo Go
+degrades quietly rather than throwing. That fencing was written for SDK 54 Expo Go and is
+unchanged; it has not been re-run against 57.
+
+### The native folder was left alone on purpose
+
+`ios/` on disk is SDK 54 prebuild output and is gitignored. A development build or `expo run:ios`
+needs it deleted and regenerated (`npx expo prebuild --clean`) plus a fresh dev client — SDK 56
+also raised the Xcode floor to 26.4 and the iOS deployment target to 16.4. **None of that was
+done here**, because the ask was Expo Go and deleting generated native output is not something to
+do quietly.
+
+### Verified by the repository gates
+
+Typecheck **pass** · lint **pass** (0 errors, 40 warnings, all listed above) · **678/678** tests
+pass · `npx expo export --platform ios` **pass** (9.3 MB Hermes bundle). `npx expo-doctor` 21/21.
+
+### Not verified
+
+**Nothing has been run on a simulator or a device.** The bundle compiles; no screen has been
+looked at on SDK 57. Specifically unverified:
+
+- Every native module at runtime under the new SDK: RevenueCat 10.9, Sentry 7.11, speech
+  recognition 57, view-shot 5, glass-effect 57 (the last one jumped from `0.1.x` to SDK
+  versioning, so its Liquid Glass behaviour on the tab bar and cards is worth a look first).
+- **`globalThis.fetch` is `expo/fetch` since SDK 56**, not React Native's. Supabase, the brief
+  call and the Edge Functions all go through it and none has been exercised. `EXPO_PUBLIC_USE_RN_FETCH=1`
+  reverts it if something turns out to depend on the old implementation.
+- The native tab bar after the `NativeTabs.Trigger.Icon` rename — the typing is right, the four
+  SF Symbols have not been seen rendered.
+- No AI prompt, response schema, guard or summary changed in this pass, so CLAUDE.md §5's
+  owner-run §9.4 evaluation is not owed by it.
+
+
+---
+
+## 6 September 2026 — the press stops being a CSS `:active` and becomes a surface
+
+An Apple-fluidity read of Today (the logging screen) found five things that read as a web page
+rather than an app. This change implements the first and by far the most frequent of them; the
+other four are written down below as open work, with values, so they are not re-diagnosed from
+scratch.
+
+### What was wrong
+
+Every touchable on the record answered a press the same way: `style={({ pressed }) => [..., pressed
+&& styles.cardPressed]}` where `cardPressed` was `{ opacity: 0.6 }`. Three separate faults in one
+line.
+
+- **It ran on the JS thread.** React Native's `Pressable` with a *function* style re-renders on
+  touch-down and again on lift. On this screen specifically that matters: the composer re-parses
+  the note on every keystroke, so the JS thread is the busiest thread in the app exactly when a
+  finger lands on a card. Feedback that queues behind a parse is the latency the fluid-interface
+  rules call the cliff.
+- **It could not fade.** 0.6 was cut in and cut back out with no transition at all, so the fast,
+  confident taps got the *least* feedback — a subliminal flicker. iOS holds a highlight and
+  dissolves it over roughly a quarter of a second.
+- **It faded the record.** Dropping the whole row to 60 % opacity dims the ink. The one thing on
+  this page that must never look like it is going away is what was going away.
+
+`PressableScale` — the shared primitive the *other* controls use — had the first fault too. It
+carried a `useState(pressed)` whose only job was to apply `pressedStyle`, so it rendered twice per
+press whether or not a caller passed one. And it was **symmetric**: 120 ms in, 120 ms out, which is
+what a CSS `transition` gives you free and what no physical control does.
+
+Under Reduce Motion it did nothing at all — `if (!reduce) scale.set(...)` on both handlers meant
+every button in the app went completely dead to the touch for those users.
+
+### What it is now
+
+`PRESS` in `lib/motion.ts` — in `90 ms` on `EASE.emphasized`, out `260 ms` on `EASE.standard`,
+with a `minVisibleMs` floor of 90 ms measured from touch-down. Asymmetric on purpose: a control
+takes the finger immediately and lets go slowly. The floor means a 60 ms tap and a 400 ms hold
+produce the same amount of visible feedback.
+
+`PressableScale` runs the whole press off **one shared value on the UI thread**. The dip and the
+new wash both hang off it; nothing re-renders. `useState` survives only for the twelve legacy
+`pressedStyle` callers (the ink CTA, the provider buttons) and is not touched otherwise.
+
+**The new `wash` prop is the row highlight.** `color.surfaceHigh` — the design system's own
+pressed-state fill, canvas × 0.96 — fades up *behind* the content, so the paper darkens under the
+finger and the ink does not move. It is absolutely positioned, so a row's columns lay out as if it
+were not there, and it bleeds ±8 pt horizontally the way a list-row highlight does.
+
+**Reduce Motion now keeps the press.** It drops the dip and keeps the wash. Less motion is not no
+feedback, and a fill rising in place is not vestibular.
+
+### What changed on Today
+
+Eleven touchables in `note-surface.tsx`. Rows wash without dipping (`ROW_SCALE = 1`) — a full-bleed
+row that shrinks 2 % drags its check mark and its ⋯ inward, which reads as the page flexing rather
+than as one line being held. Controls inside a row still dip, because a control is an object you
+push and a row is a surface you touch.
+
+| Surface | Before | Now |
+|---|---|---|
+| `ExerciseCard` body | dip 0.98 + `opacity: 0.6` | dip 0.98 + wash, inset −8/−4 |
+| The check ring | **nothing** | dip 0.88, no wash (a grey box round a 22 pt circle reads as a button appearing under it) |
+| The alias echo, `fix reading` | **nothing** | dip 0.94 |
+| The ⋯ | `opacity: 0.6` | dip 0.90 + wash at `radius` 8 |
+| `PendingCard`, `NoteCard` | `opacity: 0.6` | wash only |
+| The reflection, read back · the prompt row · last session's prefill | `opacity: 0.6` / **nothing** | wash only |
+| Inline editor `Delete` | `opacity: 0.6` | dip 0.94 + wash |
+
+`cardPressed` and `deletePressed` are deleted from the file. Haptics are unchanged: every converted
+call site passes `haptic="none"` because its own `onPress` already calls `tap()`, so the tick still
+fires on press-out exactly as before.
+
+### The other four, diagnosed and NOT implemented
+
+Recorded with values so the next pass starts from here rather than from a fresh read.
+
+1. **Interruptibility — `day-swipe.tsx` drops the day change.** `onEnd`'s commit path runs
+   `withTiming(160 ms)` while the pan is still enabled, and `onChange` writes `tx.value =
+   translationX * resistance` *absolutely*. Re-grabbing mid-commit teleports the content, and the
+   completion callback then sees `finished === false` and returns — so `go(direction)` never runs
+   and the day silently does not change, with opacity left stranded mid-fade. Fix: capture a base
+   from the live `tx.value` in `onBegin` and write `base + translationX * resistance`.
+2. **Velocity handoff — the seam is at the release.** `day-swipe` reads `velocityX` only as a
+   boolean (`> 520`) and then throws the number away; the commit is a fixed 160 ms, so a lazy drag
+   and a violent flick travel identically. The spring-back path calls `withSpring(0, SPRING.snappy)`
+   with **no `velocity`**, so a page released while moving stops dead and then springs — a brick
+   wall. Fix: `velocity: e.velocityX * DRAG_RESISTANCE` on the settle, and choose the target from a
+   projected endpoint (`tx + (v/1000) · 0.998/(1 − 0.998)`) rather than from the raw release point.
+3. **Spatial consistency — the card falls from the wrong direction.** `ExerciseCard` enters on
+   `FadeInDown`, i.e. from above. The card is produced by pressing return on the composer line,
+   which is *below* the stack it lands in. It should rise into place (translateY +8 → 0), not drop
+   into it. Separately, `DaySwipe` exits on `withTiming(160)` and returns on `withSpring(SPRING.soft)`
+   — reversible motion that does not retrace its own path.
+4. **Typography — the ramp is right and this screen does not use it.** `type.ts` carries tracking
+   measured against Apple's ramp; `note-surface.tsx` inlines its own sizes instead. The composer's
+   `input` is 17/23 with **no `letterSpacing`**; `type.body` is 17/25 at `-0.2`. So the identical
+   string re-tracks and re-leads the instant you press return and it becomes a card — on the one
+   page whose entire promise is that what you write becomes the record. `exName` is
+   `type.headline` inlined *without* its `lineHeight`. `exValue`/`words` are `moderateScale(14)`,
+   `exSub` 11.5, `proseText` **16** — the size the ramp explicitly abandoned on 18 August for being
+   "the exact tell that reads as made for the web". Fix: route all of them through `type.*`.
+
+### Verified by the repository gates
+
+Typecheck **pass** · lint **pass** (0 errors; the same 40 pre-existing React Compiler warnings,
+none of them in the lines this change touched) · **690/690** tests pass ·
+`npx expo export --platform ios` **pass**.
+
+### Not verified
+
+**Nothing has been run on a simulator or a device.** The wash's weight against the warm canvas, the
+±8 pt bleed beside the rail and the ⋯ column, and whether the 90 ms floor reads as deliberate or as
+sticky are all judgements that need a screen. No AI prompt, response schema, guard or summary
+changed, so CLAUDE.md §5's owner-run §9.4 evaluation is not owed by this pass.
+
+---
+
+## 6 September 2026 — the comparison stops talking, and the day pill says which day it is
+
+Two owner rulings, both about what the record says without being asked.
+
+### The vs-last subline is off, behind one switch and not a delete
+
+`comparisonOf` (`components/gutter-value.tsx`) put a muted second line under every entry that had a
+history: "up 2.5 kg vs last", "down 20 kg vs last", "same as last · Fri 8 Aug". The owner pulled it
+on 6 September — *"izklopi to, bom mogoče kasneje dodal na nek drugačen način"* — so this is a
+switch, not a removal: `COMPARISON_SUBLINES_ON = false`, exported from the one file where a signal
+becomes language, and read by every surface that prints the sentence. The phrasing survives intact,
+including the 11 August ruling that "same as last" must name the day it means.
+
+It goes quiet in four places, which is all four it was ever in:
+
+- the **ledger card** on Today (`note-surface.tsx`);
+- the **⋯ sheet header** (`entry-sheet-header.tsx`), which shares the card's function so the two
+  cannot disagree;
+- the **session receipt** (`session-receipt.tsx`), which composes its own variant; and
+- the **lift's history table** (`exercise-sheet.tsx`), whose rows carried the same commentary one
+  level down — "down 20 kg · Aug 30" against the row beneath.
+
+**What is NOT off**, because none of it is a comparison the app volunteers about the athlete:
+
+- the gutter's own `↑ +2.5` / `↓ -20` reading — that is the parse speaking on the line it read;
+- the **PR label** on the card, in the gutter and on the receipt, and the receipt's
+  "personal record" beside it;
+- **"first recorded"** on a receipt row and on a lift's opening entry, which states what the entry
+  *is* rather than how it measured up — and which, on the history table, is still the quiet marker
+  standing in for the suppressed PR badge on a baseline row (4 September).
+
+### The day pill carries the word and the date
+
+`labelForDay` answers "what do I call this day?" with *either* "Today"/"Yesterday" *or* "Sep 4",
+and the pill in the Home top bar showed whichever came back. "Today" alone is the one thing nobody
+needs told; a bare "Sep 4" two swipes back leaves the reader counting. The pill now says both —
+`Today · Sep 6`, `Yesterday · Sep 5`, `Aug 30` — via `dayPillLabel` (`state/session-store.ts`),
+which composes `labelForDay` with the newly extracted `datedDay` and prints one of them when they
+are the same string.
+
+It is a SECOND function on purpose. Every other caller keeps `labelForDay`: Progress would read
+"last Today · Sep 6", a sheet would be titled "Yesterday · Sep 5", and `lib/day-phrase.ts`'s whole
+job is dropping one of those two forms into a sentence. The pill is the only place where the open
+day is a *place* rather than a mention, and the only one with room for both.
+
+The pill's label is now `numberOfLines={1}` over a `flexShrink: 1` pill, so the longer string
+ellipsizes inside a pill that still fits the row at any Dynamic Type setting rather than pushing
+the wordmark or the session count off the bar. VoiceOver hears a comma where the eye sees a middle
+dot — "Open calendar — Today, Sep 6" — because a middle dot is read out as its name.
+
+### Verified by the repository gates
+
+Typecheck **pass** · lint **pass** (0 errors; the same 40 pre-existing React Compiler warnings,
+none in the lines this change touched) · **690/690** tests pass ·
+`npx expo export --platform ios` **pass**.
+
+### Not verified
+
+**Nothing has been run on a simulator or a device**: whether the cards read as calmer or as thinner
+with the second line gone, and how the two-part pill sits against the wordmark at the largest type
+sizes, both need a screen. No AI prompt, response schema, guard or summary changed, so CLAUDE.md
+§5's owner-run §9.4 evaluation is not owed by this pass. The comparison itself is **paused, not
+decided** — the owner intends to bring it back in another form, and the composed sentence is left
+standing for it.
 
 ## 6 September 2026 — the check-in stops imitating a sheet and becomes one
 

@@ -511,3 +511,20 @@ export function setDevLapsed(next: boolean) {
 export function isDevLapsed(): boolean {
   return __DEV__ && getMeta(KEYS.devLapsed) === '1';
 }
+
+/**
+ * Forget every billing fact this device has cached — the entitlement snapshot,
+ * the trial clock, the price label, the two one-shot flags and the lapsed
+ * toggle. `__DEV__` only, and it exists for the fresh-install simulation in the
+ * You tab.
+ *
+ * **It changes nothing at the store.** A real subscription is the store's fact,
+ * not ours; this drops the local copy so the app has to ask again, which is the
+ * state a genuinely fresh install is in. Every key lives in this module's own
+ * `KEYS`, so the reset cannot drift from the writes.
+ */
+export function devResetBillingState() {
+  if (!__DEV__) return;
+  for (const key of Object.values(KEYS)) setMeta(key, null);
+  decideFromCache(Date.now());
+}

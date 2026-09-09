@@ -4,10 +4,12 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Sparkline } from '@/components/charts';
 import { ChipRow } from '@/components/chip-row';
+import { E1RM_ACTION_LABEL, E1RM_LABEL, E1rmSheet } from '@/components/e1rm-sheet';
 import { Icon } from '@/components/icon';
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
 import { AppButton, Eyebrow, Row } from '@/components/primitives';
 import { StubScreen } from '@/components/stub-screen';
+import { lastDayPhrase } from '@/lib/day-phrase';
 import { shiftDayKey, todayKey } from '@/lib/db/dates';
 import { getLiftSessions } from '@/lib/db/progression';
 import { markImportCompleted, markImported, markImportStarted } from '@/lib/funnel';
@@ -18,6 +20,7 @@ import { rowCountBucket } from '@/lib/onboarding';
 import { fmtNumber } from '@/lib/parse/summarize';
 import { STALL_SESSIONS } from '@/lib/plateau';
 import { recachePredictionFromLatest } from '@/lib/predict/cache';
+import { getWeightUnit } from '@/lib/prefs';
 import { describeDelta } from '@/lib/progression';
 import { buildOverview, type LiftRow } from '@/lib/progression-overview';
 import {
@@ -30,6 +33,7 @@ import {
   TAB_BAR_CLEARANCE,
   type,
 } from '@/lib/theme';
+import { displayLoad, spokenUnit, type WeightUnit } from '@/lib/units';
 import { labelForDay, useSession } from '@/state/session-store';
 
 /**
@@ -119,18 +123,25 @@ const ROW_STAGGER_LEAD = 150;
  *
  * A delta the guard refuses is spoken as a direction and printed as no figure
  * (`deltaSuspect`).
+ *
+ * **It carries the unit the reading above it carries.** Both figures in here are
+ * loads off the same record as the row's own number — a plateau weight and a
+ * move in estimated 1RM — so a row reading `est. 1RM 308 lb` over "up 16.5 kg"
+ * would be one lift quoted in two systems.
  */
-function detailOf(l: LiftRow): string {
+function detailOf(l: LiftRow, unit: WeightUnit): string {
   const count = `${l.sessions} ${l.sessions === 1 ? 'session' : 'sessions'}`;
-  const when = `last ${labelForDay(l.lastDay)}`;
+  // "last Today" is the same defect as "on Today": a relative word already
+  // says when, so `last` falls away with it (`lib/day-phrase.ts`).
+  const when = lastDayPhrase(labelForDay(l.lastDay));
   if (l.stalledAt != null) {
-    return `${STALL_SESSIONS} sessions at ${fmtNumber(l.stalledAt)} kg · ${when}`;
+    return `${STALL_SESSIONS} sessions at ${fmtNumber(displayLoad(l.stalledAt, unit))} ${unit} · ${when}`;
   }
   if (l.delta == null) return `${count} · ${when}`;
   if (l.deltaSuspect) {
     return `${l.direction === 'down' ? 'falling' : 'climbing'} · ${count} · ${when}`;
   }
-  return `${describeDelta(l.delta, 'kg', 'the first', fmtNumber)} · ${count} · ${when}`;
+  return `${describeDelta(displayLoad(l.delta, unit), unit, 'the first', fmtNumber)} · ${count} · ${when}`;
 }
 
 export default function Progress() {
@@ -151,6 +162,21 @@ export default function Progress() {
   const [query, setQuery] = useState('');
   const [importBusy, setImportBusy] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  /** The explainer behind `est. 1RM`. One sheet for the whole list — the copy
+   * does not vary by lift, so fifty rows do not need fifty of them. */
+  const [explainE1rm, setExplainE1rm] = useState(false);
+
+  /**
+   * The athlete's display unit, re-read on every focus alongside the record.
+   *
+   * The setting lives in You, which is a different tab, so coming back here is
+   * always a focus — the same synchronous meta read the rows already ride on,
+   * and no store to keep in step. Storage stays kilograms (`lib/units.ts`);
+   * this is a display concern and never touches what was written down.
+   */
+  /* eslint-disable react-hooks/exhaustive-deps */
+  const unit = useMemo<WeightUnit>(() => getWeightUnit() ?? 'kg', [refresh]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const handleEmptyImport = async () => {
     if (importBusy || !userId) return;
@@ -300,13 +326,25 @@ export default function Progress() {
                 name={l.canonical}
                 // A plateau is the app's one amber state, here as everywhere.
                 tone={l.stalledAt != null ? 'attention' : 'ink'}
-                detail={detailOf(l)}
-                value={l.latest != null ? fmtNumber(l.latest) : undefined}
-                unit={l.latest != null ? 'kg' : undefined}
+                detail={detailOf(l, unit)}
+                // THE READING SAYS WHAT IT IS (4 September 2026). It is an
+                // Epley estimate off the best counted set, and printed bare it
+                // was read as the load on the bar: somebody who benched 100
+                // saw 140 against their own lift and concluded the record was
+                // wrong. The label is small and the figure keeps its size —
+                // what changed is that the number is now named, and tapping it
+                // says where it comes from.
+                valueLabel={l.latest != null ? E1RM_LABEL : undefined}
+                value={l.latest != null ? fmtNumber(displayLoad(l.latest, unit)) : undefined}
+                unit={l.latest != null ? unit : undefined}
+                onValuePress={l.latest != null ? () => setExplainE1rm(true) : undefined}
+                valueActionLabel={E1RM_ACTION_LABEL}
                 spoken={[
                   l.canonical,
-                  l.latest != null ? `${fmtNumber(l.latest)} kilograms estimated one rep max` : 'no estimate yet',
-                  detailOf(l),
+                  l.latest != null
+                    ? `estimated one rep max, ${fmtNumber(displayLoad(l.latest, unit))} ${spokenUnit(unit)}`
+                    : 'no estimate yet',
+                  detailOf(l, unit),
                 ].join(', ')}
                 trailing={
                   l.spark.length > 1 ? (
@@ -353,6 +391,8 @@ export default function Progress() {
           <Icon name="chevron-forward" size={moderateScale(14)} tint={color.textSecondary} />
         </PressableScale>
       </ScrollView>
+
+      <E1rmSheet visible={explainE1rm} onClose={() => setExplainE1rm(false)} />
     </StubScreen>
   );
 }

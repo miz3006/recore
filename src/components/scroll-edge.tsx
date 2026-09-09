@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
     right: 0,
   },
   solid: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: color.canvas,
   },
   fade: {

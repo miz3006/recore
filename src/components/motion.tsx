@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Pressable,
+  StyleSheet,
   Text,
   type GestureResponderEvent,
   type PressableProps,
@@ -14,11 +15,12 @@ import Animated, {
   useSharedValue,
   withDelay,
   withTiming,
+  type AnimatedStyle,
 } from 'react-native-reanimated';
 
 import { selection, tap, tapMedium } from '@/lib/haptics';
-import { DUR, EASE, PRESS_SCALE, stagger } from '@/lib/motion';
-import { MAX_FONT_SCALE } from '@/lib/theme';
+import { DUR, EASE, PRESS, PRESS_SCALE, stagger } from '@/lib/motion';
+import { color, MAX_FONT_SCALE, radius } from '@/lib/theme';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -49,9 +51,37 @@ type PressableScaleProps = {
   children: React.ReactNode;
   onPress?: (e: GestureResponderEvent) => void;
   onLongPress?: (e: GestureResponderEvent) => void;
-  style?: StyleProp<ViewStyle>;
-  /** Extra style applied only while the finger is down (e.g. a fill wash). */
-  pressedStyle?: StyleProp<ViewStyle>;
+  /**
+   * The surface renders into an `Animated.Pressable`, so a caller may hand it
+   * a `useAnimatedStyle` handle as readily as a plain object. Reanimated 4.5
+   * stopped calling that handle a `ViewStyle` — it is an `AnimatedStyleHandle`
+   * now — so the prop has to say `AnimatedStyle<ViewStyle>` or every animated
+   * caller fails to typecheck.
+   */
+  style?: StyleProp<AnimatedStyle<ViewStyle>>;
+  /**
+   * Extra style applied only while the finger is down (e.g. a fill wash).
+   *
+   * **Prefer `wash`.** This one is a React state flip, so it costs a render on
+   * touch-down and another on lift, and it can only ever CUT between two
+   * states — it cannot fade. It stays for the dozen callers that swap a solid
+   * fill (the ink CTA, the provider buttons), where a hard cut is the intent.
+   */
+  pressedStyle?: StyleProp<AnimatedStyle<ViewStyle>>;
+  /**
+   * Darken the surface under the content while the finger is down — the row
+   * highlight, on the UI thread.
+   *
+   * This is what a bare RECORD row gets instead of a dip: the design skill's
+   * `surfaceHigh` fading up behind the content, so the paper takes the press
+   * and the ink never moves. It replaces the `opacity: 0.6` blink the ledger
+   * rows used to do, which faded the record itself out — the one thing on this
+   * page that must look permanent.
+   */
+  wash?: boolean;
+  /** Geometry of that wash — inset it, or round it differently. It defaults to
+   * the pressable's own box at `radius.md`. */
+  washStyle?: StyleProp<ViewStyle>;
   /** How far the surface dips on press. Bigger surfaces dip less. */
   activeScale?: number;
   /**
@@ -76,16 +106,63 @@ type PressableScaleProps = {
   accessibilityLabel?: string;
   accessibilityHint?: string;
   accessibilityState?: PressableProps['accessibilityState'];
+  /**
+   * Custom rotor actions, and how an element hides itself from VoiceOver.
+   *
+   * Both exist for the same shape: a SECOND action inside a surface that is
+   * already one accessible element. iOS merges a nested button away, so the
+   * inner control opts out of the tree (`accessible={false}` +
+   * `importantForAccessibility`) and the outer one publishes the action on the
+   * rotor instead. A finger gets a target, VoiceOver gets a verb, and the row
+   * is still read as one utterance.
+   */
+  accessibilityActions?: PressableProps['accessibilityActions'];
+  onAccessibilityAction?: PressableProps['onAccessibilityAction'];
+  accessible?: boolean;
+  importantForAccessibility?: PressableProps['importantForAccessibility'];
   testID?: string;
 };
 
-/** A Pressable that dips on touch with a spring — the base tactile unit. */
+/**
+ * A Pressable that takes the finger — the base tactile unit.
+ *
+ * ## One shared value, both faces, and no render (6 September 2026)
+ *
+ * `p` runs 0 → 1 on touch-down and back on lift, and everything the press does
+ * hangs off it: the dip, and the `wash` behind the content. It lives entirely
+ * on the UI thread, so the feedback lands in the frame the touch does no matter
+ * what the JS thread is busy with — and on this app's hottest screen the JS
+ * thread is genuinely busy, because the composer re-parses the note on every
+ * keystroke. A press that waits its turn behind a parse is the latency the
+ * fluid-interface rules call the cliff.
+ *
+ * The old shape re-rendered on `onPressIn` and again on `onPressOut` — a React
+ * state flip whose only job was to apply `pressedStyle`. That state now exists
+ * only when a caller actually passes `pressedStyle`; the wash path never
+ * renders at all.
+ *
+ * ## Asymmetric, and held
+ *
+ * In on `PRESS.in` (90 ms), out on `PRESS.out` (260 ms), never the same curve
+ * both ways — see the token. The release is also floored at
+ * `PRESS.minVisibleMs` from touch-down, so a fast tap gets the same feedback a
+ * slow one does rather than a subliminal flicker.
+ *
+ * ## Reduce Motion keeps the press
+ *
+ * It drops the DIP and keeps the WASH. Less motion is not no feedback: a
+ * surface that answers a touch with nothing at all reads as a dead control, and
+ * a fill fading up in place is not vestibular. (Before this, Reduce Motion
+ * removed every trace of press feedback from every button in the app.)
+ */
 export function PressableScale({
   children,
   onPress,
   onLongPress,
   style,
   pressedStyle,
+  wash,
+  washStyle,
   activeScale = PRESS_SCALE,
   haptic = 'light',
   disabled,
@@ -95,10 +172,19 @@ export function PressableScale({
   ...a11y
 }: PressableScaleProps) {
   const reduce = useReducedMotion();
-  const scale = useSharedValue(1);
+  const p = useSharedValue(0);
+  // Only mounted for the legacy `pressedStyle` path — see the prop's note.
   const [pressed, setPressed] = useState(false);
+  const downAt = useRef(0);
 
-  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
+  // Resolved on the JS side and captured as a plain number: a worklet may read
+  // a closed-over value, never call a helper to compute one.
+  const dip = reduce ? 0 : 1 - activeScale;
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 - dip * p.get() }],
+  }));
+  const washAnimatedStyle = useAnimatedStyle(() => ({ opacity: p.get() }));
 
   return (
     <AnimatedPressable
@@ -110,14 +196,18 @@ export function PressableScale({
       delayLongPress={delayLongPress}
       onLayout={onLayout}
       onPressIn={() => {
-        setPressed(true);
+        downAt.current = Date.now();
+        if (pressedStyle) setPressed(true);
         // Same frame as the dip. See the `haptic` prop's note.
         if (haptic === 'selection') selection();
-        if (!reduce) scale.set(withTiming(activeScale, PRESS_TIMING));
+        p.set(withTiming(1, PRESS.in));
       }}
       onPressOut={() => {
-        setPressed(false);
-        if (!reduce) scale.set(withTiming(1, PRESS_TIMING));
+        if (pressedStyle) setPressed(false);
+        // Hold the press at depth until it has actually been seen.
+        const held = Date.now() - downAt.current;
+        const wait = Math.max(0, PRESS.minVisibleMs - held);
+        p.set(withDelay(wait, withTiming(0, PRESS.out)));
       }}
       onPress={(e) => {
         if (haptic === 'light') tap();
@@ -127,24 +217,35 @@ export function PressableScale({
       onLongPress={onLongPress}
       style={[animatedStyle, style, pressed ? pressedStyle : null]}
       {...a11y}>
+      {/* Behind the content and out of the flex flow, so a row's own columns
+          are laid out as if it were not here, and the ink paints over it. */}
+      {wash ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.wash, washStyle, washAnimatedStyle]}
+        />
+      ) : null}
       {children}
     </AnimatedPressable>
   );
 }
 
-/**
- * 120 ms on the emphasized ease, NOT a spring.
- *
- * This is the most frequent animation in the app, so it has to be
- * near-imperceptible: at 120 ms the only part of a spring anyone can see is its
- * settle, and `SPRING.press` is underdamped enough (dampingRatio ~0.58) that
- * the settle is a small wobble on release. A curve this short cannot overshoot,
- * and two shared-value writes per press is the whole cost — nothing re-renders,
- * nothing runs per frame.
- */
-const PRESS_TIMING = { duration: DUR.press, easing: EASE.emphasized } as const;
-
 const PRESS_RETENTION = 16;
+
+const styles = StyleSheet.create({
+  /** The row highlight: the design system's one pressed-state fill
+   * (`surfaceHigh`, canvas × 0.96), faded up rather than cut in. */
+  wash: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: color.surfaceHigh,
+    borderRadius: radius.md,
+    borderCurve: 'continuous',
+  },
+});
 
 /** Fade + rise on mount — the one reveal used everywhere. `layout` (optional)
  * forwards a Reanimated layout transition so a list can also reflow smoothly
