@@ -4,11 +4,14 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { MetricCard } from '@/components/progression/metric-card';
 import { StubScreen } from '@/components/stub-screen';
+import { lastDayPhrase } from '@/lib/day-phrase';
 import { shiftDayKey, todayKey } from '@/lib/db/dates';
 import { getLiftSessions } from '@/lib/db/progression';
 import { tap } from '@/lib/haptics';
-import { buildMetrics, sessionsFor } from '@/lib/progression-metrics';
+import { getWeightUnit } from '@/lib/prefs';
+import { buildMetrics, seriesInUnit, sessionsFor } from '@/lib/progression-metrics';
 import { MAX_FONT_SCALE, color, spacing, type } from '@/lib/theme';
+import { type WeightUnit } from '@/lib/units';
 import { labelForDay, useSession } from '@/state/session-store';
 
 /**
@@ -53,12 +56,28 @@ export default function LiftProgress() {
     () => (key ? sessionsFor(rows, key, fromDay) : []),
     [rows, key, fromDay],
   );
-  const metrics = useMemo(() => buildMetrics(sessions), [sessions]);
+  /**
+   * The athlete's display unit, re-read on the same focus as the record.
+   *
+   * `seriesInUnit` is the LAST step and the only one that knows about pounds:
+   * the cards, the sub-labels and the charts all read off the converted series,
+   * so the level-two screen can never quote a lift in a different system than
+   * the row that pushed it (`(tabs)/progress.tsx`). Storage stays kilograms.
+   */
+  /* eslint-disable react-hooks/exhaustive-deps */
+  const unit = useMemo<WeightUnit>(() => getWeightUnit() ?? 'kg', [refresh]);
+  /* eslint-enable react-hooks/exhaustive-deps */
+  const metrics = useMemo(
+    () => buildMetrics(sessions).map((m) => seriesInUnit(m, unit)),
+    [sessions, unit],
+  );
 
   const canonical = sessions[0]?.canonical ?? key ?? 'Lift';
   const last = sessions[sessions.length - 1];
   const subtitle = last
-    ? `${sessions.length} ${sessions.length === 1 ? 'session' : 'sessions'} · last ${labelForDay(last.day)}`
+    ? `${sessions.length} ${sessions.length === 1 ? 'session' : 'sessions'} · ${lastDayPhrase(
+        labelForDay(last.day),
+      )}`
     : undefined;
 
   return (

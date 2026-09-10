@@ -72,7 +72,10 @@ import { ENTER_MS, RISE_PX } from './tokens';
  * Where the rise starts. Never `scale(0)` or a long throw — 12 pt is the
  * distance that reads as "this settled into place" rather than as travel.
  */
-const FROM = { opacity: 0, transform: [{ translateY: RISE_PX }] } as const;
+const FROM: { opacity: number; transform: [{ translateY: number }] } = {
+  opacity: 0,
+  transform: [{ translateY: RISE_PX }],
+};
 
 /** True while the screen is still arriving. Default true so an `Enter` used
  * outside a provider behaves exactly as it always did. */

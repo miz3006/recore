@@ -138,12 +138,15 @@ test('marks are a per-screen decision — a list is all or none', () => {
   }
 });
 
-test('exactly two screens carry a leading mark, and they are the expected two', () => {
+test('exactly three screens carry a leading mark, and they are the expected three', () => {
   const withMarks = FLOW.filter((screen) => (screen.options ?? []).some((o) => o.icon)).map(
     (s) => s.id,
   );
-  // 4 attribution (brand marks) · 18 recap (time of day).
-  assert.deepEqual(withMarks.sort(), ['attribution', 'recap']);
+  // 2 tracker (objects a record lives in) · 5 attribution (brand marks) ·
+  // 20 recap (time of day). Screen 2 joined them on 9 Sep 2026 when the flow
+  // moved to SF Symbols; the other seventeen screens still carry none, and the
+  // test below is the list of why.
+  assert.deepEqual(withMarks.sort(), ['attribution', 'recap', 'tracker']);
 });
 
 test('an opt-out never carries a mark — it is outside the family by definition', () => {
@@ -155,8 +158,15 @@ test('an opt-out never carries a mark — it is outside the family by definition
   }
 });
 
+/**
+ * The rule survived the move to SF Symbols and it is the reason the icon pass
+ * of 9 Sep 2026 stopped where it did. A system symbol solves centring, tinting
+ * and visual weight; it does not make "Two", "6 months to 2 years" or "Both"
+ * into things a picture can denote. A mark invented to fill a slot is
+ * decoration, and decoration is what the whole glyph rule exists to keep out.
+ */
 test('numbers, durations and abstract states carry no mark at all', () => {
-  for (const id of ['frequency', 'experience', 'goal', 'split', 'obstacles', 'lifts', 'tracker']) {
+  for (const id of ['frequency', 'experience', 'goal', 'split', 'obstacles', 'lifts']) {
     const screen = FLOW.find((s) => s.id === id);
     if (!screen) continue;
     for (const option of screen.options ?? []) {

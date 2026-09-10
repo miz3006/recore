@@ -43,9 +43,16 @@ export function dayRangeIso(key: DayKey): [string, string] {
 }
 
 const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+const WEEKDAYS_LONG = [
+  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+] as const;
 const MONTHS_SHORT = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const;
+const MONTHS_LONG = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
 ] as const;
 
 /**
@@ -59,6 +66,40 @@ export function shortDayLabel(key: DayKey): string {
   const [y, m, d] = key.split('-').map(Number);
   const date = new Date(y!, m! - 1, d!);
   return `${WEEKDAYS_SHORT[date.getDay()]} ${d} ${MONTHS_SHORT[(m ?? 1) - 1]}`;
+}
+
+/**
+ * "14 Jul" — a day with no weekday on it, for an AXIS rather than a memory.
+ *
+ * `shortDayLabel` above puts the weekday first because a past session is
+ * remembered as "that Friday". A chart's axis is the opposite problem: the
+ * label sits under a column in a row of eight, it is read as a position on a
+ * timeline rather than as a day, and the weekday is three characters of noise
+ * competing for width that Dynamic Type will want back.
+ */
+export function monthDayLabel(key: DayKey): string {
+  const [, m, d] = key.split('-').map(Number);
+  return `${d} ${MONTHS_SHORT[(m ?? 1) - 1]}`;
+}
+
+/**
+ * "Tuesday, 9 September" — the DATELINE under Today's title, and the only place
+ * in the app a day is spelled out in full.
+ *
+ * The title above it carries the relative word ("Today", "Yesterday"), which is
+ * the half a person navigates by; this is the half they need when the relative
+ * word has stopped being enough — which day of the week was that, and what was
+ * the date. Day One prints exactly this pair over a journal entry, and Apple
+ * Notes prints the same thing one size down under a note's title.
+ *
+ * The year appears only when it is not the current one: a dateline that says
+ * 2026 every day of 2026 is a field nobody reads.
+ */
+export function longDayLabel(key: DayKey): string {
+  const [y, m, d] = key.split('-').map(Number);
+  const date = new Date(y!, m! - 1, d!);
+  const year = y === new Date().getFullYear() ? '' : ` ${y}`;
+  return `${WEEKDAYS_LONG[date.getDay()]}, ${d} ${MONTHS_LONG[(m ?? 1) - 1]}${year}`;
 }
 
 /** The stored performed_at instant for a day: local noon, expressed in UTC. */

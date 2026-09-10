@@ -64,6 +64,69 @@ Three layers and no more: **canvas (world) → ink text (the record) → white p
   2026 and the owner confirmed on 20 August that it stays out; the bottom of Today belongs to
   the keyboard alone.)
 
+## Material: Liquid Glass, and where it is allowed to be
+
+**Glass is the material of chrome that floats OVER content. The record is never glass.**
+(Owner, 9 September 2026 — *"redesign my app to have it iOS 26 native liquid glass design"*.)
+
+This does not add a fourth layer; it names what the third one is made of. The three layers above
+are unchanged — canvas (world) → ink record (the facts) → floating pills (the controls) — and the
+ruling settles only the last: **the white pills are Liquid Glass on iOS 26**, the app's warm paper
+everywhere else. It is also Apple's own rule for the material, which is why the two systems agree:
+Liquid Glass is a layer *above* the content layer, and an app that puts it on everything has no
+layers left to distinguish.
+
+**Glass, because these float over something that moves under them:** the scroll-edge header, the
+day pill, the accessory row over the keyboard (timer · mic · hide-keyboard) and its status pill,
+the quiet pinned bar on Next, and the system tab bar (already native `UITabBarController`).
+
+**Not glass, and each for a stated reason:**
+
+| Surface | Why it stays what it is |
+|---|---|
+| Every record row | It is the fact itself. Bare ink on paper, no card, nothing refracting a number. |
+| `Card`, settings rows, option rows | Resting surfaces, not floating over anything. Glass here is the glassmorphism-on-everything look, and it destroys the layering it is meant to express. |
+| Bottom sheets | Apple's guidance is explicit: not for large background surfaces. A sheet is content, and it sits over a scrim that would come through it. |
+| Any CTA with a WHITE label — the brand-blue primary, Next's green Start | **White on glass has no measured contrast ratio, because glass has no fixed colour.** The measured numbers in §Colour are facts about `brand` and `signal`, and they survive only while those fills are what is actually behind the label. A filled CTA keeps its fill. |
+| Coach marks, the spotlight card | Content over a dimmed screen, not chrome over live content. |
+
+**Sheets float, and the numbers are UIKit's.** A bottom sheet is a card with air on three sides —
+**`spacing.sm` left, right and below** — with all four corners at `radius.xl` and no stroke. Those
+are not taste: they were read off a real `UISheetPresentationController` on the iOS 26.5 simulator
+(8.00 / 8.33 / 8.33 pt), which is what iOS 26 itself draws. The pre-iOS-26 full-width panel is the
+wrong reference and design libraries are still full of it. The card does **not** clear the home
+indicator with air — it stops 8 pt off the screen edge and pays the clearance as padding inside,
+exactly as the system sheet does. One grabber, 36 × 5, `ink.grabber`, 5 pt from the top, drawn by
+the sheet — a caller never brings its own.
+
+Rules that come with the material:
+
+- **No tint, with one named exception.** Glass recolours itself against whatever is behind it and
+  offers no callback, so a fixed hex goes illegible over some content. The exception is a filled
+  primary CTA, whose ground is its own fill — the one case where the colour under the glass is
+  known because we drew it.
+- **It is pinned to light.** The app is `userInterfaceStyle: "light"`; glass defaults to following
+  the *system* appearance, which would render dark glass on a cream app whenever the phone is in
+  dark mode. Every surface passes `colorScheme="light"`.
+- **Reduce Transparency is honoured, live.** `isLiquidGlassAvailable()` stays true when the user
+  has turned the effect down — it reports the component, not the setting — so the setting is read
+  and subscribed to separately.
+- **The fallback is the app's own material, not a degraded glass**, and it is the SAME SHAPE. White
+  `surface`, a hairline and `shadow.card`; identical layout, so a screen designed on one reads
+  correctly on the other and nothing reflows when the setting changes.
+- **Merging is meaning.** Glass shapes inside a `GlassGroup` within `GLASS_MERGE_DISTANCE` flow into
+  one another. Group controls that genuinely belong together; a merge across unrelated controls is
+  a lie about them.
+- **The material is always a LAYER BEHIND the control, never a wrapper around it.** A native
+  `GlassView` does not deliver touches to its React children, so a control built as
+  `<GlassView><Pressable/></GlassView>` is a dead control — verified on device, 9 Sep 2026, when
+  the day pill stopped opening the calendar. iOS 26's interactive lens (`isInteractive`) needs
+  exactly that forbidden nesting, so **the lens is unreachable from React Native and the app does
+  not have it.** The press dip is the feedback. Use `GlassPressable`, which does the layering for
+  you.
+- **Nothing is hand-rolled.** Every surface comes from `src/components/glass.tsx`. A raw `GlassView`
+  or `GlassContainer` at a call site misses the crash guard, the light pin and the fallback.
+
 ## Colour
 
 **One brand blue does every job Amy gives violet:** primary CTA, selected states and their check

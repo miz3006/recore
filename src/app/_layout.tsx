@@ -9,7 +9,7 @@ import { ExerciseSheet } from '@/components/exercise-sheet';
 import { SessionSheet } from '@/components/session-sheet';
 import { AuthProvider, useAuth } from '@/lib/auth/provider';
 import { initCrashReporting, wrapRoot } from '@/lib/crash';
-import { color, loadReadingFont } from '@/lib/theme';
+import { color, loadReadingFont, radius } from '@/lib/theme';
 
 // Hold the splash until the persisted session is restored from the Keychain —
 // the user never sees a sign-in flash when they're already signed in.
@@ -88,7 +88,7 @@ function RootNavigator() {
   // The app needs a real account — even in development. The paywall's DEV·SKIP
   // chip only jumps the purchase screen; it still lands on sign-in, because a
   // no-account mode leaves the parser (JWT-gated, §7.3) permanently dead.
-  const signedIn = true; // SIMPASS
+  const signedIn = session !== null;
 
   return (
     <>
@@ -113,9 +113,9 @@ function RootNavigator() {
         {/* THE FUNNEL'S PAYWALL since 28 Aug 2026 (owner's ruling), and a
             nested stack of its own (`paywall-v2/_layout.tsx`) like the flow it
             continues, so the root names the DIRECTORY. `paywall` below is the
-            illustrated screen it replaced: still working, still reachable from
-            the You tab's development rows, and outside the guard for the same
-            reason — the account is the funnel's last step, not its first. */}
+            illustrated screen it replaced: still working, still registered, but
+            without a door since 31 August 2026 — and outside the guard for the
+            same reason — the account is the funnel's last step, not its first. */}
         <Stack.Screen name="paywall-v2" />
         <Stack.Screen name="paywall" />
         {/* Terms / Privacy / How parsing works. OUTSIDE the guard on purpose:
@@ -147,6 +147,72 @@ function RootNavigator() {
               talks about its training. */}
           <Stack.Screen name="aliases" />
           <Stack.Screen name="health" />
+          {/* The end-of-session check-in (§8.1), as a real UIKit form sheet.
+              Behind the guard because it writes into the account's own record,
+              and on the ROOT stack rather than inside `(tabs)` so the one push
+              works from Today, from the ledger and from anywhere later.
+
+              THE DETENTS ARE [0.6, 1]. The content is a fixed head, a scroll
+              that grows by one row per unrated lift, and a fixed footer, so
+              `fitToContents` is out — it forbids the `flex: 1` the scroll
+              needs. 0.6 opens on the question, the first lift and the top of
+              the reflection field; 1 is the system's own large detent, which
+              already insets from the top (the sheet's old `maxHeight: '92%'`
+              here would stack our inset on UIKit's and show a gap). Two
+              detents, so the config is valid on Android's max of three.
+
+              No header: native stack headers are unsupported inside a form
+              sheet, and this one has carried its own title, × and Skip since
+              the day it was drawn. `headerShown: false` is the root default
+              anyway.
+
+              `contentStyle` paints the sheet `color.surface` — the same warm
+              near-white the sheet has always been, and the thing that keeps
+              UIKit's system grey and its translucent material off the
+              canvas. */}
+          <Stack.Screen
+            name="check-in"
+            options={{
+              presentation: 'formSheet',
+              /* `fitToContents`, NOT [0.6, 1] (9 September 2026).
+                 Fixed detents needed the content to fill a height the container
+                 was supposed to hand down, and measured on the iOS 26.5
+                 simulator it never handed one down: with `onLayout` printed onto
+                 the sheet, every view inside reported height 0 — root, head,
+                 scroll and footer — so each drew from the sheet's top edge and
+                 the question, the lifts and the button landed on top of one
+                 another. That is the "razkosano" sheet, and `contentStyle:
+                 { flex: 1 }` did not fix it; the same screen presented
+                 full-screen measured 874 / 86 / 582 / 81 and was perfect, which
+                 is what proves the presentation was the cause.
+                 So the direction is reversed. The content is measured and the
+                 sheet is sized to it, which is the path that works and the
+                 better sheet besides: a one-lift session gets a short sheet and
+                 an eight-lift session a tall one, instead of both getting 60%
+                 and one of them being mostly empty. The content it measures is
+                 one ScrollView holding everything, which is the other half of
+                 the fix — `check-in-sheet.tsx` says why a form sheet will not
+                 share that view with a fixed head and footer. */
+              sheetAllowedDetents: 'fitToContents',
+              sheetGrabberVisible: true,
+              /* NO `sheetCornerRadius` ON PURPOSE (9 September 2026).
+                 It used to ask for `radius.xl` (24). Dropping the prop and
+                 measuring what UIKit chooses for itself on the iOS 26.5
+                 simulator gave a corner roughly THREE TIMES that — iOS 26 rounds
+                 a floating sheet concentrically with the display, and 24 was
+                 overriding that with a tighter, wronger number on the one sheet
+                 the app had already made native. The system's value also moves
+                 with the device for free, which a constant never will. */
+              /* NO `flex: 1` HERE ANY MORE. It was added to give the sheet's
+                 root something to resolve against and it did not work — see the
+                 detents note above. With `fitToContents` the content sizes
+                 itself, so a stretch instruction on the container is at best
+                 inert and at worst another thing measuring zero. What is left is
+                 the paint: `color.surface` keeps UIKit's system grey and its
+                 translucent material off the warm sheet. */
+              contentStyle: { backgroundColor: color.surface },
+            }}
+          />
         </Stack.Protected>
 
         {/* Sign-in is the LAST step of the funnel; gone once you're in. */}

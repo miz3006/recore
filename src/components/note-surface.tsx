@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
   FadeIn,
@@ -18,6 +18,7 @@ import { tap, tapMedium } from '@/lib/haptics';
 import { DUR, SPRING } from '@/lib/motion';
 import { namesMatch, typedNameOf, type ReceiptRow } from '@/lib/parse/receipt';
 import { doneKeyFor } from '@/lib/parse/summarize';
+import { PAPER_FIELD_CSS } from '@/lib/paper-field';
 import {
   COMPOSER_HINT_SESSIONS,
   hasCoachRingDone,
@@ -27,11 +28,22 @@ import {
   markComposerHintDone,
 } from '@/lib/prefs';
 import { reflectionTagLine, splitReflection } from '@/lib/reflection';
-import { color, FIXED_FONT_SCALE, HIT, lineFor, MAX_FONT_SCALE, moderateScale, readingStyle, spacing } from '@/lib/theme';
+import {
+  color,
+  FIXED_FONT_SCALE,
+  HIT,
+  lineFor,
+  MAX_FONT_SCALE,
+  moderateScale,
+  readingStyle,
+  spacing,
+  TAB_BAR_CLEARANCE,
+} from '@/lib/theme';
 import { useCurrentNote, useSession } from '@/state/session-store';
 
+import { DaySwipe } from './day-swipe';
 import { EntryActionsSheet, joinNames, type EntryAction } from './entry-actions-sheet';
-import { comparisonOf, PrLabel, ReadingMark, ReadingSweep } from './gutter-value';
+import { comparisonOf, PrLabel, ReadingLine, ReadingMark, ReadingSweep } from './gutter-value';
 import { Icon } from './icon';
 import { PressableScale } from './motion';
 import { BODY_PADDING_H, BODY_PADDING_TOP } from './note-metrics';
@@ -86,7 +98,21 @@ function aliasEchoOf(rawLine: string, canonical: string): string | null {
   return typed && !namesMatch(typed, canonical) ? typed : null;
 }
 
-export function NoteSurface() {
+export function NoteSurface({
+  /**
+   * What the page opens with, above the record: Today passes the dateline and
+   * the weekly line. It travels with the day (inside `DaySwipe`) because it
+   * describes the day, and it scrolls away under the system's collapsing title
+   * because it is content — the whole point of moving Today onto the navigator
+   * was that a page has no lid.
+   */
+  header,
+  /** Day-to-day swiping, off while the keyboard is up (`DaySwipe`). */
+  daySwipeEnabled = false,
+}: {
+  header?: React.ReactNode;
+  daySwipeEnabled?: boolean;
+} = {}) {
   const note = useCurrentNote();
   const setNote = useSession((s) => s.setNote);
   const receipt = useSession((s) => s.receipt);
@@ -252,10 +278,32 @@ export function NoteSurface() {
     return getLastSessionPrefill(userId, v, workoutId);
   }, [activeValue, userId, workoutId]);
 
+  /**
+   * SCROLL TO THE END ONLY WHEN THERE IS AN END TO SCROLL TO (9 September 2026).
+   *
+   * `contentContainerStyle.flexGrow: 1` makes the page at least as tall as the
+   * scroll view's FRAME — which is what keeps the blank canvas tappable from
+   * top to bottom — while the keyboard's inset shrinks the visible window by
+   * ~340 pt. `scrollToEnd` measures against content plus insets, so on a page
+   * with nothing on it there is still a 450 pt "end" to travel to, and asking
+   * for it threw the composer up under the navigation bar. Photographed on the
+   * simulator: an empty note, tapped, with "Write your training…" half behind
+   * the glass and the dateline gone.
+   *
+   * So the two sizes are measured and the scroll only happens when the content
+   * genuinely overflows. A page that fits does not move, which is also what
+   * Apple Notes does when you tap a blank note.
+   */
+  const contentH = useRef(0);
+  const viewH = useRef(0);
+  const scrollToEndIfLong = (animated: boolean) => {
+    if (contentH.current > viewH.current + 1) noteScrollRef.current?.scrollToEnd({ animated });
+  };
+
   const settleActive = (line: string) => {
     // The committed line settles above; a fresh empty line becomes the input.
     setNote([...lines.slice(0, activeIndex), line, ''].join('\n'));
-    requestAnimationFrame(() => noteScrollRef.current?.scrollToEnd({ animated: !reduceMotion }));
+    requestAnimationFrame(() => scrollToEndIfLong(!reduceMotion));
   };
 
   const acceptPrefill = () => {
@@ -297,6 +345,11 @@ export function NoteSurface() {
   };
 
   let settledCards = 0; // the coach hint only speaks once there is a card to work
+  /** Rank among the lines currently being READ — what staggers their beams so a
+   * dump is analysed top to bottom instead of all at once (`ReadingSweep`). It
+   * counts pending cards, not physical lines: a page with two settled entries
+   * and one pending line has ONE beam, and it starts immediately. */
+  let pendingOrder = 0;
   for (let i = 0; i < activeIndex; i++) {
     const raw = lines[i] ?? '';
     if (!raw.trim()) continue;
@@ -385,6 +438,7 @@ export function NoteSurface() {
         <PendingCard
           key={`p:${i}`}
           text={raw.trim()}
+          order={pendingOrder++}
           reduceMotion={reduceMotion}
           onPress={() => {
             tap();
@@ -464,14 +518,53 @@ export function NoteSurface() {
 
   return (
     <>
+    {/* THE SCROLL VIEW IS THE SCREEN'S ROOT, and that is load-bearing rather
+        than tidy: `app/(tabs)/today/_layout.tsx` explains what UIKit does with
+        it (the collapsing large title, the glass bar, the tab-bar minimize) and
+        what it cannot do without it. Everything that used to sit in a row above
+        this — the wordmark, the day pill, the weekly line — is either a bar
+        button or content inside it now. */}
     <ScrollView
       ref={noteScrollRef}
       style={styles.body}
       contentContainerStyle={styles.content}
+      // `automatic` hands the insets to the system: the large title's height,
+      // the safe area and the tab bar are UIKit's arithmetic now, not ours.
+      contentInsetAdjustmentBehavior="automatic"
+      /**
+       * THE KEYBOARD IS UIKIT'S TOO (9 September 2026).
+       *
+       * Today used to wrap the whole page in a `KeyboardAvoidingView`, which
+       * measures the keyboard in JavaScript and pads a container to match. It
+       * cannot be frame-accurate — the padding lands a frame or two after the
+       * keyboard, which is the small shear you see under a cursor when a note
+       * app is not native — and it needed the page NOT to be a root scroll
+       * view, which is the one thing this page now has to be.
+       *
+       * `automaticallyAdjustKeyboardInsets` is the same job done by the
+       * scroll view itself: content inset and indicator inset track the
+       * keyboard on the UI thread, and the line being written stays visible
+       * without anything in React knowing the keyboard exists.
+       */
+      automaticallyAdjustKeyboardInsets
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
+      // Both sizes, so `scrollToEndIfLong` can tell a page that overflows from
+      // one that only looks like it does (see the note on that helper).
+      onLayout={(e) => {
+        viewH.current = e.nativeEvent.layout.height;
+      }}
+      onContentSizeChange={(_w, h) => {
+        contentH.current = h;
+      }}
       showsVerticalScrollIndicator={false}>
+      {/* Swipe left/right to move between days — the thumb's own shortcut to
+          yesterday. It lives inside the scroll view now (see above) and is
+          disabled while the keyboard is up: mid-sentence a horizontal drag is
+          the user placing a cursor, not asking for another day. */}
+      <DaySwipe enabled={daySwipeEnabled}>
       <Pressable style={styles.fill} onPress={focusInput}>
+        {header}
         {blocks}
 
         {/* The session's check-in, printed where the session's lifts end.
@@ -488,18 +581,22 @@ export function NoteSurface() {
             words are written. */}
         {reflection ? (
           <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(220)}>
-            <Pressable
+            <PressableScale
               onPress={() => {
                 tap();
                 Keyboard.dismiss(); // the check-in brings its own field
                 openCheckIn();
               }}
+              haptic="none"
+              activeScale={ROW_SCALE}
+              wash
+              washStyle={styles.rowWash}
               accessibilityRole="button"
               accessibilityLabel={`Your note about this session: ${[reflection.tags, reflection.text]
                 .filter((part) => part.length > 0)
                 .join('. ')}`}
               accessibilityHint="Opens the check-in to edit it"
-              style={({ pressed }) => [styles.reflectNote, pressed && styles.cardPressed]}>
+              style={styles.reflectNote}>
               {reflection.tags.length > 0 ? (
                 <Text style={styles.reflectTags} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                   {reflection.tags}
@@ -510,7 +607,7 @@ export function NoteSurface() {
                   {reflection.text}
                 </Text>
               ) : null}
-            </Pressable>
+            </PressableScale>
           </Animated.View>
         ) : null}
 
@@ -551,9 +648,13 @@ export function NoteSurface() {
               value={activeValue}
               onChangeText={setActive}
               onSubmitEditing={commit}
-              onFocus={() =>
-                requestAnimationFrame(() => noteScrollRef.current?.scrollToEnd({ animated: true }))
-              }
+              /**
+               * NO SCROLL ON FOCUS. It was here to compensate for the
+               * `KeyboardAvoidingView` that used to wrap this page; with
+               * `automaticallyAdjustKeyboardInsets` the scroll view brings its
+               * own first responder into view, on the UI thread, which is the
+               * whole reason that prop replaced the wrapper.
+               */
               placeholder={empty ? PLACEHOLDER : NEXT_PLACEHOLDER}
             />
             {/* Live read-out of what you're typing — the parse, before you commit. */}
@@ -579,14 +680,21 @@ export function NoteSurface() {
               // Last session's real sets — a dim record read to accept verbatim
               // (tap or return) or overwrite by typing your own numbers.
               <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(180)}>
-                <Pressable onPress={acceptPrefill} hitSlop={spacing.xs} style={styles.prefillRow}>
+                <PressableScale
+                  onPress={acceptPrefill}
+                  haptic="none"
+                  hitSlop={spacing.xs}
+                  activeScale={ROW_SCALE}
+                  wash
+                  washStyle={styles.rowWash}
+                  style={styles.prefillRow}>
                   <Text
                     style={styles.prefillReading}
                     numberOfLines={1}
                     maxFontSizeMultiplier={MAX_FONT_SCALE}>
                     {lastPrefill.reading}
                   </Text>
-                </Pressable>
+                </PressableScale>
                 <Text style={styles.previewHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                   last session · return to log the same
                 </Text>
@@ -595,15 +703,26 @@ export function NoteSurface() {
               // THE COMPOSER'S VALUE COLUMN. There are no committed words here
               // for a light to pass under — the line is still in the field
               // above, and moving anything under a cursor mid-sentence is the
-              // one thing §14 rules out outright. So the working mark alone
-              // waits in the column the live read-out prints its value in, and
-              // the answer takes its place without moving.
+              // one thing §14 rules out outright. So the working mark waits in
+              // the column the live read-out prints its value in, and the
+              // answer takes its place without moving.
+              //
+              // The BLUE LINE joins it (9 September 2026) and does not break
+              // that rule, because it is under the FIELD rather than under the
+              // cursor: nothing the athlete has written moves, is dimmed, or is
+              // crossed. It is the same mark the settled row wears while it is
+              // being read, so the working state looks the same wherever the
+              // athlete happens to be looking.
               <Animated.View
                 entering={reduceMotion ? undefined : FadeIn.duration(180)}
-                style={styles.previewPending}
                 accessibilityRole="progressbar"
                 accessibilityLabel="reading, in progress">
-                <ReadingMark />
+                <View style={styles.composerLine}>
+                  <ReadingLine />
+                </View>
+                <View style={styles.previewPending}>
+                  <ReadingMark />
+                </View>
               </Animated.View>
             ) : null}
           </Animated.View>
@@ -633,19 +752,23 @@ export function NoteSurface() {
             once there is a note it stops asking, because the answer is in. */}
         {showReflectionRow ? (
           <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(220)}>
-            <Pressable
+            <PressableScale
               onPress={() => {
                 tap();
                 Keyboard.dismiss(); // the check-in brings its own field
                 openCheckIn();
               }}
+              haptic="none"
+              activeScale={ROW_SCALE}
+              wash
+              washStyle={styles.rowWash}
               accessibilityRole="button"
               accessibilityLabel="Add a note about this session"
-              style={({ pressed }) => [styles.reflectRow, pressed && styles.cardPressed]}>
+              style={styles.reflectRow}>
               <Text style={styles.reflectText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 Add a note about this session
               </Text>
-            </Pressable>
+            </PressableScale>
           </Animated.View>
         ) : null}
 
@@ -667,6 +790,7 @@ export function NoteSurface() {
             below the line must not be dead space. */}
         {canvas ? <View style={styles.canvasBottom} /> : null}
       </Pressable>
+      </DaySwipe>
     </ScrollView>
 
     {/* The ⋯ sheet. It delivers the chosen action only once its own modal is
@@ -807,15 +931,20 @@ export function ExerciseCard({
     <Animated.View
       entering={reduceMotion ? undefined : FadeInDown.duration(220).delay(Math.min(order, 6) * 20)}
       style={styles.card}>
-      {/* The check is its own tap target: done ↔ not-done, never deletes. */}
-      <Pressable
+      {/* The check is its own tap target: done ↔ not-done, never deletes.
+          It DIPS rather than washing: the target is a 22 pt ring, and a grey
+          box fading up around a circle would read as a button appearing under
+          it. A ring that takes the finger is the whole feedback it needs. */}
+      <PressableScale
         onPress={onToggle}
-        hitSlop={spacing.sm}
+        haptic="none"
+        activeScale={0.88}
+        hitSlop={MARK_HIT}
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done }}
         style={styles.rail}>
         <AnimatedCheck done={done} reduceMotion={reduceMotion} />
-      </Pressable>
+      </PressableScale>
       {/* The body edits the line; everything else lives behind the visible ⋯
           (owner, 6 Aug — the long-press it replaces was a gesture nobody could
           see). While the written words are showing, a tap puts them away again
@@ -825,10 +954,20 @@ export function ExerciseCard({
         onLongPress={onToggleWords}
         haptic="none"
         activeScale={0.98}
+        wash
+        washStyle={styles.bodyWash}
         accessibilityHint={showWords ? 'Shows the reading again' : 'Long press to show your words'}
-        style={styles.cardBody}
-        pressedStyle={styles.cardPressed}>
+        style={styles.cardBody}>
+        {/* THE ⋯ SITS ON THE NAME'S OWN ROW (9 September 2026), which is the
+            29 August ruling the pending card already carries, finally applied
+            to the card it settles into. Measured before the change: the glyph's
+            optical centre was **7.1 pt below the ring's** and 9.1 pt below the
+            name's, because a 36 pt button top-aligned to a card five sets tall
+            centres on nothing. Inside this row it centres on the line it is
+            about — and the body reclaims the 44 pt the side column was holding,
+            which is what stopped "Triceps Pushdown" truncating at 17 pt. */}
         <View style={styles.cardHead}>
+          <View style={styles.headText}>
           <Text
             style={[styles.exName, !done && styles.exNameUndone]}
             numberOfLines={1}
@@ -838,8 +977,10 @@ export function ExerciseCard({
           {alias ? (
             // The echoed word is the auto-fix made visible — tapping it opens
             // the correction sheet, so a wrong guess is one tap from repaired.
-            <Pressable
+            <PressableScale
               onPress={onFix}
+              haptic="none"
+              activeScale={0.94}
               hitSlop={spacing.sm}
               accessibilityRole="button"
               accessibilityLabel={`Recore read “${alias}” as ${row.exercise}. Fix reading`}
@@ -850,9 +991,27 @@ export function ExerciseCard({
                 maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 · “{alias}”
               </Text>
-            </Pressable>
+            </PressableScale>
           ) : null}
           {isPr ? <PrLabel animate /> : null}
+          </View>
+          {/* The card's one visible door (owner, 11 Aug 2026): everything
+              per-entry lives behind it — fix reading, note, history, delete. */}
+          <PressableScale
+            onPress={onActions}
+            haptic="none"
+            activeScale={0.9}
+            // The target the 25 pt box no longer carries: 25 + 2 × 12 = 49.
+            hitSlop={spacing.md}
+            wash
+            washStyle={styles.btnWash}
+            accessibilityRole="button"
+            // FOUR, because the sheet has four (owner, 12 Aug). "Edit line" and
+            // "Show my words" left that day; VoiceOver kept announcing them.
+            accessibilityLabel={`More on ${row.exercise} — fix reading, note, history, delete`}
+            style={styles.sideBtn}>
+            <Icon name="ellipsis" size={moderateScale(17)} tint={color.textMuted} />
+          </PressableScale>
         </View>
         {/* The sets settle into the mini table — one set per row, so a pyramid
             reads down a column instead of along a compressed line. A lone plain
@@ -882,27 +1041,6 @@ export function ExerciseCard({
           </Text>
         ) : null}
       </PressableScale>
-      {/* The right column — now ONE glyph (owner, 11 Aug 2026).
-          The note bubble that used to lead it has gone: a prompt to write about
-          THIS lift, repeated down every card, asked the same question five
-          times a session, and the honest moment to ask is once, at the end
-          (the reflection row under the ledger). Writing about a single lift is
-          still there — it moved INTO the ⋯ sheet with every other per-entry
-          action, so the card carries one door instead of two. The written note
-          itself still shows on the card below; that is the record, not a
-          prompt. */}
-      <View style={styles.sideCol}>
-        <Pressable
-          onPress={onActions}
-          hitSlop={spacing.xs}
-          accessibilityRole="button"
-          // FOUR, because the sheet has four (owner, 12 Aug). "Edit line" and
-          // "Show my words" left that day; VoiceOver kept announcing them.
-          accessibilityLabel={`More on ${row.exercise} — fix reading, note, history, delete`}
-          style={({ pressed }) => [styles.sideBtn, pressed && styles.cardPressed]}>
-          <Icon name="ellipsis" size={moderateScale(17)} tint={color.textMuted} />
-        </Pressable>
-      </View>
     </Animated.View>
   );
 }
@@ -1043,29 +1181,35 @@ function EditRow({
             allowFontScaling
             maxFontSizeMultiplier={MAX_FONT_SCALE}
           />
-          <Pressable
+          <PressableScale
             onPress={onDelete}
+            haptic="none"
+            activeScale={0.94}
             hitSlop={spacing.sm}
-            style={({ pressed }) => [styles.deleteBtn, pressed && styles.deletePressed]}>
+            wash
+            washStyle={styles.btnWash}
+            style={styles.deleteBtn}>
             <Text style={styles.deleteText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
               Delete
             </Text>
-          </Pressable>
+          </PressableScale>
         </View>
         <View style={styles.editHintRow}>
           <Text style={styles.previewHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             editing · return saves · re-reads automatically
           </Text>
           {onFix ? (
-            <Pressable
+            <PressableScale
               onPress={onFix}
+              haptic="none"
+              activeScale={0.94}
               hitSlop={{ top: spacing.md, bottom: spacing.md, left: spacing.sm, right: spacing.sm }}
               accessibilityRole="button"
               accessibilityLabel="Fix how Recore read this line">
               <Text style={styles.fixLink} maxFontSizeMultiplier={MAX_FONT_SCALE}>
                 fix reading
               </Text>
-            </Pressable>
+            </PressableScale>
           ) : null}
         </View>
       </View>
@@ -1096,10 +1240,13 @@ function EditRow({
  */
 function PendingCard({
   text,
+  order,
   reduceMotion,
   onPress,
 }: {
   text: string;
+  /** Rank among the lines being read — the beam's stagger. */
+  order: number;
   reduceMotion: boolean;
   onPress: () => void;
 }) {
@@ -1111,15 +1258,19 @@ function PendingCard({
     // collapse — the exact reflow this card was reshaped to remove. The
     // exchange is carried by the read card's own arrival instead.
     <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(DUR.fast)}>
-      <Pressable
+      <PressableScale
         onPress={onPress}
+        haptic="none"
+        activeScale={ROW_SCALE}
+        wash
+        washStyle={styles.rowWash}
         accessibilityLabel={`${text} — reading`}
-        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
+        style={styles.card}>
         {/* The light crosses the WHOLE row, rail to ⋯ column, behind every
             other child — it is drawn first so the words always paint over it,
             and it is absolutely placed so the row measures as if it were not
             there. */}
-        <ReadingSweep />
+        <ReadingSweep order={order} />
         <View style={styles.rail}>
           <View style={styles.railHollow} />
         </View>
@@ -1142,14 +1293,20 @@ function PendingCard({
               decides, so this row can never end up silent. */}
           <ReadingMark />
         </View>
-      </Pressable>
+      </PressableScale>
     </Animated.View>
   );
 }
 
 function NoteCard({ text, onPress }: { text: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
+    <PressableScale
+      onPress={onPress}
+      haptic="none"
+      activeScale={ROW_SCALE}
+      wash
+      washStyle={styles.rowWash}
+      style={styles.card}>
       <View style={styles.rail} />
       <View style={styles.cardBody}>
         <Text style={styles.proseText} numberOfLines={3} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -1159,22 +1316,73 @@ function NoteCard({ text, onPress }: { text: string; onPress: () => void }) {
           kept as a note · not counted
         </Text>
       </View>
-    </Pressable>
+    </PressableScale>
   );
 }
 
-const RAIL_W = moderateScale(34);
+/**
+ * THE RECORD HANGS OFF ONE LEFT EDGE (9 September 2026).
+ *
+ * Measured on the iPhone 17 Pro simulator before the change: the page title's
+ * left edge sat at **16.7 pt** and the check ring's at **22.3 pt** — the ring
+ * was 5.7 pt inside the margin every other thing on the page starts on, which
+ * is the "small enough to look like a rendering artefact and large enough to
+ * see" mistake Next's own gutter note names. It came from a rail 12 pt wider
+ * than the mark it holds, centring the ring inside its own column.
+ *
+ * The rail IS the mark now, and the air that used to be spare width inside it
+ * is the gap after it instead — so the ring starts on the margin, and the
+ * record's text starts one honest indent in (16.7 + 22 + 12 = 50.7 pt, which is
+ * Apple Notes' own checklist indent to within a point).
+ */
 const MARK = moderateScale(22);
+const RAIL_W = MARK;
+/** Ring → text. It absorbed the 12 pt the rail gave back, so the text did not
+ * move when the ring did. */
+const RAIL_GAP = spacing.md;
+/** The ring's own target with the rail this narrow: 22 + 2 × 12 = 46 ≥ 44. */
+const MARK_HIT = spacing.md;
+
+/**
+ * A RECORD ROW DOES NOT DIP (6 September 2026).
+ *
+ * The ledger's rows answer a press with the wash alone. A full-bleed row that
+ * shrinks 2 % drags its check mark and its ⋯ inward with it, which reads as the
+ * whole page flexing rather than as one line being held — and the record's own
+ * promise is that it holds still. Small controls inside the row (the ring, the
+ * ⋯, Delete) still dip, because a control is an object you push and a row is a
+ * surface you touch.
+ */
+const ROW_SCALE = 1;
 
 const styles = StyleSheet.create({
+  /**
+   * THE CANVAS IS THE SCROLL VIEW'S OWN BACKGROUND, and that is the whole
+   * reason this page can have both warm paper and a collapsing title.
+   * `app/(tabs)/today/_layout.tsx` carries the measurement: an `absoluteFill`
+   * `PaperField` sibling costs UIKit the scroll view it tracks, and a hoisted
+   * one is painted over by the navigator's opaque container. A background on
+   * the scroll view itself is neither. Same three stops as `PaperField`,
+   * derived from them.
+   */
   body: {
     flex: 1,
+    experimental_backgroundImage: PAPER_FIELD_CSS,
   },
   content: {
     flexGrow: 1,
-    paddingTop: BODY_PADDING_TOP,
+    // No top padding: UIKit's `contentInsetAdjustmentBehavior` already leaves
+    // the large title's space, and the dateline hugs the title under it.
     paddingHorizontal: BODY_PADDING_H,
-    paddingBottom: spacing.xl,
+    /**
+     * The bottom is NOT UIKit's. Content scrolls behind the glass tab bar so
+     * the bar has something to refract (§5.2), and — since the accessory bar
+     * became an overlay rather than a row under the page — the last line has to
+     * clear that too. `huge` is the bar's own two-row height rounded up; with
+     * the keyboard open UIKit adds its inset underneath this, so the same
+     * number clears the bar in both states.
+     */
+    paddingBottom: spacing.huge + TAB_BAR_CLEARANCE,
   },
   fill: {
     flexGrow: 1,
@@ -1183,11 +1391,42 @@ const styles = StyleSheet.create({
   // A block per exercise: a left rail (check / marker) + the reading.
   card: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: RAIL_GAP,
     paddingVertical: spacing.md,
   },
-  cardPressed: {
-    opacity: 0.6,
+  /**
+   * THE PRESSED ROW IS WASHED, NOT FADED (6 September 2026).
+   *
+   * Every touchable on this page used to answer with `opacity: 0.6` — a hard
+   * cut down and a hard cut back, applied through a React state flip, which is
+   * `:active { opacity: .6 }` with extra steps. Two things were wrong with it
+   * beyond the mechanism: it faded the RECORD, and the record is the one thing
+   * on this screen that must never look like it is going away; and it could
+   * not fade, so a fast tap was a blink.
+   *
+   * The wash is the design system's `surfaceHigh` rising behind the content on
+   * the UI thread (`PressableScale`), so the paper darkens under the finger and
+   * the ink stays exactly where it is. It bleeds past the text horizontally the
+   * way a list-row highlight does, and it insets vertically so two adjacent
+   * records never touch.
+   */
+  rowWash: {
+    top: spacing.xs,
+    bottom: spacing.xs,
+    left: -spacing.sm,
+    right: -spacing.sm,
+  },
+  /** The card BODY is one column of three, so its wash reaches out toward the
+   * rail and the ⋯ — the entry is held, not the middle of it. */
+  bodyWash: {
+    top: -spacing.xs,
+    bottom: -spacing.xs,
+    left: -spacing.sm,
+    right: -spacing.sm,
+  },
+  /** A control's wash is its own box, at its own radius. */
+  btnWash: {
+    borderRadius: moderateScale(8),
   },
   rail: {
     width: RAIL_W,
@@ -1241,7 +1480,17 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  /** Name, echo and PR on the left; the ⋯ hard against the page's right
+   * margin. `center` is what puts the glyph on the name's own optical line. */
   cardHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  /** Everything the row SAYS, taking the free width so the ⋯ is pushed to the
+   * edge rather than sitting wherever the name happens to end. */
+  headText: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -1257,8 +1506,14 @@ const styles = StyleSheet.create({
     // Recorded, but not marked done yet — a touch quieter, never struck out.
     color: color.textSecondary,
   },
+  /**
+   * THE ECHO GIVES WAY FIRST. Both this and the name shrank at the same rate,
+   * so a long pair truncated BOTH — "Triceps Pushdo… · “tricpes pushdow…”",
+   * two half-words where one whole one and one half would do. The name is the
+   * record; the echo is a footnote on how the parser got there.
+   */
   aliasWrap: {
-    flexShrink: 1,
+    flexShrink: 3,
   },
   aliasEcho: {
     // The user's own word, quietly echoed when the parser corrected the name.
@@ -1301,19 +1556,38 @@ const styles = StyleSheet.create({
     lineHeight: lineFor(18),
     color: color.textSecondary,
   },
-  // The card's right column — one glyph since 11 Aug, kept as a column so the
-  // ⋯ holds its position whatever else the card grows.
-  sideCol: {
-    width: moderateScale(36),
-    alignItems: 'center',
-    paddingTop: 1,
-    gap: spacing.sm,
-  },
+  /**
+   * THE ⋯ IS ALIGNED BY ITS GLYPH, NOT BY ITS BOX (9 September 2026).
+   *
+   * `alignItems: 'center'` in a 36 pt button put the dots' right edge at
+   * **374.3 pt** while the dateline's "1 session" ended at **384.3** — the only
+   * two things on the right of the page, 10 pt apart, which is exactly the kind
+   * of raggedness that reads as "nothing lines up" without being nameable.
+   *
+   * `flex-end` puts the button's own right edge on the margin and the glyph
+   * against it: SF's `ellipsis` at 17 pt draws its dots 1.7 pt inside its box,
+   * so the dots now end at 384.3 — the dateline's number, to the point. The
+   * 36 pt box stays for the target and for the press wash.
+   */
+  /**
+   * …AND IT IS SIZED BY THAT GLYPH, NOT BY A TARGET.
+   *
+   * A 36 × 36 button inside the name's row makes the ROW 36 tall, and the name
+   * then centres in a box 15 pt taller than itself — measured straight after
+   * the move: the ring at the card's top edge and the name's optical centre
+   * **6.2 pt** below it. Trading one misalignment for another.
+   *
+   * So the box is the glyph plus a little air (≈25 pt), the row is the name's
+   * own height again, and the 44 pt target comes from `hitSlop`, which costs no
+   * layout. `paddingRight: 0` puts the glyph's box on the page margin — SF's
+   * `ellipsis` draws its dots 1.7 pt inside it, landing them on the dateline's
+   * own right edge.
+   */
   sideBtn: {
-    width: moderateScale(36),
-    height: moderateScale(36),
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'center',
+    paddingLeft: spacing.sm,
+    paddingVertical: spacing.xs,
     borderRadius: moderateScale(8),
     borderCurve: 'continuous',
   },
@@ -1354,7 +1628,7 @@ const styles = StyleSheet.create({
   // The active input line.
   activeRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: RAIL_GAP,
     paddingVertical: spacing.md,
   },
   /** The boundary the hairline used to draw: the gap above the line being
@@ -1395,9 +1669,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: moderateScale(8),
     borderCurve: 'continuous',
-  },
-  deletePressed: {
-    opacity: 0.6,
   },
   deleteText: {
     fontSize: moderateScale(13),
@@ -1456,6 +1727,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
   },
+  /**
+   * The blue line's room under the composer's field. `ReadingLine` pins itself
+   * to the FOOT of this box, so the height is the air between the words and the
+   * line — not the line's own thickness.
+   */
+  composerLine: {
+    height: spacing.sm,
+  },
 
   // The blank canvas: the rest of the page below the writing line, kept as one
   // flex spacer so the whole sheet stays the composer's tap target. It
@@ -1474,7 +1753,7 @@ const styles = StyleSheet.create({
   // The session's one reflection prompt — aligned with the card text, past the
   // check column, because it talks about the session those cards are.
   reflectRow: {
-    marginLeft: RAIL_W + spacing.sm,
+    marginLeft: RAIL_W + RAIL_GAP,
     marginTop: spacing.sm,
     minHeight: moderateScale(44),
     justifyContent: 'center',
@@ -1489,7 +1768,7 @@ const styles = StyleSheet.create({
   // they carry the athlete's own information, and muted is for what the eye
   // may skip (design skill §Colour).
   reflectNote: {
-    marginLeft: RAIL_W + spacing.sm,
+    marginLeft: RAIL_W + RAIL_GAP,
     marginTop: spacing.xs,
     marginBottom: spacing.sm,
     minHeight: HIT,
@@ -1511,7 +1790,7 @@ const styles = StyleSheet.create({
   coachHint: {
     // Aligned with the card text, past the check column — the hint talks about
     // the marks, so it sits in their own indentation.
-    marginLeft: RAIL_W + spacing.sm,
+    marginLeft: RAIL_W + RAIL_GAP,
     marginTop: spacing.xs,
     fontSize: moderateScale(11),
     color: color.textSecondary,

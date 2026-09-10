@@ -74,5 +74,5 @@ export function SpringBar({
 
 const styles = StyleSheet.create({
   track: { width: '100%', overflow: 'hidden' },
-  fill: { ...StyleSheet.absoluteFillObject, transformOrigin: 'left center' },
+  fill: { ...StyleSheet.absoluteFill, transformOrigin: 'left center' },
 });

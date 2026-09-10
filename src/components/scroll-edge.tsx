@@ -5,6 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { alpha, color, spacing } from '@/lib/theme';
 
+import { GlassSurface, useGlass } from './glass';
+
 /**
  * THE SCROLL EDGE (owner, 18 Aug 2026 — *"ko klikne gor se ne sme tako
  * obarvati"*).
@@ -44,6 +46,37 @@ import { alpha, color, spacing } from '@/lib/theme';
  * `insets.top` of opaque canvas and the gradient under it, no row, nothing
  * pinned. The measured height is then just the safe area, which is exactly what
  * a caller whose title is content wants back as padding.
+ *
+ * ## ON iOS 26 IT IS REAL GLASS, AND THE GRADIENT RETIRES (9 September 2026)
+ *
+ * This component was written to fake the scroll edge out of "the two things
+ * every install already has — an absolutely positioned header and a gradient —
+ * rather than a blur, because a blur would be a platform branch for an effect
+ * the gradient renders identically on every device."
+ *
+ * That reasoning was right when the alternative was a *hand-rolled* blur. It is
+ * no longer the alternative. On iOS 26 the system draws this bar itself, and the
+ * two are not the same effect: the gradient FADES CONTENT OUT into a flat cream
+ * slab, while glass REFRACTS it — a row sliding under the bar bends and
+ * brightens through it instead of dissolving into paper, and the bar picks up
+ * the tone of whatever is actually beneath it. The gradient's whole job was to
+ * avoid a hard cut; glass avoids it by being a material the content is visibly
+ * behind.
+ *
+ * So the branch is now taken deliberately, and it is one branch in one file:
+ *
+ * - **Glass**: a `regular` glass bar over the header box, and **no gradient**.
+ *   A defined bottom edge is what iOS 26 draws under a bar that contains a
+ *   title — the soft variant is for bars holding nothing but floating buttons —
+ *   and a cream gradient hanging below glass would be a smear of the exact
+ *   opaque paper the glass exists to replace.
+ * - **Paper**: unchanged. Opaque canvas, gradient under it, identical geometry.
+ *
+ * The measured height, the `box-none`, and the `EDGE_FADE` contract are the same
+ * on both, so no caller changes and a screen laid out on one is correct on the
+ * other. `EDGE_FADE` still has to be added to the caller's top padding on both
+ * materials: under glass it is what keeps the first row from starting its life
+ * already behind the bar.
  */
 
 /** How far the background reaches down over the content. */
@@ -59,21 +92,33 @@ export function ScrollEdgeHeader({
   onHeight: (h: number) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const glass = useGlass();
 
   return (
     <View
       style={[styles.overlay, { paddingTop: insets.top }]}
       pointerEvents="box-none"
       onLayout={(e: LayoutChangeEvent) => onHeight(e.nativeEvent.layout.height)}>
-      {/* Opaque behind the title itself: the title is the one thing that may
-          never have a moving card behind it. */}
-      <View style={styles.solid} pointerEvents="none" />
+      {glass ? (
+        // Square: this bar spans the screen and meets its own top and side
+        // edges, so there is no corner to round. Glass carries the separation
+        // that the opaque fill and the gradient carry below.
+        <GlassSurface radius={0} />
+      ) : (
+        <>
+          {/* Opaque behind the title itself: the title is the one thing that
+              may never have a moving card behind it. */}
+          <View style={styles.solid} pointerEvents="none" />
+        </>
+      )}
       {children}
-      <LinearGradient
-        colors={[color.canvas, alpha(color.canvas, 0)]}
-        style={styles.fade}
-        pointerEvents="none"
-      />
+      {glass ? null : (
+        <LinearGradient
+          colors={[color.canvas, alpha(color.canvas, 0)]}
+          style={styles.fade}
+          pointerEvents="none"
+        />
+      )}
     </View>
   );
 }
@@ -84,9 +129,12 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    // The bar draws over the page, so it has to be above it in z-order too —
+    // a sibling declared earlier would otherwise win on some screens.
+    zIndex: 1,
   },
   solid: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: color.canvas,
   },
   fade: {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { DONE_ACCESSORY } from '@/components/keyboard-done';
 import { PressableScale } from '@/components/motion';
 import { whenLabel } from '@/lib/brief-prose';
@@ -149,6 +150,30 @@ export function LiftRow({
   // Only a row with a load to replace can take one. A cardio line, a carry and
   // a lift with no history have no figure to argue with (§7.3).
   const editable = editing && (row.loadKg != null || override != null);
+  /**
+   * Whether this row is a DOOR, and therefore whether it gets a chevron
+   * (9 September 2026).
+   *
+   * The row has opened the lift's history since it was written, and nothing on
+   * it said so. On a screen of white cards on cream, with no thumbnail, no
+   * disclosure and no rule, a tappable row and a printed one are the same
+   * object — so the history behind four of the five taps on this page was
+   * reachable only by guessing. iOS has one mark for exactly this and every
+   * reader already knows it, including beside a right-aligned value: Health,
+   * Settings and Fitness all set a chevron after the number.
+   *
+   * Three conditions, each of them the mark telling the truth:
+   *
+   * - **`row.canonical`** — a seeded row from onboarding has no lift to open,
+   *   and a chevron on it would promise a screen that does not exist.
+   * - **not `editing`** — in edit mode the row is not a door (see the header),
+   *   so the chevrons leave as the fields arrive. That is the mode change
+   *   stating itself in the rows rather than only in the bar button.
+   * - **not `stacked`** — past the Dynamic Type reflow there is no right column
+   *   for it to follow, and a chevron under a left-aligned stack points at
+   *   nothing.
+   */
+  const door = !editing && row.canonical != null && !stacked;
 
   const body = (
     <>
@@ -180,20 +205,25 @@ export function LiftRow({
       </View>
 
       {/* RIGHT: the load and how it is arranged. Two short lines of stable
-          width, which is what right alignment is for. */}
-      <View style={[styles.right, stacked ? styles.rightStacked : null]}>
-        {editable ? (
-          <TargetField row={row} override={override} stacked={stacked} onCommit={onCommit} />
-        ) : (
-          <Target row={row} override={override} stacked={stacked} />
-        )}
-        {row.scheme && (row.loadKg != null || override != null) ? (
-          <Text
-            style={styles.scheme} /* ISOLATION TEST */
-            numberOfLines={1}
-            maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {row.scheme}
-          </Text>
+          width, which is what right alignment is for — and, when the row is a
+          door, the disclosure that says so. */}
+      <View style={door ? styles.trailing : undefined}>
+        <View style={[styles.right, stacked ? styles.rightStacked : null]}>
+          {editable ? (
+            <TargetField row={row} override={override} stacked={stacked} onCommit={onCommit} />
+          ) : (
+            <Target row={row} override={override} stacked={stacked} />
+          )}
+          {row.scheme && (row.loadKg != null || override != null) ? (
+            <Text style={styles.scheme} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {row.scheme}
+            </Text>
+          ) : null}
+        </View>
+        {door ? (
+          // Muted, and the smallest thing on the card. It is wayfinding, not a
+          // reading: it may never compete with the load it stands beside.
+          <Icon name="chevron-forward" size={moderateScale(13)} tint={color.textMuted} />
         ) : null}
       </View>
     </>
@@ -448,6 +478,17 @@ const styles = StyleSheet.create({
   rightStacked: {
     alignItems: 'flex-start',
     alignSelf: 'stretch',
+  },
+  /**
+   * The value and its disclosure, as one trailing group. `spacing.sm` between
+   * them rather than the row's own `spacing.md`: the chevron belongs to the
+   * number it follows, and spacing it like a third column would read as one.
+   */
+  trailing: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+    gap: spacing.sm,
   },
 
   // --- the target ----------------------------------------------------------

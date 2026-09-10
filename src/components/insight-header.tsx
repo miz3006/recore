@@ -9,8 +9,6 @@ import { groupThousands } from '@/lib/parse/estimate';
 import { color, MAX_FONT_SCALE, readingStyle, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
-import { BODY_PADDING_H } from './note-metrics';
-
 /**
  * The page's one landmark — now a single quiet ledger LINE, not a card
  * (minimalism pass: the blank page is the product, so the writing surface
@@ -64,8 +62,15 @@ export function InsightHeader({ hidden = false }: { hidden?: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  /**
+   * NO HORIZONTAL INSET (9 September 2026). This used to add
+   * `BODY_PADDING_H` of its own, because it sat outside the note's scroll view
+   * and had to find the page's gutter for itself. It is inside that scroll view
+   * now — Today passes it as the page's `header` — so the gutter is already
+   * applied and adding it again put the weekly line 16 pt right of every record
+   * it is a total of.
+   */
   row: {
-    paddingHorizontal: BODY_PADDING_H,
     paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
   },

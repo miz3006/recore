@@ -162,12 +162,16 @@ function ColumnSets({ table }: { table: SetTableData }) {
         </Text>
         <View style={[styles.group, groupStyle]}>
           {table.loadHead ? (
-            <Text style={[styles.head, styles.cell]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            <Text
+              style={[styles.head, styles.cell, styles.headCell]}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}>
               {table.loadHead}
             </Text>
           ) : null}
           {table.workHead ? (
-            <Text style={[styles.head, styles.cell]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            <Text
+              style={[styles.head, styles.cell, styles.headCell]}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}>
               {table.workHead}
             </Text>
           ) : null}
@@ -253,9 +257,24 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     alignSelf: 'stretch',
   },
+  /**
+   * THE VALUES ARE RIGHT-ANCHORED (9 September 2026).
+   *
+   * Position left, load and work hard against the card's right edge. Measured
+   * before the change: the table's last column ended at **242 pt** on a body
+   * that runs to 342, so every card carried 100 pt of dead width and the ⋯
+   * floated alone out past it — a page of readings with no right edge at all.
+   *
+   * This does NOT undo the 9 August grouping. That ruling was about load and
+   * work being *at opposite ends of the card*, so reading one set meant
+   * crossing the screen; they are still one tight pair with `spacing.sm`
+   * between them, and the eye travel inside a set is unchanged. What moved is
+   * where the pair sits, which is where every native list puts a value.
+   */
   headRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
+    justifyContent: 'space-between',
     gap: spacing.sm,
     // AIR, NOT A RULE (v6). The boundary between the header and the sets is 12
     // points of space rather than a line — three times a row's own 6, so it is
@@ -272,6 +291,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'baseline',
+    justifyContent: 'space-between',
     gap: spacing.sm,
     // Room between rows so each set reads as its own line without a rule.
     paddingTop: spacing.xs + 2,
@@ -284,6 +304,19 @@ const styles = StyleSheet.create({
   cell: {
     flex: 1,
     textAlign: 'right',
+  },
+  /**
+   * A RIGHT-ALIGNED HEADER CARRIES ITS OWN TRACKING (9 September 2026).
+   *
+   * `letterSpacing` adds an advance AFTER the last glyph as well as between
+   * them, so "KG" right-aligned in its cell ends one point short of the "80"
+   * underneath it — measured at 1.0–1.3 pt, which is invisible on its own and
+   * reads as a wobble down a column of three. The header gives that point back.
+   * Only the right-aligned heads need it; `SET` is left-aligned and its trailing
+   * space falls into the gap.
+   */
+  headCell: {
+    marginRight: -1,
   },
   noteCell: {
     flex: 1,

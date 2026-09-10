@@ -56,6 +56,36 @@ export const EASE = {
 export const PRESS_SCALE = 0.97;
 
 /**
+ * HOW A PRESS ARRIVES, AND HOW IT LEAVES — and they are deliberately not the
+ * same shape (6 September 2026).
+ *
+ * A press used the same 120 ms curve in both directions, which is the symmetry
+ * a CSS `transition` gives you for free and the one thing a physical control
+ * never does. On iOS a control takes the finger IMMEDIATELY and lets go
+ * SLOWLY: the highlight is there in the frame the touch lands, and it dissolves
+ * over about a quarter of a second after you lift. The asymmetry is what makes
+ * it read as a surface being loaded and released rather than as a state
+ * toggling.
+ *
+ * `minVisibleMs` is the other half. A real tap is 60–90 ms of contact, so a
+ * release that starts the instant the finger lifts can cut the feedback off
+ * before the eye has resolved it — the fast, confident taps get the least
+ * feedback, which is exactly backwards. The press is held at full depth until
+ * it has been visible this long, and only then released.
+ */
+export const PRESS = {
+  /** Touch-down. Short and front-loaded: the dip is essentially complete in
+   * the first frames, so it cannot lag the finger. */
+  in: { duration: 90, easing: EASE.emphasized } satisfies WithTimingConfig,
+  /** Lift. Two and a half times the press, on the gentle cubic — the surface
+   * relaxes back instead of snapping. */
+  out: { duration: 260, easing: EASE.standard } satisfies WithTimingConfig,
+  /** Floor on how long the pressed state stays on screen, measured from
+   * touch-down. Anything faster than this is a flash, not feedback. */
+  minVisibleMs: 90,
+} as const;
+
+/**
  * Springs — for anything a FINGER was on, because a spring carries velocity
  * through an interruption and a timing curve restarts.
  *

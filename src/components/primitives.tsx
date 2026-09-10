@@ -1,4 +1,13 @@
-import { ActivityIndicator, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  View,
+  type AccessibilityActionEvent,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 
 import {
   alpha,
@@ -78,16 +87,30 @@ export type RowTone = 'ink' | 'signal' | 'gain' | 'loss' | 'attention';
  * - **One row, one utterance.** VoiceOver reads name, detail, value and unit as
  *   a single label rather than as four stops; `spoken` overrides it where the
  *   row knows something the strings do not.
+ * - **A reading may say what it IS.** `valueLabel` prints a quiet word over the
+ *   number ("est. 1RM") for the one class of reading a person cannot name by
+ *   looking at it — a derived figure, where the row's own name is the lift and
+ *   not the measurement. It is `footnote`/`textSecondary`: small enough that the
+ *   number keeps the hierarchy, dark enough that it is not something the eye may
+ *   skip (skill: `textMuted` is for what carries nothing).
+ * - **A second tap on the reading is reached twice.** `onValuePress` gives the
+ *   value its own target for a finger, AND — because a `Row` with an `onPress`
+ *   is one accessible element, which merges any nested button away — the same
+ *   action as a VoiceOver rotor action on the row. A control a finger can reach
+ *   and a screen reader cannot is not shipped (CLAUDE.md §3).
  */
 export function Row({
   name,
   detail,
   value,
+  valueLabel,
   unit,
   tone = 'ink',
   leading,
   trailing,
   onPress,
+  onValuePress,
+  valueActionLabel,
   spoken,
   style,
 }: {
@@ -96,6 +119,14 @@ export function Row({
   detail?: string;
   /** The reading. Omit it and the row is a name and its accessories. */
   value?: string;
+  /**
+   * What the reading IS, printed small and quiet above it — "est. 1RM".
+   *
+   * Only for a reading whose meaning is not in the row's name. A logged top set
+   * beside a lift's name needs none; an estimate does, or it is read as a load
+   * somebody actually lifted.
+   */
+  valueLabel?: string;
   /** Its unit, drawn as its own smaller, lighter word. */
   unit?: string;
   tone?: RowTone;
@@ -104,11 +135,20 @@ export function Row({
   /** Anything right of the reading — a chevron, a button. */
   trailing?: React.ReactNode;
   onPress?: () => void;
+  /**
+   * A second action, on the READING rather than on the row — today, the
+   * explainer behind `valueLabel`. Reached by a finger through the value's own
+   * target and by VoiceOver through a rotor action, never by a nested button.
+   */
+  onValuePress?: () => void;
+  /** What the rotor calls `onValuePress`. Defaults to a question about the
+   * label, which is the only thing the action is ever for. */
+  valueActionLabel?: string;
   /** VoiceOver label, when the row knows more than its strings say. */
   spoken?: string;
   style?: StyleProp<ViewStyle>;
 }) {
-  const label = spoken ?? [name, detail, value, unit].filter(Boolean).join(', ');
+  const label = spoken ?? [name, valueLabel, detail, value, unit].filter(Boolean).join(', ');
   const body = (
     <>
       {leading}
@@ -123,36 +163,134 @@ export function Row({
         ) : null}
       </View>
       {value ? (
-        <Text
-          style={[styles.rowValue, tone !== 'ink' && ROW_INK[tone]]}
-          numberOfLines={1}
-          maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {value}
-          {unit ? <Text style={styles.rowUnit}> {unit}</Text> : null}
-        </Text>
+        <Reading
+          value={value}
+          label={valueLabel}
+          unit={unit}
+          tone={tone}
+          onPress={onValuePress}
+        />
       ) : null}
       {trailing}
     </>
   );
 
+  // The rotor action exists only when there is a second action to reach, and it
+  // is named after what the reading means rather than after the gesture: "What
+  // is est. 1RM?" is the question the sheet answers. It rides the row whether or
+  // not the row itself presses — the reading is swallowed by an `accessible`
+  // container either way.
+  const actions =
+    onValuePress && value
+      ? [{ name: VALUE_ACTION, label: valueActionLabel ?? `What is ${valueLabel ?? 'this reading'}?` }]
+      : undefined;
+  const onAction = actions
+    ? (e: AccessibilityActionEvent) => {
+        if (e.nativeEvent.actionName === VALUE_ACTION) onValuePress?.();
+      }
+    : undefined;
+
   if (!onPress) {
     return (
-      <View style={[styles.row, style]} accessible accessibilityLabel={label}>
+      <View
+        style={[styles.row, style]}
+        accessible
+        accessibilityLabel={label}
+        accessibilityActions={actions}
+        onAccessibilityAction={onAction}>
         {body}
       </View>
     );
   }
+
   return (
     <PressableScale
       onPress={onPress}
       activeScale={0.98}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityActions={actions}
+      onAccessibilityAction={onAction}
       style={[styles.row, style]}>
       {body}
     </PressableScale>
   );
 }
+
+/** The rotor's name for `Row`'s second action. Internal — the caller names it
+ * with `valueActionLabel`, never with this. */
+const VALUE_ACTION = 'recore.value';
+
+/**
+ * The right-hand reading: an optional quiet label, the number, its unit.
+ *
+ * Without a label or a press it is exactly the single `Text` the row has always
+ * drawn — one text node, no wrapper — so every existing caller keeps its layout
+ * to the pixel. With either, the reading becomes a right-aligned block, because
+ * a word ABOVE the number is the only place it can go that does not steal width
+ * from the lift's name at the Dynamic Type ceiling.
+ */
+function Reading({
+  value,
+  label,
+  unit,
+  tone,
+  onPress,
+}: {
+  value: string;
+  label?: string;
+  unit?: string;
+  tone: RowTone;
+  onPress?: () => void;
+}) {
+  const number = (
+    <Text
+      style={[styles.rowValue, tone !== 'ink' && ROW_INK[tone]]}
+      numberOfLines={1}
+      maxFontSizeMultiplier={MAX_FONT_SCALE}>
+      {value}
+      {unit ? <Text style={styles.rowUnit}> {unit}</Text> : null}
+    </Text>
+  );
+
+  if (!label && !onPress) return number;
+
+  const block = (
+    <>
+      {label ? (
+        <Text style={styles.rowValueLabel} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {label}
+        </Text>
+      ) : null}
+      {number}
+    </>
+  );
+
+  if (!onPress) return <View style={styles.rowReading}>{block}</View>;
+
+  return (
+    // `accessible={false}`: an enclosing pressable `Row` is one accessible
+    // element, so a nested button would be silently unreachable and only
+    // fragment the row's utterance on the way. VoiceOver reaches this through
+    // the row's rotor action instead. `selection` fires on press-in — this is a
+    // choice being made, not a commit.
+    <PressableScale
+      onPress={onPress}
+      haptic="selection"
+      activeScale={0.94}
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      hitSlop={READING_HIT_SLOP}
+      style={styles.rowReading}>
+      {block}
+    </PressableScale>
+  );
+}
+
+/** The reading block is ~44 pt tall with its label and short of it without one;
+ * the slop makes the target 44 either way (CLAUDE.md §3) without widening the
+ * block itself into the lift's name. */
+const READING_HIT_SLOP = { top: spacing.sm, bottom: spacing.sm, left: spacing.md, right: spacing.sm };
 
 /**
  * A white surface with a lift. **This is the EXCEPTION, not the default** (skill
@@ -444,6 +582,20 @@ const styles = StyleSheet.create({
   rowUnit: {
     ...readingStyle('400'),
     fontSize: type.subhead.fontSize,
+    color: color.textSecondary,
+  },
+  /** The reading as a right-aligned block, once it carries a label or a press.
+   * `gap: 2` is `rowText`'s, so the two columns stack on the same rhythm. */
+  rowReading: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+    gap: 2,
+  },
+  /** What the reading is. Two steps under the number so size alone carries the
+   * hierarchy, `textSecondary` because it carries information — the skill bars
+   * `textMuted` from anything a person needs to read. */
+  rowValueLabel: {
+    ...type.footnote,
     color: color.textSecondary,
   },
 

@@ -75,14 +75,79 @@ export function setMeta(key: string, value: string | null) {
 }
 
 /**
- * Scope the local database to ONE account. If a different user signs in on
+ * Every table that carries a `user_id` of its own. `items`, `sets` and
+ * `parse_cache` are absent on purpose: they hang off `workouts` / `exercises`
+ * by foreign key and follow their parents without being named here.
+ *
+ * `exercises` is the one that needs the `user_id = ?` predicate to matter —
+ * a NULL there is a GLOBAL exercise, shared by every account on the device,
+ * and claiming those would hand the built-in catalogue to one user.
+ */
+const OWNED_TABLES = [
+  'workouts',
+  'exercises',
+  'predictions',
+  'plan_days',
+  'corrections',
+  'alias_overrides',
+] as const;
+
+/**
+ * HAND THE PRE-ACCOUNT RECORD TO THE ACCOUNT (owner's ruling, 4 September 2026).
+ *
+ * The funnel writes before an account exists — onboarding answers, a plan, the
+ * demo line that becomes the first session — all scoped to the local id
+ * (`auth/provider.tsx`). Until this existed, `ensureLocalUser` saw the id change
+ * at the instant sign-in succeeded and did what it does for any change: wiped
+ * everything. The person's plan and every `pref_*` answer were deleted at the
+ * exact moment they finished the funnel, and the only reason it was survivable
+ * is that `seedOnboardingDemo` re-runs afterwards and re-seeds the one line.
+ *
+ * So a claim, not a delete. **`meta` is kept whole** — that is where `prefs.ts`
+ * stores every onboarding answer — and only its `user_id` key is re-pointed.
+ *
+ * ## Why the rows are marked dirty
+ *
+ * They were written while the sync loop was stopped, so this account's server
+ * has never seen any of them. `dirty = 1` is the honest state and it is what
+ * makes the first pass after sign-in push the whole funnel up.
+ *
+ * ## This is ONLY ever local → account
+ *
+ * Two real accounts on one device still wipe, and must: that boundary is the
+ * on-device mirror of the server's RLS, and a claim across it would hand user
+ * A's training to user B. The caller names the id it is claiming FROM, so this
+ * function can never be talked into the general case.
+ */
+function claimLocalRows(from: string, to: string) {
+  const database = getDb();
+  database.withTransactionSync(() => {
+    for (const table of OWNED_TABLES) {
+      database.runSync(`UPDATE ${table} SET user_id = ?, dirty = 1 WHERE user_id = ?`, [to, from]);
+    }
+  });
+  setMeta('user_id', to);
+  devLog('local record claimed by the signed-in account');
+}
+
+/**
+ * Scope the local database to ONE account. If a DIFFERENT user signs in on
  * this device, every locally cached row from the previous account is wiped so
  * user B can never read user A's training data (mirrors the server-side RLS
  * boundary on-device).
+ *
+ * @param claimFrom The id whose rows should be ADOPTED rather than deleted —
+ *   the pre-account local scope, and nothing else. Omit it and every change of
+ *   user wipes, which is the rule for two real accounts.
  */
-export function ensureLocalUser(userId: string) {
+export function ensureLocalUser(userId: string, claimFrom?: string) {
   const current = getMeta('user_id');
   if (current === userId) return;
+
+  if (claimFrom && current === claimFrom && userId !== claimFrom) {
+    claimLocalRows(claimFrom, userId);
+    return;
+  }
 
   const database = getDb();
   database.withTransactionSync(() => {

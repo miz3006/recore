@@ -247,8 +247,10 @@ of drift this repository has actually suffered before.
 | Requirement | Status | Evidence | Notes |
 |---|---|---|---|
 | One-time spotlight on the first signed-in Today, skippable, never returns | **done** | `src/components/spotlight-tour.tsx`, `src/lib/tour.ts`, `src/lib/prefs.ts:271–279` (`pref_tour_done`) | Built on `react-native-svg` evenodd scrim; no new dependency. |
-| Step is dropped if its target is off screen | **done** | `src/lib/tour.ts:13–19`, `src/components/spotlight-tour.tsx` | |
-| Copy is one sentence, house voice | **partial** | `src/lib/tour.ts`, asserted by `src/lib/tour.test.ts` | Voice is tested (no "!", no "AI", no emoji, no instruction). Several bodies are still two sentences. |
+| Step is dropped if its target is off screen | **done** | `src/lib/tour.ts`, `src/components/spotlight-tour.tsx` | |
+| Copy is one sentence, house voice | **partial** | `src/lib/tour.ts`, asserted by `src/lib/tour.test.ts` | Voice is tested (no "!", no "AI", no emoji, no instruction). Rewritten 9 September 2026 and now checked against what the screens actually draw — Progress is bare ROWS, not cards, and the old body said cards. Several bodies are still two sentences. |
+| Each tab beat lights that tab alone | **done** | `TOUR_STEPS[].tab`, `tabSlotRect` (`src/lib/tour.ts`), asserted by `tour.test.ts` | 9 September 2026. Until then the three tab beats resolved to one rectangle — the whole bar — so the spotlight never answered "which of these four is Next". Seen on the simulator; see the change-log entry. |
+| The card reads as an iOS popover | **done** | `src/components/spotlight-tour.tsx` | Leading SF Symbol (the bar's own), title, body, a caret aimed at the hole, page dots, an ✕ instead of a peer Skip button, and tap-anywhere / swipe with a selection haptic. |
 | Step 1 — writing surface | **done** | `TOUR_STEPS[0]` | |
 | Step 2 — **Finish and check-in** | **done** | `TOUR_STEPS[1]` (`id: 'finish'`), asserted by `tour.test.ts` | Teaches Finish *and* the check-in it now opens. Owner's ruling 29 Jul: it shares the `page` target with step 1 rather than pointing at the Finish button, because that button lives on the composer's accessory bar and is not on screen during the tour — §7 allows a spotlight only on a measurable target. The day-pill beat, which §7 never listed, is gone. |
 | Step 3 — Next | **done** | `TOUR_STEPS[2]` | |
@@ -361,6 +363,8 @@ of drift this repository has actually suffered before.
 | Time ranges 8 weeks / 6 months / 1 year | **done** | `progress.tsx` (`RANGES`) | Longer ranges dim until the record reaches back. |
 | Card per lift with underlying sessions one tap away | **done** | `progress.tsx` (`LiftCard`), `src/components/exercise-sheet.tsx`, `src/components/session-sheet.tsx` | |
 | Metrics: e1RM, heaviest, volume | **done** | `progress.tsx` (`METRICS`), `src/lib/db/progression.ts` | |
+| **An estimate is labelled as one, everywhere it is printed** | **done** | `src/components/e1rm-sheet.tsx` (`E1RM_LABEL`, `E1rmSheet`), `Row.valueLabel`/`onValuePress` in `src/components/primitives.tsx`, `src/app/(tabs)/progress/index.tsx`, `src/components/exercise-sheet.tsx`, `src/components/session-sheet.tsx` | 4 Sep. The Progression row prints `est. 1RM` over the figure and opens a two-paragraph explainer on tap; VoiceOver reaches the same sheet through a rotor action, because a pressable `Row` is one accessible element and would swallow a nested button. One string for the label app-wide. The computation is untouched. |
+| **Progression reads in the athlete's kg/lb setting** | **partial** | `src/lib/units.ts` (`displayLoad`, `spokenUnit`), `src/lib/progression-metrics.ts` (`seriesInUnit`), `src/app/(tabs)/progress/index.tsx`, `src/app/lift/[key].tsx` | 4 Sep, and partial ON PURPOSE (owner). Both Progression screens honour `pref_weight_unit` — figure, plateau weight, delta, cards, sub-labels, charts. **The lift sheet, day sheet, Lifts list, Today ledger, Next and the recap still print kilograms**, so a pound reader sees two systems in one app until those are migrated. Storage is kilograms everywhere and nothing stored was converted. |
 | Metrics: reps at a load, sport/hybrid workload | **missing** | — | No sport/hybrid data model exists (see §5 screen 5). |
 | Continuous line, every vertex a real session, no overshoot (§10 as amended 6 Aug 2026) | **done** | `src/components/charts.tsx` (`seriesPathD`, `SeriesShape`), `TrendChart` + `ProgressionChart` both call it with the `linear` default | Owner replaced the step-only rule ("ne stopnice, ampak lepo linearno … ker želim smooth"); §10 and §14.3 now carry the amended wording. Straight segments between consecutive sessions, dotted vertices, no spline anywhere, `shape="step"` still available. |
 | **Blue primary line with a soft contextual fill** | **done** | `charts.tsx` (`TrendChart`, `tint`/`fill` props) | 4 Aug: blue (`color.trained`) line with a gradient wash, per-session dots, and a surface-ringed latest point. Range segment and metric underline moved to the same blue, so control and chart read as one system. |
@@ -369,6 +373,10 @@ of drift this repository has actually suffered before.
 | Ranked by measured movement, no deload-as-failure, no red/green judgement (§10 as amended 4 Aug 2026) | **done** | `progress.tsx` (`percentText`, `styles.barDown`), `src/lib/progression.ts` (`sortLifts`) | The list is ranked by movement (`sortLifts('gain')`, on the percentage so kilos can't rank a deadlift above a curl forever), with Recent and A–Z one tap away. Not flattery: a lift that fell ranks where its number puts it, draws in the same blue, chips a grey *down 2%* word with no leading minus, and the "BIGGEST GAIN" tag appears only when the leader actually gained. |
 | Per-lift blue/ember comparison | **partial** | `progress.tsx`, `src/components/exercise-sheet.tsx` | Blue is live on the Progress cards; ember stays the lift sheet's single-series hue. |
 | Meaning carried without colour | **done** | `progress.tsx` (`splitLine`, `percentText`, bar `accessibilityLabel`) | Deltas are words plus numbers; the split bar repeats itself in text underneath and carries the same string as its accessibility label. |
+| **The window itself is measured, not only the lifts** | **done** | `src/lib/progress-summary.ts` (+ `progress-summary.test.ts`, 12 tests), `src/components/progression/period-chart.tsx`, `src/app/(tabs)/progress/index.tsx` | 9 Sep. Eight weeks as eight pressable columns over one reading — volume, training days or distinct lifts — with the previous eight weeks named in words underneath. Press and hold any column and the reading becomes that week; release and the window comes back. Every figure is counted off `getLiftSessions`; nothing is estimated and nothing is smoothed. |
+| **The comparison refuses to speak without a record behind it** | **done** | `progress-summary.ts` (`buildPeriod.before`, `changePercent`) | `before` is null unless the record reaches into the earlier window, so somebody three weeks in is never told they are "up 400%" against eight weeks they did not train. The line falls back to the window's own other two facts, so it can never be empty and the chart under it can never jump. |
+| **The training split is drawn, and it is the filter** | **done** | `progress-summary.ts` (`splitShares`), `progress/index.tsx` (`SplitRow`) | 9 Sep. The group chip row is gone: the same clusters are now rows carrying a share bar and their day count, and selecting one filters the list directly beneath them. Share is of TRAINING DAYS, not volume — a bodyweight day carries no kilograms and would have reported as 0% of a person's training. |
+| **Progress is on the system navigator, search included** | **done** | `src/app/(tabs)/progress/_layout.tsx`, `progress/index.tsx` (`headerSearchBarOptions`) | 9 Sep, and the last tab off `StubScreen`. Large title that collapses, Liquid Glass bar, a scroll view UIKit can drive, and the hand-rolled search pill replaced by a real `UISearchController`. |
 
 ---
 
@@ -986,6 +994,541 @@ that were resolved rather than followed literally are in `FINDINGS.md`.
 ---
 
 ## Change log
+
+- **9 Sep 2026 — the Google sign-in that ends on a dead Safari page: Expo Go, and a refusal that
+  now happens before the browser opens.** Owner, on a device: *"odpre se vse in potem ko kliknem na
+  svoj mejl pise da safari cant open"*, then *"safari cant open the page because it couldnt connect
+  to the server"*. That second sentence is the whole diagnosis — *could not connect* means the
+  browser reached `http://localhost:3000`, which is this project's **Site URL**, which is where
+  Supabase sends a redirect it has not allow-listed.
+
+  **What resolves to what, measured rather than assumed.** `makeRedirectUri({ path:
+  'auth-callback' })` is `Linking.createURL`, and `createURL` clears the host only when
+  `hasCustomScheme() && isExpoHosted()`. Read off this Metro server's manifest
+  (`extra.expoClient.hostUri = 127.0.0.1:8081`, `extra.expoGo.developer` present, `scheme:
+  recore`):
+
+  | runtime | `redirectTo` | Supabase answers |
+  |---|---|---|
+  | development build | `recore://auth-callback` | echoed back — allow-listed |
+  | **Expo Go** | `exp://<host>:8081/--/auth-callback` | `http://localhost:3000` — **not** allow-listed |
+
+  Expo Go is `ExecutionEnvironment.StoreClient`, so `resolveScheme` returns `exp` and the host is
+  never cleared. Nothing on the server is wrong: `/auth/v1/settings` reports `google: true`,
+  `/auth/v1/authorize?provider=google` 302s to `accounts.google.com`, and following that URL
+  serves Google's real sign-in page — no `redirect_uri_mismatch`, no `invalid_client`. The whole
+  chain is healthy right up to the redirect the client asked for.
+
+  **The refusal moved to before the browser opens.** `assertRedirectIsAllowListed()` in
+  `lib/auth/sign-in.ts` throws in `__DEV__` when `redirectTo` does not start with the app's own
+  scheme, and names the value it found. Previously the first thing the app could say arrived
+  *after* the person had chosen a Google account and typed a password — and it said nothing,
+  because closing a browser is what cancelling looks like from in here. The check is dev-only: a
+  release build is standalone, where the scheme is always the app's own. The scheme is read from
+  `Constants.expoConfig.scheme` rather than written twice.
+
+  **Sign in with Apple through Expo Go is not a gap to close.** Same question from the owner, same
+  answer: `expo-apple-authentication` is a native module and Expo Go is a fixed prebuilt binary
+  that does not carry it, but the deeper reason is that Sign in with Apple is bound to a bundle ID
+  through the `com.apple.developer.applesignin` entitlement. Expo Go is `host.exp.Exponent`, so any
+  token it could vend would carry that audience while Supabase's Apple provider expects
+  `com.recore.app` — `Unacceptable audience in id_token`. A shared container app cannot issue Apple
+  identity tokens for someone else's app. `ios/Recore/Recore.entitlements` has the entitlement and
+  `project.pbxproj` wires it; there is simply nowhere to hang it inside Expo Go.
+
+  **Ruled out along the way:** `com.edis.recore` on the review simulator, which has no
+  `CFBundleURLTypes` at all, is an Xcode preview bundle from 15 August and not this app.
+
+  Gates: `npm run typecheck` pass, `npm test` 718/718 pass, `npm run lint` 0 errors (41
+  pre-existing warnings). No prompt, schema or model guard touched, so no §9.4 evaluation is owed.
+  **Still not verified: a completed tap-through.** Files: `lib/auth/sign-in.ts`.
+
+- **9 Sep 2026 — three `TEMP-VERIFY` bypasses were standing between the owner and the sign-in
+  screen, and the screen itself broke at the text size the review device runs.** The owner:
+  *"fix the logging page to look more like native ios and also fixing it until work so i can log
+  in with apple and google"*.
+
+  **Sign-in was unreachable, and no amount of design would have fixed that.** A fourth
+  verification pass had left the same class of marker the three `SIMPASS` ones were (4 Sep,
+  below), in two places that together made an account impossible to obtain:
+
+  | File | Marker | What it did |
+  |---|---|---|
+  | `app/index.tsx:45` | `if (true) return <Redirect href="/progress" />` | the dispatcher answered `/progress` for every state — funnel, paywall and sign-in were all unreachable from `/` |
+  | `app/_layout.tsx:91` | `const signedIn = session !== null \|\| true` | the auth guard was pinned open, so the whole app rendered with no session and `Stack.Protected` protected nothing |
+  | `(tabs)/progress/index.tsx` | an auto-scroll timer, then `rows.length === 0 \|\| true` | Progress pinned to its empty state |
+
+  All three are gone. The guard is `session !== null` again and the dispatcher routes on
+  (onboarded, session, entitlement) as its own comment always said it did. **This is the second
+  time this exact failure has been written up in this file**; the lesson from 4 Sep — a bypass
+  must produce a real session, never an imitation of one — is why `lib/auth/dev-sign-in.ts`
+  exists and why nothing here needed a new one.
+
+  **The server side for Google was already fixed, and is now measured rather than assumed.** The
+  4 Sep entry below ends by naming a Supabase dashboard change as the outstanding work. It has
+  been made. `/auth/v1/verify` echoes back the *validated* redirect, which makes the allow-list
+  readable from outside:
+
+  | `redirect_to` | comes back as | reading |
+  |---|---|---|
+  | `recore://` | `recore:` | allow-listed — **but normalised** |
+  | `recore://auth-callback` | `recore://auth-callback` | allow-listed, byte for byte |
+  | `exp://192.168.1.5:8081/--/` | `http://localhost:3000` | **not** allow-listed (Expo Go still cannot finish a Google sign-in) |
+  | `https://evil.example.com` | `http://localhost:3000` | correctly refused |
+
+  That first row is a real defect and it is why `redirectTo` now carries a path.
+  `makeRedirectUri()` answered a bare `recore://`, `openAuthSessionAsync` was handed that exact
+  string to watch for, and Supabase would have redirected to `recore:` — a browser that never
+  closes, which from inside the app is indistinguishable from the dead-redirect case the 4 Sep
+  entry describes. `makeRedirectUri({ path: 'auth-callback' })` survives the round trip
+  unchanged. The whole chain was then re-measured with the new value: Supabase 302s to Google,
+  and Google serves its real sign-in page — no `redirect_uri_mismatch`, no `invalid_client`.
+
+  **Supabase's own errors arrive in the FRAGMENT.** `createSessionFromUrl` read
+  `searchParams` only, so `#error=access_denied&error_code=…` fell through to the
+  "OAuth redirect carried no session" line at the bottom of the function — the app blaming the
+  redirect for a reason the redirect had spelled out. Both halves are read now, query first.
+
+  **The screen broke at `AccessibilityXL`, which is the setting the review device runs.** A
+  screenshot is the whole finding: the eyebrow printed on top of the wordmark, the subline was
+  sliced mid-sentence by the Apple button ("no passwords, no" and then nothing), and the
+  development row ran off the bottom with no way to reach it. Cause: `hero: { flex: 1 }` with
+  `justifyContent: 'center'` inside a fixed-height column — an overflowing centred flex child
+  overflows in *both* directions. None of it showed at the default text size, which is why it
+  shipped. It is one `ScrollView` now, `flexGrow: 1` + `space-between`, so it keeps the roomy
+  layout when there is room and becomes a scrolling page when there is not. Verified at
+  `accessibility-extra-extra-extra-large`: nothing overlaps, nothing truncates, everything is
+  reachable.
+
+  **The Apple button is Apple's button now.** It was a `PressableScale` with our Ionicons apple
+  glyph, our `type.headline`, and the English literal `Sign in with Apple` — a faithful copy, and
+  a copy is what it stayed. `components/provider-button.tsx` renders the real
+  `ASAuthorizationAppleIDButton`: Apple's mark and metrics drawn by the OS, and a label the
+  system localises, which matters because the review device is not set to English. Geometry is still
+  ours and still matched to Google's button (`CTA_HEIGHT`, `radius.md`), so the pair reads as one
+  family — the 28 Aug ruling is intact. UIKit's button has no disabled or loading appearance, so
+  the wrapper supplies both.
+
+  **Terms and Privacy are linked from the screen that creates the account.** Ten shipping
+  sign-in screens were read for this pass (ChatGPT, Roame, Artie, Avenza, Widgetable, Poke Genie,
+  Photoroom, Notability, Bring!, Airlearn); provider buttons over one line of legal microcopy is
+  the near-universal shape. Both documents have existed at `/legal` since PLAN A3 and were simply
+  not reachable from here.
+
+  **What is verified and what is not.** Measured: the allow-list, the Supabase→Google chain with
+  the new redirect, that Supabase issues a real session (`grant_type=password` against the dev
+  account returns an access token, a refresh token and a user id), and that the native Apple
+  module is in the running binary — `AppleAuthenticationButton` renders nothing when it is
+  absent, and it renders. **Not verified: a completed tap-through of either provider.** There is
+  no tap tooling against this simulator, and Sign in with Apple additionally needs an Apple ID
+  signed into the device. Whether Supabase's Apple provider carries `com.recore.app` in its
+  authorized client IDs cannot be read from outside either — a signature check rejects a probe
+  token before the audience is ever examined. If Apple returns `Unacceptable audience in
+  id_token`, that list is the place to look.
+
+  Files: `app/index.tsx`, `app/_layout.tsx`, `app/sign-in.tsx`, `components/provider-button.tsx`,
+  `lib/auth/sign-in.ts`.
+
+- **9 Sep 2026 — Progress gets a top half: the eight weeks themselves.** Owner ask: *redesign the
+  progression page, make it look like a native iOS app, with very good visualisation.* Two new
+  files (`src/lib/progress-summary.ts` + its 12 node tests,
+  `src/components/progression/period-chart.tsx`), one moved (`app/(tabs)/progress.tsx` →
+  `progress/_layout.tsx` + `progress/index.tsx`), one shared helper (`monthDayLabel` in
+  `lib/db/dates.ts`).
+
+  **What was actually wrong.** The tab was a list and nothing else — every lift as a bare row with
+  a delta and a sparkline, a chip row of clusters above it, a `StubScreen` header. It answered
+  "which lift moved" well and it could not answer the question a person opens the tab with:
+  *is this month more than the last one?* Twelve rows cannot say that; only the weeks can. So the
+  weeks are the top of the screen now and the list keeps its own job underneath.
+
+  **Four decisions, recorded so they are not silently re-litigated:**
+
+  **(1) The hero chart is INK, and the sparklines stay blue.** `charts.tsx` has said since v6 that
+  week bars are ledger furniture and stay monochrome while `TrendChart` draws a LIFT's own
+  progression in the brand. Both rules now live on one screen and they do not contradict: the
+  eight columns are ink with this week at full strength, each lift row keeps its blue line, and
+  the blue on the chrome stays on the controls. One accent, locked.
+
+  **(2) The group chips became the split, and the split filters.** The chip row spent a full row
+  saying only "these clusters exist". As rows with a share bar it says the same names AND how the
+  training divides between them, and it still filters the list — which sits directly under it, so
+  the effect of a tap is never off-screen. Share is of training days, not volume, because a
+  bodyweight day would otherwise report as 0% of somebody's training.
+
+  **(3) The metric switch is text tabs, not `ChipRow`.** `ChipRow` is three white floating pills
+  with a shadow each, which is right under a large title where it is the only thing on the page
+  (Next). Immediately above a chart it puts three raised surfaces in front of the object the
+  screen is for. The selected tab is the app's one blue and a heavier label; nothing else.
+
+  **(4) The comparison carries no colour.** Volume down eight per cent is a deload as often as a
+  decline and the app cannot tell which. The sentence states the direction and stops (§2 rule 6).
+
+  **Verified on the iPhone 17 Pro simulator (iOS 26.5), photographed:** the default state, a
+  week selected (reading, eyebrow and supporting line all swap; the column takes a full-height
+  wash), the Sessions metric, the scrolled list with the plateau row amber and the glass bar
+  refracting the rows under it, the native search field, and **accessibility-extra-large**, which
+  caught a real defect: `adjustsFontSizeToFit` and an explicit `lineHeight` cannot both be
+  honoured, so the hero rendered at about six points in the corner of a 78 pt empty box. The unit
+  is now nested inside the reading's own `Text` and the line height comes from the font.
+
+  **Not photographed, and stated rather than claimed:** the empty state (its shell is the same
+  `Stack.Screen` + root `ScrollView` as the live screen, and its copy is the previous screen's)
+  and Reduce Motion (the column's grow is gated on `useReducedMotion()` in the same shape
+  `charts.tsx` already ships). A second person was editing `app/_layout.tsx` and `app/index.tsx`
+  in the same working tree at the time, which kept reverting the temporary sign-in bypass those
+  two states needed; chasing it further would have meant fighting their edits.
+
+  **Stale rows this did NOT fix.** Section 10 still credits `SummaryCard`, `LiftCard` and `RANGES`
+  in a `progress.tsx` that has not had them for some time — that staleness predates this pass and
+  is left for whoever audits the section properly.
+
+- **4 Sep 2026 — a development door past sign-in, and it signs in for real.** The owner, blocked
+  behind a Google redirect that needs a dashboard change: *"dej naredi obhod mimo prijave"*.
+
+  **The shape of this is a direct answer to what the three `SIMPASS` markers cost.** All three,
+  found and removed earlier the same day, did the same thing: made the app BEHAVE as though
+  somebody were signed in while no session existed. The third was the expensive one — a
+  fabricated user id attached to no `auth.users` row, so the sync loop was refused on every
+  pass, `parse-workout` could only answer no, and `ensureLocalUser` saw the id flip on every
+  cold start and deleted the whole local database. None of it looked like a bug; it looked like
+  a bad network.
+
+  The lesson is not "never add a bypass". It is that **a bypass must produce a real session
+  rather than an imitation of one.** RLS, the edge functions, the sync loop and the local
+  database's scoping all key off a JWT: give them a genuine one and every path behaves exactly
+  as it does in production. So `signInAsDeveloper()` (`lib/auth/dev-sign-in.ts`) actually signs
+  in — it just does not need Apple or Google to do it. The project has email signups enabled
+  with `mailer_autoconfirm` on (`/auth/v1/settings`), so `signUp` returns a session in the same
+  response and there is no confirmation link to click. The dev account is created on first use
+  and signed into afterwards; it is an ordinary user of the project, with the same RLS and its
+  own training data.
+
+  **Three properties keep it out of a release, and the third was measured rather than assumed:**
+
+  1. **`__DEV__` and nothing else** — not an env var, not a preference, not a remote flag, any
+     of which can be switched on in a shipped binary. The function also re-checks it and throws,
+     because a guard you can read at the top of a function is worth more than one you trust the
+     bundler for.
+  2. **It is visible** — a labelled row under a rule on the sign-in screen, saying what it is.
+     A door nobody can see is how the last three survived as long as they did.
+  3. **Verified stripped.** `NODE_ENV=production expo export --platform ios`, then grep of the
+     8.9 MB Hermes bundle: `Development sign-in`, `dev@recore.invalid` and the password literal
+     are all **absent**, while the control strings `Sign in with Apple` and `No passwords` are
+     present — so the grep works and the absence means something. The only survivor is the
+     guard's own refusal message, which is the belt-and-braces check and is unreachable.
+
+  It writes no product state: no preference, no funnel event, no entitlement. It obtains a
+  session and everything downstream runs the ordinary way, including the claim of whatever the
+  funnel wrote. It routes home unconditionally — it has no purchase to resume, and getting past
+  the screen is the whole reason it was pressed.
+
+  The credential is shared and hardcoded on purpose: the alternative is a per-developer secret
+  in a file somebody eventually commits, and this one protects nothing but a development
+  project's own dev account.
+
+  Files: `lib/auth/dev-sign-in.ts` (new), `app/sign-in.tsx`.
+
+- **4 Sep 2026 — "the server is down" is the OAuth redirect landing on `localhost:3000`.** The
+  owner could not finish a Google sign-in and the browser reported a dead server. The server is
+  not dead. Measured against the project directly:
+
+  | Probe | Result |
+  |---|---|
+  | `GET /auth/v1/health` | reachable, **168 ms** |
+  | `GET /auth/v1/settings` | `google: true`, `apple: true`, signups enabled |
+  | `GET /auth/v1/authorize?provider=google` | **302** to `accounts.google.com` |
+  | following that URL | Google serves its **sign-in page** — no `redirect_uri_mismatch`, no `invalid_client` |
+
+  Every server-side link in the chain is healthy, including the Google OAuth client and its
+  registered `redirect_uri`. What is not configured is where Supabase sends the browser
+  **afterwards**. Probing `/auth/v1/callback` with three different `redirect_to` values —
+  the app's own, `recore://`, and a deliberately hostile `https://evil.example.com` — returns
+  the same `location` for all three: **`http://localhost:3000`**, an untouched default Site URL.
+  That is the fallback Supabase uses when a `redirect_to` is not on the project's **Redirect
+  URLs** allow-list, and on a phone it is a page that cannot load. Hence "the server is down".
+
+  **The fix is in the Supabase dashboard, not in this repository** — Authentication → URL
+  Configuration → Redirect URLs needs `recore://**` (development build and release) and
+  `exp://**` (Expo Go, whose redirect carries the machine's LAN IP and therefore changes with
+  the network). Recorded here because the next person to hit it will start by reading this file.
+
+  **What DID change in code: a dead redirect stopped impersonating a cancelled one.**
+  `signInWithGoogle` turned every non-`success` result from `openAuthSessionAsync` into
+  `SignInCancelledError`, and the sign-in screen shows nothing for that on purpose — changing
+  your mind is not a failure. But `dismiss` lands there too, and that is exactly what a
+  redirect into a dead page produces: the person closes a browser showing an error, and from
+  inside the app that is indistinguishable from tapping Done. So the app said nothing at all
+  about the one failure it could have explained. `cancel` — the only type iOS reports for a
+  real Done tap — still throws the silent class; everything else now throws a named error that
+  says the browser never came back to the expected URL and points at the Redirect URLs list.
+  In a release build the athlete still reads `Sign-in failed. Try again.`; the detail is
+  `__DEV__`-only, on the path added earlier today.
+
+  Files: `lib/auth/sign-in.ts`.
+
+- **4 Sep 2026 — the third `SIMPASS` is found: the app was running its networked data layer
+  with no account.** The owner's device log, in an unbroken column:
+  `parse failed, will retry on sync` · `sync pass failed (offline?)`, repeating.
+
+  Neither was a network fault. `lib/auth/provider.tsx:58` read
+  `state.session?.user.id ?? 'sim-verify-user'; // SIMPASS` — **the third of three markers left
+  by the simulator-verification pass**, the other two of which were found and removed earlier
+  the same day (`app/index.tsx`'s redirect and `app/_layout.tsx`'s pinned-open guard, both
+  documented above). Every consumer under it treated that fabricated id as a signed-in user,
+  and the one that mattered was `startSync(userId)`.
+
+  So, signed out, the sync loop pushed rows for a user that exists in no `auth.users` table,
+  with the anon key and no JWT, into tables that are RLS-scoped to `auth.uid()`. Refused on
+  every pass, re-queued, repeat. The parser failed in the same breath and for the same reason:
+  `parse-workout` sits behind `verify_jwt` **and** runs its own `getUser()` check
+  (`supabase/config.toml`), so with no session it can only ever answer no.
+
+  **Nothing was lost** — the dirty flags kept every row queued and the first pass after sign-in
+  pushes all of it. What it cost was the log: an app reporting a network problem it did not
+  have, for work it was never allowed to do, standing exactly where a real fault would show.
+
+  **The fix keeps local-first and drops only the pointless half.** The local id stays: the
+  funnel writes before an account exists (onboarding answers, the seeded first session, a plan)
+  and SQLite has to be scoped to somebody from the first screen — that is CLAUDE.md §3 working
+  as designed, and it is now named `LOCAL_USER_ID` and documented as a scope rather than a
+  session. What waits for a real session is the PUSH: `startSync` only when
+  `state.session != null`, `stopSync` otherwise. `parseWorkout` gained the same guard
+  `demo-parse-remote.ts` has always had for the same edge function — no session, no request —
+  and the workout keeps `needs_parse = 1`, so `retryPendingParses` reads it on the first pass
+  after sign-in. The reading arrives with the account, which is when it could first have
+  existed.
+
+  **Three logs stopped lying.** `errorText()` (new, `lib/log.ts`) reads whatever a client
+  throws — `PostgrestError` is a plain object, and a `FunctionsHttpError` carries its status on
+  a `context` Response rather than in `message`, so the repository's
+  `err instanceof Error ? err.message : ''` printed an empty string more often than not. That
+  is why `sync pass failed (offline?)` was followed by nothing at all, and a 401 from RLS read
+  identically to a gym with no signal. `sync pass failed:` and `parse failed, will retry on
+  sync:` now print the cause.
+
+  Files: `lib/auth/provider.tsx`, `lib/db/index.ts`, `lib/parse/client.ts`, `lib/sync/index.ts`,
+  `lib/log.ts`.
+
+  ### Two data-loss bugs the `SIMPASS` had been hiding, both fixed in the same change
+
+  - **A cold start wiped a signed-in athlete's entire local record.** `getSession()` reads the
+    Keychain asynchronously, so the first render of every launch has `session: null`. With the
+    fallback standing in for it, this effect ran with the LOCAL id, `ensureLocalUser` saw a
+    change of user and **deleted every table** — then the session landed a tick later and it
+    wiped again on the way back. `state.loading` was already being tracked for the splash and
+    simply was not read here; the effect now waits for it. No scope decision is made on a
+    placeholder any more. This is the most serious thing in this entry and it was invisible
+    from the outside, because the re-scope and the re-seed hid it behind an app that merely
+    looked emptier than it should.
+  - **Sign-in deleted what the funnel wrote; it claims it now** (owner's ruling). Same
+    function, second path: at the instant sign-in succeeds the id goes from `LOCAL_USER_ID` to
+    the account's uuid, and every table plus `meta` went with the change — the plan, the funnel
+    counters, and every `pref_*` onboarding answer, since `prefs.ts` stores those in the meta KV
+    and its own header says *"ensureLocalUser wipes meta on user switch"*. `ensureLocalUser`
+    takes an optional `claimFrom` now: when the outgoing scope is exactly that id, the six
+    `user_id`-owning tables are re-pointed at the account and marked `dirty = 1` (the server has
+    never seen them — the sync loop was stopped), and `meta` is **kept whole** with only its
+    `user_id` key moved. `items`, `sets` and `parse_cache` follow their parents by foreign key.
+    A NULL `user_id` on `exercises` is a GLOBAL row and is never claimed.
+
+    **Two real accounts on one device still wipe, and must** — that boundary is the on-device
+    mirror of the server's RLS. The caller names the id it is claiming FROM, so the function
+    cannot be talked into the general case.
+
+  ### One thing this change did NOT fix
+
+  - **Sign-OUT still resets nothing.** The `else` branch in `provider.tsx` calls `stopSync()`,
+    `releaseEntitlement()` and `reset()` and is unreachable, because `userId` is never null —
+    it falls back to `LOCAL_USER_ID`. Its own comment names the cost: *"the next account signed
+    in on this device inherits the previous one's entitlement"*. Handling it needs sign-out
+    modelled as a TRANSITION (session → none) rather than a state, because pre-account is also
+    "no session" and must not reset anything. Left as-is deliberately; it is billing behaviour,
+    and §6 puts that in its own change.
+
+- **4 Sep 2026 — the Apple button is allowed to be absent, not silent.** The owner, on a
+  device: *"appla sploh ni kot možnost da se logira"*. It was not a broken provider — it was
+  a screen that hid one without saying so.
+
+  **Why it disappeared.** `expo-apple-authentication` resolves through
+  `requireOptionalNativeModule`; when the native module is not in the running binary the
+  package hands back a stub whose `isAvailableAsync()` returns `false` forever. **Expo Go
+  does not carry that module**, and this project has been on Expo Go since the SDK 57 upgrade
+  (see the entry below). `sign-in.tsx` rendered the button on that boolean and rendered
+  nothing at all when it was false — so the screen offered Google alone, while the caption two
+  lines under it went on promising Face ID and a hidden email. Google is unaffected because
+  its path is `expo-web-browser` + Supabase OAuth, which is JavaScript.
+
+  **What changed, and what did not.** `lib/auth/sign-in.ts`'s auth logic is untouched: PKCE,
+  the identity-token exchange, the first-authorization profile write, the cancel class. The
+  screen now holds availability as `probing | present | absent` instead of a boolean, and
+  `absent` PRINTS where the button would have been rather than collapsing. `probing` still
+  renders nothing — the native call answers in a frame or two and a note that flashes and
+  vanishes is worse than a moment of nothing.
+
+  **The note says only what was measured.** The probe reports that the native module did not
+  answer; it cannot report why. So `absentNote()` prints "missing from this runtime — a
+  development build carries it", which is true whatever the cause, rather than naming a client
+  as a diagnosis. Off iOS it is developer-only ("Sign in with Apple is iOS only.") and absent
+  from release builds: an Apple-platform API missing on Android is not a fault, and a user has
+  nothing to do with the sentence.
+
+  The caption is conditional now, for the same reason the note exists — it was promising a
+  control that was not on the screen.
+
+  **Three silences closed while in here.** The availability probe's `.catch(() => {})`
+  swallowed its rejection whole and is now a `devLog`. A failed sign-in showed
+  `Sign-in failed. Try again.` for every cause; in `__DEV__` it appends the provider's own
+  message, so a redirect the Supabase project has not allow-listed and a missing native module
+  stop reading identically. And `signInWithGoogle` logs the redirect it resolved to —
+  `makeRedirectUri()` answers `recore://` in a development or release build and
+  `exp://<lan-ip>:8081/--/` inside Expo Go, and only one of those is usually in the allow-list.
+
+  **This does not make Sign in with Apple work inside Expo Go, and nothing in code can.**
+  `app.json` is already correct — the `expo-apple-authentication` plugin is registered and
+  `ios.usesAppleSignIn` is true — so a development build (`npx expo run:ios`) or an `eas go`
+  build carries it and the button appears with no further change. The screen's job was to say
+  that instead of looking broken, and it does.
+
+  Files: `app/sign-in.tsx`, `lib/auth/sign-in.ts`.
+
+- **4 Sep 2026 — four corrections: alias learning becomes a choice, the streak label stops
+  claiming the calendar, a relative day loses its preposition, and a baseline stops being a
+  PR.** Four independent defects, none of which changed a computation.
+
+  **(1) "Remember this" — the fix sheet asks before it teaches (§6.2 flywheel).** The alias
+  override store (`db/alias-overrides.ts`), the parser's consult-it-first rule
+  (`db/exercises.ts` `resolveExercise` step 1) and the management screen (`app/aliases.tsx`,
+  reached from You → Reading corrections) have all existed since the flywheel shipped. What
+  did not exist was a way to say NO. `fix-sheet.tsx` drew a two-option "scope" radio group
+  under the set list whose second option was permanently selected and whose first one
+  silently reverted the Exercise field — it forked no behaviour `applyCorrection` had, which
+  its own comment admitted. So correcting a name always taught the parser forever, and a
+  one-off typo repair rewrote how every future note read that word.
+
+  It is now one checkbox, **defaulted on**, sitting directly under the Exercise field it is
+  about instead of under the sets it is not: `Remember this — "<phrase>" means <Exercise>` /
+  `applies to future readings too`. `CorrectionSubmit` gained `remember?: boolean`
+  (defaulting true, so `removeReading` and every other caller are unchanged) and
+  `applyCorrection` gates the override write on it. With it off, steps 1 and 2 still happen —
+  the line is corrected and the correction row re-applies on every re-parse of that line —
+  and no other line changes its reading.
+
+  **The phrase is the athlete's, not the model's.** The offer used to name
+  `item.aliases_seen[0]`, which is what the parse reported seeing, while the store keyed on
+  the same array. Both now go through `aliasPhrasesOf()`, which leads with
+  `typedNameOf(lineText)` — the words before the first digit on the line they actually wrote —
+  so the sentence on screen and the row in the store are the same string. A line that opens
+  with a number has no name portion; with no phrase at all the offer is not shown and no
+  alias is written, rather than a checkbox naming nothing. The footer's promise is unchanged
+  and still literally true: nothing here edits `raw_text`.
+
+  **(2) The consistency sheet said something the record contradicts.** `currentStreak()` walks
+  back over the DAYS THAT WERE TRAINED while no gap between two of them exceeds a week — it
+  has never counted consecutive calendar days, and the module has said so since 28 July. The
+  sheet printed "N training days in a row", so three sessions in one week read "3 training
+  days in a row": not a rounding problem, a claim the same screen's own week grid disproves
+  two lines below it. The number is correct and untouched; the label is now
+  `training days · streak unbroken`, which states the two halves separately. The explanatory
+  caption is unchanged. Audited: this was the only "in a row" in the app — the top bar shows
+  a session TOTAL, not the streak (11 Aug ruling), and there are no widgets or share cards
+  carrying it.
+
+  **(3) "on Today" (new `lib/day-phrase.ts`).** `labelForDay` returns two different kinds of
+  answer — an absolute date, or the relative words "Today"/"Yesterday" — and `lift-prose.ts`
+  dropped either into `, on <label>,`. English takes no preposition before "today" and does
+  not capitalise it mid-sentence. `isRelativeDayLabel` / `onDayPhrase` / `lastDayPhrase` are
+  the grammar, pure and tested; the preposition lives INSIDE the returned phrase, because a
+  caller deciding whether to print "on" would be re-deriving the rule. The lift summary now
+  reads `…120 kg × 12 today, for an estimated 1RM of 145 kg.` and keeps `, on Sep 4,` for a
+  dated one. The same defect one preposition over — `last Today` on Progress
+  (`detailOf`) and on the per-lift screen — is fixed by `lastDayPhrase`. `lift-summary.ts`'s
+  `heaviestLine` needed nothing: it runs on `shortDayLabel`, which is always absolute.
+
+  This also retires a workaround rather than adding to it. `exercise-sheet.tsx` still DELETES
+  its "since …" clause whenever the label is relative, with the comment *"since Today" is not
+  a sentence about a record* — a fact thrown away to dodge a grammar problem. That clause is
+  left as it stands (logging a lift "once since today" is worth omitting on its own merits),
+  but the helper now exists for anything else that would otherwise reach for the same trick.
+
+  **(4) A baseline is not a PR (§15).** Two of the three PR surfaces read `getAllTimePRs()`,
+  which returns each lift's heaviest counted set with no regard for how much record stands
+  behind it — so the first session of a new lift carried a "PR" badge, and so did the opening
+  session of a lift whose heaviest day is still its first. `PrRecord` gained `firstDay` (a
+  window `MIN` over the same partition, so it costs no second query and cannot disagree with
+  the row it rides on) and `isBaseline`. The lift sheet's history table, the session sheet's
+  set rows and the weekly recap — which is **shareable**, so a baseline dressed as a record
+  would be a claim leaving the app — all skip it now.
+
+  **The third surface was already right, and this is the audit the task asked for.** The
+  gutter and receipt PR (`db/history.ts` `signalFor`) requires a PREVIOUS session and compares
+  against the all-time max computed strictly BEFORE the day in question, so it has never been
+  able to fire on a first entry. `charts.tsx` draws the all-time reference as an **unlabeled**
+  hairline on purpose — "the outlined mono label owns the word PR, a line does not get to say
+  it" — so no chart needed changing either.
+
+  **And the quiet marker that replaces it was itself wrong.** The lift sheet's "first
+  recorded" subline keyed on `ordered[i + 1] === undefined`, but that table draws a WINDOW of
+  the last ten sessions — so a lift with twenty-four sessions was printing "first recorded"
+  against its fifteenth. It keys on `stats.firstDay` now. The session sheet gets no
+  replacement caption: "first recorded" beside one SET would be a claim about the lift printed
+  in the wrong place.
+
+  Files: `lib/parse/correct.ts`, `state/session-store.ts`, `components/fix-sheet.tsx`,
+  `components/streak-sheet.tsx`, `lib/day-phrase.ts` + test (new), `lib/lift-prose.ts` +
+  test, `app/(tabs)/progress.tsx`, `app/lift/[key].tsx`, `lib/db/insights.ts`,
+  `components/exercise-sheet.tsx`, `components/session-sheet.tsx`,
+  `components/week-recap-card.tsx`. No prompt, response schema, model guard or AI-summary
+  change, so no §9.4 evaluation is owed. No §13 event has a documented name for any of these
+  surfaces and none was invented.
+
+- **4 Sep 2026 — the estimate says it is an estimate.** The Progression list printed a lift's
+  latest e1RM as a bare figure with a unit and nothing else, so somebody who had logged 100 kg
+  read "140 kg" against their own bench and concluded the record was wrong. Nothing about the
+  computation changed — it is still Epley over the best counted set at or under twelve reps,
+  half-kilo grain, in `db/progression.ts`'s one grouped scan.
+
+  **(1) The row names its reading.** `Row` gained `valueLabel`, which prints a `footnote` /
+  `textSecondary` word above the number — small enough that the figure keeps the hierarchy,
+  never `textMuted`, which the skill reserves for what the eye may skip. Only a DERIVED reading
+  gets one: the Lifts list still prints `100 kg × 8` bare, because a logged top set beside a
+  lift's name is what it looks like.
+
+  **(2) Tapping the reading says where it comes from.** `Row.onValuePress` + the new
+  `components/e1rm-sheet.tsx` — the app's one sheet chrome carrying a title and a paragraph and
+  **no number**, since every figure it could quote is on the row behind it and a definition that
+  restates a value is a second place for the two to disagree. The copy is the owner's, verbatim,
+  and ends on *"It is an estimate, not a test."*
+
+  A pressable `Row` is ONE accessible element, so a nested button would have been silently
+  unreachable by VoiceOver: the inner target opts out of the tree and the row publishes the same
+  action on the rotor instead (`accessibilityActions`, "What is est. 1RM?"). `PressableScale`
+  carries the four props that shape needs. 44 pt is reached with `hitSlop` rather than by
+  widening the block into the lift's name.
+
+  **(3) The label is one string everywhere it is printed** (`E1RM_LABEL`). The lift sheet's
+  current reading gains it — and only when the e1RM metric is plotted, because "220 kg" under
+  Heaviest weight and "8" under Top reps are what they look like — and the day sheet's per-set
+  `e1RM 125` becomes `est. 1RM 125`. The level-two metric card already titled itself
+  *Estimated 1RM* and is unchanged.
+
+  **(4) The Progression tab reads in the athlete's own unit.** `pref_weight_unit` has existed
+  since onboarding and, until today, `units.ts`'s own header was accurate that the correction
+  sheet was the *first* reading surface to honour it — every other surface printed stored
+  kilograms. The two Progression screens now honour it: the row's figure, the plateau weight and
+  the delta in its detail line, and level two's cards, sub-labels and charts (`seriesInUnit`,
+  applied as the last step so the unit cannot leak backwards into arithmetic). New
+  `displayLoad` reads pounds whole — 140 kg is 308.647 lb, and two decimals is false precision
+  on an estimate.
+
+  **This is deliberately partial and the gap is named** (owner's ruling, 4 Sep 2026, choosing it
+  over both "label only" and a full migration): the lift sheet, the day sheet, the Lifts list,
+  the Today ledger, Next and the recap still print kilograms, so a pound reader sees
+  `est. 1RM 309 lb` on Progression and `100 kg × 8` in the history below it. Migrating the rest
+  is its own change. Storage is kilograms throughout and no stored value moved.
+
+  Gates: typecheck, lint and 684 tests pass (`units.test.ts` +3, `progression-metrics.test.ts`
+  +3). No model call, prompt or guard is involved, so §9.4's evaluation does not apply.
 
 - **28–29 Aug 2026 — Next is rebuilt on Symmetry's Workout Detail, and every row states the
   reason for its own target.** The owner studied two screens with us — Symmetry's Workout
@@ -3714,36 +4257,1824 @@ block under a quiet status line — the shape all four variants took.
 
 ### Verified by the repository gates
 
-Typecheck 0 · lint 0 · **661/661** tests pass · `npx expo export --platform ios`
+Typecheck 0 · lint 0 · **678/678** tests pass · `npx expo export --platform ios`
 **pass**. (`expo lint` also reports one warning in `src/app/index.tsx` — a
 `// TEMP: simulator verification pass` redirect belonging to another session's
 work in progress, untouched here.)
 
-### Seen on the simulator, and what was not
+### Seen on the simulator
 
-iPhone 17 Pro, Release build, through six rebuilds. Rendered and measured: the
+iPhone 17 Pro, Release build. Rendered and measured twice: first on 29 August,
+then again on **31 August against the v6 tree**, after `v6 faza 2b`, `v6 faza 3`
+and `89f7cfd` had restyled Today underneath this card. Both passes covered the
 pending card, the row it becomes, two pending lines stacked as a session shows
-them, the composer's value column, and the row under a real OS-level Reduce
-Motion. Every number above comes off those frames. Frames were sampled across the
-1700 ms cycle and ranked by the blue they put into the row, because the beam is
-invisible for the 400 ms beat and a hand-picked screenshot lands there more often
-than not.
+them, and the row under a real OS-level Reduce Motion. Frames were sampled across
+the 1700 ms cycle and ranked by the blue they put into the row, because the beam
+is invisible for the 400 ms beat and a hand-picked screenshot lands there more
+often than not.
 
-**`ReadingMark` itself has not been on a screen.** It was written after the last
-frame was captured, to close the silent-row defect that frame exposed, and the
-build that would show it never ran: a concurrent session held Xcode's build
-database for the rest of the sitting, and with 1.7 GB free there was no room for
-a second `derivedDataPath`. Its motion path renders exactly what those frames
-show — the same dots, in the same slot, in the same row — so what is unverified
-is narrow: that with Reduce Motion on, the word now appears where the dots were.
-It is one branch of one component and it is gate-clean, but nobody has looked
-at it.
+**The re-measurement matters, because v6 moved the ground.** Its larger type
+scale grew the mark from 15.00 pt wide to 23.33 — and grew the settled card's ⋯
+to 23.33 as well, so the two still match to the pixel; both still centre on
+x 360.17. The words still start at x 68.00 in both rows. With the bigger type a
+long line now wraps to two lines and the mark centres on the block rather than on
+a single line, which is the behaviour the row was built to have. Against the
+first line's own metrics — cap height 16.67, baseline 127.00 — the dots sit at
+116.50, two points above the cap centre: on the line, not under it.
+
+**Reduce Motion was verified with the OS setting, not a prop.** With it on, the
+beam and the dots go and `reading` stands at the end of the same row. That is the
+branch `ReadingMark` exists to guarantee, and it is now the branch that has been
+looked at.
 
 ### Still not verified
 
 Nothing here has been seen on a physical device, and no one has watched it during
-a real parse. What a device would settle: whether 16 % on the warm canvas holds
-up in daylight rather than on a desk display, whether the 400 ms beat is right at
-real parse latencies (a slow network holds this state for seconds, not
-milliseconds), and whether the dots→⋯ handover reads as still to a person who is
-looking at the line rather than measuring it.
+a real parse — both simulator passes drove the components directly rather than
+typing a line and waiting for the parser. What remains open: whether 16 % on the
+warm canvas holds up in daylight rather than on a desk display, whether the
+400 ms beat is right at real parse latencies (a slow network holds this state for
+seconds, not milliseconds), and whether the dots→⋯ handover reads as still to a
+person who is looking at the line rather than measuring it.
+
+---
+
+## 31 August 2026 — the canvas becomes the canvas: the paper field mounts on every tab
+
+Until today the diagonal paper field rendered on **Today alone**. Next, Progression, Lifts and
+You drew the flat `color.canvas` instead, and switching tabs stepped visibly from a peach corner
+onto flat paper.
+
+**This was a migration gap, not a design decision.** The design skill's §Canvas has said the
+opposite since v6: *"One canvas runs the whole app — Today, list screens, sheets' backdrop,
+settings, every onboarding step"*, and its token table describes `canvas` as *"the flat fill
+**wherever a gradient cannot render**"*. The flat colour is the field's fallback. Reading the
+code as the authority had it backwards.
+
+### Why it was visible at all, when the stops are matched
+
+`lib/paper-field.ts` solves the three stops so every one of them carries the same WCAG relative
+luminance as `canvas` (0.9077 ± 0.0043) — `largestStopContrast` is **1.005:1**, and every ink in
+the app measures the same on all three. That is what let a `today.tsx` comment claim the two
+"never disagree by more than 1.007:1" and treat the mixture as invisible.
+
+The metric was measuring the wrong axis for this comparison. The stops differ by **hue alone**,
+which is exactly the property a luminance ratio cannot see — and a tab switch puts the peach end
+of one screen directly against the flat paper of the next, back to back, with no intervening
+content. The eye resolves a hue step in that arrangement far below the threshold at which it
+resolves a lightness step. The guard was never wrong about contrast; it simply does not answer
+the question "will someone notice this".
+
+### What changed
+
+Two mount points, because `StubScreen` carries three screens:
+
+- **`src/components/stub-screen.tsx`** — Next, Progression and `/lifts`.
+- **`src/app/(tabs)/you.tsx`** — mounted ahead of the `ScrollView`.
+
+Both keep `backgroundColor: color.canvas` on the root, which is the documented fallback for
+wherever the gradient cannot render, not a second opinion about the colour.
+
+### The Yoga trap this pass walked into and out of
+
+`StubScreen`'s root was a `SafeAreaView`, and the first attempt mounted the field inside it.
+**Yoga offsets an absolutely positioned child by its parent's padding** — and safe-area padding
+is the whole of what that component adds. The field would have stopped short of the status bar
+and the home indicator and left a flat strip at each end: a worse seam than the one being fixed,
+in the two places a phone puts a user's attention. The root is now a plain `View` with the field
+behind a fill-less `SafeAreaView`, which is the shape `today.tsx` has always had.
+
+### It also fixes the tab bar, which was not the stated goal
+
+`NativeTabs` renders a real `UITabBarController`, and on iOS 26 that is Liquid Glass — it
+refracts whatever is behind it and takes no tint from us on purpose (`(tabs)/_layout.tsx`).
+Today handed it the lavender bottom stop; the other three handed it flat paper. The bar was
+therefore refracting a different ground on every tab. It now refracts one.
+
+### Verified by the repository gates
+
+Typecheck 0 · lint 0 · **678/678** tests pass · `npx expo export --platform ios`
+**pass**. (`expo lint` reports the same one warning in `src/app/index.tsx` that the
+entry above names — another session's `// TEMP:` redirect, untouched here.)
+
+### Not verified
+
+**Nothing here has been on a device or a simulator.** Three things need eyes, and none of them
+is answerable from the source:
+
+1. **The field does not scroll.** It is an `absoluteFill` anchored to the viewport, so on
+   Progression and You the peach corner stays pinned while a long list travels through it. That
+   is the correct behaviour — it is a page, not wallpaper on the content — but Today never had
+   enough scroll for it to be a question and now two screens do.
+2. **`surfaceHigh` on a tinted ground.** `progress.tsx`'s recessed blocks take `color.surfaceHigh`,
+   which `theme/color.ts` derives by darkening the *flat* canvas in OKLCH at fixed hue. Sitting on
+   the peach stop it is a warm-derived neutral on a warmer ground and should read a shade cooler
+   than it does on flat paper. At 1.005:1 between stops this is very likely below threshold, but
+   it is the one place where the ladder's "everything is measured on `canvas`" assumption meets a
+   different local ground.
+3. **Banding over a taller run.** The three stops are deliberately few, to keep an 8-bit display
+   from banding across a long gentle ramp. The field's height has not changed — it is the
+   viewport on every screen — so this should be exactly as it is on Today, but it has been
+   confirmed on one screen only.
+
+### A divergence noticed, not fixed
+
+The skill and the code disagree about the canvas values. §Canvas lists `canvas #FCF9F4`,
+`canvasTop #FDF6EE`, `canvasBot #F9F5F9` and `surfaceHigh #E5E5EA`; `theme/color.ts` has
+`#F4F5EF`, `#FBF3EC`, `#F7F4F7` and derives `surfaceHigh` from the canvas rather than pinning it
+to a grouped grey. This is the trail of the 28 August palette merge, which was never written back
+into the skill. The skill is binding, so someone has to reconcile the two — and since the merge
+re-derived the whole ink ladder onto the new paper, the reconciliation is the skill catching up,
+not the code. **Out of scope here and left open deliberately.**
+
+---
+
+## 31 August 2026 — the funnel runs end to end again, behind one development door
+
+The owner asked for the funnel to work start to finish — onboarding → paywall → sign-in → Today —
+and for the You tab's development rows to collapse into a single "someone just downloaded this"
+button.
+
+### Two hardcoded overrides were holding the funnel open
+
+Neither was a design decision; both were left behind by a simulator verification pass.
+
+| Where | Was | Effect |
+|---|---|---|
+| `src/app/index.tsx:74` | `return <Redirect href="/next" />; // SIMPASS` | The dispatcher answered **every** launch with the Next tab. Onboarding, the paywall and the import fast path were unreachable from `/`, and every line below it was dead — which is what `expo lint` had been reporting as `no-unreachable` for days, and what `implementation-status` twice wrote off as "another session's work in progress". |
+| `src/app/_layout.tsx:91` | `const signedIn = true; // SIMPASS` | The auth guard was pinned open, so the whole `(tabs)` group, `import-start`, `split`, `plan-day`, `lifts`, `aliases` and `health` were mounted **with no session**. "Only after a successful sign-in" was not true of any screen in the app. |
+
+Both are gone. `signedIn` is `session !== null` again, and the dispatcher's four-way routing runs.
+**The lint warning that vanished with them was the symptom, not a coincidence.**
+
+### The join nobody had walked: what happens after sign-in
+
+Sign-in lives inside `guard={session === null}`, so the moment a session lands the screen is
+removed and whatever pushed it is on top again. For the paywall's **CTA** that is exactly right —
+the paywall is still mounted underneath and its `pendingPurchase` effect fires on that return to
+open Apple's sheet. For the paywall's **DEV·SKIP** it is wrong: there is no purchase to resume, so
+the same mechanism drops the user back on the screen they just skipped.
+
+An unconditional `router.replace('/')` in sign-in would have fixed the skip and **broken the
+purchase**, because the paywall below stays mounted and would race its own sheet against the
+navigation. So the caller says which case it is: `DEV·SKIP` pushes `/sign-in` with `next: 'home'`,
+and sign-in honours only that. The purchase path is untouched.
+
+### One door instead of five
+
+`src/lib/dev-fresh-install.ts` is new. `simulateFreshInstall()` discards the sandbox, resets both
+flow stores, deletes every `pref_%` row, clears `onboarding_done`, drops every cached billing
+fact, and signs out — in that order, because the session is what the guard watches and everything
+else has to be true before it changes.
+
+Each key is cleared by the module that owns it, so the reset cannot drift from the writes:
+`clearOnboardingDone()` in `prefs.ts`, `devResetBillingState()` in `billing/state.ts`,
+`discardSandbox()` in `onboarding-v2-sandbox.ts`.
+
+**`onboarding_done` is the one key in `prefs.ts`'s `KEYS` that carries no `pref_` prefix**, despite
+the comment above that map stating "EVERY KEY HERE IS `pref_*` ON PURPOSE". A wipe using the usual
+`pref_%` net misses exactly the flag the dispatcher reads, and the result would have been a device
+that looks signed-out but claims to be onboarded. `clearOnboardingDone()` exists for that one
+reason. **The comment is still wrong and is left alone deliberately** — it also claims the key is
+covered by `export-json.ts`'s `pref_%` export, which it is not.
+
+**The record is not touched, and neither is the store.** A real fresh install has no workouts
+either, but deleting a ledger is irreversible and no part of the funnel reads it;
+`account/delete.ts` is the honest way to do that and it asks first. `devResetBillingState()` drops
+the local cache only — a subscription is the store's fact, not ours.
+
+### Two screens now have no door
+
+Removing the v1 rows leaves `src/app/onboarding/` and `src/app/paywall.tsx` reachable only by
+typing the route. Both still exist, still work and are still registered in `app/_layout.tsx`;
+nothing was deleted. **CLAUDE.md §1 still describes both as "reachable only from the You tab's
+development rows", which is now false.** Under §8 that line is the owner's to change, not this
+change's, so it is recorded here rather than rewritten there.
+
+`resetSandbox`, `snapshotPrefs`, `restorePrefs`, `hasSnapshot` and `beginSandboxRun` lost their
+last callers with those rows. They are left in place: a device carrying a snapshot from an earlier
+v1 dev run would otherwise have no way back to its own preferences, and deleting working dev
+machinery is not what "remove the extra rows" asked for.
+
+### Verified by the repository gates
+
+Typecheck 0 · lint 0 · **678/678** tests pass · `npx expo export --platform ios` **pass**.
+**`expo lint` is now clean** — the `no-unreachable` warning in `src/app/index.tsx` that the two
+entries above this one attributed to another session was the `SIMPASS` redirect, and it went with it.
+
+### Not verified — and one part of the ask does not land where it sounds like it should
+
+**Nothing here has been run.** No simulator, no device; the funnel has been read, not walked.
+
+**The skip does not reach a working Today, and that is the app being truthful.** `.env` carries a
+`test_`-prefixed RevenueCat key, so `isStoreConfigured()` is true and `devOverride()` declines to
+invent an entitlement (it only does so when no store is configured at all). A fresh account that
+has never purchased gets `active: false, productId: null` from the Test Store, which
+`decideEntitlement` reads as `lapsed / never` — and `today.tsx` answers `entitlement === 'lapsed'`
+with `ReadOnlyLedger`. So the routing the owner asked for is exactly right (the skip does land on
+`/today`), and the screen that renders there is the read-only one.
+
+Closing that gap means deciding what "skippable" means commercially, which is §2 billing and the
+owner's call, not this change's:
+
+1. **Leave it.** Skipping means no subscription, and the app says so. Honest, and the simulation
+   still proves every route.
+2. **A separate, explicitly-labelled dev entitlement override** — the inverse of the existing
+   "Simulate lapsed subscription" toggle. Honest, because it says what it is, but it is a second
+   development row and the ask was for one.
+3. **Make DEV·SKIP grant entitlement.** Rejected without asking: it would make a skip mean "you
+   now have a subscription", which is a billing fact the app would be inventing about itself.
+
+---
+
+## 4 September 2026 — SDK 54 → 57, and what that costs Expo Go
+
+The owner asked for SDK 57 "for Expo Go". Both halves of that sentence moved: the repository is
+now on Expo SDK 57, and **Expo Go is no longer the frictionless part of it.**
+
+### The version set is Expo's own, not a guess
+
+`expo` 57.0.20, React Native 0.86.3, React 19.2.3, Reanimated 4.5.1, worklets 0.10.1,
+expo-router 57.0.19, and every other `expo-*` at the version SDK 57's `bundledNativeModules.json`
+names. Three third-party packages are not in that map and were moved deliberately:
+`react-native-purchases` and `react-native-purchases-ui` to 10.9.0, and `expo-speech-recognition`
+to 57.0.0 (that package adopted SDK-aligned versioning). `node_modules` and `package-lock.json`
+were deleted and rebuilt rather than upgraded in place, because three SDK majors in one step
+leaves stale transitive native deps behind otherwise.
+
+`npx expo install --fix` afterwards reports **"Dependencies are up to date"**, and
+`npx expo-doctor` reports **21/21 checks passed**. Nothing in `app.json` needed changing —
+`experiments.reactCompiler` and `typedRoutes` both survive, and the fields SDK 55 removed
+(`newArchEnabled`, `edgeToEdgeEnabled`, the top-level `notification` block) were never in it.
+
+### Four API breaks, and only four
+
+Everything else compiled unchanged. What did not:
+
+| Break | Where | Fix |
+|---|---|---|
+| `StyleSheet.absoluteFillObject` was removed from React Native 0.86, runtime and types both. | 10 spreads across `paywall`, `bottom-sheet`, `scroll-edge`, `gutter-value`, `thought-process`, both `HoldToCommit`s, `ProgressRail`, `OptionRow`, `motion/bar`. | `StyleSheet.absoluteFill`, which in 0.86 **is** the plain frozen object the old name used to hold. Identical values; not a behaviour change. |
+| `expo-router/unstable-native-tabs` no longer exports bare `Icon` and `Label`. | `app/(tabs)/_layout.tsx`. | `NativeTabs.Trigger.Icon` / `NativeTabs.Trigger.Label`. Same `sf` props, same four tabs, same absence of a tint. |
+| Reanimated 4.5 returns an `AnimatedStyleHandle`, which a `StyleProp<ViewStyle>` no longer accepts. | Seven callers handing a `useAnimatedStyle` result to `PressableScale`. | One typing change at the definition — `PressableScaleProps.style` and `.pressedStyle` are `StyleProp<AnimatedStyle<ViewStyle>>`. No call site moved. |
+| `withInitialValues` rejects a readonly transform tuple. | `onboarding/Enter.tsx`'s `FROM`. | Typed tuple instead of `as const`. Same twelve points of rise. |
+
+### Forty React Compiler findings arrived with the linter, and they are not this change's
+
+`eslint-config-expo` went 10 → 57, which pulled `eslint-plugin-react-hooks` 5 → 7 and switched on
+the React Compiler's own diagnostics: `set-state-in-effect` (19), `immutability` (13), `refs` (5),
+`preserve-manual-memoization` (2), `purity` (1). Every one of them flags code that shipped weeks
+ago and that this upgrade did not touch — sheets seeding draft state in an effect, Reanimated
+shared values written from a `useCallback`, the spotlight tour reading a ref during render.
+
+**They are set to `warn`, not off** (`eslint.config.js` carries the reasoning). All forty print
+with file and line on every `npm run lint`. Clearing them means restructuring effects in roughly
+twenty files, most of them sheets and onboarding — behaviour changes that need device QA and that
+have nothing to do with an SDK number, so under CLAUDE.md §6 they are separate work. **This is
+open, not done.** Raise the five rules back to `error` in the change that clears them.
+
+### Expo Go: the pin existed for a reason, and the reason is still true
+
+`AGENTS.md` pinned this project to SDK 54 and named the Expo Go constraint. That constraint has
+not gone away — **the App Store build of Expo Go is still SDK 54**, and has been since Apple
+stopped approving updates. On SDK 57 it will refuse to open this project. What works instead:
+
+- **iOS Simulator and Android** — the CLI fetches the matching SDK 57 Expo Go itself. `npm run go`
+  (added; `expo start --go`) forces Expo Go mode, which the plain `start` script does not, because
+  `expo-dev-client` is installed and the CLI assumes a development build.
+- **A physical iPhone** — `eas go` builds an Expo Go carrying SDK 57 and puts it on the owner's own
+  TestFlight. It needs the Apple Developer Program membership the project already has.
+
+`AGENTS.md` has been rewritten to say this rather than the SDK 54 pin.
+
+Two modules still do not exist inside any Expo Go and never did: `react-native-purchases` and
+`expo-speech-recognition`. Both were already fenced — `billing/paywall-ui.ts` probes the native
+module before requiring the JS, `voice.ts` uses `requireOptionalNativeModule` — so Expo Go
+degrades quietly rather than throwing. That fencing was written for SDK 54 Expo Go and is
+unchanged; it has not been re-run against 57.
+
+### The native folder was left alone on purpose
+
+`ios/` on disk is SDK 54 prebuild output and is gitignored. A development build or `expo run:ios`
+needs it deleted and regenerated (`npx expo prebuild --clean`) plus a fresh dev client — SDK 56
+also raised the Xcode floor to 26.4 and the iOS deployment target to 16.4. **None of that was
+done here**, because the ask was Expo Go and deleting generated native output is not something to
+do quietly.
+
+### Verified by the repository gates
+
+Typecheck **pass** · lint **pass** (0 errors, 40 warnings, all listed above) · **678/678** tests
+pass · `npx expo export --platform ios` **pass** (9.3 MB Hermes bundle). `npx expo-doctor` 21/21.
+
+### Not verified
+
+**Nothing has been run on a simulator or a device.** The bundle compiles; no screen has been
+looked at on SDK 57. Specifically unverified:
+
+- Every native module at runtime under the new SDK: RevenueCat 10.9, Sentry 7.11, speech
+  recognition 57, view-shot 5, glass-effect 57 (the last one jumped from `0.1.x` to SDK
+  versioning, so its Liquid Glass behaviour on the tab bar and cards is worth a look first).
+- **`globalThis.fetch` is `expo/fetch` since SDK 56**, not React Native's. Supabase, the brief
+  call and the Edge Functions all go through it and none has been exercised. `EXPO_PUBLIC_USE_RN_FETCH=1`
+  reverts it if something turns out to depend on the old implementation.
+- The native tab bar after the `NativeTabs.Trigger.Icon` rename — the typing is right, the four
+  SF Symbols have not been seen rendered.
+- No AI prompt, response schema, guard or summary changed in this pass, so CLAUDE.md §5's
+  owner-run §9.4 evaluation is not owed by it.
+
+
+---
+
+## 6 September 2026 — the press stops being a CSS `:active` and becomes a surface
+
+An Apple-fluidity read of Today (the logging screen) found five things that read as a web page
+rather than an app. This change implements the first and by far the most frequent of them; the
+other four are written down below as open work, with values, so they are not re-diagnosed from
+scratch.
+
+### What was wrong
+
+Every touchable on the record answered a press the same way: `style={({ pressed }) => [..., pressed
+&& styles.cardPressed]}` where `cardPressed` was `{ opacity: 0.6 }`. Three separate faults in one
+line.
+
+- **It ran on the JS thread.** React Native's `Pressable` with a *function* style re-renders on
+  touch-down and again on lift. On this screen specifically that matters: the composer re-parses
+  the note on every keystroke, so the JS thread is the busiest thread in the app exactly when a
+  finger lands on a card. Feedback that queues behind a parse is the latency the fluid-interface
+  rules call the cliff.
+- **It could not fade.** 0.6 was cut in and cut back out with no transition at all, so the fast,
+  confident taps got the *least* feedback — a subliminal flicker. iOS holds a highlight and
+  dissolves it over roughly a quarter of a second.
+- **It faded the record.** Dropping the whole row to 60 % opacity dims the ink. The one thing on
+  this page that must never look like it is going away is what was going away.
+
+`PressableScale` — the shared primitive the *other* controls use — had the first fault too. It
+carried a `useState(pressed)` whose only job was to apply `pressedStyle`, so it rendered twice per
+press whether or not a caller passed one. And it was **symmetric**: 120 ms in, 120 ms out, which is
+what a CSS `transition` gives you free and what no physical control does.
+
+Under Reduce Motion it did nothing at all — `if (!reduce) scale.set(...)` on both handlers meant
+every button in the app went completely dead to the touch for those users.
+
+### What it is now
+
+`PRESS` in `lib/motion.ts` — in `90 ms` on `EASE.emphasized`, out `260 ms` on `EASE.standard`,
+with a `minVisibleMs` floor of 90 ms measured from touch-down. Asymmetric on purpose: a control
+takes the finger immediately and lets go slowly. The floor means a 60 ms tap and a 400 ms hold
+produce the same amount of visible feedback.
+
+`PressableScale` runs the whole press off **one shared value on the UI thread**. The dip and the
+new wash both hang off it; nothing re-renders. `useState` survives only for the twelve legacy
+`pressedStyle` callers (the ink CTA, the provider buttons) and is not touched otherwise.
+
+**The new `wash` prop is the row highlight.** `color.surfaceHigh` — the design system's own
+pressed-state fill, canvas × 0.96 — fades up *behind* the content, so the paper darkens under the
+finger and the ink does not move. It is absolutely positioned, so a row's columns lay out as if it
+were not there, and it bleeds ±8 pt horizontally the way a list-row highlight does.
+
+**Reduce Motion now keeps the press.** It drops the dip and keeps the wash. Less motion is not no
+feedback, and a fill rising in place is not vestibular.
+
+### What changed on Today
+
+Eleven touchables in `note-surface.tsx`. Rows wash without dipping (`ROW_SCALE = 1`) — a full-bleed
+row that shrinks 2 % drags its check mark and its ⋯ inward, which reads as the page flexing rather
+than as one line being held. Controls inside a row still dip, because a control is an object you
+push and a row is a surface you touch.
+
+| Surface | Before | Now |
+|---|---|---|
+| `ExerciseCard` body | dip 0.98 + `opacity: 0.6` | dip 0.98 + wash, inset −8/−4 |
+| The check ring | **nothing** | dip 0.88, no wash (a grey box round a 22 pt circle reads as a button appearing under it) |
+| The alias echo, `fix reading` | **nothing** | dip 0.94 |
+| The ⋯ | `opacity: 0.6` | dip 0.90 + wash at `radius` 8 |
+| `PendingCard`, `NoteCard` | `opacity: 0.6` | wash only |
+| The reflection, read back · the prompt row · last session's prefill | `opacity: 0.6` / **nothing** | wash only |
+| Inline editor `Delete` | `opacity: 0.6` | dip 0.94 + wash |
+
+`cardPressed` and `deletePressed` are deleted from the file. Haptics are unchanged: every converted
+call site passes `haptic="none"` because its own `onPress` already calls `tap()`, so the tick still
+fires on press-out exactly as before.
+
+### The other four, diagnosed and NOT implemented
+
+Recorded with values so the next pass starts from here rather than from a fresh read.
+
+1. **Interruptibility — `day-swipe.tsx` drops the day change.** `onEnd`'s commit path runs
+   `withTiming(160 ms)` while the pan is still enabled, and `onChange` writes `tx.value =
+   translationX * resistance` *absolutely*. Re-grabbing mid-commit teleports the content, and the
+   completion callback then sees `finished === false` and returns — so `go(direction)` never runs
+   and the day silently does not change, with opacity left stranded mid-fade. Fix: capture a base
+   from the live `tx.value` in `onBegin` and write `base + translationX * resistance`.
+2. **Velocity handoff — the seam is at the release.** `day-swipe` reads `velocityX` only as a
+   boolean (`> 520`) and then throws the number away; the commit is a fixed 160 ms, so a lazy drag
+   and a violent flick travel identically. The spring-back path calls `withSpring(0, SPRING.snappy)`
+   with **no `velocity`**, so a page released while moving stops dead and then springs — a brick
+   wall. Fix: `velocity: e.velocityX * DRAG_RESISTANCE` on the settle, and choose the target from a
+   projected endpoint (`tx + (v/1000) · 0.998/(1 − 0.998)`) rather than from the raw release point.
+3. **Spatial consistency — the card falls from the wrong direction.** `ExerciseCard` enters on
+   `FadeInDown`, i.e. from above. The card is produced by pressing return on the composer line,
+   which is *below* the stack it lands in. It should rise into place (translateY +8 → 0), not drop
+   into it. Separately, `DaySwipe` exits on `withTiming(160)` and returns on `withSpring(SPRING.soft)`
+   — reversible motion that does not retrace its own path.
+4. **Typography — the ramp is right and this screen does not use it.** `type.ts` carries tracking
+   measured against Apple's ramp; `note-surface.tsx` inlines its own sizes instead. The composer's
+   `input` is 17/23 with **no `letterSpacing`**; `type.body` is 17/25 at `-0.2`. So the identical
+   string re-tracks and re-leads the instant you press return and it becomes a card — on the one
+   page whose entire promise is that what you write becomes the record. `exName` is
+   `type.headline` inlined *without* its `lineHeight`. `exValue`/`words` are `moderateScale(14)`,
+   `exSub` 11.5, `proseText` **16** — the size the ramp explicitly abandoned on 18 August for being
+   "the exact tell that reads as made for the web". Fix: route all of them through `type.*`.
+
+### Verified by the repository gates
+
+Typecheck **pass** · lint **pass** (0 errors; the same 40 pre-existing React Compiler warnings,
+none of them in the lines this change touched) · **690/690** tests pass ·
+`npx expo export --platform ios` **pass**.
+
+### Not verified
+
+**Nothing has been run on a simulator or a device.** The wash's weight against the warm canvas, the
+±8 pt bleed beside the rail and the ⋯ column, and whether the 90 ms floor reads as deliberate or as
+sticky are all judgements that need a screen. No AI prompt, response schema, guard or summary
+changed, so CLAUDE.md §5's owner-run §9.4 evaluation is not owed by this pass.
+
+---
+
+## 6 September 2026 — the comparison stops talking, and the day pill says which day it is
+
+Two owner rulings, both about what the record says without being asked.
+
+### The vs-last subline is off, behind one switch and not a delete
+
+`comparisonOf` (`components/gutter-value.tsx`) put a muted second line under every entry that had a
+history: "up 2.5 kg vs last", "down 20 kg vs last", "same as last · Fri 8 Aug". The owner pulled it
+on 6 September — *"izklopi to, bom mogoče kasneje dodal na nek drugačen način"* — so this is a
+switch, not a removal: `COMPARISON_SUBLINES_ON = false`, exported from the one file where a signal
+becomes language, and read by every surface that prints the sentence. The phrasing survives intact,
+including the 11 August ruling that "same as last" must name the day it means.
+
+It goes quiet in four places, which is all four it was ever in:
+
+- the **ledger card** on Today (`note-surface.tsx`);
+- the **⋯ sheet header** (`entry-sheet-header.tsx`), which shares the card's function so the two
+  cannot disagree;
+- the **session receipt** (`session-receipt.tsx`), which composes its own variant; and
+- the **lift's history table** (`exercise-sheet.tsx`), whose rows carried the same commentary one
+  level down — "down 20 kg · Aug 30" against the row beneath.
+
+**What is NOT off**, because none of it is a comparison the app volunteers about the athlete:
+
+- the gutter's own `↑ +2.5` / `↓ -20` reading — that is the parse speaking on the line it read;
+- the **PR label** on the card, in the gutter and on the receipt, and the receipt's
+  "personal record" beside it;
+- **"first recorded"** on a receipt row and on a lift's opening entry, which states what the entry
+  *is* rather than how it measured up — and which, on the history table, is still the quiet marker
+  standing in for the suppressed PR badge on a baseline row (4 September).
+
+### The day pill carries the word and the date
+
+`labelForDay` answers "what do I call this day?" with *either* "Today"/"Yesterday" *or* "Sep 4",
+and the pill in the Home top bar showed whichever came back. "Today" alone is the one thing nobody
+needs told; a bare "Sep 4" two swipes back leaves the reader counting. The pill now says both —
+`Today · Sep 6`, `Yesterday · Sep 5`, `Aug 30` — via `dayPillLabel` (`state/session-store.ts`),
+which composes `labelForDay` with the newly extracted `datedDay` and prints one of them when they
+are the same string.
+
+It is a SECOND function on purpose. Every other caller keeps `labelForDay`: Progress would read
+"last Today · Sep 6", a sheet would be titled "Yesterday · Sep 5", and `lib/day-phrase.ts`'s whole
+job is dropping one of those two forms into a sentence. The pill is the only place where the open
+day is a *place* rather than a mention, and the only one with room for both.
+
+The pill's label is now `numberOfLines={1}` over a `flexShrink: 1` pill, so the longer string
+ellipsizes inside a pill that still fits the row at any Dynamic Type setting rather than pushing
+the wordmark or the session count off the bar. VoiceOver hears a comma where the eye sees a middle
+dot — "Open calendar — Today, Sep 6" — because a middle dot is read out as its name.
+
+### Verified by the repository gates
+
+Typecheck **pass** · lint **pass** (0 errors; the same 40 pre-existing React Compiler warnings,
+none in the lines this change touched) · **690/690** tests pass ·
+`npx expo export --platform ios` **pass**.
+
+### Not verified
+
+**Nothing has been run on a simulator or a device**: whether the cards read as calmer or as thinner
+with the second line gone, and how the two-part pill sits against the wordmark at the largest type
+sizes, both need a screen. No AI prompt, response schema, guard or summary changed, so CLAUDE.md
+§5's owner-run §9.4 evaluation is not owed by this pass. The comparison itself is **paused, not
+decided** — the owner intends to bring it back in another form, and the composed sentence is left
+standing for it.
+
+## 6 September 2026 — the check-in stops imitating a sheet and becomes one
+
+The end-of-session check-in (§8.1) moved from the app's own `<BottomSheet>` chrome to a real UIKit
+form sheet on a route. Nothing inside it was redesigned: the same title, the same "How each lift
+felt" rows, the same reflection field, tags and footer, the same tokens. What changed is who
+presents it.
+
+### Files
+
+- **`src/app/check-in.tsx`** — new. The `/check-in` route. It renders the sheet body and owns
+  `checkInOpen`.
+- **`src/app/_layout.tsx`** — registers the screen inside the signed-in guard with
+  `presentation: 'formSheet'`, `sheetAllowedDetents: [0.6, 1]`, `sheetInitialDetentIndex: 0`,
+  `sheetGrabberVisible: true`, `sheetCornerRadius: radius.xl`, and
+  `contentStyle: { backgroundColor: color.surface }`.
+- **`src/components/check-in-sheet.tsx`** — the `<BottomSheet>` wrapper is gone; the root is a flex
+  box, the scroll takes `flex: 1`, and the footer now pays the bottom safe-area inset itself.
+- **`src/app/(tabs)/today.tsx`** — the permanent `<CheckInSheet />` mount is gone.
+- **`src/state/session-store.ts`** — `openCheckIn` is now `router.push('/check-in')` and nothing
+  else; `closeCheckIn` is replaced by `setCheckInOnScreen`, which only the route calls.
+- **`src/app/(tabs)/you.tsx`** — Sign out asks first (below).
+
+### Four decisions, recorded so they are not silently re-litigated
+
+1. **`[0.6, 1]`, not `[0.6, 0.92]`** (owner, 6 September 2026). The old sheet carried
+   `maxHeight: '92%'` because it drew its own card and had to leave the status bar alone. The
+   system's large detent already insets from the top, so re-applying 92% here would stack our inset
+   on UIKit's and render a visible gap. `1` is the correct equivalent of the old 92%.
+2. **`fitToContents` was rejected.** The content is a fixed head, a scroll that grows by one row per
+   unrated lift, and a fixed footer. `fitToContents` forbids the `flex: 1` that layout needs, and the
+   height is genuinely unbounded.
+3. **`color.surface`, not `color.canvas`** (owner, 6 September 2026). The sheet has always been the
+   warm near-white that floats above the paper canvas, and this is a presentation change, not a
+   restyle. The colour is set in `contentStyle` **and** on the root view, so no frame of UIKit's
+   system grey or translucent material can show while the screen mounts.
+4. **One writer for `checkInOpen`** (owner, 6 September 2026). The route sets it on mount and clears
+   it on unmount; `openCheckIn` only navigates. Two writers would leave the flag stuck true after a
+   swipe-dismiss — which the opener never hears about — and `bottom-toolbar.tsx` would silently stop
+   raising the App Store review prompt forever, with nothing on screen to explain why.
+
+### The modal-nesting audit, and what it found
+
+A form sheet is presented by the ROOT navigator, so a caller that fires while an RN `Modal` (any
+`bottom-sheet.tsx` sheet) is still mounted would render it BEHIND that modal — invisible, in the same
+way UIKit refuses a second modal. All five call sites were checked:
+
+| call site | in a modal? | outcome |
+|---|---|---|
+| `bottom-toolbar.tsx:247` (Finish) | no — the keyboard accessory bar, on the page; `revealReceipt` is a `scrollToEnd`, not a presentation | direct push |
+| `note-surface.tsx:495` and `:651` | no — both in `NoteSurface`'s own return; its only sheet is a sibling below them | direct push |
+| `session-receipt.tsx:409` | **dead code** — `SessionReceipt` is exported and imported by nobody | none |
+| `session-summary-sheet.tsx:114` | **dead code** — unreachable since 18 August 2026; its only opener, `SummaryPill`, is imported by nobody | left as-is; its `onClosed` sequencing is already the correct pattern |
+
+No live caller needs the close-then-push dance. The rule is written into `openCheckIn`'s comment for
+whoever adds the next caller.
+
+### Persistence across a swipe-dismiss
+
+The old sheet routed its drag-dismiss through `onClose`, so the × , Skip, the backdrop and the swipe
+all ran the same commit. A form sheet pops the route from UIKit and tells JS nothing beyond the
+unmount, so `commit` was split out of `commitAndClose` and also runs from an unmount cleanup. It is
+idempotent — the write is guarded on the composed value differing from `stored.current` — so the
+button path and the unmount path together write once and count the §13 event once. The ref it reads
+is deliberately declared **before** the load effect, so a mount-unmount-mount cycle cannot commit an
+empty draft over a stored reflection.
+
+### Sign out asks first
+
+`you.tsx` had Sign out sitting between "Clear local cache" and "Delete account" — both of which have
+always confirmed — as the one row in the destructive zone that fired on the first tap. It is now a
+system alert like every other confirmation in the app, `destructive` on the verb and `cancel` on the
+way out. The message is honest: the record stays on the device and on the server; this is not
+deletion.
+
+**Every other destructive confirmation was audited and left alone.** `aliases.tsx:58`,
+`you.tsx:438` and `:504`, `fix-sheet.tsx:392` and `note-surface.tsx:177` are already real
+`UIAlertController`s with `style: 'destructive'` and `style: 'cancel'`. `@expo/ui` was considered and
+rejected: it is present in `node_modules` only as a transitive dependency of `expo-router`, adding it
+directly would cost a native rebuild, and it buys nothing over what is already native. The export
+chooser at `you.tsx:325` is the one place an action sheet from the bottom would read better; the
+owner put it out of scope for this pass.
+
+### Verified by the repository gates
+
+`tsc --noEmit`, `node --test` (690 pass, 0 fail), `expo lint` (0 errors; the one warning on
+`check-in-sheet.tsx` is the pre-existing `setState`-in-effect on the reflection load, unchanged by
+this pass) and `expo export --platform ios` all pass.
+
+### What remains unverified — none of it can be closed from this machine
+
+No simulator or device was available. Three things need a screen: `color.surface` reading edge to
+edge at both detents with no system grey or translucent material bleeding through; a reflection typed
+and then swipe-dismissed surviving; and whether `sheetCornerRadius: 24` is honoured (the prop
+documents itself as "will try to render with"). No AI prompt, response schema, guard or summary
+changed, so CLAUDE.md §5's owner-run §9.4 evaluation is not owed by this pass.
+
+**Two risks were closed in code rather than left for the device** (owner, 6 September 2026):
+
+- **The bottom inset is no longer trusted.** `RNSScreen.mm` carries an open
+  `// TODO: register for UIKeyboard notifications` on its safe-area provider, and a form sheet is a
+  presentation the inset can be reported into late or as zero. The footer pads
+  `spacing.lg + Math.max(insets.bottom, spacing.xxl)`, so a footer under the home indicator is
+  impossible in either case; 24 over-pays on a device that genuinely has no indicator, which is the
+  harmless direction to be wrong in.
+- **The multiline field needs nothing, and deliberately gets nothing.** `react-native-screens`
+  documents the behaviour in `src/types.tsx:482`: "On iOS, the native implementation might resize the
+  sheet w/o explicitly changing the detent level, e.g. in case of keyboard appearance." That is
+  `UISheetPresentationController` lifting the sheet for a first responder, which is precisely the
+  case UIKit owns. The old `<BottomSheet>` needed a `KeyboardAvoidingView` because an RN `Modal` is a
+  plain window UIKit gives no such help to; keeping one here would stack our lift on UIKit's and push
+  the content too far. Nothing was added.
+
+---
+
+## The iOS 26 Liquid Glass pass (9 September 2026) — what shipped, and what is not verified
+
+Owner's instruction: *"redesign my app to have it iOS 26 native liquid glass design, expo
+glasseffect."* `expo-glass-effect` was already a dependency and already drew two surfaces; this
+pass made it a **system** with a stated rule, fixed three real defects in the way it was being
+used, and extended it to the chrome that had been left on paper.
+
+### The rule that decides every surface
+
+**Glass is the material of chrome that floats OVER content. The record is never glass.**
+
+It is Apple's own guidance for the material (a layer *above* the content layer) and it is also
+the app's existing three-layer structure — canvas → ink record → floating pills — so the pass
+changed exactly one of the three: **the white pills became glass.** The canvas and the record are
+untouched. Written up in full in `.claude/skills/recore-design/SKILL.md` §Material, with the table
+of what stays paper and why.
+
+### Files
+
+- **`src/components/glass.tsx`** — rebuilt from one component into the material layer:
+  `glassAvailable`, `useGlass()`, `GlassSurface` (the layer), `GlassPressable` (the control, with
+  the interactive lens), `GlassGroup` (merge), `concentric()`, `GLASS_MERGE_DISTANCE`.
+- **`src/components/scroll-edge.tsx`** — the faked scroll edge became a real glass bar on iOS 26;
+  the gradient is kept verbatim as the fallback.
+- **`src/components/top-bar.tsx`** — the day pill is a `GlassPressable`.
+- **`src/components/bottom-toolbar.tsx`** — the three accessory rounds are `GlassPressable`; the
+  raw `GlassContainer` became `GlassGroup`; the status pill is glass.
+- **`src/components/next/start-bar.tsx`** — the `quiet` variant is glass; the green Start is not.
+- **`src/app/(tabs)/_layout.tsx`** — `minimizeBehavior="onScrollDown"` (see the failure below).
+
+### Three defects fixed that were live before this pass
+
+1. **A crash risk.** `glass.tsx` guarded on `isLiquidGlassAvailable()` alone. Several iOS 26 betas
+   ship the design without the API behind it and calling in there is a hard crash
+   (expo/expo#40911). `glassAvailable` now requires `isGlassEffectAPIAvailable()` as well.
+2. **Dark glass on a cream app.** `app.json` sets `userInterfaceStyle: "light"`, but Liquid Glass
+   defaults to `colorScheme: 'auto'`, which follows the *system* appearance. On a phone in dark
+   mode every glass surface would have rendered smoked charcoal over a paper page. Every surface
+   now passes `colorScheme="light"`.
+3. **Reduce Transparency was ignored.** `isLiquidGlassAvailable()` is documented to stay `true`
+   when the user has turned the effect down — it reports the component, not the setting. The
+   setting is now read and subscribed to, and a person who asked for less transparency gets the
+   paper material live, without relaunching.
+
+### Verified by the repository gates
+
+`tsc --noEmit` **pass**, `node --test` **690/690 pass**, `expo lint` **0 errors** (41 pre-existing
+warnings, none in the files this pass touched).
+
+### Verified ON DEVICE — and this is the first pass that could be
+
+A build was run and driven on the **iOS 26.5 simulator (iPhone 17 Pro)**, which earlier passes
+recorded as unavailable. What was seen:
+
+- **The glass scroll edge is real refraction, not a fade.** On the You tab, a settings row sliding
+  under the bar bends and brightens through it with the clock crisp on top. This is the thing the
+  gradient could not do and the single clearest win of the pass.
+- **The day pill renders as glass** and the top row lays out exactly as it did on paper.
+  **CORRECTED 9 September 2026, same day:** it rendered, and it did not WORK — see the sheet pass
+  below. A screenshot proved the material and said nothing about the touch, and this entry
+  originally read as if it had proved both.
+- **The native tab bar refracts** the content passing beneath it.
+- **No crash, no wrong-material frame, no layout shift** between the two materials.
+
+### What is NOT verified, and must not be described as working
+
+- **The tab bar does not minimize.** `minimizeBehavior="onScrollDown"` is set, accepted, and
+  reaches `_controller.tabBarMinimizeBehavior` in `RNSTabsHostComponentView.mm` — and the bar does
+  not move. UIKit has to FIND the scroll view itself, and this app's scrolls sit several levels
+  inside a `PaperField` + `SafeAreaView` shell instead of being their screen's root scroll view.
+  The line is kept (correct opt-in, inert when unhonoured) and the file says plainly that it does
+  not fire.
+- **The accessory bar over the keyboard was not seen.** It only exists while the keyboard is up,
+  and the software keyboard could not be raised through synthetic input in the simulator. Its
+  glass is the same `GlassPressable` proven on the day pill, but *proven by construction is not
+  proven*.
+- **Next's quiet StartBar was not seen** — the account's state never produced that variant.
+- **The interactive lens was not confirmed.** It is a response to a moving finger and a still
+  frame cannot show it; it needs a screen recording on a real device.
+- **Reduce Transparency and the paper fallback were not exercised on screen.** The iOS 18.4
+  `recore-se-check` device is the right place to check the fallback and was not run.
+- Dynamic Type XL, VoiceOver and the full-motion pass were not run for this change.
+
+No AI prompt, response schema, guard or summary changed, so CLAUDE.md §5's owner-run §9.4
+evaluation is not owed by this pass.
+
+### Two things found on screen that this pass did NOT change
+
+Both are pre-existing and both are the owner's call, so neither was quietly "fixed":
+
+1. **The Recore wordmark wraps to two lines on Today** ("Recor / e") at the default type size on an
+   iPhone 17 Pro. Confirmed pre-existing by rendering the committed `top-bar.tsx` beside the new
+   one — the two wrap identically. The row's own comment expects the *pill* to give ground before
+   the wordmark does, and it is not doing so; deciding who yields is a design decision.
+2. **`StubScreen`'s title is a row in normal flow, so Next, Progression and Lifts still cut their
+   content dead flat at its bottom edge** — the exact defect `ScrollEdgeHeader` was written to
+   remove, still live on three screens. They cannot simply be given the glass bar: the header
+   would have nothing moving under it until the scroll views are restructured to run full-height
+   with the header as an overlay. That is a layout change across 4 files and 7 call sites, and it
+   was left out of a pass about material rather than taken on silently.
+
+
+---
+
+## The Apple sheet pass (9 September 2026) — and a regression it caught
+
+Owner's instruction: *"make the sheets to look like apple design"*, then, on seeing the first
+attempt: *"apple design ima tko da ni full width in height ampk kukr da ima malo ob strani prostora
+da izgleda kot da je floating."*
+
+### The measurement that settled it
+
+The first attempt made the sheet **edge-to-edge with only its top corners rounded**, on the
+strength of twenty real sheets read through the Appllama `sheets-modals` family (Prehab, Jomo,
+Wanderlog, My Macros+, Smart Noter and others). Every one of them is a full-width panel over a
+dimmed parent. **The research was sound and the conclusion was wrong**, because that library is
+mostly pre-iOS-26 apps: it records what an iPhone sheet looked like for ten years, not what iOS 26
+draws. The owner caught it from their own phone.
+
+It was then settled by measuring the real thing rather than arguing about it. The check-in screen
+is a genuine `UISheetPresentationController` (`presentation: 'formSheet'`), so it was opened on the
+**iOS 26.5 simulator** and its edges read off the screenshot in pixels. On a 402 pt iPhone 17 Pro:
+
+| edge | UIKit's own sheet | Recore's sheet after the fix |
+|---|---|---|
+| left | **8.00 pt** | **8.00 pt** |
+| right | **8.33 pt** | **8.33 pt** |
+| bottom air | **8.33 pt** | **8.33 pt** |
+
+**The detached-card ruling of 18 August 2026 was right all along** — `SHEET_INSET = spacing.sm` is
+the number UIKit uses. It is now measured rather than asserted, and the measurement is in the file.
+
+One detail worth keeping: the system sheet does **not** clear the home indicator with air. It stops
+8 pt off the screen edge and pays the clearance as padding INSIDE the card. `bottom-sheet.tsx` now
+does the same, which is why the caller contract is unchanged — a child still must not add
+`insets.bottom`.
+
+### What changed and stayed changed
+
+- **`src/components/bottom-sheet.tsx`** — floating geometry restored and measured; **spring**
+  presentation (`SPRING.soft`) replacing the 300 ms cubic, because a sheet can be caught mid-flight
+  and §Motion says anything a finger was on is a spring (the exit stays timed — iOS never bounces a
+  sheet away); the grabber is Apple's **36 × 5 at 5 pt**, drawn in `ink.grabber` instead of
+  `color.border`; the side stroke is gone, because the measured system sheet has none.
+- **Five profile sheets** (`answer`, `lifts`, `obstacles`, `pref`, `recap`) were rendering
+  `SheetGrabber` *inside* a `BottomSheet` that already draws one — **two stacked handles**, live
+  before this pass. The callers no longer bring their own.
+
+### The regression this pass caught, in the pass before it
+
+**`GlassPressable` made every control built on it a dead control.** The Liquid Glass pass wrapped
+the pressable target *inside* a `GlassView` so the glass could take iOS 26's `isInteractive` lens.
+A native `GlassView` does not deliver touches to its React children, so the day pill stopped opening
+the calendar and the three accessory rounds stopped responding. Removing `isInteractive` did not fix
+it, which is what proves the cause is the nesting rather than the lens.
+
+It shipped in that pass because **the surface was verified by screenshot, and a screenshot proves
+the material while saying nothing about the touch.** The entry above has been corrected.
+
+Fixed here: the material is a layer BEHIND the target again (`pointerEvents="none"`), the Pressable
+sits in normal flow and gives the shape its size. **iOS 26's interactive lens is therefore
+unreachable from React Native and the app does not have it** — `glass.tsx` and the design skill both
+say so now, instead of promising it.
+
+### Verified by the repository gates
+
+`tsc --noEmit` **pass**, `node --test` **690/690 pass**, `expo lint` **0 errors** (41 pre-existing
+warnings, none in the touched files).
+
+### Verified on the iOS 26.5 simulator
+
+- The day pill opens the calendar again — the regression is closed, on screen, not in theory.
+- The calendar sheet floats at the measured insets, all four corners, one grabber, parent dimmed.
+- The Goal sheet on You opens with a single grabber and dismisses cleanly on a downward drag.
+
+### What is NOT verified
+
+- **The spring was not watched.** A still frame cannot show a spring; presentation and the
+  release-short-of-threshold settle need a screen recording.
+- **Only 2 of the 20 sheets were opened** (calendar, Goal). The other eighteen share the same
+  chrome, but sheets with their own `maxHeight`, keyboards or inner scroll views — `FixSheet`,
+  `ExerciseSheet`, `CheckInSheet` — were not exercised, and the inset box's percentage heights now
+  resolve against a slightly different box.
+- **The toolbar's three glass rounds were still not seen**, for the same reason as last pass: the
+  software keyboard could not be raised through synthetic input. They share `GlassPressable` with
+  the day pill, which is now proven tappable, but that is inference.
+- Reduce Transparency, Reduce Motion, Dynamic Type XL and VoiceOver were not run for this change.
+
+---
+
+## 9 September 2026 — You is an iOS 26 screen: system title, system search, system feedback
+
+Owner's ask: *"use appllama mcp and app design skill and redesign you page to look more ios 26
+native but it needs to be usefull and good user experience."* Both halves were taken literally —
+the nativeness is the system doing the work rather than the app imitating it, and the usefulness
+is a search field over thirty-three rows.
+
+Ten reference screens were read first (Appllama: Strong `464254577/oth_qut3t`, Flighty
+`1358823008/oth_63t2p`, Bend `1513988468/oth_m3682`, Tiimo, plus six more). What the good ones
+share is not a look, it is a division of labour: **the navigator owns the title, the search and
+the scroll edge; the list owns nothing but rows.** You owned all four and hand-drew three of them.
+
+### The chrome went back to the navigator
+
+`(tabs)/you.tsx` became `(tabs)/you/_layout.tsx` + `(tabs)/you/index.tsx`. The page's `largeTitle`
+`<Text>` in the scroll content and the `ScrollEdgeHeader` overlay are gone, replaced by
+`headerLargeTitle` on a real native stack. Three behaviours arrived that no styling reaches:
+
+- **The title collapses.** It shrinks into the bar on scroll and grows back at the top, tracking
+  the finger and interruptible mid-flight. A `<Text>` in a `ScrollView` just leaves.
+- **The bar is Liquid Glass, without asking.** On an iOS 26 SDK build an *unstyled* navigation bar
+  already is the material: it hides itself at the scroll edge so the canvas reads straight
+  through, and materialises as rows travel under it. Both attempts to help made it worse —
+  `headerTransparent: true` killed the large title outright (verified on the simulator: bar
+  rendered, title did not) and a `headerStyle.backgroundColor` would have painted the cream slab
+  `scroll-edge.tsx` was rewritten to stop drawing.
+- **The tab bar has something to minimize against.** `(tabs)/_layout.tsx` has asked for
+  `minimizeBehavior="onScrollDown"` since 9 September and recorded that it never fired, with the
+  diagnosis written out: the scroll view was not the screen's root. It is now — the canvas moved
+  up into the layout so the route can be nothing but its list.
+
+### The search field is the useful half
+
+`UISearchController`, in the navigation item, pinned open (`hideWhenScrolling: false`, as Settings
+itself does) because a person arrives at this tab with an errand and should not have to discover a
+pull-down first.
+
+The page is a list of specs now rather than a 500-line return, which is what made this possible.
+Each row carries `keywords` — the words a person would type that the row does not print — and
+`lib/settings-search.ts` (11 tests) does the matching. **Typing `lbs` finds Units, whose label says
+"Units" and whose value says "Kilograms"; `log out` finds Sign out; `backup` and `csv` find Export
+my record.** A search that only matched visible labels would fail on exactly those queries. The
+group's own name matches too, and a surviving group keeps its label above its results, because a
+row is an answer and an answer needs its question.
+
+### Row feedback is a highlight, not a dip
+
+Every row used `PressableScale`. That is right for a button or a card — an object with edges you
+can watch move — and wrong for a list row, which is one band in a stack of identical bands:
+shrinking it drags its neighbours' baselines with it and the group flexes under the thumb. UIKit
+fills the cell and fades it out, and rows do that now, on the app's own `PRESS` timings, with
+Reduce Motion removing the fade and not the feedback.
+
+That change is why the card is two shells: `overflow: 'hidden'` sets `masksToBounds`, which cuts
+the shadow off at the same edge it cuts a first row's fill, and both have to survive. The group's
+horizontal inset moved from the card to the rows so a press paints edge to edge.
+
+### The rest of the pass
+
+- **Row labels are 17 pt, not 15.** Every grouped list on the phone sets its label at body size;
+  a 15 pt list beside the system tab bar reads as a web page in a wrapper. Values match. Labels
+  wrap to two lines rather than truncating, which is what UIKit does and what Dynamic Type needs.
+- **The settings glyphs are SF Symbols.** `icon.tsx` has carried a partial `SF` map since 20 August
+  with a note asking for it to be extended one surface at a time; this is that surface. Twenty-two
+  glyphs, each Apple's own symbol for the meaning rather than the nearest lookalike — import and
+  export take the share arrows in and out, not a cloud.
+- **The career numbers lost their card** (`profile/stat-card.tsx` → `profile/record-strip.tsx`).
+  The design system has said since v6 that the record has no cards and no dividers, and sessions,
+  sets and kilograms are the most literal record on the screen. Air and typographic contrast carry
+  the columns now.
+- **The identity block is a row, not a column** — 72 pt figure beside the name, left-aligned with
+  the system's large title instead of centred against it, and it gives back roughly 110 pt. One
+  dry line under the name says when the record starts, read from the logged days, absent when
+  there are none.
+- **The title is "You", not "Profile".** One place had two names.
+- **Nine groups became seven.** Integrations held one row — Apple Health, a door onto the record
+  like import and export — so it joined Your record; Preferences moved up beside Training, because
+  both are about how a session is written and read back.
+- Four subtitles that repeated their own row's value were removed.
+
+Every handler is unchanged: identity and sign out, subscription (paywall / manage / restore), the
+editable training prefs, the free-forever export and the tracker import. Nothing is paywalled and
+no account action touches history.
+
+### Verified by the repository gates
+
+`tsc --noEmit` **pass**, `node --test` **699/699 pass** (11 new), `expo lint` **0 errors** (42
+pre-existing warnings, none in the touched files), `expo export --platform ios` **pass**.
+
+### Verified on the iOS 26.5 simulator (iPhone 17 Pro)
+
+- The large title renders and **collapses into the inline title** on scroll, with rows visibly
+  passing under a translucent bar.
+- The search field is present at rest; **`lbs` returns Units under its TRAINING heading** with the
+  hero hidden, and `zzz` returns the composed empty line rather than a blank screen.
+- SF Symbols draw for every settings glyph, and the two-line label wrap works on "What gets in
+  the way".
+
+### What is NOT verified
+
+- **The press highlight was not watched.** Synthetic input could not be delivered to the
+  simulator, so the fill's timing and its Reduce Motion branch are inference from
+  `GlassPressable`'s proven implementation, not observation.
+- **No screen recording was taken**, so the title's collapse was verified from a seeded
+  `contentOffset` and a still, not as motion. The tab bar's `minimizeBehavior` now has the root
+  scroll view it was missing — **whether it actually minimizes has still not been watched, and
+  nothing here should be described as minimizing until it has.**
+- Reduce Transparency, Reduce Motion, Dynamic Type XL and VoiceOver were not run for this change.
+- The other settings surfaces that share `settings-rows.tsx` inherit the new row metrics and the
+  highlight. `/aliases` was opened and draws correctly, but it was on an empty account — so what
+  was verified there is the screen, **not a single row**. `/health` and the lifts and recap sheets
+  were not opened at all.
+
+---
+
+## 9 September 2026 — the check-in sheet: why it was razkosano, and the shape it took instead
+
+Owner's ask, straight after the You pass: *"use app design skill and fix bottom sheet for how each
+lift felt."* Two things were wrong with it, and only one of them was visual.
+
+### The layout bug: a form sheet will not share its scroll view
+
+The sheet drew every element on top of every other — the question, the lifts, the field and the
+button all stacked at the card's top edge. It was diagnosed on the iOS 26.5 simulator rather than
+reasoned about, in three passes:
+
+1. **`onLayout` printed onto the sheet** reported height **0** for the root, the head, the scroll
+   and the footer alike. The same screen rendered full-screen measured 874 / 86 / 582 / 81 and laid
+   out perfectly — which is what proved the *presentation*, not the styles, was the cause.
+2. `contentStyle: { flex: 1 }` in `app/_layout.tsx`, added the same day to fix exactly this, did
+   not fix it. Nor did a `height` taken from `useSafeAreaFrame()` — that returns the **window**
+   (874), not the card, which is a fact worth keeping: a form sheet's safe-area provider is the
+   window's, so `insets.bottom` inside one is the home indicator the card has already cleared.
+3. **Tinting each region and photographing it** ended the argument in one frame: the ScrollView's
+   own background filled the *entire* sheet, with the head and the footer painted inside it at the
+   positions Yoga had given them. **A form sheet adopts the first scroll view it finds and resizes
+   it to the presentation**, because that is the view it drives the detent and the drag-dismiss
+   from. The layout was not fighting the styles; it was losing a fight with UIKit over ownership of
+   that view.
+
+The fix is to give it the view. The sheet is now **one ScrollView holding everything** — the ×, the
+question, the lifts, the field and the button — and the detents are **`fitToContents`** instead of
+`[0.6, 1]`. The direction is reversed: the content is measured and the presentation is sized to it,
+rather than the content waiting for a height that never came. Nothing in the file needs a definite
+height from a parent any more, so there is nothing left to collapse.
+
+It is the better sheet on its own terms, too. A one-lift session gets a short card and an eight-lift
+session a tall one, instead of both getting 60% and one of them being mostly empty.
+
+### "How each lift felt" is a segmented control now
+
+Each lift carried three full-width 44 pt pills, so a four-lift session spent four hundred points
+saying the same three words four times. Worse, on the cream sheet each pill was `surface` on
+`surface` with a hairline — an *outline* of a control rather than a control.
+
+One `Segmented` per lift replaces them: the app's own component, the same one the settings sheets
+use, so an answer here is picked with the gesture a preference is picked with. A recessed track that
+is visibly a control at rest, a thumb that says which one is chosen, 32 pt instead of 44. Tapping
+the chosen answer still clears it — the one thing a real `UISegmentedControl` will not do, and the
+reason this stays Recore's component: nothing on this sheet is required, so every answer has to be
+revocable. `Segmented` gained an optional `labelFor` so VoiceOver still hears *which lift* a segment
+belongs to and what the answer means; a settings row names its own subject and does not need it.
+
+### Four controls for one intent became two
+
+`×`, `Skip`, `Save session` and the swipe all called **the identical function**. The count was not
+the problem — the labels were: "Skip" reads as *discard*, and this sheet has never discarded
+anything, while "Save session" implied that leaving any other way would not save. Both were false.
+
+Skip is gone. The footer says **Done**, which is true whether or not a word was typed, and the
+permission not to answer is stated where a person is actually deciding — under the lifts ("or leave
+it, Recore will not guess") and under the button ("You can change any of this later").
+
+**This is product-visible and it is the owner's to overrule.** The July ruling that "Skip is a real
+button" is what it removes; the invariant behind that ruling — nothing here is required, and no exit
+discards anything — is preserved exactly, in words instead of in a duplicate control.
+
+### The rest of the pass
+
+- **One headline, not three.** "How did it go?" dropped from `largeTitle` (34) to `title` (27), and
+  the two section headers dropped from `title2` to eyebrows. Three bold headings in a two-thirds-tall
+  sheet is a sheet made of headings.
+- **The tag chips got a ground** — `surfaceHigh`, the tone the field beside them already uses, so
+  the field and its chips read as one answer with two ways in.
+- **The close button is iOS's**: `xmark.circle.fill` at 28 pt in a quiet grey — a filled disc with
+  the × knocked out of it — instead of a near-black dot. The symbol serves the clear-a-field button
+  everywhere else in the app too.
+- **"optional · never shown to anyone" moved below the chips**, since the chips write into the same
+  reflection the field does and a grey line between them read as the end of one thing.
+- **The bottom stopped paying the home indicator twice** (see finding 2 above): a flat `spacing.xxl`,
+  not `insets.bottom` added on top of a card iOS 26 already floats clear of the edge.
+- The last-set reading moved from `monoText` to `readingStyle`.
+- **`Segmented` shrinks a label instead of cutting it.** Caught on screen at a larger text size,
+  where "Could do more" came out "Could do…" — three segments split one row, so the longest label
+  sets what fits, and truncation is the one failure a control offering a choice cannot afford. The
+  pills it replaced had `adjustsFontSizeToFit`; the shared component now does too, which fixes the
+  settings sheets at large type in the same change.
+
+### Verified by the repository gates
+
+`tsc --noEmit` **pass**, `node --test` **699/699 pass**, `expo lint` **0 errors** (42 warnings, the
+same 42 as before — none in the touched files), `expo export --platform ios` **pass**.
+
+### Verified on the iOS 26.5 simulator (iPhone 17 Pro)
+
+- The sheet presents as a real form sheet — grabber, floating card, scrim, dimmed parent — and
+  **nothing overlaps**: question, summary, eyebrow, lift, segmented control, hint, field, chips,
+  button, footnote, in that order and each in its own space.
+- It sizes to its content: a one-lift session opens a card roughly two-thirds tall with no empty
+  band under the button.
+- Dismissing returns to Today with the note intact.
+
+### What is NOT verified
+
+- **The keyboard was not raised.** Synthetic input could not be delivered, so what happens to the
+  reflection field when the keyboard covers it is unproven. The contract did not change — the field
+  was inside a ScrollView before and is inside one now — but a form sheet plus `fitToContents` plus
+  a keyboard is a combination nobody here has watched.
+- **A multi-lift session was not seen.** The test account had one unrated lift, so the repeating
+  block, the hairline between lifts and the scroll inside the sheet are all inference.
+- **No press or motion was watched** — the segmented control's selection, the sheet's presentation
+  spring and its drag between nothing and dismissal were not recorded.
+- Reduce Motion, Reduce Transparency, Dynamic Type XL and VoiceOver were not run for this change.
+- **Concurrent work was in flight in this repository while this landed** — `(tabs)/next/` appeared
+  mid-session from another session moving the Next tab onto the You tab's navigator pattern. Nothing
+  here touched it, but the two changes have not been seen running together.
+
+---
+
+## 9 September 2026 — Next moves onto the system navigator
+
+*"using appllama mcp and app design skill do a redesign and improvement for next page — make it
+more to look like native iOS app and it needs to have a good user experience."*
+
+**Nothing on this screen changed what it says.** Every §9 ruling stands: the figures are still
+computed, the model still only rewrites the closing paragraph, the pinned Start is still gone on
+the CLAUDE.md §3 argument that removed it on 29 August, and the split preview still writes
+nothing. What changed is the chrome around the briefing, and one affordance inside it.
+
+### The research, and what was taken from it
+
+Appllama, 4 calls: LADDER (`$7M`/mo) *Workout Overview*, Symmetry *Workout Detail* — this tab's
+own 28 August reference — and two library sweeps. What both winners have that Next did not is
+**system chrome**: a real navigation item whose title collapses as the list travels under it, a
+bar that is a material rather than a slab, and a disclosure on every row that opens something.
+What both have that Next may not adopt is the pinned Start and the template library; neither was
+taken.
+
+### Files
+
+- `src/app/(tabs)/next/_layout.tsx` — **new.** The tab's own `Stack`, so the header belongs to the
+  navigator (fidelity law 9).
+- `src/app/(tabs)/next/index.tsx` — the screen, formerly `src/app/(tabs)/next.tsx` (**deleted**).
+  Its root is now its own `ScrollView`.
+- `src/components/next/lift-row.tsx` — a disclosure chevron on rows that are doors.
+- `src/lib/paper-field.ts` — `PAPER_FIELD_CSS`, the canvas derived as a CSS gradient.
+- `src/app/(tabs)/you/index.tsx`, `you/_layout.tsx` — the same canvas fix; see the finding below.
+
+### What changed on the screen
+
+- **`StubScreen` is gone from this route.** The title is a real `UINavigationItem` with
+  `headerLargeTitle`, so it collapses into the bar under the finger, interruptibly, and the bar is
+  the iOS 26 material rather than the opaque cream slab a hand-built header row draws.
+- **The gutter went 24 → 16.** Forced, not chosen: the system's large title hangs off its own
+  inset, and content 8 pt further in gives the page two left edges.
+- **The Edit pill became a bar button** — a tinted label on the trailing edge, `Done` semibold, as
+  UIKit sets the pair. The white pill was right while the header was ours to draw and is a control
+  impersonating the navigator's furniture beside a system title. `StubScreen`'s `trailing` slot
+  stays for Progress and Lifts, which still draw their own headers.
+- **The subtitle became the first line of content.** A navigation item has no second line, and
+  faking one under a system title is two title systems on one screen.
+- **Rows that open a lift's history now say so.** A muted chevron after the load — the mark iOS
+  uses for exactly this, including beside a right-aligned value (Health, Fitness, Settings). It is
+  absent where the row is not a door: no `canonical`, edit mode on, or past the Dynamic Type
+  reflow. Four of five taps on this page were previously reachable only by guessing.
+
+### The finding this turned up, which was NOT this screen's
+
+**Both native-navigator tabs were rendering a flat neutral grey canvas instead of the warm paper**
+— You since its own conversion earlier the same day, Next the moment it followed the same pattern.
+The navigator's container view is opaque and paints over anything the layout puts beneath it; a
+half-opacity red `contentStyle` isolated the layer. `react-native-screens` has the knob
+(`nativeContainerBackgroundColor`) and nothing between expo-router's `Stack` and `ScreenStack`
+plumbs it. Moving `PaperField` back inside the screen restores the paper and costs the large-title
+collapse — measured, not assumed. The canvas is therefore the **scroll view's own background**
+(`experimental_backgroundImage`, RN 0.86), derived from the same three stops so there is one
+palette behind both draw paths. Applied to both tabs.
+
+### Verified by the repository gates
+
+`tsc --noEmit` **pass**, `node --test` **699/699 pass**, `expo lint` **0 errors** (42 warnings,
+the same 42 as before — the one in `next/index.tsx` is a `setState`-in-effect carried over verbatim
+from the file this replaced), `expo export --platform ios` **pass**.
+
+### Verified on the iOS 26.5 simulator (iPhone 17 Pro)
+
+- **The large title collapses.** Scrolled programmatically and photographed: the title arrives
+  centred at compact size in the bar, with the rows visibly refracting through the glass beneath
+  it. Photographed failing first, on the sibling-canvas build, which is how the canvas finding was
+  found.
+- **The canvas is warm paper again** on both tabs — sampled `#F9F3EC` → `#F2F2ED` down the page,
+  against `#F2F2F2` flat neutral before.
+- **Content scrolls behind the glass tab bar** rather than being cut flat against it.
+- **Dynamic Type at `accessibility-extra-large`:** rows reflow to the stacked layout and drop the
+  chevron correctly. Two defects were found here and fixed — the bar button clipped to `Ed`
+  (the header subview measures its React child; it needed a stated minimum width and
+  `FIXED_FONT_SCALE`), and the subtitle lost its descenders to a line box sized for the device
+  rather than for Dynamic Type.
+
+### What is NOT verified
+
+- **No finger has touched it.** There is no tap tooling on this machine, so the collapse was driven
+  by a programmatic scroll, not a drag: the title's *tracking* — following the finger, interruptible
+  mid-flight — is UIKit's and was not watched. Nor were the press states, the Edit/Done transition,
+  or the sheet the chevron now advertises.
+- **No motion pass.** Nothing was screen-recorded, so the 60 fps bar is unmeasured and the
+  entrance stagger under the new header is unwatched.
+- **VoiceOver, Reduce Motion and Reduce Transparency were not run.** The chevron is decorative to
+  VoiceOver (the row's label already spells out the target and its reason), but that was reasoned,
+  not heard.
+- **The empty, preview and edit states were not seen.** The test account has one split day, so
+  `SplitChips` and `GroupPills` did not render at all; the seeded empty state and the preview
+  footnote are unphotographed.
+- **Concurrent work was in flight in this repository.** `scroll-edge.tsx`, `top-bar.tsx` and
+  `(tabs)/_layout.tsx` changed underneath this session — the glass day pill and the tab bar's
+  `minimizeBehavior` are no longer in the tree. Nothing here touched those files, and the
+  references to them in the new layout's notes were rewritten to stop citing a prop that is no
+  longer there, but the two lines of work have not been seen running together.
+
+---
+
+## 9 September 2026 — the You sheets were the only ones cancelling the sheet's own corner
+
+Owner: *"fix the bottomsheet also on you page so it looks like on other pages."* They did look
+different, and the cause is one line repeated five times.
+
+`bottom-sheet.tsx` computes its corner **concentrically with the display** — `displayCornerRadius`
+less the 8 pt the card floats inside the screen edge, so on an iPhone 17 Pro that is 62 − 8 = **54**.
+Every sheet in the app takes it. Except five: `answer-sheet`, `pref-sheet`, `recap-sheet`,
+`lifts-sheet` and `obstacles-sheet` — all of them on You — each set `borderRadius: radius.xl` (24) in
+its own `sheetStyle`. And `sheetStyle` was applied **after** the computed radius in the style array,
+so the caller won. The You sheets drew a corner less than half the size of every other sheet's, and
+did it silently.
+
+Nobody had written a wrong number. They had written the number that was right *before* the corner
+became concentric; the override is what made the change invisible on those five surfaces.
+
+Two fixes, because removing the five overrides alone would leave the trap:
+
+- The five sheets no longer name a radius. They also stop naming `borderCurve` — `bottom-sheet.tsx`
+  has always set it on the same view.
+- **The radius moved to the end of the style array**, after `sheetStyle`, and the prop's doc says
+  not to set one. The corner is a property of the presentation, not of the content, so the
+  presentation has the last word on it. No future caller can quietly cancel it again.
+
+### What was checked and deliberately not changed
+
+Comparing all twenty `BottomSheet` callers turned up one more difference: the profile sheets put
+`paddingHorizontal` on the scroll's content container while the rest put it on the sheet surface.
+It is invisible here — both inset the content by `spacing.xl`, and these sheets hide their scroll
+indicator — so it is left alone rather than churned across five files for no change on screen.
+`history-sheet` insets by `spacing.lg` where everything else uses `spacing.xl`; that is a real
+outlier, on another surface, and is not this change's to take.
+
+### Verified by the repository gates
+
+`tsc --noEmit` **pass**, `node --test` **699/699 pass**, `expo lint` **0 errors** (42 warnings, the
+same 42 — none new), `expo export --platform ios` **pass**.
+
+### Verified on the iOS 26.5 simulator (iPhone 17 Pro)
+
+The Goal sheet, opened on You, now draws the same wide concentric corner as the check-in sheet and
+the same floating card with air on three sides. The scrim, the grabber and the shadow were already
+shared and are unchanged.
+
+### Then the owner said the height was wrong too, and it was — for every sheet in the app
+
+*"lepo prilagodi vprasanja itd visino pa to."* The Goal sheet took roughly 70% of the screen to ask
+one question and left a band of empty surface under the last option. Tinting the card yellow and the
+sheet's own bottom spacer magenta found it in one frame: **`bottomGap` was 55 pt where the home
+indicator asks for 26.**
+
+`bottom-sheet.tsx` computed it from `useSafeAreaInsets()`, which reads the nearest provider — and a
+sheet opened from a tab screen has the **tab bar** in that context. So every sheet in the app opened
+over the tabs was padding its foot by roughly the height of the tab bar, on top of the clearance it
+already meant to pay. It is most visible on You because these sheets end in a full-width card row,
+which leaves the void with a hard edge; a sheet ending in text hides it better.
+
+It now takes the inset from `initialWindowMetrics` — the **window's** own, captured before any
+navigator adjusted anything, so it is the indicator and nothing else. The hook stays as the fallback
+for the case the metrics are null, where being wrong is only ever too much air.
+
+The Goal sheet lost about 55 pt and now hugs its content: **36 pt below the grabber, 34 pt above the
+card floor.** Two smaller adjustments went with it, both about that same corner:
+
+- The head clears the corner. `paddingTop` went from `spacing.md` to `spacing.xl`, because against a
+  54 pt curve a headline 12 pt under the grabber reads as jammed into the top of the card. The foot
+  went the other way, from `spacing.lg` to `spacing.sm`, so the sheet's own padding plus the
+  indicator gap comes to exactly `insets.bottom` and no more.
+- **One `maxHeight` for all five.** Three said 82% and two said 88%, and nothing said why; 88% is
+  the pair that already needed the room and it is a ceiling, so nothing short changed.
+
+### Verified by the repository gates
+
+`tsc --noEmit` **pass**, `node --test` **706/706 pass**, `expo lint` **0 errors** (42 warnings, none
+new), `expo export --platform ios` **pass**.
+
+### What is NOT verified
+
+- **Only one of the five was opened** (Goal). The other four share the identical style block and the
+  identical `<BottomSheet>` call, so they are inference — well-founded, but inference.
+- **The `bottomGap` fix reaches every sheet in the app** — twenty callers — and exactly one of them
+  was seen after the change. The direction is safe (less padding, never less clearance than the
+  indicator needs) but no other sheet was opened.
+- The corner and the spacing were read from stills. **No presentation, drag or dismissal was
+  watched**, and neither is something a still can prove is stable while the card is moving.
+- `displayCornerRadius` is a lookup table. It is right for this device; a phone not in the table
+  falls back to 55, which is the graceful direction to be wrong in but has not been seen.
+- `initialWindowMetrics` is captured once at launch and does not follow a rotation. The app is drawn
+  for portrait and no landscape check was run.
+
+---
+
+## 9 September 2026 — the first-open tour stops pointing at the whole tab bar
+
+**The ask** (owner): make the tour a person sees the first time they open the app feel native to
+iOS, and write better copy for it.
+
+### The defect that mattered
+
+Three of the five beats — Next, Progress, You — resolved to the **same rectangle**. `TOUR_STEPS`
+carried `target: 'tabBar'` and nothing more, so `tabBarRect()` returned one band across all four
+tabs and every one of those beats lit it. The card's words changed underneath while the hole did
+not move, which reads as a frozen tour; and a walk-through that names a control and then points at
+four of them has not pointed at anything. A new person finished the tour without having been shown
+which tab is Next.
+
+`TourStepDef` gained a `tab` index and `lib/tour.ts` gained `tabSlotRect()`, which divides the
+capsule evenly between its triggers after an inner padding. The three beats now light one slot each
+and the spotlight walks left to right along the bar.
+
+### Where the bar actually is
+
+The old rect was derived from `TAB_BAR_CLEARANCE` (56), which answers "how much room do I leave for
+the bar" — a different question from "where is its capsule". It came out 28 pt too wide, 11 pt too
+tall and 6 pt too high, so the hole showed a band of undimmed canvas around the bar it was supposed
+to be tracing.
+
+The capsule was **measured off the running app** instead, by reading the rendered screenshot on the
+iPhone 17 Pro simulator (iOS 26.5) — the method the sheet numbers in the design skill came from. On
+a 402 × 874 pt window: **x 22, y 790.5, w 358, h 62**, with the four tab centres on
+**73.5 / 159 / 244.5 / 330** — even 85.5 pt slots inside an 8 pt inner padding. The side margin and
+the gap under the bar came out the same 22 pt, which is what a capsule inset equally on three sides
+looks like, so the token is one number. `TAB_BAR_MARGIN` / `TAB_BAR_HEIGHT` / `TAB_BAR_SLOT_PAD`
+live in `theme/spacing.ts` beside `TAB_BAR_CLEARANCE`, and `tour.test.ts` asserts the computed
+centres land within 1 pt of the four measured ones.
+
+### The card became a popover
+
+That is the shape iOS uses to say one sentence about one control, and every part of it was doing
+another job before:
+
+| Was | Is | Why |
+|---|---|---|
+| No pointer | A **caret** aimed at the hole | Without it the card is a dialog that happens to have a hole elsewhere on the screen, and the eye has to guess which to read first. `placeCard` now returns which edge the card left from. |
+| Eyebrow "3 of 5" | **Page dots** | A page control is what iOS counts a sequence with. Ink, not brand — the funnel's progress rail settled that. |
+| `Skip` ghost beside `Next` | A quiet **✕** in the corner | Leaving and continuing are not peers and iOS never sets them at the same weight. The primary keeps the card's one filled pill. |
+| No glyph | The **tab's own SF Symbol** | The card shows `arrow.forward`, then the spotlight lands on `arrow.forward` in the bar. Drawn from another set, that hand-off does not happen. `icon.tsx` gains five `tour-*` names; the three tab ones are copied from `(tabs)/_layout.tsx`. |
+| Buttons only | **Tap anywhere, or swipe** either way | A tour advanced only by hitting a 56 pt target is a form. Both paths give the `selection()` haptic a choice gives. |
+| Card clamped to the top of the page hole | Card **resting inside** it, on its bottom edge | The writing surface is most of the screen, so "above the hole" resolved to the window's top and the card landed inside the lit area anyway, clamped against the header, looking pushed rather than placed. |
+| Opens 700 ms after mount | Opens once **`topInset` has been reported** | The page hole starts under the nav block, so the blind timer was a bet that layout had landed. |
+
+### One more thing the screenshots caught
+
+`pageRect` left `spacing.sm` of air on all four sides. The first thing under the header is the
+weekly line, which starts about three points below it — so the hole's top edge ran **through that
+line**, dimming the top half of every glyph and lighting the bottom half. Measured on the
+simulator: edge at 121.7 pt, ink at 121–133 pt. The top inset is now zero (the edge sits flush under
+the nav block, at 113.7 pt) and the `radius.xl` corner has curved clear of the text by the time it
+reaches x 24. Sides and bottom keep their air.
+
+### The copy
+
+Rewritten against what the screens draw rather than against the old copy. The Progress body said
+"one card per lift"; Progress is **bare rows** (design skill §Structure), so it says rows. Next's
+evidence line is printed *under* the load, not beside it, so it says underneath. The You body names
+the three rows that are actually there — "Import from Strong or Hevy", "Export my record", "Run
+setup again". The buttons end the sequence with "Start writing" rather than "Done", which hands the
+person back to the page they are standing on.
+
+`tour.test.ts` still lints the voice (no "!", no "AI", no emoji, no instruction) and still asserts
+§7's five ids in order, plus new assertions that every tab beat names exactly one tab, that no beat
+claims Today (the tab the tour runs on), and that every step carries a distinct glyph.
+
+### Verified on the simulator
+
+All five beats were photographed on the iPhone 17 Pro (iOS 26.5): the page beats with the card
+resting inside the lit page and no caret, and the Next / Progress / You beats each lighting their
+own tab with the caret aimed at it. The lit slots measured **116–201 / 201–286 / 287–372 pt**,
+against tab content centres of 159 / 244.5 / 330 — the arithmetic and the bar agree.
+
+### Verified by the repository gates
+
+`tsc --noEmit` **pass**, `node --test` **706/706 pass**, `expo lint` **0 errors** (40 warnings, two
+fewer than before — the tour's own two are gone), `expo export --platform ios` **pass**.
+
+### What is NOT verified
+
+- **The `pageRect` change was proved on pixels, not on a running tour.** The simulator lost its
+  Supabase session mid-pass and the dispatcher sends a signed-out device to the paywall, which no
+  deep link gets past and this machine has no way to tap through. The new edge was confirmed by
+  compositing the exact hole over the real undimmed screenshot; the arithmetic and the ink were
+  measured off device stills, but the corrected hole was never watched on the device itself.
+- **Nothing was tapped or swiped.** Tap-to-advance, the swipe, the ✕ and the haptics are code the
+  screenshots cannot exercise — the beats were walked by a temporary auto-advance timer, since
+  removed. The gestures are unexercised. The tap catcher was then moved BEHIND the card (a tap
+  gesture on a parent fires for its children too, so wrapping the card would have advanced twice on
+  one press of Continue); that is a transparent full-bleed `View` which adds no pixels, so the
+  stills above still describe what the screen draws, but the routing itself was never pressed.
+- **The measured capsule is one device.** 22 / 62 / 8 came off an iPhone 17 Pro. A smaller phone,
+  an iPad, or a future bar could differ; a hole a few points out still reads as a spotlight, but
+  nobody has looked.
+- **No Dynamic Type, VoiceOver or Reduce Motion pass** was run on the new card. The type carries
+  `MAX_FONT_SCALE`, the hole is gated on `useReducedMotion()` and the dots and ✕ have labels, but
+  none of the three was watched.
+- The tour is one-shot per account, so **re-running it needs `pref_tour_done` cleared** — the
+  You tab's "Simulate a fresh install" is the honest door, and it walks the whole funnel.
+
+---
+
+## 9 September 2026 — the evidence ring stops being cut off, and its count sits in the middle
+
+Owner, on the Next tab: *"tisti krogec in številko notri vedno je narobe strukturirano, včasih
+sploh ne prikaže celotni krog ampak je odsekan."* Two defects in one object
+(`src/components/thought-process.tsx`), both structural rather than a matter of taste, and both
+old.
+
+### The circle was drawn exactly as wide as its own canvas
+
+`r` was `(RING - RING_STROKE) / 2` on an `<Svg>` of `RING × RING`. The stroke straddles the path,
+so the outer edge landed at `RING / 2` — **on the viewport boundary**, at the four compass points.
+An SVG root clips to its viewport, and the host view's frame is rounded to the pixel grid, so the
+outer half of the stroke had nothing to be drawn into. `moderateScale` makes it worse rather than
+better: 52 pt resolves to 52.33 on a 3x screen, so which of the four points got shaved moved with
+the device. That is the "odsekan" ring, and it was never intermittent — it was systematic and
+device-dependent, which is what intermittent looks like from the outside.
+
+The fix is a gutter, not a smaller ring. The canvas is `RING + 2` and hangs one point outside the
+52 pt slot (`ringCanvas`, absolute, `top/left: -RING_PAD`), so the drawn circle keeps the exact
+diameter the row was laid out around and the stroke has a full point of canvas to finish in. The
+slot is a plain `View`, whose overflow is visible, so nothing downstream clips it.
+
+### The count was centred by a line height, which does not centre on iOS
+
+`ringValue` was `StyleSheet.absoluteFill` plus `lineHeight: RING` — a 17 pt glyph asked to float in
+a 52 pt line box. iOS puts a line's extra leading **above** its glyphs, so the digit sat low in the
+circle by an amount that changed with the size `digitStyle` picked and again with whatever
+`adjustsFontSizeToFit` did on top of it. It is now an ordinary centred child of the slot, which
+already centres on both axes, and the canvas above it is out of flow so there is nothing for it to
+be centred against. The box is given `RING_INNER` of width so `adjustsFontSizeToFit` has a bound to
+measure against — a box free to grow with its content gives the renderer nothing to shrink towards,
+which is why the 30 Aug digit-stepping was doing all the work alone.
+
+`ringSlot` also gained `flexShrink: 0`. React Native's default is already 0, so this changes
+nothing today; geometry that has to stay round should say so rather than inherit it.
+
+### Both surfaces get it
+
+`ThoughtProcessCard` is worn by the Next tab's closing block and by the lift sheet's summary
+(`exercise-sheet.tsx`), so one file fixes both.
+
+### Verified by the repository gates
+
+`tsc --noEmit` **pass**, `node --test` **706/706 pass**, `expo lint` on the touched file **clean**.
+
+### What is NOT verified
+
+- **Nothing was photographed.** The simulator is signed out and parked on the paywall; the
+  dispatcher swallows every deep link there and this machine has no way to tap `DEV · SKIP`. The
+  geometry is arithmetic — the stroke's outer edge now sits `RING_PAD` inside the canvas on every
+  side, and the circle's centre still resolves to the slot's centre — but the corrected ring has
+  not been seen on a device.
+- **`HoldToCommit` (`onboarding-v2/HoldToCommit.tsx`) has the same edge-touching geometry**
+  — `R = (SIZE - STROKE) / 2` on a `SIZE × SIZE` canvas, so its 168 pt progress ring is clipped by
+  the same half-stroke. It was left alone: the owner asked about Next, and onboarding is not this
+  change's scope. It is the same one-line fix when someone wants it.
+
+---
+
+## 9 September 2026 — Today moves onto the system navigator, and the parse gets a blue line
+
+Owner: *"upgrade a better user experience for Today page to look and work as much as native iOS
+app (Notes) but it also needs to include this AI effect when you enter the workout and has like
+animation of processing like a blue line; overall make it to look more useable."*
+
+Next and You had both moved onto the system navigator earlier the same day. Today was the last tab
+still drawing its own chrome — a row holding the "Recore" wordmark, a centred day pill and the
+session count, sitting ABOVE the scroll view — which is the arrangement `scroll-edge.tsx` was
+written to argue against: *"the one arrangement iOS itself never uses."*
+
+It mattered most here, because Today is a NOTE and the reference is Apple Notes. Studied on
+Appllama before anything was drawn (Bear's Text Note Editor and Blank Note Editor, Day One's
+journal entry, the `Note Detail` flows of two AI note-takers), the grammar those four share is the
+same three things: **the page runs to the top of the display, the chrome is one or two floating
+bar buttons, and the thing the note is ABOUT is its title.** Recore's page had none of them.
+
+### What the tab is now
+
+```
+Today                              ← headerLargeTitle, collapses on scroll
+Wednesday, 9 September   1 session ← the dateline, content
+this week · 12 300 kg · 3 sessions ← the weekly line, content
+○ Bench press          82.5 kg · 5·5·5
+○ barbell row 3x10 60          ⋯    ← being read: the blue line under it
+|                                   ← where you write
+```
+
+Every fact the old row carried survives, and each moved to where iOS puts that kind of thing:
+
+| Was | Is | Why |
+|---|---|---|
+| "Recore" wordmark | **gone** | With a real title, all four tabs print their own name at the same optical anchor — which is the job the wordmark was standing in for. Notes does not put the app's name over your note. |
+| centred day pill → calendar | a **bar button** at the trailing edge (`today-header.tsx`) | A control belongs on the bar. The pill also carried the date, which the title and the dateline now say between them. |
+| "42 sessions" → consistency | the end of the **dateline**, own 44 pt target | It is a reading, not a control, so it belongs on the page. It is still labelled and still opens the consistency sheet (owner, 11 Aug). |
+| — | **Done**, while the keyboard is up | Notes' own bar: a note being written offers one thing, and it is the way out of the keyboard. Not "Finish" — Finish ends the session and stays on the accessory bar with the count it settles. |
+
+### The three things that only work because the scroll view is the screen's root
+
+`../next/_layout.tsx` wrote the measurement down when Next moved: a `PaperField` sibling costs
+UIKit the scroll view it tracks, and a hoisted one is painted over by the navigator's opaque
+container. Today takes the same third way — the canvas is the scroll view's **own background**
+(`experimental_backgroundImage`, `PAPER_FIELD_CSS`) — and everything else on the page had to move
+inside it to keep that root clear:
+
+- **`InsightHeader` and the dateline** are passed to `NoteSurface` as a `header` node, so they sit
+  in the content, travel with the day, and scroll away under the collapsing title.
+- **`DaySwipe` moved INSIDE the scroll view**, around the content rather than around the page. Its
+  `activeOffsetX` ±24 / `failOffsetY` ±12 pair is unchanged and is now doing the same arbitration
+  every swipe-to-act row in a list does. `styles.fill` went `flex` → `flexGrow`, which is the one
+  place that shorthand does not mean what it looks like.
+- **`KeyboardAvoidingView` is gone**, replaced by `automaticallyAdjustKeyboardInsets` on the scroll
+  view. Same job done by UIKit on the UI thread instead of by JavaScript measuring a keyboard and
+  padding a container a frame late.
+- **The accessory bar is an overlay**, pinned to `bottom: keyboardHeight`, instead of a row in a
+  shrinking column. It stays mounted-but-hidden at rest, as before, so a running rest timer keeps
+  counting.
+
+**The body gutter went 24 → 16** (`BODY_PADDING_H`). Not a choice: a large title hangs off UIKit's
+own 16 pt layout margin, and content 8 pt further in gives the page two left edges. All three
+system-navigator tabs are now on the same number. The onboarding funnel keeps `spacing.xxl`,
+because it draws no navigation bar — `live-ledger.test.ts`'s comment was corrected to say so.
+
+### The blue line
+
+`ReadingSweep` already passed a soft band of brand blue under a line being read (owner's pick of
+four variants, 29 August). On a device it is felt more than seen — 16 % over warm paper, which was
+right for a mark crossing the record itself and useless as an answer to "what is the app doing".
+
+So the pass gained a second half, and it is **one animation rather than two**: the same shared
+value drives the band and a crisp brand-blue line along the row's bottom edge, so what crosses the
+entry is a beam with a bright leading edge. One clock (`useSweepClock`), one direction, one hold.
+
+- **Indeterminate, and it never fills.** §5.1 keeps a filled track for things that were measured; a
+  parse is one round trip with no percentage to be honest about. The segment travels and leaves,
+  over and over. Nothing grows from the left.
+- **The track was measured, not picked.** At the first value (14 %) it read back off the simulator
+  as `#D4E3F0` on `#F7F4ED` — a line, plainly, and three pending entries in a receipt-mode dump
+  turned the page into a table with rules, which §Structure forbids between two records. At **8 %**
+  the beam still has something continuous to travel along and the unlit part stops being a rule.
+- **The beams stagger, 220 ms a row, capped at six.** Every card in a dump mounts on the same frame;
+  in lockstep, three beams read as the page flashing. Staggered, the analysis visibly walks down the
+  page, which is the idea the gutter's own settle cascade already uses.
+- **The composer gets the line too**, under the field rather than under the cursor — §14 rules out
+  moving anything under a cursor mid-sentence, and this touches no word the athlete wrote. It is
+  the same mark the settled row wears, so the working state looks the same wherever they are
+  looking.
+- **Reduce Motion keeps the line and drops the travel**: a still blue line at 34 %, plus the word
+  "reading" the row already printed. The movement goes, the information does not.
+
+### Verified by the repository gates
+
+`npm run typecheck` **pass**, `npm test` **706/706 pass**, `npm run lint` **0 errors** (41
+pre-existing warnings, none in the touched files), `npx expo export --platform ios` **pass**.
+
+### Verified on the iPhone 17 Pro simulator (iOS 26.5), photographed
+
+- The **large title collapses**: scrolled, "Today" is a small centred title in a glass bar with the
+  record refracting under it. This is the behaviour Next's and You's notes say a `Text` in a row can
+  never reach, and it is the whole reason the tab moved.
+- **The bar button swaps**: calendar at rest, **Done** with the keyboard up.
+- **The blue line travels.** Sampled along a row's foot across successive frames, the segment peaks
+  at `#007AFF` and moves left to right (x ≈ 440 → 1000 device px between two captures) over an
+  8 % track; three stacked rows are visibly out of phase.
+- **Reduce Motion** (`com.apple.Accessibility ReduceMotionEnabled 1`): two frames three seconds
+  apart are pixel-identical, a uniform lit line, with "reading" at the end of each row.
+- The composer's own line renders under the field with the waving dots beside it.
+- Gutter, dateline and weekly line all sit on the title's 16 pt edge — `InsightHeader` was adding
+  `BODY_PADDING_H` a second time inside a container that already applied it, which put the weekly
+  line 16 pt right of every record it is a total of. Fixed in this pass.
+
+### What is NOT verified
+
+- **The day swipe was never swiped.** There is no touch injection on this machine (no `idb`, no
+  `cliclick`, and AppleScript clicks do not reach the Simulator), so the gesture's new home INSIDE
+  the scroll view is reasoned rather than felt. It is the standard swipeable-row arrangement and
+  the thresholds are unchanged, but nobody has dragged it — including the one case worth watching,
+  a horizontal drag begun during a vertical fling.
+- **No settled reading was photographed.** The simulator has no Supabase session, and the parser is
+  JWT-gated, so every seeded line stays pending for ever. That is what made the blue line easy to
+  measure and it means the **hand-off** — beam and dots out, name and set table in — has not been
+  seen. The pending card was reshaped in August precisely so nothing moves at that moment; that
+  claim is unchanged by this pass and still unwatched.
+- **The tab-bar minimize** (`minimizeBehavior="onScrollDown"`, `(tabs)/_layout.tsx`) now has the
+  root scroll view its note says it was missing on every tab. Nobody has watched it fire, so nothing
+  here should be described as minimizing.
+- **No Dynamic Type XL or VoiceOver pass.** Type carries `MAX_FONT_SCALE`, the dateline reserves the
+  count's 44 pt target so the row cannot change height when a first session lands, and the bar
+  button and the count are labelled — but none of it was watched.
+- **The lapsed branch was not seen.** It keeps the title and drops the collapse deliberately (the
+  read-only ledger brings its own scroll view and there is nothing to track), which is a decision,
+  not an omission — but it was not rendered.
+
+### How the simulator was reached, so the next pass does not pay for it again
+
+The two entries above this one both stop at *"the simulator is signed out and parked on the
+paywall; the dispatcher swallows every deep link there."* That is still true, and it is not the end
+of the road: **two temporary edits get in** — `signedIn` forced true in `app/_layout.tsx` (which
+registers the `(tabs)` group) and an unconditional `<Redirect href="/today" />` at the top of
+`app/index.tsx` (which stops the dispatcher bouncing to the paywall). `AuthProvider` already falls
+back to a `sim-verify-user` local id, so SQLite works and the page renders its real self. Seed the
+record by inserting a `workouts` row for that id and clear `pref_tour_done` in `meta`; both live in
+`Documents/SQLite/recore.db` inside the data container. Both edits were reverted before the gates
+were re-run — `grep -rn TEMP-VERIFY src/` is the check.
+
+### Files
+
+`src/app/(tabs)/today/_layout.tsx` (new) · `src/app/(tabs)/today/index.tsx` (new, replaces
+`(tabs)/today.tsx`) · `src/components/today-header.tsx` (new, replaces `top-bar.tsx`, deleted) ·
+`src/components/note-surface.tsx` · `src/components/gutter-value.tsx` ·
+`src/components/insight-header.tsx` · `src/components/day-swipe.tsx` ·
+`src/components/note-metrics.ts` · `src/lib/db/dates.ts` (`longDayLabel`) ·
+`src/lib/theme/spacing.ts` + `index.ts` (`NAV_BAR_HEIGHT`) ·
+`src/components/onboarding-v2/LiveLedger.tsx` + `live-ledger.test.ts` (gutter comments).
+
+---
+
+## 9 September 2026 — the Today alignment pass: six things measured, six fixed
+
+Owner, the same day and on the same page: *"prilagodi celotni dizajn za Today page ker ni vse lepo
+centrirano itd preglej in popravi"*, and then *"popravi tudi gor logo za koledar in to tisto
+poravnavo."*
+
+The tab had just moved onto the system navigator, which gave the page a real title and a real
+right-hand bar button — and made every edge that did NOT line up with them visible for the first
+time. **Nothing below was judged by eye.** The record was seeded straight into SQLite (a `workouts`
+row plus a hand-built `parse_cache`, which is what makes settled cards render with no session), the
+page was photographed on the iPhone 17 Pro simulator, and the ink columns were measured out of the
+screenshot with PIL. Every number here is in points on a 402 pt-wide window.
+
+| # | Defect | Measured before | After |
+|---|---|---|---|
+| 1 | The check ring was not on the page's left margin | ring `22.3`, title `16.7` | ring `16.0` |
+| 2 | The ⋯ was not on the page's right margin | dots end `374.3`, dateline ends `384.3` | dots end `384.7` |
+| 3 | The ⋯ was not on the name's line | glyph centre `7.1` below the ring's | within `0.9` |
+| 4 | The set table had no right edge | last column ended `242` on a body running to `342` | ends `385.0` |
+| 5 | A right-aligned column header sat left of its own column | `1.0`–`1.3` | `0` |
+| 6 | Two truncated words where one whole one fits | "Triceps Pushdo… · “tricpes pushdow…”" | both whole |
+
+### 1 · The rail was 12 pt wider than the mark it holds
+
+`RAIL_W` was 34 and `MARK` 22, so the ring centred inside its own column and started 5.7 pt inside
+the margin the title, the dateline and the weekly line all start on. The rail **is** the mark now
+(`RAIL_W = MARK`), and the 12 pt it gave back became the gap after it (`RAIL_GAP`) — so the ring
+moved onto the margin and the record's text did not move at all: 16.7 + 22 + 12 = **50.7 pt**, which
+is Apple Notes' own checklist indent to within a point. The ring's target is `hitSlop` now
+(22 + 2 × 12 = 46 ≥ 44).
+
+### 2 · A glyph is aligned by its ink, not by its box
+
+Both marks on the right of a record — the settled card's ⋯ and the pending card's waving dots — sat
+centred in a 36 pt box whose right edge was the margin, which left their ink 10 pt short of it. They
+are `alignItems: 'flex-end'` now. SF's `ellipsis` at 17 pt draws 1.7 pt inside its own box, so the
+dots land on **384.7**, which is where the dateline's session count already ended. The pending mark
+carries `paddingRight: 1` to make up the side bearing a plain `View` does not have — the whole point
+of that card's shape is that nothing moves when the reading lands, and 1 pt of movement is still
+movement.
+
+### 3 · …and it is sized by that glyph, not by its target
+
+Moving the ⋯ into the name's row is the 29 August ruling the pending card already carried
+(*"the mark sits on the words' own optical centre instead of in the middle of a 36 pt button box
+that is top-aligned to a card three lines tall"*), finally applied to the card it settles into. Done
+naively it swapped one misalignment for another: a 36 pt button makes the ROW 36 tall, so the name
+centred 6.2 pt below the ring. The button is the glyph plus `spacing.xs` of air now (~25 pt), the row
+is the name's own height again, and the 44 pt target is `hitSlop`, which costs no layout.
+
+The body reclaimed the 44 pt the side column was holding, which is what stopped defect 6 without a
+single change to how the echo is drawn — and the echo now shrinks three times faster than the name
+(`flexShrink: 3`), so when something does have to give, the record wins and the footnote loses.
+
+### 4 · The set table gets a right edge
+
+Position left, load and work hard against the card's right edge (`justifyContent: 'space-between'`).
+This does **not** undo the 9 August grouping: that ruling was about load and work sitting at
+*opposite ends of the card*, so reading one set meant crossing the screen. They are still one tight
+pair with `spacing.sm` between them and the eye travel inside a set is unchanged — what moved is
+where the pair sits, which is where every native list puts a value. Before, every card carried
+100 pt of dead width with the ⋯ floating alone past it.
+
+### 5 · `letterSpacing` puts an advance after the last glyph too
+
+So "KG" right-aligned in its cell ended a point short of the "80" underneath it — invisible alone,
+a wobble down a column of three. `headCell` gives the point back. Only the right-aligned heads need
+it; `SET` is left-aligned and its trailing space falls into the gap.
+
+### 6 · The bar button, and the dateline
+
+The calendar button had `minWidth: HIT`, `minHeight: HIT` and a left padding with the glyph
+right-aligned inside. On an iOS 26 SDK build **the navigation bar draws its own Liquid Glass capsule
+around the button's bounds**, so that rendered as a wide white blob with the mark hanging off one
+end. A bar button takes no frame of its own now: the glyph sizes it, the system capsule hugs and
+centres it, `hitSlop` carries the target. The symbol went 22 → 18 pt, because SF's `calendar` is a
+dense mark — a solid header band over a 3 × 3 grid — and at 22 it was the heaviest object on a page
+whose whole point is that the record is the loudest thing on it.
+
+The dateline's `minHeight` went `HIT` → 30: at 44 it centred a 15 pt line in a box three times its
+height and pushed the date 11 pt down, so the title and its own subtitle read as two blocks instead
+of one. The count keeps its 44 pt target through `hitSlop`.
+
+`InsightHeader` was also adding `BODY_PADDING_H` a second time inside a container that already
+applied it, which put the weekly line 16 pt right of every record it is a total of.
+
+### One functional defect found while photographing, and fixed
+
+**Tapping an empty note threw the composer up under the navigation bar.** `contentContainerStyle`
+carries `flexGrow: 1` so the blank canvas stays tappable top to bottom, which makes the content as
+tall as the scroll view's *frame*, while the keyboard's inset shrinks the visible window by ~340 pt
+— so `scrollToEnd` had a 450 pt "end" to travel to on a page with nothing on it. The focus-time
+scroll is deleted outright (it existed to compensate for the `KeyboardAvoidingView` that no longer
+wraps this page; `automaticallyAdjustKeyboardInsets` brings the first responder into view itself),
+and the commit-time scroll is now `scrollToEndIfLong`, which measures `onLayout` against
+`onContentSizeChange` and does nothing when the page already fits.
+
+### Verified by the repository gates
+
+`npm run typecheck` **pass**, `npm test` **706/706 pass**, `npm run lint` **0 errors** (41
+pre-existing warnings, unchanged), `npx expo export --platform ios` **pass**.
+
+### Photographed, and re-measured after every change
+
+Settled cards with a set table, an alias echo and a PR label; a prose line; a pending line with the
+blue reading line; the composer on a blank page; the keyboard up with the bar showing **Done**. The
+large title still collapses into the glass bar with the record refracting under it.
+
+### What is NOT verified
+
+- **Nothing was pressed.** The ⋯ is now a `Pressable` nested inside the card body's `Pressable`
+  rather than a sibling column. React Native's responder system gives the touch to the innermost
+  view and `PendingCard` has nested exactly this way since August, so the arrangement is not new —
+  but this machine cannot synthesise a tap, so nobody has watched the ⋯ open its sheet from its new
+  home, or watched the body's own press wash stay out of it.
+- **No Dynamic Type pass.** Three of the six fixes (the ring's rail, the ⋯ sized by its glyph, the
+  dateline's minimum) are the kind that change behaviour at XL, and the set table already switches
+  to its stacked layout at 1.2 — none of it was watched.
+- **The `SET` column still leaves a wide gap** between the position and the values on every card. It
+  is the price of a full-width grid, it is what Strong, Hevy and Apple's own Fitness detail all
+  draw, and it was left deliberately rather than missed.
+
+---
+
+## v2 onboarding — SF Symbols, the selection control and the bottom scroll edge (9 September 2026)
+
+**Owner's ask:** *"using appllama mcp and app design skill make a onboarding to look more like
+native ios app but it needs to have a smooth animations and icons make it to look realy cool."*
+
+Researched first, per the appllama-app-design-skill's prime directive: the onboarding flows of the
+revenue-ranked strength trackers (Fitbod $1M/mo, Hevy $1M, Gravl $400K, Lyfta $300K, Caliber,
+Muscle Booster) were walked on the Appllama MCP before anything was drawn. What the top flows have
+that this one did not is not a new layout — the skeleton here already matches them — it is that
+**every option row is a control that looks like one**: a leading mark and a selection box.
+
+### What was actually wrong, photographed rather than assumed
+
+Deep-linked every screen of the live flow on an iPhone 17 Pro (iOS 26.5) and looked at the stills.
+Seventeen of the twenty screens were walls of identical empty white slabs carrying one word each,
+with **no leading glyph and no selection affordance anywhere** — so "Pick up to two" sat over five
+rows with nothing on them to say that two was possible. The lists were also cut dead flat at the
+pinned CTA's top edge: on the key-lifts screen the sixth row was sliced in half against a hairline.
+
+### Files
+
+- `src/components/onboarding-v2/Mark.tsx` — **new.** The flow's one leading mark. SF Symbol on iOS
+  via `expo-symbols`, Ionicons fallback off it, one weight, tinted to the label beside it. The
+  attribution screen's six brand silhouettes still route to `BrandIcon` — SF Symbols has no
+  third-party logos — and the two sources never meet on a screen, which is the rule `icon.tsx`
+  moved the accessory bar, the settings list and the tour over under.
+- `src/components/onboarding-v2/SelectMark.tsx` — **new.** The selection control. A **circle** for
+  single-select, a **rounded square** for multi, drawn in the resting state as well as the selected
+  one, because the shape is how the screen answers "can I pick two?" before anybody taps. Ring
+  colours ride `select`; the check rides `tick` 70 ms later so it lands *into* a box that has
+  already turned.
+- `OptionRow.tsx` — leading mark + trailing control; **the white disc is gone.** Its own reasoning
+  removed it: the disc existed because *"a colour emoji cannot take a tint … ☀️'s rim lands at
+  1.55:1 on the blue"*, and every glyph in the flow is now a single-ink path or a system symbol.
+  The mark cross-fades between an ink copy and a white copy on the row's own shared value —
+  `SymbolView`'s `tintColor` is a prop, not a style, so it cannot be interpolated from a worklet
+  and two layers is the only way to keep the mark on the label's spring.
+- `GhostRow.tsx` — the opt-out gets the control too. It is quieter in contrast and carries no
+  leading mark because it sits outside the question's family; it is still a first-class answer and
+  has to look choosable.
+- `Frame.tsx` — the **bottom scroll edge**, and the CTA became an overlay. `scroll-edge.tsx` states
+  the contract for the top of a screen (*"the scroll view runs the full height of the screen, under
+  the header; the header is an overlay, not a row"*) and the bottom now matches: the list runs
+  behind the button, a `spacing.xxl` paper gradient takes it over, the hairline is deleted, and the
+  list pays for the overlay in `paddingBottom` = the footer's **measured** height + the fade.
+- `ContinueButton.tsx` — the pill is a `minHeight` and the label no longer truncates.
+- `flow.ts` — `MarkName` gains the four object marks; screen 2 carries them.
+- `characters.test.ts` — the two tests that pinned marks to exactly two screens now pin three, and
+  the "numbers, durations and abstract states carry no mark" rule is unchanged and is the reason
+  the pass stopped where it did.
+- `Character.tsx` — the mascot ring's three `rgba(0,122,255,0.16)` edges are derived from
+  `color.brand` now. It was a blue spelled out by hand, which recore-design forbids outright, and
+  it was correct only for as long as `brand` happened to be `#007AFF`.
+
+### Decisions, recorded so they are not silently re-litigated
+
+1. **The 28 Aug emoji ruling stands; its consequence did not.** That pass was right that a colour
+   emoji is a bitmap on a text baseline that cannot be centred without a per-glyph nudge. What it
+   did not do was *replace* the glyphs, so nine screens simply lost them. SF Symbols answers every
+   objection the emoji failed — centred by their own metrics, one ink so they take the label's
+   colour, one weight across the set, Dynamic Type for free — and it is the set the status bar,
+   the keyboard and the tab bar above them are drawn from.
+2. **Marks only where a symbol honestly denotes.** Screen 2's four options name objects a record
+   lives in and all four get one. Screens 10 (Muscle / Strength / **Both**), 11 (durations), 12
+   (Two…Six), 14 (splits) and 3 (frustrations) get none, and the test says so by name: a system
+   symbol solves centring and weight, it does not make "Both" into a thing a picture can denote.
+   A mark invented to fill a slot is the decoration the whole rule exists to keep out.
+3. **The recap screen's hand-drawn sun and moon became `sun.max` and `moon.stars`.** Same meaning,
+   same set as everything else, drawn by the renderer that draws the clock above them.
+
+### Verified on device
+
+iPhone 17 Pro, iOS 26.5, dev build against Metro. Every screen of the flow photographed before and
+after. The dumbbell's optical box was **measured, not guessed**: rendered at 22 pt the four marks
+came out 19.0 / 15.3 / 18.7 pt of ink tall and the dumbbell 11.3, so it takes a 1.15 multiplier.
+
+- **Dynamic Type XXXL** — rows, marks and controls all scale; it is what caught the CTA rendering
+  as `Cont…`, a truncated verb on a primary button, which is now fixed.
+- **Reduce Motion** — content is in its final position on the first frame, no travel, the check and
+  the fill both correct immediately.
+- **The keyboard screens** — and this is where the overlay bit back. A `KeyboardAvoidingView` moves
+  its content by growing its own bottom padding, and an absolutely positioned child is laid out
+  against the box that padding is inside, so the name screen's Continue button **vanished behind
+  the keyboard** the moment the footer went absolute. Caught in a screenshot, not in review. The
+  footer is pinned only when the frame is not avoiding the keyboard; the two screens that do have
+  nothing to scroll behind the button anyway.
+
+### Verified by the repository gates
+
+`npm run typecheck` **pass**, `npm test` **718/718 pass**, `npm run lint` **0 errors** (41
+pre-existing warnings, unchanged — none in any file touched here).
+
+### The motion pass — how it was run without tap tooling, and what it measured
+
+The design skill mandates watching the flow as moving pictures. Two instruments had to be built
+first, because the obvious ones do not work here:
+
+**1. `xcrun simctl io recordVideo` is not a motion instrument on this machine.** Measured: 3 s of
+the *building* screen — which counts a percentage up, fills a spring bar and rotates a mascot ring
+on a continuous 9 s loop — yielded **6 distinct frames**. A recording that samples at ~2 fps cannot
+show a 260 ms spring, and no frame extractor fixes that. (Frames were pulled with a 40-line Swift
+`AVAssetImageGenerator` script at zero tolerance, so the extraction was exact; the source simply
+had nothing in it. There is no `ffmpeg` on this machine and it would not have helped.)
+
+**2. So the springs were stretched in time instead.** ζ = damping / (2·√(k·m)) is preserved exactly
+by dividing damping by K and stiffness by K², so a `slow()` wrapper at K = 8 produces the
+*identical curve* over 8× the duration. Back-to-back `simctl io screenshot` runs at ~170 ms, which
+samples a 260 ms spring twice and a stretched one twenty times. Both instruments were marked
+`TEMP-VERIFY`, removed before the gates, and `grep -rn TEMP-VERIFY src/` is clean.
+
+What that measured, on screens 2 and 10, driven by a temporary timer calling the real `onPick`:
+
+| Behaviour | Result |
+|---|---|
+| Row fill on selection | Smooth 13-point monotone ramp, R 245.5 → 6.1, **no overshoot** — ζ≈0.90 as designed. ~260 ms at 1×. |
+| Single-select crossing | **Both rows mid-flight in the same frame** (row1 R 199.2 / row2 R 166.1). The spec's *"outgoing animates out as incoming animates in, never both active for a frame"* — photographed, not inferred. |
+| Checkmark scale-in | Ink height 26 → 43 px = 0.6 → 1.0 of final. It **grows**, and it completes *after* the box has turned white. The `CHECK_DELAY_MS` ordering holds. |
+| Leading mark → white | Crosses with its label on both the leaving and the arriving row. The two-copy cross-fade keeps them on one shared value, as intended. |
+| CTA wake-up pop | Pill width **1062 → 1098 → 1062 = ×1.0339**, against an intended 1.035. Duration 5.4 s at K=8 → **0.67 s at 1×**, which matches ζ=0.526 analytically (4/ζω_n twice). |
+| Wrong-colour frames, layout jumps | None. All geometry constant except the intended transforms; the native push renders correct paper on its first frame. |
+
+One honest observation rather than a defect: **at the cross-fade's midpoint the leading mark dips
+in contrast** (light-pixel count 788 → 308 → 788). That is inherent to cross-fading two copies —
+and `interpolateColor` does exactly the same thing to the label beside it, which is why the two
+stay in step. It lasts about 80 ms at 1×.
+
+### What is still NOT verified
+
+- **60 fps is not measured.** The curves are correct and the springs are the right springs; nothing
+  here says the device holds frame rate through them. That needs a release build on the slowest
+  supported device, which this machine cannot produce.
+- **Nothing was tapped.** Selection was driven by a timer calling the same `onPick` a tap calls, so
+  the state machine and every animation above are the real ones — but the *press* itself
+  (`PressScale`'s 0.97 dip and its haptic) has never been exercised, and neither has an
+  interrupted or rapid-repeat tap.
+- **Android is untested.** The Ionicons fallbacks compile and are typed but have not been rendered,
+  and the bottom gradient's sibling positioning was chosen specifically so Android would not clip
+  it — reasoned, not observed.

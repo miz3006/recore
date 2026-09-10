@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { displayWeightText, sameDisplay, toDisplayWeight, toKg, WEIGHT_STEP } from './units.ts';
+import {
+  displayLoad,
+  displayWeightText,
+  sameDisplay,
+  spokenUnit,
+  toDisplayWeight,
+  toKg,
+  WEIGHT_STEP,
+} from './units.ts';
 
 test('kilograms pass through untouched for a kg user', () => {
   assert.equal(toDisplayWeight(102.1, 'kg'), 102.1);
@@ -37,4 +45,24 @@ test('bodyweight has no number to show', () => {
 
 test('the step is a plate pair in whichever unit is on screen', () => {
   assert.equal(WEIGHT_STEP, 2.5);
+});
+
+test('a reading is scannable, not precise to the hundredth', () => {
+  // 140 kg is 308.647... lb. A column of readings printed to two decimals is
+  // false precision on a number that is an estimate in the first place.
+  assert.equal(displayLoad(140, 'lb'), 309);
+  assert.equal(displayLoad(140, 'kg'), 140);
+  // Kilograms keep the half-kilo grain the estimates are computed on.
+  assert.equal(displayLoad(116.5, 'kg'), 116.5);
+});
+
+test('a delta converts like the load it is the difference of', () => {
+  assert.equal(displayLoad(7.5, 'lb'), 17);
+  assert.equal(displayLoad(-7.5, 'lb'), -17);
+  assert.equal(displayLoad(0, 'lb'), 0);
+});
+
+test('the unit is spoken as a word, not as its letters', () => {
+  assert.equal(spokenUnit('kg'), 'kilograms');
+  assert.equal(spokenUnit('lb'), 'pounds');
 });

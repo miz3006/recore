@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
     backgroundColor: INK_TRACK,
   },
   fill: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: BAR_HEIGHT,
     backgroundColor: color.brand,
   },

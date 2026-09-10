@@ -9,6 +9,7 @@ import { bumpCorrections } from '@/lib/funnel';
 import { recachePrediction } from '@/lib/predict/cache';
 
 import { applyParseResult, getParseCache } from './apply';
+import { typedNameOf } from './receipt';
 import { validateParseResult, type ParsedItem, type ParsedSet } from './types';
 
 /**
@@ -18,10 +19,11 @@ import { validateParseResult, type ParsedItem, type ParsedSet } from './types';
  *     correction overlay inside applyParseResult) and refreshes the ghost.
  *  2. FOREVER ON THIS NOTE: the stored correction row re-applies on every
  *     future re-parse of the same line text.
- *  3. FOREVER EVERYWHERE: if the exercise was wrong, the user's typed
- *     shorthand becomes an alias override — every future note resolves it to
- *     the exercise the user actually meant, and the row is training data for
- *     the eval set.
+ *  3. FOREVER EVERYWHERE: if the exercise was wrong AND the sheet's "Remember
+ *     this" was left on, the user's typed shorthand becomes an alias override —
+ *     every future note resolves it to the exercise the user actually meant,
+ *     and the row is training data for the eval set. Turned off, steps 1 and 2
+ *     still happen and nothing else in the record changes its reading.
  */
 export interface FixTarget {
   workoutId: string;
@@ -58,6 +60,35 @@ export function getFixTarget(workoutId: string, line: number): FixTarget | null 
 export interface CorrectionSubmit {
   exercise: string;
   sets: ParsedSet[];
+  /**
+   * LEARN THE SHORTHAND, or fix this line and nothing else.
+   *
+   * Correcting the exercise used to teach the parser unconditionally, which is
+   * right almost always and wrong exactly when the athlete is repairing a
+   * one-off typo — after which every future note carrying that typo's word
+   * would resolve somewhere they never asked for. The sheet asks, defaulted to
+   * on; this is the answer. Optional and defaulting to true so nothing else
+   * that calls this function changes behaviour.
+   */
+  remember?: boolean;
+}
+
+/**
+ * THE PHRASE THE ALIAS IS KEYED ON.
+ *
+ * Two sources, and both are the athlete's own words rather than the model's
+ * guess: what they typed before the first digit on that line (`typedNameOf` —
+ * "incline db 30x10" → "incline db"), and whatever shorthand the parse reported
+ * seeing. The typed phrase leads, because it is the one the sheet SHOWS them
+ * when it offers to remember it, and a screen that names one string while the
+ * store keeps another is lying quietly.
+ *
+ * Empty strings never reach the store: a line that opens with a number has no
+ * name portion, and an alias keyed on nothing would match everything.
+ */
+export function aliasPhrasesOf(lineText: string, aliasesSeen: string[]): string[] {
+  const typed = typedNameOf(lineText);
+  return [...new Set([typed, ...aliasesSeen.map(normalize)])].filter(Boolean);
 }
 
 /** Persist one correction and rebuild the workout from it. Returns true when
@@ -103,12 +134,15 @@ export function applyCorrection(
   // 2. Alias learning: the typed shorthand now ALWAYS means the corrected
   //    exercise — as an override, so it works for global rows too, and the
   //    mis-learned alias is scrubbed from the user's own rows.
-  if (exerciseChanged) {
+  //
+  //    Only when the athlete left the sheet's "Remember this" on. Off, the
+  //    correction still lands on this line and re-applies on every re-parse of
+  //    it (step 1) — what it does not do is change how any OTHER line is read.
+  if (exerciseChanged && submit.remember !== false) {
     const targetRow = findExerciseByName(userId, exercise);
     const targetId =
       targetRow?.id ?? createUserExercise(userId, exercise, before.aliases_seen, before.modality);
-    for (const alias of before.aliases_seen.map(normalize)) {
-      if (!alias) continue;
+    for (const alias of aliasPhrasesOf(target.lineText, before.aliases_seen)) {
       setAliasOverride(userId, alias, targetId);
       removeAliasFromUserExercises(userId, alias, targetId);
     }

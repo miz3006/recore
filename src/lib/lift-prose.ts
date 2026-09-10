@@ -1,6 +1,7 @@
 // Relative + .ts extension: this file is BOTH bundled by Metro AND run under
 // `node --test` (which can't resolve the `@/` alias) — the same pattern as
 // brief-prose.ts and the other pure modules.
+import { onDayPhrase } from './day-phrase.ts';
 import { fmtNumber } from './parse/summarize.ts';
 
 /**
@@ -51,6 +52,21 @@ export interface LiftBrief {
 }
 
 const kg = (n: number) => `${fmtNumber(n)} kg`;
+
+/**
+ * WHEN IT HAPPENED, as a clause this sentence can carry.
+ *
+ * An absolute date is a parenthetical and takes commas around it — "…× 12, on
+ * Sep 4, for an estimated 1RM…". A relative word is an adverb: no preposition,
+ * no capital and no comma in front of it — "…× 12 today, for an estimated
+ * 1RM…". `onDayPhrase` settles the preposition; the comma is this sentence's
+ * own punctuation, so it stays here.
+ */
+function dayClause(label: string | null): string {
+  if (!label) return '';
+  const phrase = onDayPhrase(label);
+  return phrase.startsWith('on ') ? `, ${phrase}` : ` ${phrase}`;
+}
 
 export function liftProse(b: LiftBrief): string {
   const parts: string[] = [];
@@ -103,12 +119,14 @@ export function liftProse(b: LiftBrief): string {
   // 4. The heaviest thing in the record, and the estimate over it.
   if (b.bestWeight != null) {
     const reps = b.bestReps != null ? ` × ${b.bestReps}` : '';
-    const on = b.bestDayLabel ? `, on ${b.bestDayLabel}` : '';
     const est = b.e1rmBest != null ? `, for an estimated 1RM of ${kg(b.e1rmBest)}` : '';
-    parts.push(`The heaviest working set in the record is ${kg(b.bestWeight)}${reps}${on}${est}.`);
+    parts.push(
+      `The heaviest working set in the record is ${kg(b.bestWeight)}${reps}${dayClause(
+        b.bestDayLabel,
+      )}${est}.`,
+    );
   } else if (b.bestReps != null) {
-    const on = b.bestDayLabel ? `, on ${b.bestDayLabel}` : '';
-    parts.push(`The best set in the record is ${b.bestReps} reps${on}.`);
+    parts.push(`The best set in the record is ${b.bestReps} reps${dayClause(b.bestDayLabel)}.`);
   }
 
   return parts.join(' ');

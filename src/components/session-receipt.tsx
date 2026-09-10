@@ -22,7 +22,7 @@ import { type GutterSignal, type LineSignal } from '@/lib/parse/types';
 import { color, HIT, MAX_FONT_SCALE, moderateScale, radius, readingStyle, spacing, type } from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
-import { MonoTag, PrLabel, readingText } from './gutter-value';
+import { COMPARISON_SUBLINES_ON, MonoTag, PrLabel, readingText } from './gutter-value';
 import { SetTable, worthTable } from './set-table';
 
 /**
@@ -73,16 +73,23 @@ const KG_DELTA_RE = /^[+-]\d+(?:\.\d+)?$/;
 
 /** The archival comparison subline — the muted second voice of a row.
  * A bare weight delta ("+2.5") gains its unit; rep/distance/duration deltas
- * already carry theirs. `firstSeen` = this line parsed as a first-time echo. */
+ * already carry theirs. `firstSeen` = this line parsed as a first-time echo.
+ *
+ * The vs-last half of it is switched off with the card's own
+ * (`COMPARISON_SUBLINES_ON` in `gutter-value.tsx`). What the entry IS stays:
+ * a first-ever lift still says so, and a PR still names itself beside the
+ * label it already carries. */
 function comparisonOf(signal: GutterSignal | null, firstSeen: boolean): string | null {
   if (!signal) return firstSeen ? 'first recorded' : null;
   switch (signal.kind) {
     case 'up':
     case 'down': {
+      if (!COMPARISON_SUBLINES_ON) return null;
       const delta = KG_DELTA_RE.test(signal.delta) ? `${signal.delta} kg` : signal.delta;
       return `${delta} vs last`;
     }
     case 'equal':
+      if (!COMPARISON_SUBLINES_ON) return null;
       return 'same as last';
     case 'pr':
       return 'personal record';

@@ -67,6 +67,36 @@ import {
  * there is nothing for a container to do, and a container drawn in the page's
  * own colour is a container that is not there.
  *
+ * ## IT IS A ROW NOW, NOT A COLUMN (9 September 2026)
+ *
+ * The block was centred: a 112 pt figure over a centred name, the whole thing
+ * roughly 200 pt tall before the page said anything. Two things changed and
+ * both point the same way.
+ *
+ * The page took the system's own large title, which is **left-aligned and
+ * scrolls up into the bar**. A centred hero under a left-aligned title is two
+ * competing axes in the first screenful, and the eye reads the disagreement
+ * before it reads either one. Every account header on the phone — Apple ID in
+ * Settings, the Fitness profile, Mail's accounts — is a left-aligned row for
+ * exactly this reason.
+ *
+ * And the design system asks the mascot to stand down on a data screen: *"On
+ * data screens it is a corner mark of at most 32 pt, or it is absent. It never
+ * competes with a number."* This screen is not quite that — it is where a
+ * person's own name lives — but it does carry the career record two lines
+ * below, so 112 pt of character above it was the character competing. At 72 it
+ * is unmistakably the same drawing and it is no longer the loudest thing here.
+ *
+ * The block gives back roughly 110 pt, which is most of a settings group.
+ *
+ * ## The line under the name is a FACT or it is absent
+ *
+ * `sub` prints one dry line — the date the record starts. It is read from the
+ * logged days by the caller and is simply not rendered when there are none. No
+ * "Member since", no level, no title, nothing derived from an assumption: this
+ * screen sits one tab away from a paywall, and an invented identity line is the
+ * same fabrication the app deleted from that paywall in July (§3).
+ *
  * ## Rename is inline, and it is the app's own name
  *
  * Tapping the name swaps it for a field in place — no sheet, no route, no Save
@@ -76,11 +106,11 @@ import {
  * neutral wording rather than inventing a placeholder identity.
  */
 
-const AVATAR = moderateScale(112);
+const AVATAR = moderateScale(72);
 /** The cap character, walking in — the flow's first frame, background removed. */
 const PORTRAIT = require('../../../assets/profile/avatar.png');
 
-export function Identity() {
+export function Identity({ sub }: { sub?: string }) {
   const [name, setNameState] = useState<string | null>(() => getName());
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -118,50 +148,62 @@ export function Identity() {
         />
       </View>
 
-      {editing ? (
-        <TextInput
-          ref={field}
-          style={[styles.name, styles.field]}
-          value={draft}
-          onChangeText={setDraft}
-          onBlur={commit}
-          onSubmitEditing={commit}
-          returnKeyType="done"
-          placeholder="Your name"
-          placeholderTextColor={color.textMuted}
-          selectionColor={color.brand}
-          cursorColor={color.brand}
-          autoCapitalize="words"
-          autoCorrect={false}
-          maxLength={40}
-          allowFontScaling
-          maxFontSizeMultiplier={MAX_FONT_SCALE}
-          accessibilityLabel="Your name"
-        />
-      ) : (
-        <PressableScale
-          onPress={begin}
-          haptic="none"
-          activeScale={0.98}
-          accessibilityRole="button"
-          accessibilityLabel={name ? `${name}. Rename` : 'Add your name'}
-          accessibilityHint="Edits your name here"
-          style={styles.namePress}>
-          <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {name ?? 'Add your name'}
+      <View style={styles.who}>
+        {editing ? (
+          <TextInput
+            ref={field}
+            style={[styles.name, styles.field]}
+            value={draft}
+            onChangeText={setDraft}
+            onBlur={commit}
+            onSubmitEditing={commit}
+            returnKeyType="done"
+            placeholder="Your name"
+            placeholderTextColor={color.textMuted}
+            selectionColor={color.brand}
+            cursorColor={color.brand}
+            autoCapitalize="words"
+            autoCorrect={false}
+            maxLength={40}
+            allowFontScaling
+            maxFontSizeMultiplier={MAX_FONT_SCALE}
+            accessibilityLabel="Your name"
+          />
+        ) : (
+          <PressableScale
+            onPress={begin}
+            haptic="none"
+            activeScale={0.98}
+            accessibilityRole="button"
+            accessibilityLabel={name ? `${name}. Rename` : 'Add your name'}
+            accessibilityHint="Edits your name here"
+            style={styles.namePress}>
+            <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {name ?? 'Add your name'}
+            </Text>
+          </PressableScale>
+        )}
+        {sub && !editing ? (
+          <Text style={styles.sub} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {sub}
           </Text>
-        </PressableScale>
-      )}
+        ) : null}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xxl,
-    gap: spacing.md,
+    paddingBottom: spacing.lg,
+    gap: spacing.lg,
+  },
+  /** The name column takes the rest of the row, so a long name wraps its own
+   * line rather than pushing the figure off the left gutter. */
+  who: {
+    flex: 1,
   },
   avatar: {
     width: AVATAR,
@@ -174,24 +216,32 @@ const styles = StyleSheet.create({
     height: AVATAR,
   },
   namePress: {
-    // A name is a 44 pt target even when the word is short.
-    minHeight: moderateScale(44),
+    // A name is a 44 pt target even when the word is short. The negative inset
+    // buys the target its width back without moving the glyphs off the gutter
+    // the rest of the page hangs on.
+    minHeight: moderateScale(40),
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
+    marginHorizontal: -spacing.sm,
+    paddingHorizontal: spacing.sm,
     borderRadius: radius.sm,
     borderCurve: 'continuous',
   },
   name: {
     ...type.title2,
     color: color.textPrimary,
-    textAlign: 'center',
+  },
+  /** One dry fact, or nothing — see the note above. */
+  sub: {
+    ...type.subhead,
+    color: color.textSecondary,
+    marginTop: -spacing.xs,
   },
   // The field keeps the name's exact type so the swap moves nothing. The rule
   // under it is the only thing that says "this is editable now".
   field: {
-    minWidth: moderateScale(180),
-    minHeight: moderateScale(44),
-    paddingHorizontal: spacing.md,
+    minHeight: moderateScale(40),
+    marginHorizontal: -spacing.sm,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 0,
     borderBottomWidth: 1,
     borderBottomColor: color.border,

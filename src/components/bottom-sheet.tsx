@@ -7,22 +7,25 @@ import {
   Pressable,
   StyleSheet,
   View,
+  useWindowDimensions,
   type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
   runOnJS,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 
-import { alpha, color, hairline, moderateScale, radius, shadow, spacing } from '@/lib/theme';
+import { SPRING } from '@/lib/motion';
+import { alpha, color, concentricRadius, ink, moderateScale, shadow, spacing } from '@/lib/theme';
 
 /**
  * The one bottom-sheet chrome for the whole app (CalendarSheet, ExerciseSheet,
@@ -33,25 +36,58 @@ import { alpha, color, hairline, moderateScale, radius, shadow, spacing } from '
  * dismisses it (release under threshold springs back on the same quiet curve —
  * nothing bouncy). Everything is `reduceMotion`-gated to an instant show/hide.
  *
- * ## IT IS A DETACHED CARD, NOT A DRAWER (owner, 18 Aug 2026)
+ * ## IT FLOATS, AND THE NUMBERS ARE MEASURED FROM UIKIT (9 September 2026)
  *
- * Every sheet floats: a hairline gap of `SHEET_INSET` down both sides and a gap
- * over the home indicator, all four corners rounded. It is the iOS date-picker card, and
- * the reason it looks better than a drawer welded to the screen edge is that a
- * card with air around it reads as an OBJECT laid on the app, while a drawer
- * reads as the app growing a new bottom.
+ * *"make the sheets to look like apple design"* — and then, on seeing a first
+ * attempt go edge to edge: *"apple design ima tko da ni full width in height
+ * ampk kukr da ima malo ob strani prostora da izgleda kot da je floating."*
  *
- * On the v6 canvas the gap also SHOWS something: the sheet is white and the page
- * under it is cream, so the eight points of air down each side are eight points
- * of visible page, and the card reads as laid on the app rather than as part of
- * it. It was doing that job blind for the three days the canvas was also white.
+ * **The owner is right, and the DETACHED CARD ruling of 18 August 2026 stands.**
+ * The first attempt at this change made the sheet edge-to-edge on the strength
+ * of twenty real sheets read on Appllama — every one of them a full-width panel
+ * with only its top corners rounded. That research was sound and its conclusion
+ * was wrong, because the library is mostly pre-iOS-26 apps: it shows what an
+ * iPhone sheet looked like for ten years, not what iOS 26 draws.
  *
- * Two consequences for callers:
- * - **The sheet owns the bottom safe-area gap.** A child must NOT add
- *   `insets.bottom` to its own `paddingBottom` — it would pay for the home
- *   indicator twice. Pass a plain `spacing` value.
- * - **Percentage heights resolve inside the inset box**, not the window, so a
- *   `maxHeight: '90%'` sheet still clears the status bar.
+ * So this was settled by measuring the real thing instead. The check-in screen
+ * is a genuine `UISheetPresentationController` (`_layout.tsx`,
+ * `presentation: 'formSheet'`), so it was opened on the iOS 26.5 simulator and
+ * its pixels read off the screenshot. On a 402 pt wide iPhone 17 Pro:
+ *
+ * | edge | measured |
+ * |---|---|
+ * | left | **8.00 pt** |
+ * | right | **8.33 pt** |
+ * | bottom | **8.33 pt above the screen edge** |
+ *
+ * **UIKit's own iOS 26 sheet floats by `spacing.sm` on three sides** — which is
+ * exactly the inset this file has used since 18 August. The card was right all
+ * along; it is now right *and measured*, which is the difference between a taste
+ * and a number.
+ *
+ * The bottom measurement is the one worth keeping in mind: the system sheet does
+ * **not** clear the home indicator with air. It stops 8 pt off the screen edge
+ * and lets the indicator sit over it, paying the clearance as padding INSIDE the
+ * card. This file now does the same — see `bottomGap` — which is why the caller
+ * contract is unchanged: a child still must not add `insets.bottom`, and its own
+ * bottom padding still lands clear of the indicator.
+ *
+ * ## What DID change, and stays changed
+ *
+ * - **It arrives on a spring** (`SPRING.soft`), not a cubic. A sheet is a
+ *   surface a finger can catch mid-flight, and §Motion's rule is that anything
+ *   a finger was on is a spring. The exit stays timed: iOS takes a dismissed
+ *   sheet away quickly and never bounces it off the screen.
+ * - **The grabber is Apple's**: 36 × 5 at 5 pt from the top, drawn in
+ *   `ink.grabber` — the ladder's own entry for "sheet grabbers, structural
+ *   whispers" — instead of 40 × 5 in `color.border`, which is the tone for
+ *   drawing a *line*, not a handle.
+ * - **There is one grabber.** Five profile sheets were rendering `SheetGrabber`
+ *   inside a `BottomSheet` that already draws its own, so those sheets wore two
+ *   stacked handles. The chrome belongs to the sheet; the callers no longer
+ *   bring their own.
+ * - **No side stroke.** The measured system sheet has none — it separates
+ *   itself with the dimmed page and its own cast, and so does this.
  *
  * The sheet is a CONTROLLED component: the parent owns `visible`; flipping it to
  * false plays the exit before the Modal unmounts, so a programmatic close (Done,
@@ -70,16 +106,57 @@ import { alpha, color, hairline, moderateScale, radius, shadow, spacing } from '
 
 const SCREEN_H = Dimensions.get('window').height;
 
-/** The air down both sides of the card — a HAIR of it (owner, 18 Aug 2026: the
- * card should read as detached, not as a floating tile). Its radius is the
- * screen's own corner minus this gap (~39 − 8), which is why the tighter the
- * inset, the ROUNDER the card has to be: `radius.xl`. */
+/**
+ * The air on three sides — left, right and bottom. **8 pt, measured off UIKit's
+ * own iOS 26 form sheet** (8.00 / 8.33 / 8.33), and identical to the value the
+ * 18 August ruling picked by eye. `spacing.sm` is that number in the app's own
+ * scale, so the sheet floats on a token rather than on a magic 8.
+ */
 const SHEET_INSET = spacing.sm;
 
-/** Enter/settle share the decelerating curve; exit uses the accelerating one. */
-const IN = { duration: 300, easing: Easing.out(Easing.cubic) } as const;
+/**
+ * THE CORNER IS CONCENTRIC WITH THE DISPLAY, AND IT MOVES WITH THE DEVICE
+ * (owner, 9 September 2026: *"noben ta sheet se ne konca lepo ampk so vsi nekak
+ * cez ekran odspodej … mogoce da je mejcken vec zaobljeno al pa kej oz da se
+ * prilagaja glede na telefon"*).
+ *
+ * It was `radius.xl` — a flat 24 — and 24 is far tighter than the curve of the
+ * screen it floats 8 pt inside. On an iPhone 17 Pro the display's own corner is
+ * **62 pt**, so near the bottom the phone's curve cut straight across the card's
+ * gentle one and there was no corner left to see: the sheet read as running off
+ * the bottom of the screen rather than ending on it. That is exactly what the
+ * owner described, from their own phone.
+ *
+ * The fix is the rule iOS 26 uses everywhere: **inner radius = outer radius −
+ * the gap between them.** 62 − 8 = 54 here, and it is computed per device
+ * (`concentricRadius`) rather than fixed, because the display corner is 39 on an
+ * iPhone X and 0 on a Touch ID phone.
+ *
+ * It was confirmed against UIKit rather than reasoned into place. `_layout.tsx`
+ * was asking the real form sheet for `sheetCornerRadius: 24`; dropping that prop
+ * and measuring what UIKit chose for itself gave a corner roughly **three times**
+ * that. So the system does round concentrically, and 24 was overriding it with a
+ * worse number on the one sheet the app had already made native.
+ */
+const useSheetRadius = () => {
+  const { width, height } = useWindowDimensions();
+  return concentricRadius(width, height, SHEET_INSET);
+};
+
+/**
+ * Enter and settle are SPRINGS; the exit is a timing curve.
+ *
+ * A sheet is the clearest case of §Motion's rule that anything a finger was on
+ * is a spring: it can be caught, dragged and released mid-flight, and a spring
+ * carries the velocity through that interruption where a curve restarts.
+ * `SPRING.soft` is the app's sheet spring (damping ratio ≈ 0.90 — it settles
+ * without a bounce, which is what iOS does and what a rail-like surface owes).
+ *
+ * The exit stays timed on purpose: iOS takes a dismissed sheet away quickly and
+ * never springs it off the screen, and the scrim has to reach zero on the same
+ * schedule as the card.
+ */
 const OUT = { duration: 240, easing: Easing.in(Easing.cubic) } as const;
-const SETTLE = { duration: 220, easing: Easing.out(Easing.cubic) } as const;
 
 /** Past ~28% dragged down, or a firm downward flick, the sheet dismisses. */
 const DISMISS_FRACTION = 0.28;
@@ -98,22 +175,51 @@ export function BottomSheet({
   /** The native modal has actually gone. The only safe moment to open another. */
   onClosed?: () => void;
   children: ReactNode;
-  /** Parent-owned surface: background, horizontal padding, bottom padding, maxHeight.
-   * Do NOT add `insets.bottom` here — the sheet already floats clear of it. */
+  /**
+   * Parent-owned surface: background, horizontal padding, bottom padding,
+   * maxHeight.
+   *
+   * Do NOT add `insets.bottom` here — the sheet already floats clear of it —
+   * and do NOT set `borderRadius`: the corner is concentric with the display
+   * and is applied after this style precisely so it cannot be overridden. See
+   * the note at the call site.
+   */
   sheetStyle?: StyleProp<ViewStyle>;
   scrimOpacity?: number;
 }) {
   const reduceMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
+  const sheetRadius = useSheetRadius();
   const [mounted, setMounted] = useState(visible);
 
-  // How far the card sits above the home indicator (or the screen edge on a
-  // device without one). It is also travel the exit has to cover.
+  // The home-indicator clearance, paid INSIDE the card — the way the measured
+  // system sheet pays it.
   //
-  // It is the safe area MINUS the side gap, not the safe area: the indicator
-  // lives in the bottom ~21 pt, so 34 − 8 still clears it completely while
-  // taking the drawer-like slab of empty white out from under the card.
-  const bottomGap = Math.max(insets.bottom - SHEET_INSET, spacing.sm);
+  // The card's own floor is already `SHEET_INSET` off the screen edge, so the
+  // indicator's top is `insets.bottom − SHEET_INSET` above that floor, and that
+  // is the padding the content owes. The two together come to exactly
+  // `insets.bottom`, which is what the indicator actually needs.
+  //
+  // This is what keeps the caller contract intact: a child still must not add
+  // `insets.bottom`, and its own bottom padding still lands clear. On a device
+  // with no indicator it is zero and the card is simply 8 pt off the edge.
+  // THE INSET IS THE WINDOW'S, NOT THE SCREEN'S (9 September 2026).
+  //
+  // `useSafeAreaInsets()` reads the nearest provider, and a sheet opened from a
+  // tab screen has the TAB BAR in that context: measured on the iOS 26.5
+  // simulator by tinting this spacer, it came back **55 pt** where the home
+  // indicator asks for 26. Every sheet in the app opened over the tabs was
+  // therefore leaving a band of empty surface at its foot roughly the height of
+  // the tab bar — most visible on You, where the last option row ended a
+  // finger's width above the card floor with nothing under it.
+  //
+  // `initialWindowMetrics` is the WINDOW's own inset, captured before any
+  // navigator has adjusted anything, so it is the indicator and nothing else.
+  // The hook stays as the fallback for the case the metrics are unavailable
+  // (they are null before the provider mounts on some platforms); being wrong
+  // there in the old direction is only ever too much air, never too little.
+  const windowBottom = initialWindowMetrics?.insets.bottom ?? insets.bottom;
+  const bottomGap = Math.max(windowBottom - SHEET_INSET, 0);
 
   const translateY = useSharedValue(SCREEN_H);
   const progress = useSharedValue(0); // 0 closed → 1 open (drives the scrim)
@@ -157,9 +263,9 @@ export function BottomSheet({
   const onSheetLayout = (e: LayoutChangeEvent) => {
     const h = e.nativeEvent.layout.height;
     if (h <= 0) return;
-    // A floating card is not gone at its own height — it still has the bottom
-    // gap to cross before the screen edge hides it.
-    travel.value = h + bottomGap;
+    // A floating card is not gone at its own height — it still has the air
+    // under it to cross before the screen edge hides it.
+    travel.value = h + SHEET_INSET;
     if (!openedRef.current) {
       openedRef.current = true;
       if (reduceMotion) {
@@ -167,9 +273,11 @@ export function BottomSheet({
         progress.value = 1;
         return;
       }
-      translateY.value = h + bottomGap;
-      progress.value = withTiming(1, IN);
-      translateY.value = withTiming(0, IN);
+      translateY.value = h + SHEET_INSET;
+      // The scrim is timed while the card springs: dimming that overshoots
+      // would read as the light flickering, and only the card was ever grabbed.
+      progress.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
+      translateY.value = withSpring(0, SPRING.soft);
     }
   };
 
@@ -187,8 +295,11 @@ export function BottomSheet({
           if (finished) runOnJS(finishClose)(true);
         });
       } else {
-        translateY.value = withTiming(0, SETTLE);
-        progress.value = withTiming(1, SETTLE);
+        // Released short of the threshold: the finger's own velocity carries
+        // into the spring, so the card returns as one continuous movement
+        // rather than restarting on a curve.
+        translateY.value = withSpring(0, { ...SPRING.soft, velocity: e.velocityY });
+        progress.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) });
       }
     });
 
@@ -218,9 +329,23 @@ export function BottomSheet({
           style={styles.anchor}
           pointerEvents="box-none"
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={[styles.inset, { paddingBottom: bottomGap }]} pointerEvents="box-none">
+          <View style={styles.inset} pointerEvents="box-none">
             <Animated.View
-              style={[styles.sheet, sheetStyle, sheetAnimStyle]}
+              style={[
+                styles.sheet,
+                sheetStyle,
+                // THE RADIUS COMES LAST, AND THAT IS DELIBERATE (9 September
+                // 2026). It sat before `sheetStyle`, so any caller that named a
+                // `borderRadius` of its own quietly won — and five did, all of
+                // them on You, all of them at `radius.xl` (24) against the 54
+                // this computes on an iPhone 17 Pro. Nobody had written a wrong
+                // number; they had written the number that was right before the
+                // corner became concentric, and the override made the mistake
+                // invisible. The corner is a property of the PRESENTATION, not
+                // of the content, so the presentation has the last word on it.
+                { borderRadius: sheetRadius },
+                sheetAnimStyle,
+              ]}
               onLayout={onSheetLayout}>
               {/* Only the grabber handle drags — leaves inner scroll views free. */}
               <GestureDetector gesture={pan}>
@@ -229,6 +354,10 @@ export function BottomSheet({
                 </View>
               </GestureDetector>
               {children}
+              {/* The indicator's own room. Additive to whatever bottom padding
+                  the caller set, which is exactly what the air under the old
+                  floating card was. */}
+              {bottomGap > 0 ? <View style={{ height: bottomGap }} /> : null}
             </Animated.View>
           </View>
         </KeyboardAvoidingView>
@@ -244,34 +373,49 @@ const styles = StyleSheet.create({
   anchor: {
     flex: 1,
   },
-  /** The box the card lives in: side air, bottom air, card pinned to its floor.
-   * Percentage heights on a sheet resolve against THIS, not the window. */
+  /** The box the card lives in: air down both sides and under its floor, card
+   * pinned to that floor. Percentage heights on a sheet resolve against THIS,
+   * not the window, so a `maxHeight: '90%'` sheet still clears the status bar. */
   inset: {
     flex: 1,
     justifyContent: 'flex-end',
     paddingHorizontal: SHEET_INSET,
+    paddingBottom: SHEET_INSET,
   },
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
+  /**
+   * Four corners, no stroke, and it casts.
+   *
+   * The hairline that used to run around the card is gone: the measured system
+   * sheet has no stroke at all. It separates itself with the dimmed page behind
+   * it and its own shadow, and `shadow.raised` is doing that job here — on the
+   * cream canvas it is load-bearing, because a white card on paper is 1.05:1 by
+   * tone and the cast is the only thing that lifts it.
+   */
   sheet: {
     backgroundColor: color.surface,
-    borderRadius: radius.xl,
+    // The radius is per-device and arrives at the call site — see `useSheetRadius`.
     borderCurve: 'continuous',
-    borderWidth: hairline,
-    borderColor: color.border,
-    // Detached means it has to look detached: the card casts, the canvas does not.
     ...shadow.raised,
   },
   handle: {
     alignItems: 'center',
-    paddingTop: 8,
+    paddingTop: 5,
     paddingBottom: 6,
   },
+  /**
+   * Apple's grabber, measured: **36 × 5**, fully rounded, 5 pt down from the
+   * sheet's top edge. It was 40 wide in `color.border` — the hairline tone,
+   * which is furniture for drawing a *line*, not a handle. `ink.grabber` is the
+   * ladder's own entry for exactly this ("sheet grabbers, structural
+   * whispers"), so the affordance now takes the token that was written for it.
+   */
   grabber: {
-    width: moderateScale(40),
+    width: moderateScale(36),
     height: 5,
-    borderRadius: 3,
-    backgroundColor: color.border,
+    borderRadius: 2.5,
+    backgroundColor: alpha(color.accent, ink.grabber),
   },
 });

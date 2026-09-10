@@ -7,6 +7,7 @@ import { color, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/
 
 import { Icon } from './icon';
 import { PressableScale } from './motion';
+import { PaperField } from './paper-field';
 
 /**
  * Shared scaffold for Progress and Lifts — the two screens that wear a plain
@@ -59,56 +60,79 @@ export function StubScreen({
   const router = useRouter();
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <View style={[styles.header, back ? null : styles.headerRoot]}>
-        {back ? (
-          <PressableScale
-            onPress={() => {
-              tap();
-              router.back();
-            }}
-            haptic="none"
-            activeScale={0.9}
-            hitSlop={spacing.sm}
-            style={styles.back}
-            accessibilityRole="button"
-            accessibilityLabel="Back">
-            <Icon name="chevron-back" size={moderateScale(22)} tint={color.textSecondary} />
-          </PressableScale>
-        ) : null}
-        <View style={styles.titleWrap}>
-          <Text
-            style={[styles.title, back ? null : large ? styles.titleLarge : styles.titleRoot]}
-            accessibilityRole="header"
-            maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {title}
-          </Text>
-          {subtitle ? (
-            <Text style={styles.subtitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {subtitle}
+    <View style={styles.root}>
+      {/* The canvas. One canvas runs the whole app (skill §Canvas), so the three
+          screens this scaffold carries — Next, Progression and Lifts — draw the
+          same static diagonal field Today does. `styles.root` keeps the flat
+          `color.canvas` beneath it, which is the fill for wherever a gradient
+          cannot render rather than an alternative to one.
+
+          It sits OUTSIDE the `SafeAreaView`, which is why the root is a plain
+          `View` now. Yoga offsets an absolutely positioned child by its parent's
+          padding, and safe-area padding is the whole of what that component
+          adds — mounted inside it, the field would have stopped short of the
+          status bar and the home indicator and left a flat strip at each end.
+          Today has always had this shape (`today.tsx`). */}
+      <PaperField />
+
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <View style={[styles.header, back ? null : styles.headerRoot]}>
+          {back ? (
+            <PressableScale
+              onPress={() => {
+                tap();
+                router.back();
+              }}
+              haptic="none"
+              activeScale={0.9}
+              hitSlop={spacing.sm}
+              style={styles.back}
+              accessibilityRole="button"
+              accessibilityLabel="Back">
+              <Icon name="chevron-back" size={moderateScale(22)} tint={color.textSecondary} />
+            </PressableScale>
+          ) : null}
+          <View style={styles.titleWrap}>
+            <Text
+              style={[styles.title, back ? null : large ? styles.titleLarge : styles.titleRoot]}
+              accessibilityRole="header"
+              maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {title}
+            </Text>
+            {subtitle ? (
+              <Text style={styles.subtitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
+          {back ? <View style={styles.back} /> : null}
+          {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
+        </View>
+
+        <View style={[styles.body, subtitle ? styles.bodyTight : null]}>
+          {note ? (
+            <Text style={styles.note} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {note}
             </Text>
           ) : null}
+          {children}
         </View>
-        {back ? <View style={styles.back} /> : null}
-        {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
-      </View>
-
-      <View style={[styles.body, subtitle ? styles.bodyTight : null]}>
-        {note ? (
-          <Text style={styles.note} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {note}
-          </Text>
-        ) : null}
-        {children}
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    // THE PAGE. `PaperField` draws the gradient over it; this is what shows
+    // wherever the gradient cannot render.
     backgroundColor: color.canvas,
+  },
+  /** The safe-area box, carrying no fill of its own — the canvas is behind it
+   * and has to reach the screen's true edges. */
+  safe: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',

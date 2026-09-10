@@ -1172,7 +1172,7 @@ const styles = StyleSheet.create({
   },
   /** Always mounted, over the ring; its opacity and scale carry the state. */
   radioFilled: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: radius.pill,
     backgroundColor: color.brand,
     alignItems: 'center',
@@ -1204,7 +1204,7 @@ const styles = StyleSheet.create({
    * once instead of on every frame of a changing radius.
    */
   ctaGlow: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: radius.pill,
     backgroundColor: color.brand,
     // Deliberately heavier than `shadow.glow`: this layer is the ARRIVAL, and

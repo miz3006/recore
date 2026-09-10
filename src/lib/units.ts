@@ -61,3 +61,33 @@ export function displayWeightText(kg: number | null, unit: WeightUnit): string {
   if (kg == null) return '';
   return String(toDisplayWeight(kg, unit));
 }
+
+/**
+ * A load as a READING — the number a screen PRINTS beside a name, never one
+ * somebody is about to edit.
+ *
+ * `toDisplayWeight` keeps two decimals because the correction sheet has to hand
+ * an untouched value back byte-identical (see the header). A reading owes
+ * nothing to a round trip and owes everything to being scannable: 140 kg is
+ * 308.65 lb, and a column of those reads as false precision on a number that is
+ * an estimate in the first place. Pounds are read whole; kilograms keep the
+ * half-kilo grain the estimates are already computed on (`db/progression.ts`).
+ *
+ * It is linear, so a DELTA converts through it exactly like an absolute load —
+ * the same rounding applies, which is why a printed delta may sit a pound off
+ * the difference of two printed readings. The kilogram path has always had that
+ * property at its own half-kilo grain, and the delta is spoken in words
+ * ("up 17 lb") rather than offered as arithmetic to check.
+ */
+export function displayLoad(kg: number, unit: WeightUnit): number {
+  const v = toDisplayWeight(kg, unit);
+  return unit === 'lb' ? Math.round(v) : v;
+}
+
+/**
+ * The unit SPOKEN, for a VoiceOver label. "kg" is announced as three letters,
+ * which is not how anybody says it out loud.
+ */
+export function spokenUnit(unit: WeightUnit): string {
+  return unit === 'lb' ? 'pounds' : 'kilograms';
+}

@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { GlassPressable } from '@/components/glass';
 import { PressableScale } from '@/components/motion';
 import {
   color,
@@ -55,6 +56,25 @@ import {
  *    direction. At the CTA's 17 pt semibold that is large text under WCAG,
  *    which owes 3:1, so the label clears comfortably — unlike the 11.5 pt
  *    figure in the reason line, which is the one place the shortfall bites.
+ *
+ * ## THE QUIET SHAPE IS GLASS; THE GREEN ONE IS NOT (9 September 2026)
+ *
+ * The two variants took opposite rulings in the iOS 26 pass, and the split is
+ * the material rule working rather than an inconsistency:
+ *
+ * **Quiet is glass.** It is a control pinned over a list that scrolls beneath
+ * it — the exact case `glass.tsx` reserves the material for — and its label is
+ * `textPrimary`, which is 16:1 ink and stays ink whatever the glass picks up
+ * from the rows passing under it. The bar was already built so "the list
+ * visibly runs under it rather than stopping at a second edge"; glass is what
+ * that sentence has been describing all along.
+ *
+ * **Start stays a filled green pill.** A CTA carries a WHITE label, and white
+ * on glass has no measured ratio because glass has no fixed colour — the 4.4962
+ * above is a number about `signal`, and it survives only while `signal` is
+ * actually what is behind the label. The owner's ruling put the screen on one
+ * green; dissolving that green into a material would spend the ruling and the
+ * contrast in the same move.
  */
 export function StartBar({
   label,
@@ -73,20 +93,37 @@ export function StartBar({
 }) {
   return (
     <View style={[styles.bar, { paddingBottom: bottomInset + spacing.md }]} pointerEvents="box-none">
-      <PressableScale
-        haptic="none"
-        activeScale={0.98}
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        style={[styles.cta, quiet ? styles.ctaQuiet : styles.ctaStart]}>
-        <Text
-          style={[styles.label, quiet ? styles.labelQuiet : styles.labelStart]}
-          numberOfLines={1}
-          maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {label}
-        </Text>
-      </PressableScale>
+      {quiet ? (
+        <GlassPressable
+          haptic="none"
+          activeScale={0.98}
+          onPress={onPress}
+          radius={radius.pill}
+          contentStyle={styles.cta}
+          accessibilityLabel={label}>
+          <Text
+            style={[styles.label, styles.labelQuiet]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {label}
+          </Text>
+        </GlassPressable>
+      ) : (
+        <PressableScale
+          haptic="none"
+          activeScale={0.98}
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          style={[styles.cta, styles.ctaShape, styles.ctaStart]}>
+          <Text
+            style={[styles.label, styles.labelStart]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {label}
+          </Text>
+        </PressableScale>
+      )}
     </View>
   );
 }
@@ -113,22 +150,23 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: TAB_BAR_CLEARANCE,
   },
+  // Size and content layout — shared, so both shapes are the same button at the
+  // same height whichever material draws them.
   cta: {
     minHeight: CTA_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
+  },
+  // The filled shape draws its own corner and lift; the glass one gets both
+  // from its material.
+  ctaShape: {
     borderRadius: radius.pill,
     borderCurve: 'continuous',
     ...shadow.card,
   },
   ctaStart: {
     backgroundColor: color.signal,
-  },
-  ctaQuiet: {
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.border,
   },
   label: {
     ...type.headline,

@@ -58,6 +58,25 @@ export interface PrRecord {
   weightKg: number;
   reps: number | null;
   day: DayKey;
+  /** The first day this lift was ever recorded. */
+  firstDay: DayKey;
+  /**
+   * THE HEAVIEST SET IS ALSO THE FIRST ONE — so it is a baseline, not a record.
+   *
+   * A PR is a number BEATEN. On the day a lift enters the record there is
+   * nothing to beat, and badging that entry devalues every real PR the athlete
+   * goes on to set: if the first rep of a new movement is a personal best, the
+   * word means nothing. The same is true of a lift whose heaviest day is still
+   * its first — five sessions in, the opening one was never a record, it was
+   * the starting point everything since has failed to pass.
+   *
+   * The gutter's PR signal has always had this right by construction
+   * (`db/history.ts`, `signalFor`): it needs a PREVIOUS session and compares
+   * against the all-time max computed strictly BEFORE the day in question, so
+   * it cannot fire on a first entry. The surfaces that read this record book
+   * had no such guard, and this field is it.
+   */
+  isBaseline: boolean;
 }
 
 /**
@@ -71,10 +90,16 @@ export function getAllTimePRs(userId: string, limit = 12): PrRecord[] {
     weight_kg: number;
     reps: number | null;
     performed_at: string;
+    first_at: string;
   }>(
-    `SELECT canonical, weight_kg, reps, performed_at FROM (
+    // `first_at` is a window MIN over the same partition — the earliest LOADED
+    // counted set of this lift, which is the right baseline for a weight PR:
+    // a bodyweight session carried no number this record could have beaten. It
+    // costs no second query and cannot disagree with the row it rides on.
+    `SELECT canonical, weight_kg, reps, performed_at, first_at FROM (
        SELECT e.canonical AS canonical, s.weight_kg AS weight_kg, s.reps AS reps,
               w.performed_at AS performed_at,
+              MIN(w.performed_at) OVER (PARTITION BY lower(e.canonical)) AS first_at,
               ROW_NUMBER() OVER (
                 PARTITION BY lower(e.canonical)
                 ORDER BY s.weight_kg DESC, COALESCE(s.reps, 0) DESC, w.performed_at ASC
@@ -88,12 +113,20 @@ export function getAllTimePRs(userId: string, limit = 12): PrRecord[] {
      ORDER BY weight_kg DESC LIMIT ?`,
     [userId, limit],
   );
-  return rows.map((r) => ({
-    canonical: r.canonical,
-    weightKg: r.weight_kg,
-    reps: r.reps,
-    day: dayKeyFor(new Date(r.performed_at)),
-  }));
+  return rows.map((r) => {
+    const day = dayKeyFor(new Date(r.performed_at));
+    const firstDay = dayKeyFor(new Date(r.first_at));
+    return {
+      canonical: r.canonical,
+      weightKg: r.weight_kg,
+      reps: r.reps,
+      day,
+      firstDay,
+      // Compared as local DAYS, not as instants: two sets of the same lift on
+      // one day must read as the same session however their timestamps sort.
+      isBaseline: day === firstDay,
+    };
+  });
 }
 
 export interface SessionBrief {

@@ -12,8 +12,9 @@ import Animated, {
 import { PressScale, REDUCED_FADE_MS, select } from '@/lib/motion/index';
 import { MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 
-import { BrandIcon } from './BrandIcon';
 import type { MarkName } from './flow';
+import { Mark } from './Mark';
+import { SelectMark } from './SelectMark';
 import { v2color, v2metrics, v2radius, v2shadow } from './tokens';
 
 /** Precomputed. Nothing inside a worklet may call the theme. */
@@ -25,15 +26,6 @@ const LABEL_OFF = v2color.ink;
 const LABEL_ON = v2color.onBlue;
 const SUB_OFF = v2color.inkSecondary;
 const SUB_ON = 'rgba(255,255,255,0.82)';
-// A stroked mark CAN take a tint, so on a selected row it goes ink on the
-// white disc rather than white-on-white. This is the one way the two leading
-// slots differ, and it is because one is a colour bitmap and one is a path.
-const BRAND_ON = v2color.ink;
-/** The white disc a mark sits in. Cal AI keeps its disc white on selected rows
- * too (diet screen, position 16) so the mark never fights the fill. */
-const MARK_BOX = 36;
-const DISC_BORDER_OFF = v2color.border;
-const DISC_BORDER_ON = 'rgba(255,255,255,0.55)';
 
 /**
  * ONE OPTION.
@@ -50,14 +42,35 @@ const DISC_BORDER_ON = 'rgba(255,255,255,0.55)';
  * "selected index" and re-rendered would give you one frame with both fills at
  * full strength, which is exactly the artefact the spec names.
  *
- * The fill, the border and both text colours interpolate together on `select`.
- * Colour is animated, geometry is not: the border never grows, the row never
- * changes height, and nothing here animates a layout property.
+ * The fill, the border, both text colours and the leading mark interpolate
+ * together on `select`. Colour is animated, geometry is not: the border never
+ * grows, the row never changes height, and nothing here animates a layout
+ * property.
+ *
+ * ## The row has three parts now, and the two new ones are not decoration
+ *
+ * **A leading system symbol** where the option names something a symbol can
+ * honestly denote (`Mark`), and **a trailing selection control** on every row
+ * (`SelectMark`). Before 9 September 2026 it had neither on seventeen of the
+ * twenty screens, and what that produced is visible in a screenshot of any
+ * question screen: five identical white slabs carrying one word each, with
+ * nothing to say whether one of them or three of them can be on.
+ *
+ * ## THE WHITE DISC IS GONE, and its own reasoning is what removed it
+ *
+ * The mark used to sit in an opaque white disc, and the argument for it was
+ * measured: *"a colour emoji cannot take a tint … ☀️'s defining rim lands at
+ * 1.55:1 on the blue"*. Every glyph in this flow is now a single-ink path or a
+ * system symbol, so that premise is simply no longer true — the mark takes the
+ * label's colour and crosses to white with it on the same spring. The disc was
+ * a container built for a legibility problem that no longer exists, and a
+ * container around every glyph is the thing recore-design's bare-row structure
+ * exists to refuse.
  *
  * REDUCE MOTION: the colours cross-fade over 160 ms instead of springing. The
  * information (which row is chosen) is never carried by the motion — it is
- * carried by the fill and by `accessibilityState`, both of which are correct on
- * the first frame.
+ * carried by the fill, the check and `accessibilityState`, all of which are
+ * correct on the first frame.
  */
 export function OptionRow({
   label,
@@ -69,18 +82,19 @@ export function OptionRow({
 }: {
   label: string;
   /**
-   * A drawn mark — brand marks on screen 4, time-of-day marks on screen 18.
-   * Absent on every other screen, and then the row draws no leading slot at
-   * all: an empty disc beside a label is worse than no disc.
+   * A drawn mark or a system symbol — see `Mark.tsx`. Absent on the screens
+   * whose options name numbers, durations or abstract states, and then the row
+   * draws no leading slot at all: a mark that has to be invented to fill a slot
+   * is the decoration the whole glyph rule exists to keep out.
    *
-   * There is no `emoji` prop any more. The flow's last two glyphs became paths
-   * on 28 August 2026 (see `BrandIcon`, case 'evening').
+   * There is no `emoji` prop and there never will be one.
    */
   icon?: MarkName;
   sub?: string;
   selected: boolean;
   onPress: () => void;
-  /** Checkbox semantics instead of radio, for screens 3 and 13. */
+  /** Checkbox semantics instead of radio — and a square mark instead of a
+   * circle, which is how the screen says "more than one" before anyone taps. */
   multi?: boolean;
 }) {
   const reduced = useReducedMotion();
@@ -103,23 +117,18 @@ export function OptionRow({
     color: interpolateColor(on.value, [0, 1], [SUB_OFF, SUB_ON]),
   }));
   /**
-   * THE DISC IS OPAQUE WHITE IN BOTH STATES, and that is a measurement, not a
-   * preference.
+   * THE LEADING MARK CROSS-FADES BETWEEN TWO COPIES OF ITSELF, and it is not a
+   * flourish — it is the only way to keep it on the label's spring.
    *
-   * Cal AI keeps a white disc behind the glyph on its selected (black) rows as
-   * well as its unselected ones — its diet screen, position 16 — so the icon
-   * never has to change colour or fight the fill. Copying it works here for a
-   * reason worth writing down: a colour emoji cannot take a tint, and both of
-   * this flow's glyphs are warm gold. MEASURED against `#007AFF`, ☀️'s
-   * defining rim lands at **1.55:1** — it sinks into the blue. On white it is
-   * ~2.6:1. The disc is what makes the selected row legible.
-   *
-   * The unselected disc is white too, with a hairline, so the glyph's container
-   * is one shape throughout and only the row around it changes.
+   * `Mark` resolves to a native `SymbolView` on iOS, whose `tintColor` is a
+   * PROP rather than a style. A prop cannot be reached from a worklet, so the
+   * mark's colour cannot be interpolated the way the label's is. Two copies at
+   * complementary opacities give the identical result on the identical shared
+   * value, which is what makes the mark and the label turn white together
+   * rather than one of them snapping a frame late.
    */
-  const discStyle = useAnimatedStyle(() => ({
-    borderColor: interpolateColor(on.value, [0, 1], [DISC_BORDER_OFF, DISC_BORDER_ON]),
-  }));
+  const markOff = useAnimatedStyle(() => ({ opacity: 1 - on.value }));
+  const markOn = useAnimatedStyle(() => ({ opacity: on.value }));
 
   return (
     <PressScale
@@ -131,31 +140,34 @@ export function OptionRow({
       style={styles.press}>
       <Animated.View style={[styles.row, v2shadow, rowStyle]}>
         {icon ? (
-          <Animated.View style={[styles.disc, discStyle]}>
-            {/* The mark takes the label's colour, which is the whole reason it
-                is drawn in one ink: on a selected row it goes white with the
-                text instead of having to invert or vanish. */}
-            <BrandIcon name={icon} size={moderateScale(20)} tint={selected ? BRAND_ON : LABEL_OFF} />
-          </Animated.View>
+          <View style={styles.markSlot}>
+            <Animated.View style={[styles.markLayer, markOff]}>
+              <Mark name={icon} size={moderateScale(MARK_SIZE)} tint={LABEL_OFF} />
+            </Animated.View>
+            <Animated.View style={[styles.markLayer, markOn]}>
+              <Mark name={icon} size={moderateScale(MARK_SIZE)} tint={LABEL_ON} />
+            </Animated.View>
+          </View>
         ) : null}
         <View style={styles.text}>
-          <Animated.Text
-            style={[styles.label, labelStyle]}
-            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          <Animated.Text style={[styles.label, labelStyle]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {label}
           </Animated.Text>
           {sub ? (
-            <Animated.Text
-              style={[styles.sub, subStyle]}
-              maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            <Animated.Text style={[styles.sub, subStyle]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
               {sub}
             </Animated.Text>
           ) : null}
         </View>
+        <SelectMark selected={selected} multi={multi} />
       </Animated.View>
     </PressScale>
   );
 }
+
+/** Big enough to hold its own beside 17 pt semibold in a 68 pt row. */
+const MARK_SIZE = 22;
+const MARK_BOX = 26;
 
 const styles = StyleSheet.create({
   press: { marginBottom: v2metrics.optionGap },
@@ -174,15 +186,16 @@ const styles = StyleSheet.create({
     // the same one on every row that has a glyph at all.
     gap: spacing.md,
   },
-  disc: {
+  /** A fixed box, so labels line up down the list whether their marks are wide
+   * (`tablecells`) or narrow (`note.text`). SF Symbols are laid out by their
+   * own metrics and a row of them is not otherwise flush. */
+  markSlot: {
     width: moderateScale(MARK_BOX),
     height: moderateScale(MARK_BOX),
-    borderRadius: moderateScale(MARK_BOX) / 2,
-    borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: v2color.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  markLayer: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
   text: { flex: 1, gap: 2 },
   label: { ...type.body, fontWeight: '600' },
   sub: { ...type.subhead },

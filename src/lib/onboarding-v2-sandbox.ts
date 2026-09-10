@@ -98,6 +98,26 @@ export function restorePrefs(): number {
   }
 }
 
+/**
+ * Drop the sandbox and THROW THE SNAPSHOT AWAY, rather than putting it back.
+ *
+ * `resetSandbox` below restores — it is the undo for a dev run. This is the
+ * opposite call, for the fresh-install simulation: a device that has just been
+ * wiped must not have a snapshot of the answers left on it, because the next
+ * `restorePrefs()` would resurrect the very preferences the simulation exists
+ * to be rid of. Same keys, opposite intent, so both live here.
+ */
+export function discardSandbox(): void {
+  setSandboxRun(false);
+  clearV2Run();
+  try {
+    setMeta(SNAPSHOT_KEY, null);
+    setMeta(RECAP_ASKED_KEY, null);
+  } catch {
+    // Dev-only flags failing to clear are never worth an error.
+  }
+}
+
 /** Everything "Reset sandbox state" does: the mode is dropped, the v2 answers
  * and their stored row go, and the real preferences come back if a run of the
  * current flow is still in flight. */

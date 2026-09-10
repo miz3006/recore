@@ -8,7 +8,13 @@ export {
   CTA_HEIGHT,
   CONTROL_HEIGHT,
   ROUND_BUTTON,
+  NAV_BAR_HEIGHT,
   TAB_BAR_CLEARANCE,
+  TAB_BAR_HEIGHT,
+  TAB_BAR_MARGIN,
+  TAB_BAR_SLOT_PAD,
+  displayCornerRadius,
+  concentricRadius,
   type SpacingToken,
   type RadiusToken,
 } from './spacing';

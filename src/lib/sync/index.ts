@@ -23,7 +23,7 @@ import {
 } from '@/lib/db/predictions';
 import { getWorkoutsNeedingParse } from '@/lib/db/workouts';
 import { isSupabaseConfigured } from '@/lib/env';
-import { devLog } from '@/lib/log';
+import { devLog, errorText } from '@/lib/log';
 import { parseWorkout, type ParseOutcome } from '@/lib/parse/client';
 import { supabase } from '@/lib/supabase';
 
@@ -86,7 +86,9 @@ export async function syncNow(): Promise<void> {
     await pushPlanDays(userId);
     await pullRemote(userId);
   } catch (err) {
-    devLog('sync pass failed (offline?)', err instanceof Error ? err.message : '');
+    // The cause, not a guess at it. "(offline?)" was a question the log could
+    // already have answered and usually printed nothing after.
+    devLog('sync pass failed:', errorText(err));
   } finally {
     syncing = false;
     if (queued) {

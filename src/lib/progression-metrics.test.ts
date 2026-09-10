@@ -8,6 +8,7 @@ import {
   buildSeries,
   describeSeries,
   monthDay,
+  seriesInUnit,
   sessionsFor,
 } from './progression-metrics.ts';
 import type { LiftSession } from './progression.ts';
@@ -168,4 +169,34 @@ test('the sub-label counts from the oldest DRAWN day, not the oldest recorded', 
   );
   const label = describeSeries(buildSeries(rows, e1rm));
   assert.ok(label.endsWith(monthDay(rows[3]!.day)), `${label} does not count from the first drawn day`);
+});
+
+test('a pound reader gets the whole series in pounds, sub-label included', () => {
+  const series = seriesInUnit(
+    buildSeries([s('Bench', '2026-08-01', { e1rm: 100 }), s('Bench', '2026-08-08', { e1rm: 140 })], e1rm),
+    'lb',
+  );
+  assert.equal(series.unit, 'lb');
+  assert.equal(series.latest, 309);
+  assert.equal(series.first, 220);
+  assert.deepEqual(
+    series.points.map((p) => p.value),
+    [220, 309],
+  );
+  // The sub-label reads the converted delta off the converted unit, so nothing
+  // in `describeSeries` had to learn about pounds.
+  assert.equal(describeSeries(series), 'up 88 lb since 1 Aug');
+});
+
+test('a kilogram reader gets the series back untouched', () => {
+  const built = buildSeries([s('Bench', '2026-08-01', { e1rm: 116.5 })], e1rm);
+  assert.equal(seriesInUnit(built, 'kg'), built);
+});
+
+test('only a load is converted — a future rep metric must not be multiplied', () => {
+  const reps = { key: 'topWeight', name: 'Top reps', unit: '', kind: 'line',
+    valueOf: (v: LiftSession) => v.topReps } as const;
+  const series = seriesInUnit(buildSeries([s('Pull-up', '2026-08-01', { topReps: 12 })], reps), 'lb');
+  assert.equal(series.unit, '');
+  assert.equal(series.latest, 12);
 });
