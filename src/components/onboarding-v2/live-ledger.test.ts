@@ -98,10 +98,13 @@ test('the reading is built by the real receipt builder', () => {
 
 /**
  * ALIGNMENT. Every screen in this flow sits on one left edge — `Frame`'s
- * gutter, which is `spacing.xxl` (24) and is deliberately the same number as
- * Today's own `BODY_PADDING_H`. A component that adds its own horizontal inset
- * puts itself a few points off that edge, which is invisible in isolation and
- * obvious the moment two of them are stacked.
+ * gutter, `spacing.xxl` (24). It used to be the same number as Today's own
+ * `BODY_PADDING_H` and is not since 9 September 2026, when Today moved onto the
+ * system navigator and its body went to 16 to hang off UIKit's layout margin;
+ * the funnel draws no navigation bar, so it keeps its own. What this test is
+ * about is unchanged either way: a component that adds its OWN horizontal inset
+ * puts itself a few points off whichever edge it is on, which is invisible in
+ * isolation and obvious the moment two of them are stacked.
  */
 const FRAME = read('./Frame.tsx');
 const GHOST = read('./GhostRow.tsx');

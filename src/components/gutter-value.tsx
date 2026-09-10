@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -431,11 +431,71 @@ export function PendingDot({
  * control — and the caller prints `ReadingWord` at the end of the same row
  * instead. The movement goes, the information does not (§14).
  */
+/**
+ * ## THE BLUE LINE (9 September 2026, owner: *"animation of processing like a
+ * blue line"*)
+ *
+ * The band above is a light passing under the words, and on a device it is
+ * felt more than seen — 16 % of the brand blue over warm paper is deliberately
+ * at the edge of noticing, which was right for a mark that crosses the record
+ * itself. What it was not is LEGIBLE: asked what the app is doing at that
+ * moment, the band does not answer, and the three dots that answer it are the
+ * size of a full stop.
+ *
+ * So the pass gains a second half, and it is one animation rather than two:
+ * **the same `t` drives the band and a crisp brand-blue line along the row's
+ * bottom edge**, so what crosses the entry is a beam with a bright leading
+ * edge, not a band and a bar arguing about the beat. One clock, one direction,
+ * one hold.
+ *
+ * **It is indeterminate, and it never fills.** §5.1 keeps a filled track for
+ * things that were measured, and a parse is one round trip with no percentage
+ * to be honest about — so the segment TRAVELS and leaves, over and over, the
+ * way every indeterminate progress indicator on the platform does. Nothing on
+ * this row ever shows a bar growing from the left, because that would be a
+ * claim about how far along the reading is.
+ *
+ * The segment is a gradient with transparent ends for the same reason the band
+ * is: the track clips (a crisp line has to, or it would run out into the page
+ * gutter), and a hard edge meeting a clip reads as a chip sliding out from
+ * under the row rather than as light travelling along it.
+ */
+/** The line's own thickness. Two points, not a hairline: a hairline in brand
+ * blue on warm paper is a rumour, and this mark exists to be seen. */
+const LINE_H = 2;
+/** How much of the row the bright segment covers. */
+const LINE_SEGMENT = 0.42;
+const LINE_SEGMENT_MIN = moderateScale(88);
+/**
+ * The line's stops, PRECOMPUTED at module scope — `alpha()` may never be called
+ * inside a worklet (design skill §Colour).
+ */
+const LINE_STOPS = [alpha(color.brand, 0), color.brand, alpha(color.brand, 0)] as const;
+/**
+ * The unlit rest of the line — the path the light is taking, and the one value
+ * on this mark that was MEASURED rather than picked.
+ *
+ * It started at 14 %, which reads back off the simulator as `#D4E3F0` against a
+ * `#F7F4ED` canvas: a line, plainly, and three pending entries stacked in a
+ * receipt-mode dump turned the page into a table with rules — the exact thing
+ * §Structure forbids between two records. At 8 % the beam still has something
+ * continuous to travel along and the unlit part stops being a rule. It is only
+ * ever on screen while a line is being read.
+ */
+const LINE_TRACK = alpha(color.brand, 0.08);
+/** Reduce Motion keeps the line and drops the travel: the state survives, the
+ * movement does not (§14). It sits between the track and the lit segment so it
+ * is unmistakably ON without anything moving. */
+const LINE_STILL = alpha(color.brand, 0.34);
+
 /** Longer than a word-width sweep was: the band now crosses a whole row, and
  * the same duration over three times the distance reads as a flick. */
 const SHEEN_MS = 1300;
 /** The pause between passes. The band is off the right edge for all of it. */
 const SHEEN_HOLD_MS = 400;
+/** How far behind the row above a row starts its own pass. Capped at six rows
+ * by the caller, like every other stagger in the app. */
+const SHEEN_STAGGER_MS = 220;
 /** A thumb's width of light, not a syllable's. */
 const SHEEN_W = moderateScale(120);
 /**
@@ -468,18 +528,26 @@ const VEIL_STOPS = [
 ] as const;
 const VEIL_AT = [0, 0.3, 0.7, 1] as const;
 
-export function ReadingSweep() {
+/**
+ * The clock both marks run on: one repeating 0 → 1 pass with a beat of
+ * stillness after it, plus the row's measured width so the travel is as long as
+ * the entry at any Dynamic Type setting and on any device width.
+ *
+ * Shared rather than duplicated because the band and the line are two halves of
+ * ONE pass — two clocks would drift apart within a few repeats and the beam
+ * would come apart into a band and a bar.
+ */
+function useSweepClock(order = 0) {
   const reduceMotion = useReducedMotion();
   const t = useSharedValue(0);
-  /** The row's measured width. The band crosses exactly the row it is reading
-   * rather than a fixed guess, so the pass is as long as the entry at any
-   * Dynamic Type setting and on any device width. */
   const w = useSharedValue(0);
 
   useEffect(() => {
     if (reduceMotion) return;
     t.value = 0;
-    t.value = withRepeat(
+    t.value = withDelay(
+      Math.min(order, 6) * SHEEN_STAGGER_MS,
+      withRepeat(
       withSequence(
         withTiming(1, { duration: SHEEN_MS, easing: Easing.inOut(Easing.cubic) }),
         // Holding AT 1 — the band is already off the right edge, so the jump
@@ -488,8 +556,77 @@ export function ReadingSweep() {
       ),
       -1,
       false,
+      ),
     );
-  }, [reduceMotion, t]);
+  }, [reduceMotion, order, t]);
+
+  const onLayout = (e: LayoutChangeEvent) => {
+    w.value = e.nativeEvent.layout.width;
+  };
+
+  return { reduceMotion, t, w, onLayout };
+}
+
+/**
+ * THE LINE ALONE — for a caller that has no words for a band to cross.
+ *
+ * The composer is that caller: while the line the athlete just typed is being
+ * read, the words are still in the field above and §14 rules out moving
+ * anything under a cursor mid-sentence. A light along the FOOT of the field is
+ * not under the cursor and does not touch the text, so the composer gets the
+ * legible half of the pass and none of the half that would break that rule.
+ *
+ * `inset` pulls the track in from the row's own edges — the composer's line
+ * belongs to the field it sits under, not to the page.
+ */
+export function ReadingLine({ inset = 0 }: { inset?: number }) {
+  const { reduceMotion, t, w, onLayout } = useSweepClock();
+
+  const segment = useAnimatedStyle(() => {
+    const width = Math.max(LINE_SEGMENT_MIN, w.value * LINE_SEGMENT);
+    return {
+      width,
+      transform: [{ translateX: -width + t.value * (w.value + width) }],
+    };
+  });
+
+  return (
+    <View
+      style={[styles.lineTrack, { left: inset, right: inset }]}
+      pointerEvents="none"
+      onLayout={onLayout}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants">
+      {reduceMotion ? (
+        <View style={styles.lineStill} />
+      ) : (
+        <Animated.View style={[styles.lineSegment, segment]}>
+          <LinearGradient
+            colors={LINE_STOPS}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
+      )}
+    </View>
+  );
+}
+
+export function ReadingSweep({
+  /**
+   * This row's rank in the ledger. A dump commits several lines at once and
+   * every card mounts on the same frame, so without a stagger three beams
+   * travel in lockstep and the page flashes rather than reads — measured on the
+   * simulator, 9 September 2026, with three pending entries.
+   *
+   * A beat per row is the same idea the gutter's own settle cascade already
+   * uses one paragraph up: the analysis visibly WALKS DOWN THE PAGE, top to
+   * bottom, in the order the athlete wrote it.
+   */
+  order = 0,
+}: { order?: number } = {}) {
+  const { reduceMotion, t, w, onLayout } = useSweepClock(order);
 
   const band = useAnimatedStyle(() => {
     // 0 at both ends, 1 in the middle. WITHOUT it the band meets the row's
@@ -505,32 +642,54 @@ export function ReadingSweep() {
     };
   });
 
-  if (reduceMotion) return null;
+  // The line's own travel: the same `t`, its own width, and a clip — so the
+  // beam's bright edge runs the row while the soft band runs the words.
+  const segment = useAnimatedStyle(() => {
+    const width = Math.max(LINE_SEGMENT_MIN, w.value * LINE_SEGMENT);
+    return {
+      width,
+      transform: [{ translateX: -width + t.value * (w.value + width) }],
+    };
+  });
 
   return (
     // BEHIND the row, and taking no touches: it is drawn first so every sibling
     // paints over it, and the words keep their own full ink.
-    <View
-      style={styles.sweepTrack}
-      pointerEvents="none"
-      onLayout={(e) => {
-        w.value = e.nativeEvent.layout.width;
-      }}>
-      <Animated.View style={[styles.sweepBand, band]}>
-        <LinearGradient
-          colors={SHEEN_STOPS}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-        />
-        <LinearGradient
-          colors={VEIL_STOPS}
-          locations={VEIL_AT}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
+    <View style={styles.sweepTrack} pointerEvents="none" onLayout={onLayout}>
+      {reduceMotion ? null : (
+        <Animated.View style={[styles.sweepBand, band]}>
+          <LinearGradient
+            colors={SHEEN_STOPS}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <LinearGradient
+            colors={VEIL_STOPS}
+            locations={VEIL_AT}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
+      )}
+      {/* The bright edge, on the row's own foot. Under Reduce Motion the band
+          above is gone and this is a still blue line: the row still says it is
+          being read, and nothing on the page moves. */}
+      <View style={styles.lineTrack}>
+        {reduceMotion ? (
+          <View style={styles.lineStill} />
+        ) : (
+          <Animated.View style={[styles.lineSegment, segment]}>
+            <LinearGradient
+              colors={LINE_STOPS}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
+        )}
+      </View>
     </View>
   );
 }
@@ -661,6 +820,42 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: SHEEN_W,
   },
+  /**
+   * The blue line's track: the row's own foot, and the one thing on this
+   * component that IS clipped.
+   *
+   * The band gets away without a clip because its ends fade to nothing before
+   * they reach the row's edge; a crisp line has no such ends, so uncut it would
+   * run out into the page gutter and under the record above and below. Clipping
+   * is safe here for the same reason the band's soft ends were needed there —
+   * the segment is a gradient that arrives and leaves as nothing, so the eye
+   * never meets the cut.
+   *
+   * The faint track is the path the light is taking. It carries the brand at
+   * 14 %, which is a mark and not a rule: a hairline between two records is
+   * exactly what the design skill's §Structure forbids, and this one only
+   * exists while a line is being read.
+   */
+  lineTrack: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: LINE_H,
+    borderRadius: LINE_H / 2,
+    overflow: 'hidden',
+    backgroundColor: LINE_TRACK,
+  },
+  lineSegment: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+  },
+  /** Reduce Motion: the line, lit, holding still. */
+  lineStill: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: LINE_STILL,
+  },
   /** The dots as the ⋯ column wears them: no row height of its own, so it
    * centres inside the 36 pt box the menu glyph will occupy. */
   dotsRow: {
@@ -668,11 +863,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: GLYPH_DOT,
   },
-  /** The ⋯ column's own width, so the dots' x is the glyph's x. No height: the
-   * row centres the slot on the words' own line. */
+  /**
+   * The ⋯ column's own width, so the dots' x is the glyph's x. No height: the
+   * row centres the slot on the words' own line.
+   *
+   * `flex-end` since 9 September 2026, and it is the same change the settled
+   * card's `sideBtn` took in the same pass: the glyph is aligned by its INK,
+   * not by its box, so the mark and the ⋯ it becomes both end on the page's
+   * right margin — where the dateline's session count already ended. Centred in
+   * 36 pt they both stopped 10 pt short of it.
+   */
   markSlot: {
     width: moderateScale(36),
-    alignItems: 'center',
+    alignItems: 'flex-end',
+    // The settled ⋯ is an SF glyph and carries a 1 pt side bearing its own box
+    // does not; these dots are a plain view and carry none. Without this the
+    // mark and the menu it becomes end 1 pt apart, and the whole reason this
+    // card is shaped like the settled one is that NOTHING moves at the
+    // handover.
+    paddingRight: 1,
   },
   /** The state in a word — the reading's face at the comparison line's size,
    * muted, because it reports the app's state and never a value. */

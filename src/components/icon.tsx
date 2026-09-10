@@ -64,7 +64,15 @@ export type IconName =
   | 'pencil'
   // Clear a field's text — filled, because it is a control on top of an input
   // rather than a label beside one.
-  | 'close';
+  | 'close'
+  // --- The first-open tour's five cards (9 September 2026). The last three
+  // --- are the SF Symbols `(tabs)/_layout.tsx` puts in the bar, spelled the
+  // --- same way, so the card shows the exact mark it is about to spotlight.
+  | 'tour-write'
+  | 'tour-checkin'
+  | 'tour-next'
+  | 'tour-progress'
+  | 'tour-you';
 
 type Glyph =
   | { set: 'ion'; name: ComponentProps<typeof Ionicons>['name'] }
@@ -128,6 +136,11 @@ const MAP: Record<IconName, Glyph> = {
   pencil: { set: 'ion', name: 'pencil-outline' },
   wrench: { set: 'ion', name: 'construct-outline' },
   close: { set: 'ion', name: 'close-circle' },
+  'tour-write': { set: 'ion', name: 'create-outline' },
+  'tour-checkin': { set: 'ion', name: 'checkmark-circle-outline' },
+  'tour-next': { set: 'ion', name: 'arrow-forward' },
+  'tour-progress': { set: 'ion', name: 'analytics-outline' },
+  'tour-you': { set: 'ion', name: 'person-outline' },
 };
 
 /**
@@ -169,6 +182,73 @@ const SF: Partial<Record<IconName, Symbol>> = {
   // Apple's own "put the keyboard away" glyph — the one iOS itself puts in an
   // accessory bar, and the reason this button no longer needs the MCI set.
   'keyboard-hide': { name: 'keyboard.chevron.compact.down', box: 1.2 },
+
+  // --- THE SETTINGS SURFACE (9 September 2026) -----------------------------
+  //
+  // The second surface to move over, exactly as the note above asks: one
+  // surface at a time, so no screen is ever caught showing a mixed pair. A
+  // settings list is the surface with the most to gain from it — every one of
+  // these glyphs has a system counterpart that iOS itself uses for the same
+  // job, and a list of near-misses beside the system tab bar and the system
+  // keyboard is the clearest possible tell that a list is hand-drawn.
+  //
+  // Each name below is the symbol Apple uses for that meaning, not the one
+  // that merely looks closest to the Ionicon it replaces:
+  crosshair: { name: 'target' }, // Goal
+  hourglass: { name: 'hourglass' }, // Training experience
+  calendar: { name: 'calendar' }, // Sessions a week, Session types
+  layers: { name: 'square.stack.3d.up' }, // Split
+  barbell: { name: 'dumbbell' }, // Key lifts, Bar weight
+  target: { name: 'dumbbell' }, // (the alias `target` has always drawn a barbell)
+  document: { name: 'doc.text' }, // Where you log now, Contact support, Terms
+  wrench: { name: 'wrench.and.screwdriver' }, // What gets in the way, corrections
+  refresh: { name: 'arrow.clockwise' }, // Run setup again, Restore, Clear cache
+  sparkle: { name: 'sparkles' }, // Recore Pro, How parsing works
+  card: { name: 'creditcard' }, // Manage subscription
+  plate: { name: 'scalemass' }, // Units
+  bell: { name: 'bell' }, // Weekly recap
+  // Import and export take Apple's OWN pair, which is the share arrow in and
+  // out — not a cloud. The glyph names here are historical ("upload" is the
+  // import row); the SYMBOLS follow the direction the row actually moves data.
+  upload: { name: 'square.and.arrow.down' }, // Import from Strong or Hevy
+  download: { name: 'square.and.arrow.up' }, // Export my record
+  language: { name: 'globe' }, // Writing language
+  table: { name: 'tablecells' }, // Set readings
+  lock: { name: 'lock' }, // Privacy Policy
+  unlock: { name: 'lock.open' },
+  star: { name: 'star' }, // Rate Recore
+  trash: { name: 'trash' }, // Delete account
+  'sign-out': { name: 'rectangle.portrait.and.arrow.right' }, // Sign out
+
+  // The disclosure chevron is chrome rather than a surface's glyph, and it is
+  // the one mark on the screen a person has seen ten thousand times in Settings
+  // itself. It draws at `SF_WEIGHT` semibold-adjacent weight, which is what
+  // UIKit uses for a disclosure indicator.
+  'chevron-forward': { name: 'chevron.right' },
+  'chevron-back': { name: 'chevron.left' },
+
+  // The close button on a sheet and the clear button in a field are the same
+  // mark, and iOS draws both with this one symbol: a filled circle with the ×
+  // KNOCKED OUT of it, so the surface behind shows through the glyph. That is
+  // why it takes a quiet grey rather than ink — the tint is the circle, and a
+  // near-black disc is a much louder button than the one iOS puts on a sheet.
+  close: { name: 'xmark.circle.fill' },
+
+  // --- THE FIRST-OPEN TOUR (9 September 2026) ------------------------------
+  //
+  // The third surface to move over. It is the one place in the app where the
+  // glyph is the POINT rather than a label's companion: the card says "Next",
+  // shows this mark, and a second later the spotlight lands on the same mark in
+  // the bar. Drawn from a different set, that hand-off simply does not happen —
+  // the eye is looking for an arrow it has not been shown.
+  //
+  // These three are copied from `(tabs)/_layout.tsx` and must not drift from
+  // it; the two write glyphs are Apple's own compose and confirm marks.
+  'tour-write': { name: 'square.and.pencil' },
+  'tour-checkin': { name: 'checkmark.circle' },
+  'tour-next': { name: 'arrow.forward' },
+  'tour-progress': { name: 'chart.xyaxis.line', box: 1.1 },
+  'tour-you': { name: 'person' },
 };
 
 /** The weight every SF glyph is drawn at. `regular` is a hair thin against the

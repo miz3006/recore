@@ -151,9 +151,11 @@ export function LiveLedger({
 const styles = StyleSheet.create({
   wrap: { width: '100%' },
   /**
-   * NO INSET. `ExerciseCard` carries no horizontal padding of its own — on
-   * Today it inherits `BODY_PADDING_H` (24) from the page, which is the same 24
-   * this flow's `Frame` already applies. Any padding here would push the
+   * NO INSET. `ExerciseCard` carries no horizontal padding of its own — it
+   * takes whatever gutter the page it is on applies (`BODY_PADDING_H` on Today,
+   * `Frame`'s `spacing.xxl` here; the two stopped being the same number on
+   * 9 September 2026, when Today moved onto the system navigator and had to
+   * hang off UIKit's own 16 pt layout margin). Any padding HERE would push the
    * person's own words a few points right of the reading made from them, and
    * the one thing this screen is claiming is that they are the same text.
    */

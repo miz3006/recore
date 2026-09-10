@@ -1,7 +1,7 @@
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
-import { Icon } from '@/components/icon';
 import { PressableScale } from '@/components/motion';
 import {
   CTA_HEIGHT,
@@ -24,53 +24,119 @@ import {
  * it. Recolouring it into the host app's palette costs exactly the recognition
  * it exists for.
  *
- * So this is the same deliberate exception `BrandIcon.tsx` makes on the
- * attribution screen, one step further: there, marks are drawn in one ink
- * because a coloured logo among six would be an endorsement; here there are two
- * buttons, each is the endorsement, and each follows its owner's published
- * spec rather than ours.
+ * ## Apple's button is now APPLE'S BUTTON (9 September 2026)
  *
- * **Apple** (HIG, Sign in with Apple): black, white, or white-with-outline —
- * nothing else — with the Apple mark, a 44 pt minimum height, and a corner
- * radius anywhere from square to half the height. Black on this cream canvas,
- * at the app's `CTA_HEIGHT` and `radius.md`, so it is the same object as every
- * other primary button in the app apart from its fill.
+ * The owner asked for a screen that reads as native iOS. The Apple button was
+ * the largest thing on it that only *resembled* one: a `PressableScale` with
+ * our Ionicons apple glyph, our `type.headline`, and the English string
+ * `Sign in with Apple` typed into the call site. It was a faithful copy, and a
+ * copy is what it stayed — the glyph is not Apple's mark, the label did not
+ * follow the phone's language, and the metrics were ours rather than the
+ * system's.
+ *
+ * `AppleSignInButton` below renders the real `ASAuthorizationAppleIDButton`
+ * through `expo-apple-authentication`. What that buys, none of which the copy
+ * could have:
+ *
+ *  · **The mark and the wordmark are Apple's own**, drawn by the OS at the
+ *    weight and optical size the HIG specifies, at any Dynamic Type setting.
+ *  · **The label is localised by the system.** A phone in Slovenian reads
+ *    "Nadaljuj z Apple" without this repository owning a translation — and
+ *    Recore's owner runs a Slovenian device, so the old English literal was
+ *    wrong on the very device it was being reviewed on.
+ *  · **It is Apple-approved by construction** (guideline 4.8 / the Sign in with
+ *    Apple branding rules), so no future edit can drift it off-spec.
+ *  · VoiceOver, Reduce Transparency and the press appearance come from UIKit.
+ *
+ * The one thing we still choose is geometry, and it is chosen to MATCH: the
+ * app's `CTA_HEIGHT` and `radius.md`, the same two values the Google button
+ * uses. `buttonStyle` is BLACK because the HIG allows exactly black, white, or
+ * white-outline, and black is the one that reads as a primary action on a cream
+ * canvas. `cornerRadius` and `style` are the only appearance props the
+ * component accepts — it refuses `backgroundColor` and `borderRadius` on
+ * purpose, which is the API saying the same thing this comment does.
+ *
+ * **The native button has no disabled or loading appearance**, because
+ * `ASAuthorizationAppleIDButton` has none. So the wrapper supplies both: the
+ * whole control dims and stops taking touches, and a spinner is laid over it in
+ * Apple's own white. That is the same treatment the Google button gives itself
+ * one level down, so the pair still behaves as one family.
  *
  * **Google** (Sign in with Google branding): the light button is `#FFFFFF`
  * with a `#747775` stroke and `#1F1F1F` text, and the "G" is the four-colour
  * mark — never redrawn in one ink, never tinted. That is why this file carries
- * its own SVG instead of reaching for `Icon`: the monochrome `logo-google` that
- * was here is off-spec by Google's own rules.
- *
- * What Recore keeps: the height, the radius, the label type, the press scale,
- * the spinner, the 0.4 disabled dip. The pair reads as one family in size and
- * weight — which is what the owner asked for — and differs only where the
- * brands require it.
+ * its own SVG: a monochrome `logo-google` is off-spec by Google's own rules.
+ * Google publishes no native iOS view, so this one stays hand-built — and it is
+ * built to Google's spec rather than to ours, for the same reason Apple's is
+ * now Apple's.
  *
  * The values themselves live in `theme/color.ts` under `provider`, quarantined
  * from the palette: a hex typed into a component is a value nobody re-measures,
- * and `color.test.ts` fails the build over one. Apple's black is PURE black
- * there, not the app's warm ink — the HIG gives three appearances and a
- * near-black of our own is not among them.
+ * and `color.test.ts` fails the build over one.
  */
 
-type Provider = 'apple' | 'google';
+/**
+ * Sign in with Apple, drawn by iOS.
+ *
+ * Renders nothing when the native module is absent — the component's own
+ * documented behaviour, and the reason `sign-in.tsx` holds availability as a
+ * three-state and prints a line where this would have been rather than letting
+ * the screen go quietly short of a control.
+ */
+export function AppleSignInButton({
+  onPress,
+  disabled = false,
+  loading = false,
+}: {
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  const inactive = disabled || loading;
 
-export function ProviderButton({
-  provider,
+  return (
+    <View
+      style={[styles.appleHost, inactive && styles.disabled]}
+      // UIKit's button has no disabled state, so the wrapper is the disabled
+      // state: it stops delivering touches at all rather than letting a second
+      // tap start a second authorization while the first is in flight.
+      pointerEvents={inactive ? 'none' : 'auto'}>
+      <AppleAuthentication.AppleAuthenticationButton
+        onPress={onPress}
+        // CONTINUE, not SIGN_IN: this screen is the funnel's last step and is
+        // reached by returning athletes too, so the label that covers both is
+        // the honest one — and it is the exact counterpart of the Google button
+        // beside it.
+        buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+        buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+        cornerRadius={radius.md}
+        style={styles.appleButton}
+      />
+      {loading ? (
+        <View style={styles.appleSpinner} pointerEvents="none">
+          <ActivityIndicator color={brand.appleInk} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Continue with Google. Same height, same radius, same press behaviour as the
+ * Apple button above — everything the two brands do not dictate is shared.
+ */
+export function GoogleSignInButton({
   label,
   onPress,
   disabled = false,
   loading = false,
 }: {
-  provider: Provider;
   label: string;
   onPress: () => void;
   disabled?: boolean;
   loading?: boolean;
 }) {
   const inactive = disabled || loading;
-  const apple = provider === 'apple';
 
   return (
     <PressableScale
@@ -81,19 +147,15 @@ export function ProviderButton({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: inactive }}
-      style={[styles.btn, apple ? styles.apple : styles.google, inactive && styles.disabled]}
-      pressedStyle={apple ? styles.applePressed : styles.googlePressed}>
+      style={[styles.btn, styles.google, inactive && styles.disabled]}
+      pressedStyle={styles.googlePressed}>
       {loading ? (
-        <ActivityIndicator color={apple ? brand.appleInk : brand.googleInk} />
+        <ActivityIndicator color={brand.googleInk} />
       ) : (
         <View style={styles.row}>
-          {apple ? (
-            <Icon name="apple" size={moderateScale(18)} tint={brand.appleInk} />
-          ) : (
-            <GoogleMark size={moderateScale(18)} />
-          )}
+          <GoogleMark size={moderateScale(18)} />
           <Text
-            style={[styles.label, apple ? styles.appleLabel : styles.googleLabel]}
+            style={[styles.label, styles.googleLabel]}
             numberOfLines={1}
             maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {label}
@@ -133,6 +195,24 @@ function GoogleMark({ size }: { size: number }) {
 }
 
 const styles = StyleSheet.create({
+  /** The Apple button's box. The native view fills it; the spinner covers it. */
+  appleHost: {
+    height: CTA_HEIGHT,
+    justifyContent: 'center',
+  },
+  appleButton: {
+    width: '100%',
+    height: CTA_HEIGHT,
+  },
+  appleSpinner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   btn: {
     // The app's primary-button geometry, unchanged. Only the fill is theirs.
     minHeight: CTA_HEIGHT,
@@ -148,20 +228,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-  apple: {
-    backgroundColor: brand.appleFill,
-  },
-  applePressed: {
-    // A fill change, never an opacity flash — the app's rule for every filled
-    // control (`btnPrimaryPressed` in `primitives.tsx`).
-    backgroundColor: brand.appleFillPressed,
-  },
   google: {
     backgroundColor: brand.googleFill,
     borderWidth: 1, // Google's spec is a 1 px stroke, not a hairline
     borderColor: brand.googleStroke,
   },
   googlePressed: {
+    // A fill change, never an opacity flash — the app's rule for every filled
+    // control (`btnPrimaryPressed` in `primitives.tsx`).
     backgroundColor: brand.googleFillPressed,
   },
   disabled: {
@@ -171,9 +245,6 @@ const styles = StyleSheet.create({
     fontSize: type.headline.fontSize,
     fontWeight: '600',
     letterSpacing: -0.2,
-  },
-  appleLabel: {
-    color: brand.appleInk,
   },
   googleLabel: {
     color: brand.googleInk,

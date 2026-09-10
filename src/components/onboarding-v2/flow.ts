@@ -51,13 +51,20 @@ export interface Option {
    * figure, body part, flag or keycap.
    */
   /**
-   * A REAL BRAND MARK instead of an emoji — screen 4 only.
+   * A LEADING MARK — a system symbol, or a drawn brand silhouette on the one
+   * screen that needs one. Resolved by `Mark.tsx`; never an emoji.
    *
    * Cal AI ships an `Icon Option List` on its own attribution screen (position
-   * 4/38) for exactly this reason: 🎵 is not TikTok and ✖️ is not X, and an
-   * approximation of a logo is worse than no logo. These are drawn as monochrome
-   * ink paths in `BrandIcon.tsx`, which also makes them the one thing in the
-   * flow that is guaranteed to share a visual weight.
+   * 4/38) for a reason that generalises: 🎵 is not TikTok and ✖️ is not X, and
+   * an approximation of a logo is worse than no logo. The brand marks are drawn
+   * as monochrome ink paths in `BrandIcon.tsx`; every other mark in the flow is
+   * an SF Symbol, which is what guarantees the shared visual weight that the
+   * hand-drawn set could only be checked for by eye.
+   *
+   * A screen carries marks on ALL of its listed options or on none of them,
+   * and it carries them only where the option names something a symbol can
+   * honestly denote. Numbers, durations and abstract states get none — see the
+   * tests, which pin exactly which screens those are.
    */
   icon?: MarkName;
   /** A second line inside the row, where the option needs one. */
@@ -95,17 +102,34 @@ export interface Option {
   drivesBranch?: boolean;
 }
 
-/** The marks `BrandIcon.tsx` can draw. Brand marks for screen 4, time-of-day
- * marks for screen 18 — one stroke weight across all of them. */
+/**
+ * THE MARKS THE FLOW CAN DRAW — see `Mark.tsx`, which is the one component that
+ * resolves them.
+ *
+ * Two sources, and they never appear on the same screen:
+ *
+ *   · **Drawn paths** (`BrandIcon.tsx`) for the attribution screen's six brand
+ *     marks, because SF Symbols contains no third-party logos and an
+ *     approximation of a logo is the one thing a mark must not be.
+ *   · **System symbols** for everything else — Apple's own set, at one weight,
+ *     tinted to the label beside them.
+ */
 export type MarkName =
+  // Screen 5, attribution — drawn silhouettes.
   | 'tiktok'
   | 'instagram'
   | 'x'
   | 'youtube'
   | 'appstore'
   | 'friend'
+  // Screen 20, weekly recap — time of day.
   | 'evening'
-  | 'morning';
+  | 'morning'
+  // Screen 2, where the record lives today — objects.
+  | 'notes'
+  | 'trackerapp'
+  | 'notebook'
+  | 'spreadsheet';
 
 export interface ScreenDef {
   /** 1-based, matching the spec's numbering and the route segment. */
@@ -157,15 +181,18 @@ export const FLOW: readonly ScreenDef[] = [
     headline: 'Where do you log your training now?',
     subline: "If you already have history, you can bring it with you.",
     options: [
-      // NO EMOJI (owner, 28 Aug 2026). In English these options name two
-      // products and two objects, and an app's identity cannot be approximated
-      // by a pictograph — 📱 is not Hevy. One honest glyph short is a
-      // part-glyphed list, which the all-or-none rule forbids, so the screen
-      // carries none.
-      { id: 'notes', label: 'Notes app' },
-      { id: 'app', label: 'Hevy or Strong' },
-      { id: 'paper', label: 'Paper notebook' },
-      { id: 'excel', label: 'A spreadsheet' },
+      // STILL NO EMOJI, AND NOW A COMPLETE FAMILY (owner, 9 Sep 2026).
+      //
+      // The 28 Aug audit left this screen bare on a reason that was sound about
+      // emoji and unsound about marks in general: "📱 is not Hevy" is true, and
+      // it does not follow that the row must be empty. Each of these four names
+      // an OBJECT a record lives in today, and Apple's set denotes all four
+      // exactly — a page of notes, a barbell, a closed book, a grid of cells.
+      // One family, all four, no approximation of anybody's brand.
+      { id: 'notes', label: 'Notes app', icon: 'notes' },
+      { id: 'app', label: 'Hevy or Strong', icon: 'trackerapp' },
+      { id: 'paper', label: 'Paper notebook', icon: 'notebook' },
+      { id: 'excel', label: 'A spreadsheet', icon: 'spreadsheet' },
       { id: 'memory', label: "I don't log anywhere", optOut: true },
     ],
     why: 'Decides whether CSV import is offered later.',

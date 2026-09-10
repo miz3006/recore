@@ -174,10 +174,42 @@ function RootNavigator() {
             name="check-in"
             options={{
               presentation: 'formSheet',
-              sheetAllowedDetents: [0.6, 1],
-              sheetInitialDetentIndex: 0,
+              /* `fitToContents`, NOT [0.6, 1] (9 September 2026).
+                 Fixed detents needed the content to fill a height the container
+                 was supposed to hand down, and measured on the iOS 26.5
+                 simulator it never handed one down: with `onLayout` printed onto
+                 the sheet, every view inside reported height 0 — root, head,
+                 scroll and footer — so each drew from the sheet's top edge and
+                 the question, the lifts and the button landed on top of one
+                 another. That is the "razkosano" sheet, and `contentStyle:
+                 { flex: 1 }` did not fix it; the same screen presented
+                 full-screen measured 874 / 86 / 582 / 81 and was perfect, which
+                 is what proves the presentation was the cause.
+                 So the direction is reversed. The content is measured and the
+                 sheet is sized to it, which is the path that works and the
+                 better sheet besides: a one-lift session gets a short sheet and
+                 an eight-lift session a tall one, instead of both getting 60%
+                 and one of them being mostly empty. The content it measures is
+                 one ScrollView holding everything, which is the other half of
+                 the fix — `check-in-sheet.tsx` says why a form sheet will not
+                 share that view with a fixed head and footer. */
+              sheetAllowedDetents: 'fitToContents',
               sheetGrabberVisible: true,
-              sheetCornerRadius: radius.xl,
+              /* NO `sheetCornerRadius` ON PURPOSE (9 September 2026).
+                 It used to ask for `radius.xl` (24). Dropping the prop and
+                 measuring what UIKit chooses for itself on the iOS 26.5
+                 simulator gave a corner roughly THREE TIMES that — iOS 26 rounds
+                 a floating sheet concentrically with the display, and 24 was
+                 overriding that with a tighter, wronger number on the one sheet
+                 the app had already made native. The system's value also moves
+                 with the device for free, which a constant never will. */
+              /* NO `flex: 1` HERE ANY MORE. It was added to give the sheet's
+                 root something to resolve against and it did not work — see the
+                 detents note above. With `fitToContents` the content sizes
+                 itself, so a stretch instruction on the container is at best
+                 inert and at worst another thing measuring zero. What is left is
+                 the paint: `color.surface` keeps UIKit's system grey and its
+                 translucent material off the warm sheet. */
               contentStyle: { backgroundColor: color.surface },
             }}
           />

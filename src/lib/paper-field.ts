@@ -54,6 +54,27 @@ export const PAPER_FIELD_STOPS = [color.canvasTop, CANVAS, color.canvasBot] as c
  * reads as a symmetrical (and therefore noticeable) sweep. */
 export const PAPER_FIELD_LOCATIONS = [0, 0.55, 1] as const;
 
+/**
+ * THE SAME FIELD, AS A CSS GRADIENT (9 September 2026).
+ *
+ * `PaperField` draws the canvas as an `absoluteFill` sibling, and on a screen
+ * whose root has to BE its scroll view that sibling is not available: UIKit
+ * stops tracking the scroll view and the large title stops collapsing
+ * (measured — `app/(tabs)/next/_layout.tsx`). RN 0.86 renders a gradient as a
+ * view's own background, so the same three stops can go straight onto the
+ * scroll view's style and cost it no children at all.
+ *
+ * It is DERIVED from the stops above rather than written out, so the two
+ * renderings of the canvas cannot drift: one palette, two draw paths. `135deg`
+ * is CSS for top-left → bottom-right, which is `start={{x:0,y:0}}`
+ * `end={{x:1,y:1}}` said the other way.
+ */
+export const PAPER_FIELD_CSS = `linear-gradient(135deg, ${PAPER_FIELD_STOPS.map(
+  // Rounded: 0.55 × 100 is 55.00000000000001 in binary floating point, and a
+  // style string is not the place to discover that.
+  (stop, i) => `${stop} ${Math.round(PAPER_FIELD_LOCATIONS[i]! * 1000) / 10}%`,
+).join(', ')})`;
+
 /** The largest contrast ratio allowed between any two stops. Above this the
  * field starts to read as a gradient rather than as a surface — and the ink
  * ladder stops being measurable against one canvas value. */

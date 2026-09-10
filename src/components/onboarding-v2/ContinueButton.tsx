@@ -12,7 +12,7 @@ import Animated, {
 
 import { selection } from '@/lib/haptics';
 import { PressScale, pop, REDUCED_FADE_MS, select } from '@/lib/motion/index';
-import { MAX_FONT_SCALE, type } from '@/lib/theme';
+import { MAX_FONT_SCALE, spacing, type } from '@/lib/theme';
 
 import { v2color, v2glow, v2metrics, v2radius } from './tokens';
 
@@ -95,7 +95,17 @@ export function ContinueButton({
         style={styles.press}
         testID="v2-continue">
         <Animated.View style={[styles.pill, fill]}>
-          <Text style={styles.label} maxFontSizeMultiplier={MAX_FONT_SCALE} numberOfLines={1}>
+          {/* NO `numberOfLines`, AND THE PILL GROWS INSTEAD (9 Sep 2026).
+              At Dynamic Type XXXL the label came out as "Cont…" — a primary
+              CTA whose own word does not fit inside it, on a flow whose
+              accessibility floor is not negotiable (CLAUDE.md §3). Clipping the
+              label was the cheap half of the fix; the other half is that a
+              button with a FIXED height cannot honour type scaling at all, so
+              the pill is a `minHeight` now, exactly as recore-design asks for
+              any box drawn around a label. "Continue anyway" is allowed to take
+              two lines on a large-type phone and the pill is allowed to be
+              taller — what is not allowed is a truncated verb. */}
+          <Text style={styles.label} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {label}
           </Text>
         </Animated.View>
@@ -107,21 +117,25 @@ export function ContinueButton({
 const styles = StyleSheet.create({
   wrap: { width: '100%' },
   press: { width: '100%' },
+  /** Fills the wrap, which is exactly the pill's box — so the glow tracks the
+   * button's height instead of asserting a constant the pill no longer has. */
   glow: {
     position: 'absolute',
     left: 0,
     right: 0,
     top: 0,
-    height: v2metrics.ctaHeight,
+    bottom: 0,
     borderRadius: v2radius.button,
     backgroundColor: v2color.blue,
   },
   pill: {
-    height: v2metrics.ctaHeight,
+    minHeight: v2metrics.ctaHeight,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
     borderRadius: v2radius.button,
     borderCurve: 'continuous',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  label: { ...type.headline, color: v2color.onBlue, fontWeight: '600' },
+  label: { ...type.headline, color: v2color.onBlue, fontWeight: '600', textAlign: 'center' },
 });

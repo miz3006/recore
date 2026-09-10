@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -9,7 +9,6 @@ import { GroupPills, GroupSheet } from '@/components/next/groups';
 import { LiftRow } from '@/components/next/lift-row';
 import { NextSkeleton } from '@/components/next/skeleton';
 import { SplitChips } from '@/components/next/split-chips';
-import { StubScreen } from '@/components/stub-screen';
 import { ThoughtProcessCard } from '@/components/thought-process';
 import { getCachedBriefSummary, refineBriefSummary } from '@/lib/brief-explain';
 import { briefProse } from '@/lib/brief-prose';
@@ -30,9 +29,11 @@ import {
   targetsLine,
   type SessionRow,
 } from '@/lib/next/sections';
+import { PAPER_FIELD_CSS } from '@/lib/paper-field';
 import { getAnswer, getKeyLifts } from '@/lib/profile-answers';
 import {
   color,
+  FIXED_FONT_SCALE,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
@@ -45,7 +46,8 @@ import { useSession } from '@/state/session-store';
 
 /**
  * Next — "What am I doing next?" (owner, 28 July 2026; rebuilt 13 August;
- * restructured on Symmetry's Workout Detail 28 August 2026).
+ * restructured on Symmetry's Workout Detail 28 August 2026; moved onto the
+ * system navigator 9 September 2026).
  *
  * §16 names the prediction as the single strongest retention mechanism in the
  * product: *a reason to open the app on a training day that exists before the
@@ -117,6 +119,47 @@ import { useSession } from '@/state/session-store';
  *
  * NO SERIF: the owner ruled one type family across the whole app (29 Aug).
  *
+ * ## THE SYSTEM DRAWS THE HEADER NOW (9 September 2026)
+ *
+ * *"make it more to look like native iOS app."* The information on this screen
+ * was not the problem — every ruling above stands, and none of them moved. The
+ * chrome around it was: a hand-built title row above a scroll view, which is
+ * the one arrangement iOS itself never uses, and which cost the screen the
+ * large-title collapse, the Liquid Glass bar, and the tab bar's minimize (the
+ * full argument is in `_layout.tsx`). Four things changed and nothing else:
+ *
+ * 1. **`StubScreen` is gone from this route.** The screen's root is its own
+ *    `ScrollView` with `contentInsetAdjustmentBehavior="automatic"`, so the
+ *    large title's height, the safe area and the tab bar are UIKit's
+ *    arithmetic rather than ours. The title collapses into the bar under the
+ *    finger and grows back, interruptibly, because it is a real
+ *    `UINavigationItem` and not a `Text`.
+ *
+ * 2. **The gutter went 24 → 16, and that is forced rather than chosen.** The
+ *    system's large title hangs off its own inset, and content at 24 beside a
+ *    title at 16 is two left edges — the fault You's own gutter note calls
+ *    *"small enough to look like a rendering artefact and large enough to
+ *    see."* There is one number now and nothing adds to it.
+ *
+ * 3. **The Edit pill became a bar button.** A white pill floating in a header
+ *    row was the right object while the header was ours to draw; beside a
+ *    system large title it is a control impersonating the navigator's own
+ *    furniture. It is a tinted text button on the trailing edge now, which is
+ *    what iOS puts there — and the `trailing` slot it used on `StubScreen`
+ *    exists for Progress and Lifts, which still draw their own headers.
+ *
+ * 4. **The subtitle became the first line of content.** It was in the header
+ *    box; a `UINavigationItem` has no second line, and faking one under a
+ *    system title is how a screen ends up with two title systems. As content it
+ *    scrolls away with the briefing it describes, which is also what it should
+ *    have done all along — "Last done Sat 8 Aug · 4 lifts" is a fact about the
+ *    session, not a fact about the screen.
+ *
+ * What did NOT come back: the pinned Start. Every reference for this screen has
+ * one, the 29 August ruling removed it on a CLAUDE.md §3 argument that a native
+ * header does not touch, and a redesign is not a licence to reopen a decision
+ * (§0.8).
+ *
  * This file assembles; it decides nothing. Every placement rule lives in the
  * pure module (`lib/next/sections.ts`) or in one section component.
  */
@@ -165,10 +208,10 @@ export default function Next() {
    * behaviour rather than personalising copy (`flow.ts`, `drivesBranch`).
    *
    * On this screen it changes exactly one thing: they are not owed a day's
-   * name, so the title block does not invent one. The rows are identical,
-   * because the reason line already answers both of their questions at once —
-   * "up 2.5 from Sat 8 Aug" is what to put on the bar AND how long it has
-   * been. The date IS the staleness.
+   * name, so the title does not invent one. The rows are identical, because the
+   * reason line already answers both of their questions at once — "up 2.5 from
+   * Sat 8 Aug" is what to put on the bar AND how long it has been. The date IS
+   * the staleness.
    */
   const flat = getAnswer('split') === 'flat';
 
@@ -220,9 +263,9 @@ export default function Next() {
   }, [userId, previewDay, brief]);
 
   /**
-   * EDIT MODE — Setgraph's placement, the owner's lighter version of Symmetry's
-   * Edit Workout bar. One control in the title block turns every target into a
-   * field; at rest there is no field anywhere on the page.
+   * EDIT MODE — the owner's lighter version of Symmetry's Edit Workout bar. One
+   * bar button turns every target into a field; at rest there is no field
+   * anywhere on the page.
    */
   const [editing, setEditing] = useState(false);
   const [openGroup, setOpenGroup] = useState<GroupKey | null>(null);
@@ -237,7 +280,7 @@ export default function Next() {
    * counted block underneath them. The slot below a target holds EVIDENCE for
    * that target; putting "write one session and this fills in" there would put
    * an instruction where the reader has learned to find proof. It is said
-   * once, under the title block (owner, 28 August 2026).
+   * once, under the subtitle (owner, 28 August 2026).
    */
   const rows: SessionRow[] = preview ? preview.rows : (sections?.sessionRows ?? []);
   const seeded = useMemo(() => (rows.length === 0 ? keyLiftRows() : []), [rows.length]);
@@ -254,22 +297,35 @@ export default function Next() {
     // No account resolved yet — the record is still being opened. The one thing
     // this must not do is show the empty state, which is a real claim about an
     // empty record rather than a way to pass the time.
+    //
+    // It keeps the real screen's shell exactly: same navigator options, same
+    // root scroll view, same insets. A skeleton that reflows into the finished
+    // layout is the layout jump the anti-slop laws call the default failure
+    // mode — *"skeletons must match the final layout's shape."*
     return (
-      <StubScreen title="Next" back={false} large>
-        <NextSkeleton />
-      </StubScreen>
+      <>
+        <Stack.Screen options={{ title: 'Next', headerLargeTitle: true }} />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          contentInsetAdjustmentBehavior="automatic"
+          showsVerticalScrollIndicator={false}>
+          <NextSkeleton />
+        </ScrollView>
+      </>
     );
   }
 
-  /** THE TITLE BLOCK — what this session is, and when it was last done. */
+  /** THE TITLE — what this session is. One string, because a
+   * `UINavigationItem` holds one. */
   const title = preview ? preview.title : sections.sessionTitle;
   const lastDone = lastDoneOf(shown);
   /**
-   * The title block's second line. It absorbed the counted-targets line on
-   * 29 Aug: the decision strip already counts this session, and two things
-   * counting the same five lifts on one screen is one of them being furniture.
-   * What the strip does NOT say is what the session targets, so that is what
-   * survives here.
+   * The line under the title, and content rather than chrome since 9 Sep. It
+   * absorbed the counted-targets line on 29 Aug: the decision strip already
+   * counts this session, and two things counting the same five lifts on one
+   * screen is one of them being furniture. What the strip does NOT say is what
+   * the session targets, so that is what survives here.
    */
   const subtitle = !preview && written
     ? // Today is on the record, so the page below is the NEXT session and says
@@ -288,33 +344,56 @@ export default function Next() {
     setOverrideRev((n) => n + 1);
   };
 
+  // Only where there is something to argue with. An Edit control over a page of
+  // em dashes offers to change nothing.
+  const editable = shown.some((r) => r.loadKg != null);
+
   return (
-    <StubScreen
-      title={title}
-      subtitle={subtitle}
-      back={false}
-      large
-      trailing={
-        // Only where there is something to argue with. An Edit control over a
-        // page of em dashes offers to change nothing.
-        shown.some((r) => r.loadKg != null) ? (
-          <EditPill
-            on={editing}
-            onPress={() => {
-              tap();
-              setEditing((v) => !v);
-            }}
-          />
-        ) : undefined
-      }>
+    <>
+      <Stack.Screen
+        options={{
+          title,
+          headerLargeTitle: true,
+          headerRight: editable
+            ? () => (
+                <EditButton
+                  on={editing}
+                  onPress={() => {
+                    tap();
+                    setEditing((v) => !v);
+                  }}
+                />
+              )
+            : undefined,
+        }}
+      />
+
+      {/* THE SCROLL VIEW IS THE SCREEN'S ROOT, and that is load-bearing rather
+          than tidy — `_layout.tsx` explains what UIKit does with it and what it
+          cannot do without it. `automatic` hands the insets to the system: the
+          large title's height, the safe area and the tab bar are all UIKit's
+          arithmetic now, not ours. */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
+        // Edit mode puts a decimal pad over the page. Scrolling puts it away the
+        // iOS way — following the finger down rather than snapping shut — and
+        // every field commits on blur, so a scroll IS a way to finish typing
+        // rather than a way to lose it.
+        keyboardDismissMode="interactive"
         showsVerticalScrollIndicator={false}>
-        {/* WHICH DAY AM I LOOKING AT — directly under the title, because that
-            is the question it answers. The owner asked to see push and pull
-            separately (29 Aug); this control has always done it. */}
+        {/* WHAT THIS SESSION IS, under the system's title. */}
+        {subtitle ? (
+          <Text style={styles.subtitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {subtitle}
+          </Text>
+        ) : null}
+
+        {/* WHICH DAY AM I LOOKING AT — directly under the title block, because
+            that is the question it answers. The owner asked to see push and
+            pull separately (29 Aug); this control has always done it. */}
         <SplitChips
           days={planDays}
           activeId={previewDay?.id ?? dueId}
@@ -352,21 +431,21 @@ export default function Next() {
             list that wants 8. */}
         {shown.length > 0 ? (
           <View style={styles.list}>
-          <Stagger step={55} initialDelay={60}>
-            {shown.map((row, i) => (
-              <LiftRow
-                key={row.key || `${row.name}:${i}`}
-                row={row}
-                override={overrideOf(overrides, row)}
-                editing={editing && !preview}
-                onPress={() => {
-                  tap();
-                  if (row.canonical) openExerciseSheet(row.canonical);
-                }}
-                onCommit={(kg) => commit(row, kg)}
-              />
-            ))}
-          </Stagger>
+            <Stagger step={55} initialDelay={60}>
+              {shown.map((row, i) => (
+                <LiftRow
+                  key={row.key || `${row.name}:${i}`}
+                  row={row}
+                  override={overrideOf(overrides, row)}
+                  editing={editing && !preview}
+                  onPress={() => {
+                    tap();
+                    if (row.canonical) openExerciseSheet(row.canonical);
+                  }}
+                  onCommit={(kg) => commit(row, kg)}
+                />
+              ))}
+            </Stagger>
           </View>
         ) : (
           <FadeSlideIn>
@@ -383,7 +462,9 @@ export default function Next() {
             due (§8.2). */}
         {preview ? (
           <Text style={styles.foot} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {dueLabel ? `A look ahead. Today reads as ${dueLabel}.` : 'A look ahead — not the session you are due for.'}
+            {dueLabel
+              ? `A look ahead. Today reads as ${dueLabel}.`
+              : 'A look ahead — not the session you are due for.'}
           </Text>
         ) : null}
 
@@ -429,16 +510,13 @@ export default function Next() {
       />
 
       <KeyboardDoneBar />
-    </StubScreen>
+    </>
   );
 }
 
 /** The athlete's number for a row, or null — void the moment the engine moves
  * off the load it displaced (`lib/next/overrides.ts`). */
-function overrideOf(
-  book: ReturnType<typeof getOverrides>,
-  row: SessionRow,
-): number | null {
+function overrideOf(book: ReturnType<typeof getOverrides>, row: SessionRow): number | null {
   const entry = book[entryNoteKey(row.canonical ?? row.name)];
   if (!entry) return null;
   return entry.was === (row.loadKg ?? null) ? entry.kg : null;
@@ -476,21 +554,45 @@ function keyLiftRows(): SessionRow[] {
   }));
 }
 
-/** The title block's one control. A pill, because everything interactive on
- * this canvas floats as one. */
-function EditPill({ on, onPress }: { on: boolean; onPress: () => void }) {
+/**
+ * THE PAGE'S ONE CONTROL, on the navigation bar's trailing edge.
+ *
+ * It was a white pill in a hand-built header row, and that was the right object
+ * while the header was ours to draw — *"everything interactive on this canvas
+ * floats as one"* (skill §Structure). Beside a system large title it is not:
+ * the bar is the navigator's furniture, and a bordered pill sitting in it is a
+ * control impersonating a `UIBarButtonItem` rather than being one. iOS puts a
+ * tinted label there, so that is what this is — the one blue, which does every
+ * control job in the app (skill §Colour).
+ *
+ * **Done is semibold, Edit is not**, which is UIKit's own convention for the
+ * pair and the only difference between them: it marks the button that ENDS a
+ * mode, so the way out of edit mode is heavier than the way in.
+ *
+ * Not glass, and that is the rule rather than an omission: on an iOS 26 build
+ * the bar itself is the material, and a second glass shape floating inside it
+ * would be two materials deep with nothing between them.
+ */
+function EditButton({ on, onPress }: { on: boolean; onPress: () => void }) {
   return (
     <PressableScale
       haptic="none"
-      activeScale={0.96}
+      activeScale={0.94}
       onPress={onPress}
+      hitSlop={spacing.md}
       accessibilityRole="button"
       accessibilityState={{ selected: on }}
       accessibilityLabel={on ? 'Done editing targets' : 'Edit targets'}
-      style={[styles.editPill, on ? styles.editPillOn : null]}>
+      style={styles.barButtonSlot}>
       <Text
-        style={[styles.editLabel, on ? styles.editLabelOn : null]}
-        maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        style={[styles.barButton, on ? styles.barButtonDone : null]}
+        numberOfLines={1}
+        // FIXED_FONT_SCALE, not MAX — *"only for text locked inside geometry"*
+        // (skill §Typography), and a bar button is the definition of it: the
+        // navigator sizes the slot and a label that outgrows it is CLIPPED, not
+        // wrapped. At the accessibility sizes this read "Ed" on the iOS 26.5
+        // simulator before the clamp.
+        maxFontSizeMultiplier={FIXED_FONT_SCALE}>
         {on ? 'Done' : 'Edit'}
       </Text>
     </PressableScale>
@@ -498,23 +600,53 @@ function EditPill({ on, onPress }: { on: boolean; onPress: () => void }) {
 }
 
 const styles = StyleSheet.create({
+  /**
+   * THE CANVAS IS THE SCROLL VIEW'S OWN BACKGROUND, and that is the whole
+   * reason this screen can have both a paper canvas and a collapsing title.
+   * `_layout.tsx` has the measurement: an `absoluteFill` `PaperField` sibling
+   * costs UIKit the scroll view it tracks, and a hoisted one is painted over by
+   * the navigator's opaque container. A background on the scroll view itself is
+   * neither — no sibling to confuse the lookup, and nothing above it to hide
+   * it. Same three stops as `PaperField`, derived from them.
+   */
   scroll: {
     flex: 1,
-    marginHorizontal: -spacing.xxl,
+    experimental_backgroundImage: PAPER_FIELD_CSS,
   },
+  /**
+   * ONE GUTTER, AND EVERYTHING HANGS OFF IT.
+   *
+   * `spacing.lg`, not the body's usual `spacing.xxl`, and it is forced rather
+   * than chosen: the system's large title hangs off its own inset, and content
+   * 8 pt further in would give the page two left edges — *"small enough to look
+   * like a rendering artefact and large enough to see."* Nothing adds to this
+   * number.
+   */
   content: {
-    paddingHorizontal: spacing.xxl,
-    // Content scrolls *behind* the tab bar and the pinned Start (§5.2 — glass
-    // needs something to refract), so the last row is padded clear of both.
+    paddingHorizontal: spacing.lg,
+    // The top is UIKit's now (`contentInsetAdjustmentBehavior`), but the bottom
+    // is not: content scrolls BEHIND the glass tab bar so the bar has something
+    // to refract (§5.2), and the last row clears it by hand.
     paddingBottom: spacing.huge + TAB_BAR_CLEARANCE,
     gap: spacing.lg,
   },
-  /** What the session targets. Counted, so it reads as a fact rather than a
-   * headline: secondary ink, no scale. */
-  targets: {
+  /**
+   * What this session is, in one line, directly under the system title. It hugs
+   * it — no top gap of its own — because a large title and its supporting line
+   * are one block, and the page's `gap` opens underneath the pair rather than
+   * inside it.
+   */
+  subtitle: {
     ...type.subhead,
-    marginTop: -spacing.xs,
+    // NO FIXED LINE BOX. `lineFor()` scales for the DEVICE, not for Dynamic
+    // Type, so at the ×1.5 cap a 15 pt line in a 21 pt box loses its
+    // descenders — "Today" came back with the y cut off. `lift-row.tsx` hit the
+    // same fault and documents it; here there is no column to align, so the box
+    // simply goes back to the text.
+    lineHeight: undefined,
+    marginBottom: -spacing.xs,
     color: color.textSecondary,
+    fontVariant: ['tabular-nums'],
   },
   list: {
     gap: spacing.sm,
@@ -525,12 +657,6 @@ const styles = StyleSheet.create({
     lineHeight: lineFor(16),
     marginTop: -spacing.md,
     color: color.textMuted,
-  },
-  sessionNote: {
-    ...type.footnote,
-    lineHeight: lineFor(18),
-    marginTop: -spacing.sm,
-    color: color.textSecondary,
   },
   foot: {
     ...type.footnote,
@@ -559,28 +685,25 @@ const styles = StyleSheet.create({
     ...type.caption,
     color: color.textSecondary,
   },
-  editPill: {
-    minHeight: moderateScale(32),
+  /**
+   * The slot the label sits in, and it needs a stated width.
+   * `RNSScreenStackHeaderSubview` measures its React child, and a bare `Text`
+   * came back narrower than its own glyphs at the accessibility type sizes —
+   * "Edit" rendered as "Ed", then as "E…" once it had `numberOfLines`. A
+   * minimum wide enough for "Done" at the clamp fixes the measurement without
+   * fixing the height, so the bar still sizes itself.
+   */
+  barButtonSlot: {
+    minWidth: moderateScale(58),
+    alignItems: 'flex-end',
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.border,
-    borderRadius: radius.pill,
-    borderCurve: 'continuous',
   },
-  /** Selection is a CONTROL state, so it wears the brand — never the planned
-   * green, which on this screen means "a load nobody has lifted yet". */
-  editPillOn: {
-    backgroundColor: color.brand,
-    borderColor: color.brand,
+  /** A `UIBarButtonItem`'s label: body size, the one blue, no box. */
+  barButton: {
+    ...type.body,
+    color: color.brand,
   },
-  editLabel: {
-    ...type.caption,
+  barButtonDone: {
     fontWeight: '600',
-    color: color.textPrimary,
-  },
-  editLabelOn: {
-    color: color.surface,
   },
 });

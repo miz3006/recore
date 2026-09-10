@@ -30,9 +30,14 @@ import { useSession } from '@/state/session-store';
  * answers with resistance and a spring rather than with nothing, so the wall is
  * felt instead of guessed at.
  *
- * IT MUST NOT FIGHT THE COMPOSER, which is the whole design constraint:
+ * IT MUST NOT FIGHT THE COMPOSER, which is the whole design constraint — and
+ * since 9 September 2026 it sits INSIDE the note's scroll view rather than
+ * around it, so the arbitration is no longer between a parent and a child but
+ * between two handlers on the same drag:
  *  - `activeOffsetX` ±24 and `failOffsetY` ±12 mean the note's vertical
- *    ScrollView always wins an ambiguous drag. The swipe has to be deliberate.
+ *    ScrollView always wins an ambiguous drag. The swipe has to be deliberate,
+ *    and it is the same pair of thresholds every swipe-to-act row in a list
+ *    uses to live inside one.
  *  - It is DISABLED while the keyboard is up. Mid-sentence a horizontal drag is
  *    the user placing a cursor, and swapping the day under a half-typed line
  *    would be the worst bug in the app.
@@ -131,7 +136,14 @@ export function DaySwipe({ children, enabled }: { children: ReactNode; enabled: 
 }
 
 const styles = StyleSheet.create({
+  /**
+   * `flexGrow`, not `flex`. Since 9 September 2026 this sits INSIDE the note's
+   * scroll view rather than around it — the scroll view had to become the
+   * screen's root for UIKit to track it (`app/(tabs)/today/_layout.tsx`) — and
+   * a `flex: 1` child of a `contentContainerStyle` is the one place that
+   * shorthand does not mean what it looks like.
+   */
   fill: {
-    flex: 1,
+    flexGrow: 1,
   },
 });

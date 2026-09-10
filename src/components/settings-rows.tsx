@@ -1,18 +1,21 @@
-import { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withDelay,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 
 import { selection } from '@/lib/haptics';
-import { SPRING } from '@/lib/motion';
+import { PRESS, SPRING } from '@/lib/motion';
 import {
   alpha,
   color,
   hairline,
+  ink,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
@@ -64,6 +67,77 @@ function rowGlyphTint({ danger, warn }: { danger?: boolean; warn?: boolean }): s
 /** The leading glyph column, and the inset a separator starts at. */
 export const ROW_ICON = moderateScale(19);
 const ROW_ICON_SLOT = ROW_ICON + spacing.md;
+
+/**
+ * THE GROUP'S HORIZONTAL INSET — owned by the ROW, not by the card.
+ *
+ * It sat on the card until 9 September 2026, which was fine while a press was a
+ * scale. It is not fine now that a press is a fill: a highlight that stops 18 pt
+ * short of the group's own edge is a grey stripe floating inside a white card,
+ * and no list on the phone draws that. UIKit fills the whole cell. So the row
+ * takes the inset, paints edge to edge, and the card clips it at the corners.
+ */
+const ROW_PAD = spacing.lg;
+
+/**
+ * A ROW'S PRESS FEEDBACK IS A HIGHLIGHT, NOT A DIP (9 September 2026).
+ *
+ * Every row here used `PressableScale`, which shrinks the pressed element by
+ * 2–3%. That is the right feedback for a button, a chip or a card — an object
+ * with its own edges, which you can watch move. **A list row has no edges of
+ * its own**: it is one band in a stack of identical bands, so shrinking it
+ * pulls its neighbours' baselines toward it and the whole group appears to flex
+ * under the thumb. iOS has never done this to a table cell in eighteen years;
+ * it fills the cell with a grey and fades it out on release, and that is what a
+ * hand expects from a settings list before the eye has read a word of it.
+ *
+ * The highlight is `opacity` on a fill layer — no layout property animates —
+ * and it keeps `PressableScale`'s own timing contract exactly: `PRESS.in` down,
+ * `PRESS.minVisibleMs` held so a tap too fast to see still flashes, `PRESS.out`
+ * back. Reduce Motion removes the FADE, never the feedback: the fill still
+ * appears and disappears, it simply does not travel.
+ */
+function RowSurface({
+  children,
+  onPress,
+  disabled = false,
+  accessibilityLabel,
+  accessibilityState,
+  style,
+}: {
+  children: ReactNode;
+  onPress: () => void;
+  disabled?: boolean;
+  accessibilityLabel?: string;
+  accessibilityState?: { expanded?: boolean; selected?: boolean };
+  style?: StyleProp<ViewStyle>;
+}) {
+  const reduce = useReducedMotion();
+  const p = useSharedValue(0);
+  const downAt = useRef(0);
+  const fill = useAnimatedStyle(() => ({ opacity: p.get() }));
+
+  return (
+    <Pressable
+      disabled={disabled}
+      onPressIn={() => {
+        downAt.current = Date.now();
+        p.set(reduce ? 1 : withTiming(1, PRESS.in));
+      }}
+      onPressOut={() => {
+        const wait = Math.max(0, PRESS.minVisibleMs - (Date.now() - downAt.current));
+        p.set(withDelay(wait, withTiming(0, reduce ? { duration: 0 } : PRESS.out)));
+      }}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled, ...accessibilityState }}
+      style={[style, disabled && styles.rowDisabled]}>
+      <Animated.View style={[styles.rowHighlight, fill]} pointerEvents="none" />
+      {children}
+    </Pressable>
+  );
+}
 export function Section({
   label,
   footnote,
@@ -83,7 +157,13 @@ export function Section({
           {label}
         </Eyebrow>
       ) : null}
-      <View style={styles.card}>{children}</View>
+      {/* Two shells, one card. The outer casts the shadow; the inner clips.
+          They cannot be one view: `overflow: 'hidden'` sets `masksToBounds` on
+          the layer, which cuts the shadow off at the same edge it cuts the
+          pressed row's fill — and both have to survive. */}
+      <View style={styles.card}>
+        <View style={styles.cardClip}>{children}</View>
+      </View>
       {footnote ? (
         <Text
           style={[styles.footnote, footnoteActive && styles.footnoteActive]}
@@ -146,7 +226,11 @@ export function Row({
             warn && styles.rowLabelWarn,
             danger && styles.rowLabelDanger,
           ]}
-          numberOfLines={1}
+          // Two lines, because the label grew to 17 pt and "What gets in the
+          // way" stopped fitting on one — and because Dynamic Type can make
+          // almost any of them the long one. iOS wraps a cell's label before it
+          // truncates it, for the same reason: the label is what the row IS.
+          numberOfLines={2}
           maxFontSizeMultiplier={MAX_FONT_SCALE}>
           {label}
         </Text>
@@ -180,16 +264,13 @@ export function Row({
   const row = !onPress ? (
     <View style={styles.row}>{body}</View>
   ) : (
-    <PressableScale
+    <RowSurface
       disabled={disabled}
       onPress={onPress}
-      haptic="none"
-      activeScale={0.98}
-      accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       style={styles.row}>
       {body}
-    </PressableScale>
+    </RowSurface>
   );
 
   // The separator is a sibling, not a border on the row, so it can start at the
@@ -243,11 +324,8 @@ export function AccordionRow({
   return (
     <>
       {divider ? <View style={styles.rowSep} /> : null}
-      <PressableScale
+      <RowSurface
         onPress={onToggle}
-        haptic="none"
-        activeScale={0.98}
-        accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityState={{ expanded: open }}
         style={styles.row}>
@@ -274,7 +352,7 @@ export function AccordionRow({
           </Text>
           <Chevron open={open} />
         </View>
-      </PressableScale>
+      </RowSurface>
       {open ? <View style={styles.editor}>{children}</View> : null}
     </>
   );
@@ -302,12 +380,22 @@ export function Segmented<T extends string | number>({
   selected,
   onSelect,
   reading = false,
+  labelFor,
 }: {
   options: { id: T; label: string }[];
   selected: T | null;
   onSelect: (id: T) => void;
   /** The options are numbers (plate sizes, rest lengths, hours). */
   reading?: boolean;
+  /**
+   * What VoiceOver says for a segment, when the printed label is not enough on
+   * its own. A settings control lives under a row that has already named the
+   * thing, so the label IS enough there and this stays unset. The check-in
+   * sheet stacks one of these per lift with nothing between them, so a segment
+   * has to say WHICH lift it belongs to and what the answer means — the rotor
+   * arrives at "Just right" with no idea it is about the bench press.
+   */
+  labelFor?: (id: T) => string;
 }) {
   return (
     <View style={styles.segments}>
@@ -323,7 +411,7 @@ export function Segmented<T extends string | number>({
             haptic="none"
             activeScale={0.94}
             accessibilityRole="button"
-            accessibilityLabel={o.label}
+            accessibilityLabel={labelFor ? labelFor(o.id) : o.label}
             accessibilityState={{ selected: isSelected }}
             style={[styles.segment, isSelected && styles.segmentSelected]}>
             <Text
@@ -333,6 +421,15 @@ export function Segmented<T extends string | number>({
                 isSelected && styles.segmentLabelSelected,
               ]}
               numberOfLines={1}
+              // A SEGMENT SHRINKS ITS LABEL RATHER THAN CUTTING IT (9 September
+              // 2026). Three segments split one row, so the longest label sets
+              // what fits — and at a larger text size "Could do more" on the
+              // check-in sheet came out "Could do…", which is not an answer
+              // anybody can pick between. Truncating the words is the one
+              // failure a control offering a choice cannot afford; a label
+              // 15% smaller is legible and still says the whole thing.
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
               maxFontSizeMultiplier={MAX_FONT_SCALE}>
               {o.label}
             </Text>
@@ -368,35 +465,65 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: color.surface,
+    borderRadius: radius.lg,
+    borderCurve: 'continuous',
+    ...shadow.card,
+  },
+  cardClip: {
     borderWidth: 1,
     borderColor: color.divider,
     borderRadius: radius.lg,
     borderCurve: 'continuous',
-    paddingHorizontal: spacing.lg + 2,
-    paddingVertical: spacing.xs,
-    ...shadow.card,
+    overflow: 'hidden',
   },
+  // The group's vertical padding is gone with the card's: a pressed FIRST row
+  // has to reach the group's own top edge, and 4 pt of white above the fill is
+  // exactly the tell that a list was drawn rather than laid out. The rows' own
+  // padding is what keeps the first label off the corner.
   row: {
-    minHeight: moderateScale(48),
-    paddingVertical: spacing.md + 1,
+    minHeight: moderateScale(44),
+    paddingVertical: spacing.md - 1,
+    paddingHorizontal: ROW_PAD,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+  },
+  /** The pressed fill — the app's recessed tone, the one `surfaceHigh` names. */
+  rowHighlight: {
+    // Spelled out rather than `StyleSheet.absoluteFillObject`, which this RN
+    // version does not carry on the type (only `absoluteFill`, whose type is a
+    // registered style ID and cannot be spread into an object literal).
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: color.surfaceHigh,
+  },
+  /** A row the screen has taken away (an import already running, a delete in
+   * flight). It says so rather than silently swallowing the tap. */
+  rowDisabled: {
+    opacity: ink.disabled,
   },
   rowIcon: {
     width: ROW_ICON,
     alignItems: 'center',
   },
+  // It starts at the LABEL and runs to the group's trailing edge, which is
+  // where UIKit puts a separator in a cell that has an image view.
   rowSep: {
     height: hairline,
-    marginLeft: ROW_ICON_SLOT,
+    marginLeft: ROW_PAD + ROW_ICON_SLOT,
     backgroundColor: color.border,
   },
   rowLeft: {
     flex: 1,
   },
+  // 17 pt, not 15. Every grouped list on the phone — Settings, Mail, Health,
+  // the share sheet — sets its row label at body size, and a 15 pt list beside
+  // them reads as a web page in a wrapper before it reads as anything else.
   rowLabel: {
-    ...type.subhead,
+    ...type.body,
     color: color.textPrimary,
   },
   rowLabelBold: {
@@ -408,11 +535,13 @@ const styles = StyleSheet.create({
   rowLabelWarn: {
     color: color.warning,
   },
+  // A sub carries INFORMATION — what a row will do, what it will not touch —
+  // so it is `textSecondary`. `textMuted` is for what the eye may skip.
   rowSub: {
     ...type.caption,
     lineHeight: lineFor(16),
-    color: color.textMuted,
-    marginTop: 2,
+    color: color.textSecondary,
+    marginTop: 1,
   },
   rowRight: {
     flexShrink: 1,
@@ -421,16 +550,18 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: spacing.sm,
   },
+  // The value sits at the label's size, as it does in Settings — a detail text
+  // one step smaller reads as a caption about the row rather than as its answer.
   rowValue: {
     flexShrink: 1,
-    ...type.subhead,
+    ...type.body,
     color: color.textSecondary,
     textAlign: 'right',
   },
   rowReading: {
     flexShrink: 1,
     ...readingStyle('400'),
-    fontSize: type.subhead.fontSize,
+    fontSize: type.body.fontSize,
     color: color.textSecondary,
     textAlign: 'right',
   },

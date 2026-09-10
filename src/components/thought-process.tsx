@@ -68,6 +68,35 @@ import { PressableScale } from './motion';
 const FULL_RECORD = 12;
 
 const RING = moderateScale(52);
+const RING_STROKE = moderateScale(4);
+
+/**
+ * AIR AROUND THE STROKE — why the ring is drawn on a canvas bigger than itself
+ * (9 September 2026, owner: *"včasih sploh ne prikaže celotni krog ampak je
+ * odsekan"*).
+ *
+ * An `<Svg>` root establishes a viewport and CLIPS to it. The stroke straddles
+ * the path, so a radius of exactly `(RING - RING_STROKE) / 2` puts its outer
+ * edge ON that boundary at the four compass points, with nothing left for the
+ * renderer to antialias into. Add `moderateScale`'s fractional results (52 pt
+ * lands on 52.33 on a 3x screen) and the rounding of the host view's frame, and
+ * the circle comes out visibly flattened — at the top on one device, on the
+ * right on another. That is the cut-off ring, and it was never random.
+ *
+ * The fix is a GUTTER, not a smaller ring: the canvas is one point larger on
+ * every side and hangs one point outside the 52 pt slot, so the ring keeps the
+ * exact diameter the layout is built around and the stroke has canvas to finish
+ * in. Nothing clips it — the slot is a plain View, whose overflow is visible.
+ */
+const RING_PAD = moderateScale(1);
+const RING_CANVAS = RING + RING_PAD * 2;
+/** The radius of the PATH. The stroke is centred on it, so the drawn circle is
+ * `RING` across, as before. */
+const RING_RADIUS = (RING - RING_STROKE) / 2;
+/** Clear space inside the stroke — what the count actually has to fit in, and
+ * the width the count's box is given so `adjustsFontSizeToFit` has a bound to
+ * measure against. */
+const RING_INNER = RING - RING_STROKE * 2;
 
 /**
  * How big the count is drawn, by how many digits it has. The inner circle is
@@ -80,7 +109,6 @@ function digitStyle(n: number): { fontSize: number } {
   if (digits === 2) return { fontSize: moderateScale(15) };
   return { fontSize: moderateScale(12) };
 }
-const RING_STROKE = moderateScale(4);
 
 export function ThoughtProcessCard({
   reasoning,
@@ -121,8 +149,7 @@ export function ThoughtProcessCard({
   adjustLabel?: string;
 }) {
   const filled = Math.max(0, Math.min(1, sessions / FULL_RECORD));
-  const r = (RING - RING_STROKE) / 2;
-  const circumference = 2 * Math.PI * r;
+  const circumference = 2 * Math.PI * RING_RADIUS;
   const basis =
     weeks == null
       ? `${sessions} ${sessions === 1 ? 'session' : 'sessions'}`
@@ -135,20 +162,20 @@ export function ThoughtProcessCard({
           style={styles.ringSlot}
           accessible
           accessibilityLabel={`Based on ${basis}`}>
-          <Svg width={RING} height={RING}>
+          <Svg width={RING_CANVAS} height={RING_CANVAS} style={styles.ringCanvas}>
             <Circle
-              cx={RING / 2}
-              cy={RING / 2}
-              r={r}
+              cx={RING_CANVAS / 2}
+              cy={RING_CANVAS / 2}
+              r={RING_RADIUS}
               stroke={alpha(color.brand, 0.14)}
               strokeWidth={RING_STROKE}
               fill="none"
             />
             {filled > 0 ? (
               <Circle
-                cx={RING / 2}
-                cy={RING / 2}
-                r={r}
+                cx={RING_CANVAS / 2}
+                cy={RING_CANVAS / 2}
+                r={RING_RADIUS}
                 stroke={color.brand}
                 strokeWidth={RING_STROKE}
                 strokeLinecap="round"
@@ -156,7 +183,7 @@ export function ThoughtProcessCard({
                 strokeDasharray={`${circumference * filled} ${circumference}`}
                 // Start at twelve o'clock rather than at three, so the arc
                 // reads as a gauge instead of as a partly drawn circle.
-                transform={`rotate(-90 ${RING / 2} ${RING / 2})`}
+                transform={`rotate(-90 ${RING_CANVAS / 2} ${RING_CANVAS / 2})`}
               />
             ) : null}
           </Svg>
@@ -226,38 +253,62 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
   },
+  /**
+   * The ring's place in the row. Fixed at `RING` so the text beside it starts
+   * at the same x on every device, and `flexShrink: 0` so a long basis line can
+   * never squeeze the circle into an ellipse — geometry that has to stay round
+   * says so, rather than relying on the platform default.
+   */
   ringSlot: {
     width: RING,
     height: RING,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /** The canvas hangs `RING_PAD` outside the slot on every side — see the note
+   * on `RING_PAD`. It is out of flow, so the count below it is what the slot
+   * centres. */
+  ringCanvas: {
+    position: 'absolute',
+    top: -RING_PAD,
+    left: -RING_PAD,
+  },
   /**
    * THE COUNT INSIDE THE RING — and it has to FIT the ring (owner, 30 Aug
-   * 2026: a two-digit count still deformed).
+   * 2026: a two-digit count still deformed) and SIT IN THE MIDDLE OF IT (owner,
+   * 9 Sep 2026: the circle and its number are wrongly structured).
    *
    * The ring is a fixed 52 pt circle with a 4 pt stroke, so the number lives
    * in about 44 pt of clear space — the one text box on these screens whose
-   * width cannot grow with its content. It was set at a flat `subhead` 15 and
-   * left to hope: "3" sat comfortably, "14" crowded the stroke, and at the
-   * Dynamic Type ceiling (×1.5 → 22.5 pt) two digits touched it.
+   * width cannot grow with its content.
    *
    * Three things make it fit instead of hoping:
    *
    *  1. `digitStyle` steps the size down by digit count, so the common cases
    *     are sized right rather than shrunk to fit;
    *  2. `adjustsFontSizeToFit` + `numberOfLines={1}` catch anything the steps
-   *     did not anticipate, rather than letting it clip;
+   *     did not anticipate, rather than letting it clip — and `RING_INNER` is
+   *     the width they measure against, since a box free to grow with its
+   *     content gives the renderer nothing to shrink towards;
    *  3. `allowFontScaling={false}` — this is text locked inside geometry, and
    *     the skill's own rule is that such text does not scale. The LABEL beside
    *     the ring carries the same count in words and does scale, so nothing is
    *     lost to a reader who needs larger type.
+   *
+   * **It is CENTRED BY THE SLOT, not by a line height.** This was an
+   * `absoluteFill` box with `lineHeight: RING`, i.e. a 17 pt glyph asked to
+   * float in a 52 pt line box — but iOS puts a line's extra leading ABOVE its
+   * glyphs, so the digit sat low in the circle rather than in the middle of it,
+   * by an amount that changed with the size `digitStyle` picked and again with
+   * whatever `adjustsFontSizeToFit` did on top. The slot already centres its
+   * children on both axes; letting it do that puts the digit in the middle at
+   * every size, and the canvas above is out of flow so there is nothing for it
+   * to be centred against.
    */
   ringValue: {
-    ...StyleSheet.absoluteFill,
     ...readingStyle('600'),
-    fontSize: type.subhead.fontSize,
-    lineHeight: RING,
+    width: RING_INNER,
     textAlign: 'center',
     color: color.textPrimary,
   },

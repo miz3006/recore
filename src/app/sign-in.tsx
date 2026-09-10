@@ -1,12 +1,12 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
 import { Eyebrow } from '@/components/primitives';
-import { ProviderButton } from '@/components/provider-button';
+import { AppleSignInButton, GoogleSignInButton } from '@/components/provider-button';
 import { signInAsDeveloper } from '@/lib/auth/dev-sign-in';
 import {
   signInWithApple,
@@ -14,24 +14,54 @@ import {
   SignInCancelledError,
 } from '@/lib/auth/sign-in';
 import { isSupabaseConfigured } from '@/lib/env';
+import type { LegalDocId } from '@/lib/legal';
 import { devLog } from '@/lib/log';
 import { getName } from '@/lib/prefs';
-import { color, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { color, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 
 /**
- * Sign in — now the LAST step of the funnel (2026-07-23 redesign), not the
- * front door. The user has personalized their ledger and picked a plan; this
- * screen turns that into a real account so the trial can start and the setup is
- * backed up. Framed as reward, never a toll gate. Providers are the real ones
- * wired today: Apple and Google.
+ * Sign in — the LAST step of the funnel (2026-07-23 redesign), not the front
+ * door. The user has personalised their ledger and picked a plan; this screen
+ * turns that into a real account so the trial can start and the setup is backed
+ * up. Framed as reward, never a toll gate. Providers are the real ones wired
+ * today: Apple and Google.
  *
- * Both now wear their owners' buttons (`components/provider-button.tsx`, 28
- * August 2026) rather than the app's blue CTA and its tinted companion. The
- * header comment used to claim "Apple (primary ink-fill) and Google (bordered
- * secondary)" while the code rendered two shades of Recore blue; it is true
- * now. Auth logic (PKCE, busy/error states) is unchanged.
+ * ## The 9 September 2026 pass: native iOS, and a layout that survived nobody
  *
- * **Apple and Google are the whole list, and that is a decision, not a gap.**
+ * The owner asked for a screen that reads as native iOS. Two separate things
+ * were wrong, and only one of them was taste.
+ *
+ * **The layout was broken, and a screenshot proved it.** The device this app is
+ * reviewed on runs iOS at `AccessibilityXL`. At that setting the old tree —
+ * a fixed-height `SafeAreaView` column with `hero: { flex: 1 }` between a
+ * wordmark and a pinned bottom block — did what an overflowing centred flex
+ * child always does: it overflowed in BOTH directions. The eyebrow printed on
+ * top of the wordmark, the subline was sliced in half by the Apple button
+ * ("no passwords, no" and then nothing), and the development block ran off the
+ * bottom of the screen with no way to reach it. None of that was visible at the
+ * default text size, which is why it shipped. **The screen scrolls now** — one
+ * `ScrollView` with `flexGrow: 1` and `justifyContent: 'space-between'`, so it
+ * still sits hero-high-and-buttons-low when there is room and simply becomes a
+ * scrolling page when there is not. `HIG`'s rule, and the design skill's:
+ * a screen that can overflow is a scroll view, always.
+ *
+ * **The Apple button was a drawing of Apple's button.** It is Apple's own
+ * `ASAuthorizationAppleIDButton` now — see `components/provider-button.tsx` for
+ * what that changes, the short version being that the mark, the metrics and the
+ * LANGUAGE now come from the OS instead of from an English literal in this
+ * file. On a Slovenian phone the old one was simply in the wrong language.
+ *
+ * **Legal attribution was missing and every reference screen has it.** Ten
+ * shipping sign-in screens were read for this pass (ChatGPT, Roame, Artie,
+ * Avenza, Widgetable, Poke Genie, Photoroom, Notability, Bring!, Airlearn); the
+ * near-universal shape is provider buttons in a bottom stack over one line of
+ * terms-and-privacy microcopy. Recore had the buttons and not the line, while
+ * `/legal` has carried both documents since PLAN A3. They are linked here now,
+ * which is also what App Review looks for on the screen that creates an
+ * account.
+ *
+ * ## Apple and Google are the whole list, and that is a decision, not a gap.
+ *
  * There is no email/password path and none is required: App Store guideline
  * 4.8 asks that an app offering a third-party login (Google) also offer a
  * privacy-equivalent one, and Sign in with Apple IS that option — it does not
@@ -57,26 +87,19 @@ import { color, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme
  * not "Apple is unavailable", it is a screen that looks broken, and the same
  * silence would hide a genuinely misconfigured build.
  *
- * So availability is a THREE-state now — probing, present, absent — and the
- * absent state prints a line where the button would have been. The reason it
- * gives is the true one for the environment it is in: in development the module
- * is missing from the runtime (Expo Go), and in a release build on an iPhone
- * the only way to reach this branch at all is a device that cannot offer it.
- * `probing` renders nothing rather than a placeholder — the native call answers
- * in a frame or two, and a note that flashes and vanishes is worse than a
- * moment of nothing.
- *
- * NOTHING ABOUT THE AUTH LOGIC MOVED. `lib/auth/sign-in.ts` is untouched; both
- * providers do exactly what they did.
+ * So availability is a THREE-state — probing, present, absent — and the absent
+ * state prints a line where the button would have been. `probing` renders
+ * nothing rather than a placeholder — the native call answers in a frame or two,
+ * and a note that flashes and vanishes is worse than a moment of nothing.
  *
  * A fabricated `<Rating score={4.9} countLabel="loved by early lifters" />` sat
  * under the subline until 28 July. There are no real reviews (§12.1), so it was
  * deleted here for the same reason it was deleted from the paywall and the
- * onboarding ready screen — PLAN A1 named only those two, and this third call
- * site was found by its own acceptance grep. The space is not refilled.
+ * onboarding ready screen. The space is not refilled.
  */
 export default function SignIn() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   /**
    * WHERE TO GO ONCE THE SESSION LANDS, and only the paywall's DEV·SKIP sets it.
    *
@@ -146,33 +169,48 @@ export default function SignIn() {
     }
   };
 
-  return (
-    <SafeAreaView style={styles.root}>
-      <FadeSlideIn>
-        <Text style={styles.wordmark} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          Recore
-        </Text>
-      </FadeSlideIn>
+  const openLegal = (doc: LegalDocId) => router.push({ pathname: '/legal', params: { doc } });
 
-      <View style={styles.hero}>
-        <Stagger initialDelay={120} step={80} distance={14}>
-          <Eyebrow tone="secondary">Last step</Eyebrow>
-          <Text style={styles.headline} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {name ? `Save your ledger,\n${name}.` : 'Save your ledger\nfor good.'}
+  return (
+    <ScrollView
+      style={styles.root}
+      // The whole reason this is a scroll view: at an accessibility text size
+      // the content is taller than the window, and the old fixed column dealt
+      // with that by overlapping itself. `flexGrow` keeps the roomy layout when
+      // there IS room; `space-between` is what pins the buttons low without a
+      // second, absolutely-positioned tree.
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xxl },
+      ]}
+      contentInsetAdjustmentBehavior="never"
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled">
+      <View style={styles.top}>
+        <FadeSlideIn>
+          <Text style={styles.wordmark} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            Recore
           </Text>
-          <Text style={styles.sub} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            Create your free account to start the trial and back up everything you just set up. It
-            syncs to every iPhone — no passwords, no charge today.
-          </Text>
-        </Stagger>
+        </FadeSlideIn>
+
+        <View style={styles.hero}>
+          <Stagger initialDelay={120} step={80} distance={14}>
+            <Eyebrow tone="secondary">Last step</Eyebrow>
+            <Text style={styles.headline} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {name ? `Save your ledger,\n${name}.` : 'Save your ledger\nfor good.'}
+            </Text>
+            <Text style={styles.sub} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              Create your free account to start the trial and back up everything you just set up. It
+              syncs to every iPhone — no passwords, no charge today.
+            </Text>
+          </Stagger>
+        </View>
       </View>
 
       <View style={styles.bottom}>
         <View style={styles.buttons}>
           {apple === 'present' ? (
-            <ProviderButton
-              provider="apple"
-              label="Sign in with Apple"
+            <AppleSignInButton
               onPress={() => void run('apple', signInWithApple)}
               disabled={busy !== null}
               loading={busy === 'apple'}
@@ -188,8 +226,7 @@ export default function SignIn() {
             </Text>
           ) : null}
 
-          <ProviderButton
-            provider="google"
+          <GoogleSignInButton
             label="Continue with Google"
             onPress={() => void run('google', signInWithGoogle)}
             disabled={busy !== null}
@@ -206,10 +243,22 @@ export default function SignIn() {
         </Text>
 
         {error ? (
-          <Text style={styles.error} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          <Text
+            style={styles.error}
+            accessibilityLiveRegion="polite"
+            maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {error}
           </Text>
         ) : null}
+
+        {/* The line every reference screen carries and this one did not. Both
+            documents already exist at `/legal`; nothing here is a new promise. */}
+        <Text style={styles.legal} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          By continuing you agree to the{' '}
+          <LegalLink label="Terms of Use" onPress={() => openLegal('terms')} />
+          {' and '}
+          <LegalLink label="Privacy Policy" onPress={() => openLegal('privacy')} />.
+        </Text>
 
         {/* THE DEVELOPMENT DOOR. `__DEV__` is a compile-time constant, so this
             whole branch is deleted from a release bundle — see
@@ -244,7 +293,29 @@ export default function SignIn() {
           </Text>
         ) : null}
       </View>
-    </SafeAreaView>
+    </ScrollView>
+  );
+}
+
+/**
+ * One legal document, as a link inside a running sentence.
+ *
+ * A nested `Pressable` would break the line box, so this is a `Text` with its
+ * own `onPress` — which is what keeps "Terms of Use" wrapping with the words
+ * around it instead of becoming an island. `hitSlop` buys back the target the
+ * HIG asks for without setting a line height nobody wants: the text is 13 pt
+ * and the tappable area around it is not.
+ */
+function LegalLink({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Text
+      style={styles.legalLink}
+      onPress={onPress}
+      accessibilityRole="link"
+      accessibilityLabel={label}
+      suppressHighlighting={false}>
+      {label}
+    </Text>
   );
 }
 
@@ -275,22 +346,29 @@ const styles = StyleSheet.create({
     // The canvas — this was the last full-screen `surface` in the app, and a
     // white page beside a cream one is the seam v6 exists to remove.
     backgroundColor: color.canvas,
+  },
+  content: {
+    flexGrow: 1,
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.xxl,
+    // Breathing room between the hero and the buttons once the page is tall
+    // enough to scroll and `space-between` has nothing left to distribute.
+    gap: spacing.xxl,
+  },
+  top: {
+    gap: spacing.xxl,
   },
   wordmark: {
     fontSize: type.headline.fontSize,
     fontWeight: '700',
     letterSpacing: -0.3,
     color: color.textPrimary,
-    marginTop: spacing.md,
     // A minimum, not a height: at a large text setting a fixed box crops the
     // word inside it.
     minHeight: moderateScale(44),
     textAlignVertical: 'center',
   },
   hero: {
-    flex: 1,
-    justifyContent: 'center',
     gap: spacing.md,
   },
   headline: {
@@ -302,7 +380,6 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
   },
   bottom: {
-    paddingBottom: spacing.xxl,
     gap: spacing.md,
   },
   buttons: {
@@ -327,6 +404,16 @@ const styles = StyleSheet.create({
     ...type.caption,
     color: color.error,
   },
+  legal: {
+    ...type.caption,
+    color: color.textMuted,
+  },
+  /** Brand blue, the one colour that means "this is a link" app-wide. */
+  legalLink: {
+    ...type.caption,
+    color: color.brand,
+    fontWeight: '600',
+  },
   /** Development only, and it looks it: below everything, behind a rule, in
    * muted ink. It is a tool, not a third way to sign in. */
   devBlock: {
@@ -339,7 +426,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   devRow: {
-    minHeight: moderateScale(44),
+    minHeight: HIT,
     justifyContent: 'center',
   },
   devLabel: {

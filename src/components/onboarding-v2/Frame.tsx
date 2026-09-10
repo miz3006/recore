@@ -1,11 +1,21 @@
-import { type ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { type ReactNode, useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  type LayoutChangeEvent,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
 import { tap } from '@/lib/haptics';
 import { Enter, SpringBar } from '@/lib/motion/index';
-import { MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import { alpha, color, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 
 import { ContinueButton } from './ContinueButton';
 import { v2color, v2metrics } from './tokens';
@@ -79,6 +89,18 @@ export function Frame({
   testID?: string;
 }) {
   const insets = useSafeAreaInsets();
+  /**
+   * THE FOOTER MEASURES ITSELF, AND THE LIST GETS ITS HEIGHT BACK AS PADDING.
+   *
+   * It used to be a constant — `spacing.xxxl`, 48 pt — against a footer that is
+   * the CTA (50) plus its padding plus the home indicator, and on screens 1 and
+   * 15 the result was visible in a screenshot: the last option row and the
+   * ledger card were both sliced in half at the footer's top edge with nowhere
+   * left to scroll. A guessed clearance cannot be right on two screens at once,
+   * because the footer's height moves with Dynamic Type, with the safe area,
+   * and with whether there is a text link under the button.
+   */
+  const [footerHeight, setFooterHeight] = useState(0);
 
   const body = (
     <>
@@ -163,21 +185,56 @@ export function Frame({
       {scroll ? (
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={styles.scrollBody}
+          contentContainerStyle={[
+            styles.scrollBody,
+            { paddingBottom: avoidKeyboard ? spacing.xxxl : footerHeight + EDGE_FADE },
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled">
           {body}
         </ScrollView>
       ) : (
-        <View style={[styles.flex, styles.scrollBody]}>{body}</View>
+        <View style={[styles.flex, styles.scrollBody, styles.contentPad]}>{body}</View>
       )}
+
+      {/* THE SCROLL EDGE, POINTING DOWN.
+          `scroll-edge.tsx` states the argument for the top of a screen and it
+          is the same one here: content that keeps going under a pinned bar must
+          be TAKEN OVER by the background, never cut. What sat here before was a
+          hairline — a dead flat line with a half-height option row above it —
+          which is the exact "app with a lid on it" that file was written to
+          remove. Same instrument, same paper colour, mirrored.
+
+          It is a SIBLING of the footer rather than a child of it, sitting on
+          the footer's measured height. A child positioned at `bottom: 100%`
+          renders outside its parent's box, which iOS draws and Android clips —
+          the kind of difference that is invisible until the one day somebody
+          opens the flow on a Pixel. */}
+      {(cta || footerLink) && !avoidKeyboard ? (
+        <LinearGradient
+          colors={[alpha(color.canvas, 0), color.canvas]}
+          style={[styles.edge, { bottom: footerHeight }]}
+          pointerEvents="none"
+        />
+      ) : null}
 
       {cta || footerLink ? (
         <View
           style={[
             styles.footer,
+            // THE OVERLAY IS OFF WHILE THE KEYBOARD IS BEING AVOIDED.
+            // `KeyboardAvoidingView` moves its content by growing its own
+            // bottom padding, and an absolutely positioned child is laid out
+            // against the box that padding is inside — so a pinned footer stays
+            // where it was and the keyboard covers it. Verified on the
+            // simulator: the name screen's Continue button vanished behind the
+            // keyboard the moment the footer went absolute. The two screens
+            // that avoid the keyboard also have nothing to scroll behind the
+            // button, so they lose nothing by keeping it in flow.
+            avoidKeyboard ? styles.footerInFlow : styles.footerPinned,
             { paddingBottom: (avoidKeyboard ? spacing.md : insets.bottom) + spacing.md },
-          ]}>
+          ]}
+          onLayout={(e: LayoutChangeEvent) => setFooterHeight(e.nativeEvent.layout.height)}>
           {cta ? (
             <ContinueButton
               label={cta.label}
@@ -221,6 +278,10 @@ export function Frame({
   );
 }
 
+/** How far the paper reaches up over the list before the pinned CTA. Matches
+ * `EDGE_FADE` in `scroll-edge.tsx` — one fade depth for the whole app. */
+const EDGE_FADE = spacing.xxl;
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: v2color.canvas },
   flex: { flex: 1 },
@@ -244,7 +305,6 @@ const styles = StyleSheet.create({
   scrollBody: {
     paddingHorizontal: v2metrics.gutter,
     paddingTop: spacing.xxl,
-    paddingBottom: spacing.xxxl,
     flexGrow: 1,
   },
   /**
@@ -278,13 +338,38 @@ const styles = StyleSheet.create({
   centredText: { textAlign: 'center' },
   content: { marginTop: v2metrics.headlineGap },
   contentBare: { flex: 1 },
+  /**
+   * PINNED OVER THE LIST, NOT PARKED BELOW IT.
+   *
+   * `scroll-edge.tsx` states the contract for the top of a screen — *"the
+   * scroll view runs the full height of the screen, under the header; the
+   * header is an overlay, not a row"* — and the bottom of this frame matches it
+   * now. In flow, the CTA was a row that SHORTENED the list, so the last option
+   * ended at a flat edge with the button sitting under it; as an overlay, the
+   * list keeps going behind the button and the paper takes it over on the way
+   * (`edge`). The list pays for the overlay in `paddingBottom` — the footer's
+   * measured height plus the fade — so nothing is ever parked underneath and
+   * unreachable.
+   *
+   * `footerPinned` / `footerInFlow` is the one exception, and the call site
+   * says why: a `KeyboardAvoidingView` cannot move an absolutely positioned
+   * child.
+   */
   footer: {
     paddingHorizontal: v2metrics.gutter,
     paddingTop: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: v2color.border,
     backgroundColor: v2color.canvas,
-    ...Platform.select({ ios: {}, default: {} }),
+  },
+  footerPinned: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  footerInFlow: {},
+  contentPad: { paddingBottom: spacing.xxxl },
+  /** Sits on top of the footer's measured height, so the paper arrives before
+   * the button does rather than starting at it. */
+  edge: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: EDGE_FADE,
   },
   footerLink: { alignSelf: 'center', paddingVertical: spacing.md, marginTop: spacing.xs },
   footerLinkLabel: { ...type.subhead, color: v2color.blue, fontWeight: '600' },

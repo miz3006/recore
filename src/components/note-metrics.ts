@@ -45,6 +45,26 @@ export const GUTTER_WIDTH = Math.round(NOTE_FONT_SIZE * osFontScale * 6.5);
 /** Gap between the wrapping left text and the gutter column. */
 export const GUTTER_GAP = spacing.md;
 
-/** One horizontal padding token, applied on every screen edge (task §2). */
-export const BODY_PADDING_H = spacing.xxl; // 24
+/**
+ * THE PAGE'S ONE LEFT EDGE — and since 9 September 2026 it is not a choice.
+ *
+ * It was `spacing.xxl` (24) for as long as Today drew its own header row. Today
+ * now hangs off the system's collapsing large title
+ * (`app/(tabs)/today/_layout.tsx`), and **a large title hangs off UIKit's own
+ * layout margin**, which is 16. Content 8 pt further in would give the page two
+ * left edges — Next puts it exactly this way: *"small enough to look like a
+ * rendering artefact and large enough to see."* All three system-navigator tabs
+ * are on the same number for the same reason, and nothing adds to it.
+ */
+export const BODY_PADDING_H = spacing.lg; // 16 — UIKit's own layout margin
+
+/**
+ * The gap above the first thing on the page.
+ *
+ * ZERO on Today, and deliberately: `contentInsetAdjustmentBehavior="automatic"`
+ * hands the top inset to UIKit, which already leaves the large title's own
+ * space — and the dateline HUGS the title, because a title and its supporting
+ * line are one block. It stays exported for the surfaces that lay the note's
+ * body out themselves (the onboarding demo's frame).
+ */
 export const BODY_PADDING_TOP = spacing.lg; // 16

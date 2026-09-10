@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { PressScale } from '@/lib/motion/index';
 import { MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
 
+import { SelectMark } from './SelectMark';
 import { v2color, v2radius } from './tokens';
 
 /**
@@ -74,18 +75,29 @@ export function GhostRow({
         accessibilityState={multi ? { checked: selected } : { selected }}
         style={styles.press}>
         <View style={[styles.row, selected && styles.rowSelected]}>
-          <Text
-            style={[styles.label, selected && styles.labelSelected]}
-            maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {label}
-          </Text>
-          {sub ? (
+          <View style={styles.text}>
             <Text
-              style={[styles.sub, selected && styles.subSelected]}
+              style={[styles.label, selected && styles.labelSelected]}
               maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {sub}
+              {label}
             </Text>
-          ) : null}
+            {sub ? (
+              <Text
+                style={[styles.sub, selected && styles.subSelected]}
+                maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {sub}
+              </Text>
+            ) : null}
+          </View>
+          {/* THE SELECTION CONTROL IS NOT PART OF THE QUIETING (9 Sep 2026).
+              A ghost row is quieter in contrast and carries no leading mark,
+              because it is outside the question's family — but it is a
+              first-class answer and it has to look like something that can be
+              chosen. Dropping the control here would have been the third time
+              this row got quieted for a reason that was really about the
+              family, and "quieter is not harder to reach" is the rule the row
+              already states about its own tap target. */}
+          <SelectMark selected={selected} multi={multi} />
         </View>
       </PressScale>
     </View>
@@ -106,11 +118,13 @@ const styles = StyleSheet.create({
     minHeight: moderateScale(52),
     borderRadius: v2radius.card,
     borderCurve: 'continuous',
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    gap: 2,
+    gap: spacing.md,
   },
+  text: { flex: 1, gap: 2 },
   rowSelected: { backgroundColor: v2color.blue },
   label: { ...type.body, fontWeight: '500', color: v2color.inkSecondary },
   labelSelected: { color: v2color.onBlue, fontWeight: '600' },

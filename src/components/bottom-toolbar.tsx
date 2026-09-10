@@ -1,7 +1,6 @@
-import { GlassContainer } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Keyboard, StyleSheet, Text, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { markFirstWorkoutFinished } from '@/lib/funnel';
@@ -33,7 +32,7 @@ import {
 import { startDictation, voiceAvailable, type DictationHandle } from '@/lib/voice';
 import { useCurrentNote, useSession } from '@/state/session-store';
 
-import { GlassSurface } from './glass';
+import { GlassGroup, GlassPressable } from './glass';
 import { Icon, glyphTint } from './icon';
 import { PressableScale } from './motion';
 import { revealReceipt } from './note-focus';
@@ -47,10 +46,34 @@ import { revealReceipt } from './note-focus';
  *   [ 4 staged · 3 240 kg ]                          ← a glass pill, the number
  *   ( timer ) ( mic ) ( hide kb )            [ Finish ]
  *
- * The material is `GlassSurface` — the system's Liquid Glass where it exists,
- * the app's warm paper everywhere else, and **no tint either way** for the same
+ * The material is `glass.tsx` — the system's Liquid Glass where it exists, the
+ * app's warm paper everywhere else, and **no tint either way** for the same
  * reason §4 sets none on the tab bar: glass recolours itself against what is
  * behind it, and a fixed hex goes illegible over some content.
+ *
+ * ## THE ROW IS ONE INSTRUMENT NOW (9 September 2026)
+ *
+ * Two upgrades landed with the iOS 26 pass, and both are things only the real
+ * material can do:
+ *
+ * **The three rounds are `GlassPressable`, so they take the interactive lens** —
+ * the glass bends and tracks the thumb across each shape instead of only
+ * dipping. These buttons sit over the system keyboard, which is the busiest
+ * ground in the app, and a control that reacts like the keys beside it stops
+ * reading as a foreign overlay.
+ *
+ * **The row is a `GlassGroup`, so the shapes MERGE.** Within
+ * `GLASS_MERGE_DISTANCE` the timer, the mic and the hide-keyboard button stop
+ * being three circles and become one piece of glass that stretches between them
+ * — which is the truth about them: they are the three things that help you
+ * write, and the rest timer growing a label ("rest 2:41") now visibly flows into
+ * its neighbours instead of shoving them. The group replaced a raw
+ * `GlassContainer`, which had no fallback of its own and would have kept
+ * containing glass for a user who had turned transparency down.
+ *
+ * Finish is deliberately outside both effects: it is solid brand with the app's
+ * one coloured shadow, it is the committed action, and it may not soften into
+ * the row it is meant to stand apart from.
  *
  * ## Colour is on the GLYPHS now, and on nothing else (v6, 20 Aug 2026)
  *
@@ -292,14 +315,14 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
   return (
     <View style={[styles.wrap, { paddingBottom: bottomInset }]}>
       {status ? (
-        <Pressable
-          onPress={() => {
-            tap();
-            router.push('/progress');
-          }}
+        <GlassPressable
+          onPress={() => router.push('/progress')}
           hitSlop={spacing.xs}
-          style={({ pressed }) => [styles.statusPill, pressed && styles.pressedDim]}>
-          <GlassSurface radius={radius.pill} />
+          activeScale={0.98}
+          radius={radius.pill}
+          style={styles.statusPill}
+          contentStyle={styles.statusPillContent}
+          accessibilityLabel={`${status}. Open progress`}>
           <Text
             style={styles.statusText}
             numberOfLines={1}
@@ -308,20 +331,22 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
             maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {status}
           </Text>
-        </Pressable>
+        </GlassPressable>
       ) : null}
 
-      <GlassContainer spacing={GLASS_MERGE_DISTANCE} style={styles.row}>
+      <GlassGroup style={styles.row}>
         <RestTimer />
 
-        <PressableScale
+        <GlassPressable
           onPress={() => void handleMic()}
           haptic="none"
           activeScale={0.92}
-          style={[styles.round, recording && styles.roundActive]}
-          accessibilityRole="button"
+          radius={ROUND / 2}
+          style={styles.round}
+          contentStyle={styles.roundContent}
+          // Listening = the app has taken the button over: solid ink, no glass.
+          solidFill={recording ? color.accent : undefined}
           accessibilityLabel={recording ? 'Stop dictation' : 'Dictate'}>
-          {recording ? null : <GlassSurface radius={ROUND / 2} />}
           {/* Outline at rest, FILLED while it listens — the glyph carries the
               state, not only the ink circle behind it (`note`/`note-on` set
               the pattern). */}
@@ -330,21 +355,21 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
             size={moderateScale(18)}
             tint={recording ? color.onInk : glyphTint('mic')}
           />
-        </PressableScale>
+        </GlassPressable>
 
         {/* The last of the three, and the row no longer has a member that
             comes and goes (the plan button did) — so nothing here ever moves
             under the thumb mid-session. */}
-        <PressableScale
+        <GlassPressable
           onPress={handleHideKeyboard}
           haptic="none"
           activeScale={0.92}
+          radius={ROUND / 2}
           style={styles.round}
-          accessibilityRole="button"
+          contentStyle={styles.roundContent}
           accessibilityLabel="Hide keyboard">
-          <GlassSurface radius={ROUND / 2} />
           <Icon name="keyboard-hide" size={moderateScale(18)} tint={glyphTint('keyboard-hide')} />
-        </PressableScale>
+        </GlassPressable>
 
         <PressableScale
           disabled={!canFinish}
@@ -364,7 +389,7 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
             Finish session
           </Text>
         </PressableScale>
-      </GlassContainer>
+      </GlassGroup>
     </View>
   );
 }
@@ -447,17 +472,18 @@ function RestTimer() {
         : null;
 
   return (
-    <PressableScale
+    <GlassPressable
       onPress={handlePress}
       onLongPress={handleLongPress}
       haptic="none"
       activeScale={0.92}
-      style={[styles.round, label !== null && styles.roundLabelled, go && styles.roundActive]}
-      accessibilityRole="button"
+      radius={ROUND / 2}
+      style={styles.round}
+      contentStyle={[styles.roundContent, label !== null && styles.roundLabelled]}
+      // Finished = the app spoke: solid ink, no glass. Running is still glass —
+      // a countdown is the control doing its job, not the app interrupting.
+      solidFill={go ? color.accent : undefined}
       accessibilityLabel="Rest timer">
-      {/* Running or finished, the button carries its own ink fill — the glass
-          layer would sit on top of it and wash it out. */}
-      {go ? null : <GlassSurface radius={ROUND / 2} />}
       {label !== null ? (
         <Text
           style={[styles.roundText, lastTen && styles.roundTextFirm, go && styles.roundTextGo]}
@@ -467,7 +493,7 @@ function RestTimer() {
       ) : (
         <Icon name="timer" size={moderateScale(18)} tint={glyphTint('timer')} />
       )}
-    </PressableScale>
+    </GlassPressable>
   );
 }
 
@@ -476,9 +502,6 @@ const ROUND = HIT;
 /** Long enough for the receipt to scroll into view and be read as a receipt,
  * short enough to still belong to the same gesture. */
 const REVIEW_PROMPT_DELAY_MS = 1400;
-/** How close two glass shapes have to be before iOS lets them merge. */
-const GLASS_MERGE_DISTANCE = spacing.md;
-
 const styles = StyleSheet.create({
   // No bar: the shapes FLOAT over the keyboard. No background, no top border —
   // that strip is what the reference replaced, and glass needs something behind
@@ -491,13 +514,11 @@ const styles = StyleSheet.create({
   statusPill: {
     alignSelf: 'flex-start',
     maxWidth: '100%',
+  },
+  statusPillContent: {
     minHeight: moderateScale(30),
     justifyContent: 'center',
     paddingHorizontal: spacing.md + 2,
-    borderRadius: radius.pill,
-  },
-  pressedDim: {
-    opacity: 0.6,
   },
   statusText: {
     ...readingStyle('400'),
@@ -510,18 +531,16 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   round: {
+    minWidth: ROUND,
+  },
+  roundContent: {
     height: ROUND,
     minWidth: ROUND,
-    borderRadius: ROUND / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   roundLabelled: {
     paddingHorizontal: spacing.md,
-  },
-  // Listening / finished = the app spoke: solid ink fill, paper glyph.
-  roundActive: {
-    backgroundColor: color.accent,
   },
   roundText: {
     ...readingStyle('600'),

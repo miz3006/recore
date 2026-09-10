@@ -13,7 +13,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { character as characterSpring, REDUCED_FADE_MS } from '@/lib/motion/index';
-import { moderateScale } from '@/lib/theme';
+import { alpha, color, moderateScale } from '@/lib/theme';
 
 import { ART } from './character-art';
 import { characterFor } from './characters';
@@ -143,10 +143,17 @@ const styles = StyleSheet.create({
     borderColor: v2color.blue,
     // Three of the four edges are nearly transparent, so a full turn reads as
     // one bright arc travelling round rather than as a spinning circle.
+    //
+    // DERIVED, NOT TYPED. These three were `rgba(0,122,255,0.16)` — the blue
+    // spelled out by hand, which is the one thing recore-design forbids
+    // outright ("no file may name a blue literal"). It was correct for exactly
+    // as long as `brand` happened to be `#007AFF`: the day the palette moves,
+    // a hand-typed literal is a ring that quietly keeps the old blue while the
+    // CTA two inches below it has the new one.
     borderTopColor: v2color.blue,
-    borderRightColor: 'rgba(0,122,255,0.16)',
-    borderBottomColor: 'rgba(0,122,255,0.16)',
-    borderLeftColor: 'rgba(0,122,255,0.16)',
+    borderRightColor: alpha(color.brand, 0.16),
+    borderBottomColor: alpha(color.brand, 0.16),
+    borderLeftColor: alpha(color.brand, 0.16),
   },
   ringInner: { alignItems: 'center', justifyContent: 'center' },
 });
