@@ -93,6 +93,29 @@ export function briefProse(brief: Brief): string {
     );
   }
 
+  /**
+   * §9's fourth question, answered at last: *"is there one recovery, energy, or
+   * reflection pattern the person themselves reported?"*
+   *
+   * The check-in's chips have been stored since 17 August and read by nothing.
+   * This is the whole of making them count, and it is deliberately the smallest
+   * possible sentence: their own words in their own quotation marks, a tally,
+   * and a full stop.
+   *
+   * WHAT IT MUST NEVER GROW INTO. Not "which is why bench has stalled" — §9.1
+   * forbids claiming causation from a reflection. Not "consider a deload" — a
+   * reflection may not move a load or prescribe anything. Not "you have slept
+   * badly three times" — the app does not know how anybody slept; it knows
+   * which button they tapped. The verb is `marked` for that reason, and the
+   * quotation marks are doing real work.
+   */
+  if (brief.tagPattern) {
+    const p = brief.tagPattern;
+    parts.push(
+      `You marked "${p.tag.toLowerCase()}" after ${p.count} of your last ${p.of} sessions.`,
+    );
+  }
+
   // §9's close: one useful thing to watch, looking forward. The stall carries
   // its own consequence here — the engine's deload rule, shown one session
   // early — so the fact sentence above stays a fact and this one stays advice

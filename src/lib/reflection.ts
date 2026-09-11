@@ -150,6 +150,75 @@ export function splitReflection(stored: string | null | undefined): {
 }
 
 /**
+ * THE ONE THING A CHIP IS ALLOWED TO ADD UP TO (owner, 10 September 2026).
+ *
+ * The chips were write-only for three weeks: a tap stored a word, the day
+ * printed it back, and no other surface in the app had ever heard of it.
+ * "Slept badly" three sessions running was a fact the athlete had told us and
+ * the app could not repeat. §9 lists exactly this among the questions the brief
+ * answers — *"is there one recovery, energy, or reflection pattern the person
+ * themselves reported?"* — and this is the arithmetic behind that sentence.
+ *
+ * WHAT IT MAY SAY, and the boundary is the whole design. It counts a word the
+ * athlete CHOSE, over a window the code fixed, and stops. It is co-occurrence
+ * with nothing attached: "you marked this after three of your last five
+ * sessions" is a tally of their own taps. §9.1 forbids claiming causation from
+ * a reflection ("you performed worse because you slept badly"), §8.1 forbids
+ * reading one as a health assessment, and no caller may join this to a number.
+ *
+ * TWO IS THE FLOOR. One tap is a day, not a pattern, and an app that says
+ * "you marked short on time after 1 of your last 5 sessions" has mistaken a
+ * record for an observation.
+ *
+ * The window is SESSIONS, not sessions-with-a-reflection: a session nobody
+ * marked genuinely is a session they did not mark it in, and moving the
+ * denominator to flatter the count would make the sentence say more than the
+ * record does.
+ */
+export const MIN_TAG_PATTERN_COUNT = 2;
+
+export interface TagPattern {
+  /** The chip's own words, exactly as the athlete tapped them. */
+  tag: string;
+  /** Sessions in the window carrying it. */
+  count: number;
+  /** Sessions in the window, marked or not — the honest denominator. */
+  of: number;
+}
+
+/**
+ * The single strongest tag across recent sessions, newest first, or null.
+ *
+ * `stored` is one entry per SESSION examined — the raw reflection column, with
+ * null for the sessions that carry none. Ties go to the tag seen most recently,
+ * because between two equal counts the live one is the one worth mentioning.
+ */
+export function tagPattern(stored: readonly (string | null | undefined)[]): TagPattern | null {
+  const of = stored.length;
+  if (of === 0) return null;
+
+  const counts = new Map<string, { count: number; latest: number }>();
+  stored.forEach((value, i) => {
+    for (const tag of splitReflection(value).tags) {
+      const seen = counts.get(tag);
+      if (seen) seen.count += 1;
+      else counts.set(tag, { count: 1, latest: i });
+    }
+  });
+
+  let best: TagPattern | null = null;
+  let bestLatest = Infinity;
+  for (const [tag, { count, latest }] of counts) {
+    if (count < MIN_TAG_PATTERN_COUNT) continue;
+    if (best === null || count > best.count || (count === best.count && latest < bestLatest)) {
+      best = { tag, count, of };
+      bestLatest = latest;
+    }
+  }
+  return best;
+}
+
+/**
  * Clean a typed reflection for storage, or return null when there is nothing to
  * store.
  *

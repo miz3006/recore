@@ -293,16 +293,33 @@ export default function OnboardingV2Step() {
 /**
  * LEAVE THE FUNNEL FOR THE DISPATCHER.
  *
- * Two calls, because this flow is a NESTED stack (`onboarding-v2/_layout.tsx`)
- * and `replace` alone acts on the navigator it is called in: the twenty screens
- * would still be sitting under the paywall, reachable with a back swipe from the
- * one screen in the app that must not be escapable backwards. `dismissAll`
- * unwinds them first; the `replace` then hands the root over to `/`, which sends
- * a new person to the paywall and an entitled replay back to Today.
+ * It has to UNWIND rather than replace, because this flow is a NESTED stack
+ * (`onboarding-v2/_layout.tsx`): a bare `replace` swaps the top screen and
+ * leaves the twenty underneath, reachable with a back swipe from the one screen
+ * in the app that must not be escapable backwards. `dismissTo('/')` pops them
+ * off and hands the root over to `/`, which sends a new person to the paywall
+ * and an entitled replay back to Today.
+ *
+ * IT USED TO BE `dismissAll()` FOLLOWED BY `replace('/')`, and that pair is what
+ * printed "The action 'POP_TO_TOP' was not handled by any navigator"
+ * (10 September 2026). Two separate faults, both of them in `dismissAll`:
+ *
+ * · It queues a RAW `POP_TO_TOP`, dispatched when the routing queue flushes a
+ *   render later — but `canDismiss()` answered from the state at CALL time. A
+ *   sign-in lands between the two: the session flips the `Stack.Protected`
+ *   guards in `app/_layout.tsx`, `sign-in` is unregistered and `(tabs)`
+ *   registered, and the pop reaches a root stack with nothing left to pop.
+ * · A raw pop is delivered to the INNERMOST focused navigator. Called from
+ *   inside this nested stack it popped these twenty screens back to screen 1
+ *   instead of unwinding the root at all; only the `replace` behind it hid that.
+ *
+ * `dismissTo` has neither. It queues a ROUTER_LINK, which expo-router resolves
+ * against the live tree at flush time and targets at the navigator that owns
+ * `/` — popping to the dispatcher when it is still on the stack, and replacing
+ * the current screen with it when it is not.
  */
 function leaveForDispatcher(router: ReturnType<typeof useRouter>): void {
-  if (router.canDismiss()) router.dismissAll();
-  router.replace('/');
+  router.dismissTo('/');
 }
 
 /** A hand-typed or stale URL must never render a blank screen. */

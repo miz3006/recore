@@ -2,11 +2,18 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { getReflection, getWorkoutById, setReflection } from '@/lib/db/workouts';
+import {
+  getReflection,
+  getSessionEffort,
+  getWorkoutById,
+  setReflection,
+  setSessionEffort,
+} from '@/lib/db/workouts';
 import {
   EFFORT_CHOICE_LABEL,
   EFFORT_CHOICES,
   EFFORT_HINT,
+  effortChangesPrescription,
   effortChoiceOf,
   readEffort,
 } from '@/lib/effort';
@@ -23,6 +30,15 @@ import {
   reflectionRoomFor,
   splitReflection,
 } from '@/lib/reflection';
+import {
+  SESSION_EFFORT_CHOICES,
+  SESSION_EFFORT_HINT,
+  SESSION_EFFORT_LABEL,
+  SESSION_EFFORT_RPE,
+  sessionEffortOf,
+  sessionMinutes,
+  type SessionEffort,
+} from '@/lib/session-effort';
 import {
   color,
   hairline,
@@ -57,20 +73,31 @@ import { Segmented } from './settings-rows';
  * blank field is work; three chips against a lift you finished four minutes ago
  * is recall.
  *
- * IT CARRIES TWO THINGS, and they are stored in deliberately different places:
+ * IT CARRIES THREE THINGS, and they are stored in deliberately different
+ * places:
  *
- *  1. **How each lift felt** — three answers, not four (`lib/effort.ts`). A tap
+ *  1. **How hard the session was** — one tap, added 10 September 2026, in its
+ *     own numeric column (`lib/session-effort.ts`). It is the session-RPE
+ *     method: one rating of the whole session, which times its duration is
+ *     internal load. It costs the same one decision whether the session held
+ *     one lift or eight, which is why it is FIRST — and it is the input to no
+ *     prescription whatsoever, which is why it is not written into the note.
+ *  2. **How each lift felt** — three answers, not four (`lib/effort.ts`). A tap
  *     APPENDS `rpe 9` into the line the user wrote, so the parser reads it like
  *     any other word and the engine gets its RIR through the one path it
  *     already has. The words are the record (§3).
- *  2. **Anything worth remembering** — the reflection, in its own column on the
+ *  3. **Anything worth remembering** — the reflection, in its own column on the
  *     workout. Prose about the session, not notation inside it: appending it to
  *     `raw_text` would hand "legs felt heavy" to the parser, and a re-parse
  *     could then rewrite or lose it.
  *
- * ONLY UNRATED LIFTS ARE ASKED ABOUT. A line that already carries an RPE — one
- * the lifter typed themselves, or one marked here in an earlier visit — is not
- * asked twice. The set is FROZEN when the sheet opens (or when the parse lands,
+ * ONLY UNRATED LIFTS ARE ASKED ABOUT, AND ONLY WHERE THE ANSWER MOVES A NUMBER
+ * (10 September 2026). A line that already carries an RPE — one the lifter
+ * typed themselves, or one marked here in an earlier visit — is not asked
+ * twice; and neither is a lift whose prescription never reads RIR at all. Chin-
+ * ups progress on reps (`progressBodyweight` does not look at `rir`) and a run
+ * has no engine branch, so both used to collect an answer the app then threw
+ * away. `effortChangesPrescription` is that filter and says why. The set is FROZEN when the sheet opens (or when the parse lands,
  * if it is still in flight), so answering a row never makes it vanish under the
  * thumb mid-tap.
  *
@@ -118,6 +145,13 @@ export function CheckInSheet() {
 
   const [text, setText] = useState('');
   const [tags, setTags] = useState<string[]>([]);
+  /**
+   * The session's own rating. Held in state only so the control can show what
+   * is armed — it is WRITTEN THE MOMENT IT IS TAPPED (`chooseRating`), like the
+   * per-lift answers below and unlike the reflection, which is a draft until a
+   * door closes. One value, one write, nothing to reconcile on the way out.
+   */
+  const [rating, setRating] = useState<SessionEffort | null>(null);
   // Which lines this visit asks about — see "only unrated lifts" above. Null
   // until there is a parse to read it from.
   const [askLines, setAskLines] = useState<number[] | null>(null);
@@ -148,6 +182,7 @@ export function CheckInSheet() {
     if (!workoutId) return;
     const existing = getReflection(workoutId);
     stored.current = existing;
+    setRating(sessionEffortOf(getSessionEffort(workoutId)));
     const parts = splitReflection(existing);
     latest.current = { text: parts.text, tags: parts.tags, workoutId };
     setText(parts.text);
@@ -172,7 +207,13 @@ export function CheckInSheet() {
       for (const row of receipt.rows) {
         if (seen.has(row.line)) continue; // a run-on line is rated once
         seen.add(row.line);
-        if (readEffort(lines[row.line] ?? '') === null) next.push(row.line);
+        if (readEffort(lines[row.line] ?? '') !== null) continue;
+        // AND ONLY WHERE AN ANSWER LANDS. See `effortChangesPrescription`: a
+        // set of chin-ups and a 5 km run both used to get a question whose
+        // answer the engine never reads, and a question that changes nothing
+        // is how a sheet teaches someone to stop answering it.
+        if (!effortChangesPrescription(row.working)) continue;
+        next.push(row.line);
       }
       return next;
     });
@@ -214,12 +255,10 @@ export function CheckInSheet() {
     else if (receipt && receipt.distanceM > 0) parts.push(formatDistanceTotal(receipt.distanceM));
 
     const w = workoutId ? getWorkoutById(workoutId) : null;
-    if (w) {
-      const mins = Math.round(
-        (new Date(w.updated_at).getTime() - new Date(w.created_at).getTime()) / 60_000,
-      );
-      if (mins >= 10 && mins <= 360) parts.push(`${mins} min`);
-    }
+    // The 10–360 sanity rule moved to `session-effort.ts` when `sessionLoad`
+    // needed the identical span — two copies of it is one copy that drifts.
+    const mins = w ? sessionMinutes(w.created_at, w.updated_at) : null;
+    if (mins != null) parts.push(`${mins} min`);
     return parts.join(' · ');
     // The workout row's timestamps move with every keystroke; re-read whenever
     // the parse behind the receipt does.
@@ -290,6 +329,27 @@ export function CheckInSheet() {
     setTags((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
   };
 
+  /**
+   * Answer — or un-answer — the session question, and write it now.
+   *
+   * Tapping the armed answer again CLEARS it, the same revocability the lift
+   * rows have and the one thing a real `UISegmentedControl` will not do:
+   * nothing on this sheet is required, so every answer has to be takeable back.
+   * Clearing stores null, which is the honest state — an unrated session has no
+   * load rather than a zero (`sessionLoad`).
+   *
+   * Written immediately rather than on the way out because there is nothing to
+   * compose: one number, replacing one number. `commit` exists for the
+   * reflection, where a half-typed sentence needs a door to close before it is
+   * worth storing.
+   */
+  const chooseRating = (choice: SessionEffort) => {
+    if (!workoutId) return;
+    const next = rating === choice ? null : choice;
+    setRating(next);
+    setSessionEffort(workoutId, next ? SESSION_EFFORT_RPE[next] : null);
+  };
+
   return (
     // THE SHEET DOES NOT PAY THE HOME INDICATOR TWICE (9 September 2026).
     //
@@ -335,12 +395,42 @@ export function CheckInSheet() {
         styles.sheetContent,
         { paddingBottom: spacing.xxl },
       ]}
+      /**
+       * THE KEYBOARD IS NOT ALLOWED TO SIT ON THE ANSWER (owner, 10 September
+       * 2026).
+       *
+       * The reflection field is the LAST thing on the sheet, so on a form sheet
+       * sized to its contents the keyboard came up over it: you typed two lines
+       * and could not see either of them, and neither the chips nor the counter
+       * under the field existed any more. Nothing in the sheet moved, because
+       * nothing was tracking the keyboard — a form sheet does not lift itself.
+       *
+       * `automaticallyAdjustKeyboardInsets` hands that to the scroll view: the
+       * bottom content inset grows by the keyboard's height and UIKit scrolls
+       * the first responder into view, on the UI thread, without React knowing
+       * the keyboard exists. It is the same mechanism Today's page uses, and
+       * this is the view a form sheet has already adopted — so the inset lands
+       * on the one scroll view that can act on it.
+       */
+      automaticallyAdjustKeyboardInsets
       // A scroll puts the keyboard away, and an unhandled tap in here does too
       // ("handled" only spares taps a child actually took, so the chips and the
       // effort rows still answer on the first tap).
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       showsVerticalScrollIndicator={false}>
+      {/* ANY TAP THAT IS NOT A CONTROL PUTS THE KEYBOARD AWAY (owner, 10
+          September 2026).
+
+          The field is multiline, so its return key writes a newline rather
+          than finishing — which left the sheet with no obvious way to stop
+          typing. The head has offered one since it was drawn; this widens it
+          to the whole sheet, which is where a person's thumb actually lands.
+          It is a wrapper, not a handler on each child: a parent `Pressable`
+          only ever sees a touch no child claimed, so the chips, the segmented
+          controls, Done and the field itself all still answer on the first tap
+          and the keyboard goes on everything else. */}
+      <Pressable accessible={false} onPress={Keyboard.dismiss}>
       {/* ONE way out at the top, not two (9 September 2026).
           × and Skip both called `commitAndClose` — the SAME function, the same
           outcome, one labelled as leaving and one as declining. That is three
@@ -365,13 +455,10 @@ export function CheckInSheet() {
         </Pressable>
       </View>
 
-      {/* The sheet's own head doubles as a way to put the keyboard down. The
-          field below is MULTILINE, so its return key writes a newline rather
-          than finishing — tapping the question you are answering is the
-          nearest thing to "I am done typing", and it costs nothing. Not a
-          control to VoiceOver (`accessible={false}`): the two lines stay two
-          readable lines, and the keyboard is dismissed by the rotor there. */}
-      <Pressable accessible={false} onPress={Keyboard.dismiss}>
+      {/* The question and the session's own line. They used to carry their own
+          `Pressable` to put the keyboard down; the wrapper above does that for
+          the whole sheet now, so this is plain text again. */}
+      <View>
         <Text style={styles.title} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           How did it go?
         </Text>
@@ -380,9 +467,44 @@ export function CheckInSheet() {
             {summary}
           </Text>
         ) : null}
-      </Pressable>
+      </View>
 
       <View style={styles.body}>
+        {/* THE SESSION'S OWN QUESTION, AND IT COMES FIRST (owner, 10 September
+            2026).
+
+            It is one tap no matter how long the session was, everybody can
+            answer it, and it is about the line printed directly above it — so
+            it sits directly under that line, before the per-lift rows that
+            cost one decision each. Lyfta's finish screen carries the same
+            question ("How hard was this workout?") a row above its notes
+            field; the difference here is that it is answered in place instead
+            of opening a picker, because two taps for one number is one tap too
+            many at the end of a workout.
+
+            THE WORDS ARE NOT THE LIFT ROWS' WORDS, deliberately. Those ask how
+            close ONE set came to failure; this asks what the whole session
+            cost, which volume can make heavy at any distance from failure. Two
+            questions that read alike is how a sheet teaches someone that
+            neither one matters. `session-effort.ts` holds the scale and what
+            it is (and is not) allowed to become.
+
+            It is the SAME CONTROL as the rows below, and that is the point: one
+            grammar on the sheet — a recessed track means pick one of three, tap
+            the armed one to take it back. */}
+        <View style={styles.section}>
+          <Eyebrow tone="secondary">How hard the session was</Eyebrow>
+          <Segmented
+            options={SESSION_EFFORT_CHOICES.map((e) => ({
+              id: e,
+              label: SESSION_EFFORT_LABEL[e],
+            }))}
+            selected={rating}
+            onSelect={chooseRating}
+            labelFor={(e) => `The whole session: ${SESSION_EFFORT_LABEL[e]}, ${SESSION_EFFORT_HINT[e]}`}
+          />
+        </View>
+
         {/* The lifts, when there is parsed work left to rate. Absent entirely
             before a parse lands (the offline case) and absent when every line
             already carries an effort — the check-in below still works. */}
@@ -526,6 +648,7 @@ export function CheckInSheet() {
           You can change any of this later.
         </Text>
       </View>
+      </Pressable>
     </ScrollView>
   );
 }

@@ -1,5 +1,5 @@
 import {
-  doneKeyFor,
+  makeDoneKeyer,
   echoTextOf,
   setsLineText,
   topOfSets,
@@ -163,11 +163,15 @@ export function computeSignals(
   undone: Set<string> = new Set(),
 ): LineSignal[] {
   const signals: LineSignal[] = [];
+  // Numbered over EVERY item, before any `continue`, so the count matches the
+  // one `buildReceipt` and `applyParseResult` make of the same list.
+  const keyOf = makeDoneKeyer();
 
   for (const item of result.items) {
+    const doneKey = keyOf(item.exercise, setsLineText(item.sets) ?? '');
     const exerciseId = exerciseIdByItem.get(item);
     if (!exerciseId) continue;
-    if (undone.has(doneKeyFor(item.exercise, setsLineText(item.sets) ?? ''))) continue;
+    if (undone.has(doneKey)) continue;
 
     const current = topOfSets(item.sets);
     const { prev, prevDay, allTimeMaxWeight } = previousSessionTop(userId, exerciseId, performedAtIso);

@@ -25,6 +25,13 @@ export interface SummarizableSet {
   duration_s: number | null;
   /** Reps in reserve, when the line carried one ("bench 100x8 @2"). */
   rir?: number | null;
+  /**
+   * Index of the set this one hangs off, for a drop or myo chain. Present on
+   * `ParsedSet`; absent on the SQLite row shape, which carries the same fact as
+   * `parent_set_id` and is not read here. A row without it still marks the
+   * chain from its KIND, which is why this is optional rather than required.
+   */
+  parent?: number | null;
 }
 
 /** Working-set kinds excluded from all counted math: warm-ups (CLAUDE.md §3),
@@ -37,6 +44,32 @@ const skipped = (kind: string) => kind === 'warmup' || kind === 'drop' || kind =
  * checklist — exercise name + its sets text. Pure so it can be shared by the
  * parser, the receipt, and the store without pulling in any I/O. */
 export const doneKeyFor = (exercise: string, setText: string): string => `${exercise} ${setText}`;
+
+/**
+ * The same identity, made UNIQUE when a note repeats itself.
+ *
+ * `doneKeyFor` alone is not an identity when two cards read the same — a note
+ * that says "plank 3x60s" twice, or a circuit written out round by round,
+ * produced ONE key for both cards. Un-checking either un-checked both, and
+ * `applyParseResult` then marked both occurrences `'skipped'`: half a session
+ * quietly out of the tonnage because one of its twins was not performed. In
+ * `LiveLedger` the same string was also the React key, so the duplicate was a
+ * rendering warning as well.
+ *
+ * The FIRST occurrence keeps the plain key, so checks stored by an earlier
+ * build still match; later ones carry their number. Call the returned function
+ * once per item, in the order the items are read, and every consumer of the
+ * same result agrees.
+ */
+export function makeDoneKeyer(): (exercise: string, setText: string) => string {
+  const seen = new Map<string, number>();
+  return (exercise, setText) => {
+    const base = doneKeyFor(exercise, setText);
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    return count === 0 ? base : `${base} #${count + 1}`;
+  };
+}
 
 export function topOfSets(sets: SummarizableSet[]): SetSummary {
   let weight: number | null = null;
@@ -144,8 +177,43 @@ export function setsLineText(sets: SummarizableSet[]): string | null {
     return `${weightText} kg × ${reps.join('·')}`;
   }
 
-  // Cardio / holds / carries keep the existing top-set summary voice.
-  return echoTextOf(topOfSets(sets));
+  /**
+   * Cardio, holds and carries keep the top-set summary voice — but with EVERY
+   * metric the sets carry, not the first one only.
+   *
+   * `echoTextOf` answers with a single fact and stops, which is right for the
+   * gutter's one-line echo and wrong here: a loaded carry ("farmers carry 2x40m
+   * 32kg") rendered "32 kg" with no distance, a weighted plank ("plank +10kg
+   * 45s") rendered "10 kg" with no time, and a rowed 2 km with a split ("row
+   * 2000m 7:45") rendered "2000 m" with no time. The dropped half is the half
+   * those lines exist for. The per-set TABLE has always shown both (it rides
+   * the second metric along as a note); this is the compact line catching up.
+   */
+  const top = topOfSets(sets);
+  const scheme = top.repsAtWeight != null ? `${top.count}×${top.repsAtWeight}` : null;
+  const parts: string[] = [];
+  if (scheme && top.weight != null) parts.push(`${scheme} ${fmtNumber(top.weight)}`);
+  else if (scheme) parts.push(scheme);
+  else if (top.weight != null) parts.push(`${fmtNumber(top.weight)} kg`);
+  if (top.distance != null) {
+    parts.push(
+      top.count > 1
+        ? `${top.count}× ${fmtNumber(top.distance / top.count)} m`
+        : `${fmtNumber(top.distance)} m`,
+    );
+  }
+  if (top.duration != null) {
+    // Beside a distance the time is that distance's SPLIT and reads as a clock
+    // ("2000 m · 7:45"); on its own it is the work itself ("3× 60 s").
+    parts.push(
+      top.distance != null
+        ? formatDurationShort(top.duration)
+        : top.count > 1
+          ? `${top.count}× ${top.duration} s`
+          : `${top.duration} s`,
+    );
+  }
+  return parts.length > 0 ? parts.join(' · ') : null;
 }
 
 // --- The per-set mini table (owner, 4 Aug 2026) ------------------------------
@@ -159,16 +227,49 @@ export function setsLineText(sets: SummarizableSet[]): string | null {
 // the totals) is unchanged — they are simply visible now, labelled for what
 // they are.
 
-/** One rendered set — pure text, ready for a row. */
+/**
+ * One rendered set — pure text, ready for a row.
+ *
+ * ## Kind and position are two facts, not one (11 September 2026)
+ *
+ * `label` used to be *either* the set's number *or* its kind ("warm", "drop",
+ * "skip"), which quietly asserted that a set can only be one of those things.
+ * Three of the six kinds the parser reads disagree: `amrap`, `myo` and
+ * `failure` are COUNTED work — they have a number — and they were rendered as
+ * a plain numbered set with the kind silently dropped. Someone who wrote "push
+ * ups AMRAP 22" got a row that said `1 · 22` and nothing else; the parser had
+ * read the AMRAP and the table threw it away.
+ *
+ * So the two facts are two fields. `label` is the position in the counted
+ * numbering, `mark` is the word that REPLACES it when a set is outside that
+ * numbering, and `kindTag` qualifies a set that is inside it. Exactly one of
+ * `label` / `mark` is ever non-empty.
+ */
 export interface SetTableRow {
-  /** "1", "2", … over COUNTED sets; "warm", "drop", "skip" for the rest. */
+  /** "1", "2", … over COUNTED sets; "" when `mark` carries the position. */
   label: string;
+  /** The word that stands in for a number: "warm-up" · "drop" · "skipped". */
+  mark: string | null;
+  /** A counted set's kind, when it is not plain work: "AMRAP" · "MYO" ·
+   * "FAILURE". Uppercase because it is a LABEL on the set, not a reading. */
+  kindTag: string | null;
   /** Load cell: "100", "bw" when this set alone is unloaded, "" for cardio. */
   load: string;
   /** Work cell: reps "10", distance "400 m", duration "1:30". */
   work: string;
-  /** Trailing meta: "RIR 2", plus any second metric the work cell cannot hold. */
+  /**
+   * Reps in reserve as digits — "2", "0", "-1". The word "RIR" is NOT in here:
+   * the table sets the label and the number in two different faces (design
+   * skill §Structure, "number and unit are typographically two things"), and a
+   * caller that wants the sentence asks `setSentence`.
+   */
+  rir: string | null;
+  /** The second metric the work cell could not hold — "1:00", "400 m". Only
+   * that: the kind and the RIR have their own fields now. */
   note: string;
+  /** This set hangs off the one above it (a drop or myo chain), so it indents
+   * under its parent instead of starting a new position at the margin. */
+  chained: boolean;
   /** Counts toward the session totals (non-warmup, non-drop, non-skipped). */
   counted: boolean;
 }
@@ -177,9 +278,10 @@ export interface SetTable {
   rows: SetTableRow[];
   /** Header over the load column — null when nothing here is loaded. */
   loadHead: string | null;
-  /** Header over the work column: "REPS" · "DIST" · "TIME". */
+  /** Work column header: "REPS" · "DIST" · "TIME". */
   workHead: string | null;
-  /** At least one row has a note, so the column is worth its width. */
+  /** At least one row says something beyond its numbers — an RIR, a kind, a
+   * second metric. Drives the stacking threshold and `worthTable`. */
   hasNote: boolean;
 }
 
@@ -191,19 +293,53 @@ export function formatDurationShort(seconds: number): string {
   return `${m}:${String(r).padStart(2, '0')}`;
 }
 
-/** The label a non-counted set carries in the position column. */
-function kindLabel(kind: string): string | null {
-  if (kind === 'warmup') return 'warm';
+/**
+ * The word that REPLACES a set's number, for the kinds that are outside the
+ * counted numbering. Spelled out, not abbreviated: "warm" and "skip" were
+ * clipped to fit a 38 pt column that no longer exists, and a truncated word is
+ * a worse distinction than a whole one. Tone alone was never allowed to carry
+ * this (low-vision ruling, 9 Aug 2026) — the WORD is the mark.
+ */
+function markOf(kind: string): string | null {
+  if (kind === 'warmup') return 'warm-up';
   if (kind === 'drop') return 'drop';
-  if (kind === 'skipped') return 'skip';
+  if (kind === 'skipped') return 'skipped';
   return null;
 }
 
 /**
+ * The label a COUNTED set carries beside its number when it is not plain work.
+ *
+ * These three are the kinds the table used to lose entirely: they pass
+ * `skipped()`, so they were numbered like any working set and their kind was
+ * dropped on the floor. An AMRAP is not a set of 22 — it is a set taken to
+ * whatever came, which happened to be 22, and the difference is the whole
+ * reason someone wrote the word.
+ */
+function kindTagOf(kind: string): string | null {
+  if (kind === 'amrap') return 'AMRAP';
+  if (kind === 'myo') return 'MYO';
+  if (kind === 'failure') return 'FAILURE';
+  return null;
+}
+
+/**
+ * Does this set hang off the one before it? A drop and a myo set are not
+ * independent work — they continue the set above them, which is why neither
+ * belongs at the left margin. `parent` says so outright when the parser
+ * supplied it; the KIND says so on its own for a row shape that did not carry
+ * one (SQLite keeps the same fact as `parent_set_id`).
+ */
+function chainedKind(s: SummarizableSet): boolean {
+  return s.parent != null || s.kind === 'drop' || s.kind === 'myo';
+}
+
+/**
  * Every set of one exercise as table rows. Warm-ups, drops and skipped work are
- * KEPT as rows (labelled, never numbered) because the record is the record —
- * they are only excluded from the counted numbering, exactly as they are
- * excluded from tonnage everywhere else.
+ * KEPT as rows (marked, never numbered) because the record is the record — they
+ * are only excluded from the counted numbering, exactly as they are excluded
+ * from tonnage everywhere else. AMRAP, myo and failure sets ARE counted and now
+ * keep their kind beside their number instead of losing it.
  */
 export function setTableOf(sets: SummarizableSet[]): SetTable {
   const anyLoad = sets.some((s) => s.weight_kg != null);
@@ -218,11 +354,14 @@ export function setTableOf(sets: SummarizableSet[]): SetTable {
     const isCounted = !skipped(s.kind);
     if (isCounted) counted += 1;
 
+    // The ride-along lane holds ONLY a second measurement now. RIR and the
+    // kind used to be joined into the same grey string, which is how "AMRAP ·
+    // RIR 2 · 1:00" happened: three unlike facts in one sentence, none of them
+    // findable. They are three fields and the table draws them three ways.
     const notes: string[] = [];
-    if (s.rir != null) notes.push(`RIR ${fmtNumber(s.rir)}`);
 
-    // One metric owns the work column; a second one rides along as a note, so a
-    // weighted carry ("40 kg × 20 m in 60 s") loses nothing.
+    // One metric owns the work column; a second one rides along, so a weighted
+    // carry ("40 kg × 20 m in 60 s") loses nothing.
     let work = '';
     if (s.reps != null) {
       work = String(s.reps);
@@ -235,11 +374,18 @@ export function setTableOf(sets: SummarizableSet[]): SetTable {
       work = formatDurationShort(s.duration_s);
     }
 
+    const mark = markOf(s.kind);
     rows.push({
-      label: kindLabel(s.kind) ?? String(counted),
+      // Exactly one of the two carries the position, never both.
+      label: mark ? '' : String(counted),
+      mark,
+      kindTag: isCounted ? kindTagOf(s.kind) : null,
       load: s.weight_kg != null ? fmtNumber(s.weight_kg) : anyLoad ? 'bw' : '',
       work,
+      // Digits only — the table draws the word "RIR" itself, in its own face.
+      rir: s.rir != null ? fmtNumber(s.rir) : null,
       note: notes.join(' · '),
+      chained: chainedKind(s),
       counted: isCounted,
     });
   }
@@ -248,7 +394,9 @@ export function setTableOf(sets: SummarizableSet[]): SetTable {
     rows,
     loadHead: anyLoad ? 'KG' : null,
     workHead: anyReps ? 'REPS' : anyDistance ? 'DIST' : anyDuration ? 'TIME' : null,
-    hasNote: rows.some((r) => r.note.length > 0),
+    // Anything in the middle lane competes with the numbers for width, so all
+    // three of its inhabitants count towards "this table needs more room".
+    hasNote: rows.some((r) => r.note.length > 0 || r.rir != null || r.kindTag != null),
   };
 }
 

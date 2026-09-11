@@ -492,7 +492,7 @@ export default function Next() {
           activeScale={0.98}
           onPress={() => {
             tap();
-            router.push('/lifts');
+            router.push('/next/lifts');
           }}
           accessibilityRole="button"
           accessibilityLabel="All lifts"
@@ -692,10 +692,20 @@ const styles = StyleSheet.create({
    * "Edit" rendered as "Ed", then as "E…" once it had `numberOfLines`. A
    * minimum wide enough for "Done" at the clamp fixes the measurement without
    * fixing the height, so the bar still sizes itself.
+   *
+   * **CENTRED, because on iOS 26 that reserved width is not invisible.** The
+   * navigator draws its own glass capsule around this subview, so the slot IS
+   * the pill: measured on the 26.5 simulator, a 66.7 × 43.7 pt capsule with a
+   * 26 pt label 35.7 pt from its left edge and 4.7 pt from its right — a label
+   * shoved against the wall of its own button. `flex-end` was correct while the
+   * padding was slack in an invisible box; once the box is drawn, the label
+   * belongs in the middle of it. The width stays stated rather than intrinsic,
+   * which also keeps the pill from resizing under the finger as Edit becomes
+   * Done.
    */
   barButtonSlot: {
     minWidth: moderateScale(58),
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'center',
   },
   /** A `UIBarButtonItem`'s label: body size, the one blue, no box. */

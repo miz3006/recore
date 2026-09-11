@@ -6,7 +6,7 @@
  * table, and `parse_cache` (the last parse result + gutter signals per
  * workout, kept so the gutter renders instantly after a cold start).
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 8;
 
 export const SCHEMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -24,13 +24,16 @@ CREATE TABLE IF NOT EXISTS workouts (
   performed_at    TEXT NOT NULL,            -- UTC ISO; the DAY this workout belongs to
   raw_text        TEXT NOT NULL,            -- exactly what the user typed
   reflection      TEXT,                     -- the athlete's own end-of-session note (§8.1)
+  session_effort  REAL,                     -- Foster CR-10 rating of the whole session
   entry_notes     TEXT,                     -- JSON {exercise key: the athlete's note on that entry}
   parse_version   INTEGER,
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL,
   dirty           INTEGER NOT NULL DEFAULT 1,  -- row needs push
   structure_dirty INTEGER NOT NULL DEFAULT 0,  -- items/sets need re-push
-  needs_parse     INTEGER NOT NULL DEFAULT 0   -- parse failed/offline; retry on sync
+  needs_parse     INTEGER NOT NULL DEFAULT 0,  -- parse failed/offline; retry on sync
+  parse_attempts  INTEGER NOT NULL DEFAULT 0,  -- consecutive failed readings of THIS text
+  parse_next_at   TEXT                         -- ISO instant before which the queue skips it
 );
 CREATE INDEX IF NOT EXISTS workouts_user_performed_idx ON workouts (user_id, performed_at DESC);
 
@@ -150,6 +153,97 @@ CREATE TABLE IF NOT EXISTS parse_cache (
 );
 `;
 
+/**
+ * EVERY COLUMN THIS SCHEMA HAS EVER GAINED, AND THE ONLY THING `migrate()`
+ * READS (10 September 2026).
+ *
+ * `CREATE TABLE IF NOT EXISTS` never adds a column, so an upgrading install
+ * needs an ALTER — and until today the runner chose those ALTERs by comparing
+ * `PRAGMA user_version` against `SCHEMA_VERSION`. That has one failure mode and
+ * it is not theoretical: **a database whose `user_version` says 7 while a
+ * column is missing can never repair itself.** It happened on 10 Sep 2026 with
+ * `workouts.session_effort` — Today crashed on every render with
+ * `no such column: session_effort`, because a version number is a CLAIM about
+ * the schema and the schema itself is the fact. A version can be written by a
+ * build that then failed halfway, by a restored file, or by a connection that
+ * was opened before the bundle that needed the column arrived.
+ *
+ * So the columns are declared here and applied BY PRESENCE: `migrate()` asks
+ * `PRAGMA table_info` what exists and adds only what is missing, on every
+ * open, whatever the version says. That is convergent — any database, any
+ * version, any half-finished upgrade, ends with all of them — and it is
+ * idempotent, so it cannot throw `duplicate column name` and abort the rest of
+ * the chain the way a stepped ladder can.
+ *
+ * `SCHEMA_VERSION` stays: it is what a fresh install stamps, and it is still
+ * how anyone reading a device tells which build last touched it. It just no
+ * longer decides anything.
+ *
+ * **Adding a column is two lines now: its `CREATE TABLE` line above, and its
+ * entry here.** `schema.test.ts` fails if the two disagree.
+ */
+/**
+ * EVERY LOCAL TABLE, EMPTIED — the one statement behind two promises.
+ *
+ * It runs in exactly two places: `ensureLocalUser` when a DIFFERENT account
+ * signs in on this device (the on-device mirror of the server's RLS boundary),
+ * and `account/delete.ts` after the server has taken the account. Both are
+ * promises made in the privacy policy in so many words — "no other user can
+ * read it" and "wipes the local copy on the device".
+ *
+ * IT LIVED AS A LITERAL IN BOTH FILES until 10 September 2026, character for
+ * character. Nothing was missing on that date; the point is the shape of the
+ * failure, not its presence. The next table added to `SCHEMA_SQL` gets deleted
+ * in whichever of the two files its author happened to be reading — and the
+ * surviving copy is invisible, because both wipes still run, still succeed, and
+ * still look right. One account's rows would simply outlive the account.
+ *
+ * So it is declared HERE, beside the CREATE statements it has to keep up with,
+ * and `schema.test.ts` fails the build if `SCHEMA_SQL` ever grows a table this
+ * does not name.
+ *
+ * ORDER IS DELIBERATE: children before parents, because the database runs with
+ * `PRAGMA foreign_keys = ON` and `sets` → `items` → `workouts` is a real chain.
+ * `meta` goes last — it holds `user_id`, and the callers rewrite that key
+ * immediately afterwards.
+ */
+export const WIPE_SQL = [
+  'DELETE FROM parse_cache',
+  'DELETE FROM corrections',
+  'DELETE FROM alias_overrides',
+  'DELETE FROM sets',
+  'DELETE FROM items',
+  'DELETE FROM workouts',
+  'DELETE FROM predictions',
+  'DELETE FROM plan_days',
+  'DELETE FROM exercises',
+  'DELETE FROM meta',
+].join('; ') + ';';
+
+export const ADDED_COLUMNS: readonly { table: string; column: string; decl: string }[] = [
+  // v1 → v2, the prediction adherence pair.
+  { table: 'predictions', column: 'accepted_at', decl: 'TEXT' },
+  { table: 'predictions', column: 'outcome', decl: 'TEXT' },
+  // v3 → v4, the end-of-session reflection (§8.1).
+  { table: 'workouts', column: 'reflection', decl: 'TEXT' },
+  // v4 → v5, the per-entry notes.
+  { table: 'workouts', column: 'entry_notes', decl: 'TEXT' },
+  // v5 → v6, the ghost's own lines.
+  { table: 'predictions', column: 'lines_json', decl: 'TEXT' },
+  // v6 → v7, the session's own rating.
+  { table: 'workouts', column: 'session_effort', decl: 'REAL' },
+  // v7 → v8, the parse retry's own memory (`db/parse-backoff.ts`). Local-only,
+  // like every other sync/parse flag on this row — never pushed, never pulled.
+  { table: 'workouts', column: 'parse_attempts', decl: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'workouts', column: 'parse_next_at', decl: 'TEXT' },
+];
+
+/**
+ * The stepped scripts below are HISTORY, kept for the reasoning written above
+ * each one — the runner no longer executes them (see `ADDED_COLUMNS`). Their
+ * ALTERs are all additive and every one of them is represented in that list.
+ */
+
 /** v1 → v2: correction loop + alias overrides + prediction adherence columns.
  * New tables ride along via SCHEMA_SQL's IF NOT EXISTS; existing tables need
  * explicit ALTERs (CREATE IF NOT EXISTS never adds columns). */
@@ -238,4 +332,35 @@ ALTER TABLE workouts ADD COLUMN entry_notes TEXT;
  */
 export const MIGRATION_6_SQL = `
 ALTER TABLE predictions ADD COLUMN lines_json TEXT;
+`;
+
+/**
+ * v6 → v7: the session's own rating (owner, 10 September 2026).
+ *
+ * A COLUMN ON `workouts`, for the third time and for the third time for the
+ * same reason: one value per finished session, so the workout row already
+ * carries its account scoping, its RLS policy, its cascade delete, its sync
+ * and its place in the JSON export. `reflection` and `entry_notes` made that
+ * argument; nothing about a number changes it.
+ *
+ * WHY NOT `sets.rir`, WHICH ALREADY HOLDS AN EFFORT. Because `sets` is a
+ * PROJECTION — `applyParseResult` deletes and re-inserts every row of it on
+ * each re-parse — and this rating is not derivable from the text. It is also a
+ * different quantity: `rir` is one set's distance from failure and is the
+ * engine's input, while this is what the whole session cost and is the input
+ * to nothing (`lib/session-effort.ts` states both halves).
+ *
+ * WHY NOT INSIDE `reflection`, WHERE THE CHIPS LIVE. The chips are prose the
+ * athlete chose and they round-trip through `splitReflection` as words. A
+ * number stored as text in a prose column is a number that has to be parsed
+ * back out of a field the person can also type into, and the first athlete to
+ * write "8" as their whole reflection would break it.
+ *
+ * REAL, not INTEGER, and nullable. Real because Foster's scale has halves and
+ * a later build may offer them; nullable because not answering is a
+ * first-class outcome — an unrated session has NO load, and `sessionLoad`
+ * returns null rather than guessing one.
+ */
+export const MIGRATION_7_SQL = `
+ALTER TABLE workouts ADD COLUMN session_effort REAL;
 `;

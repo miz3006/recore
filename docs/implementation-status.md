@@ -246,7 +246,7 @@ of drift this repository has actually suffered before.
 
 | Requirement | Status | Evidence | Notes |
 |---|---|---|---|
-| One-time spotlight on the first signed-in Today, skippable, never returns | **done** | `src/components/spotlight-tour.tsx`, `src/lib/tour.ts`, `src/lib/prefs.ts:271–279` (`pref_tour_done`) | Built on `react-native-svg` evenodd scrim; no new dependency. |
+| One-time spotlight on the first signed-in Today, skippable, never returns | **done** | `src/components/spotlight-tour.tsx`, `src/lib/tour.ts`, `src/lib/tour-gate.ts` (+ `tour-gate.test.ts`), `src/lib/prefs.ts` (`armTour` / `isTourOwed` / `markTourDone`) | Built on `react-native-svg` evenodd scrim; no new dependency. **11 Sep 2026: "one-time" is now true.** The gate was the ABSENCE of `pref_tour_done`, which also describes a returning athlete's second phone, an account switch back, and any force-quit mid-tour — the flag was only written on finish/skip. It is ARMED at the end of the funnel (`markOnboardingDone`, which both funnels call) and spent the moment it goes on screen. See the change-log entry. |
 | Step is dropped if its target is off screen | **done** | `src/lib/tour.ts`, `src/components/spotlight-tour.tsx` | |
 | Copy is one sentence, house voice | **partial** | `src/lib/tour.ts`, asserted by `src/lib/tour.test.ts` | Voice is tested (no "!", no "AI", no emoji, no instruction). Rewritten 9 September 2026 and now checked against what the screens actually draw — Progress is bare ROWS, not cards, and the old body said cards. Several bodies are still two sentences. |
 | Each tab beat lights that tab alone | **done** | `TOUR_STEPS[].tab`, `tabSlotRect` (`src/lib/tour.ts`), asserted by `tour.test.ts` | 9 September 2026. Until then the three tab beats resolved to one rectangle — the whole bar — so the spotlight never answered "which of these four is Next". Seen on the simulator; see the change-log entry. |
@@ -274,13 +274,14 @@ of drift this repository has actually suffered before.
 | **§8.1** End-of-session free-text reflection | **done** | `src/components/check-in-sheet.tsx`, `src/lib/reflection.ts` (+ test), `src/lib/db/workouts.ts` (`setReflection`) | A free-text field on one sheet opened by Finish and re-openable from the receipt. Owner's ruling 29 Jul: **one sheet**, not two — so a finish never queues two sheets. **17 Aug: the reflection no longer LEADS it** — see the check-in redesign row below. |
 | **§8.1** Optional prompts ("How did that feel?" etc.) | **superseded** | `src/lib/reflection.ts` (`REFLECTION_PROMPTS`, still exported + asserted verbatim by test) | All four are still the spec'd vocabulary and still tested, but **the check-in no longer renders them**: the owner's 17 Aug ruling replaced the placeholder chips with three preset ANSWERS that write (`REFLECTION_TAGS`). The field's own placeholder is now "Anything about today…". Any future surface that suggests rather than answers should use the four prompts. |
 | **Check-in redesigned to read the session back** (owner ask + mockup, 17 Aug) | **done** | `src/components/check-in-sheet.tsx`, `src/lib/effort.ts` (`EFFORT_CHOICES`, `EFFORT_CHOICE_LABEL`, `effortChoiceOf` + tests), `src/lib/reflection.ts` (`REFLECTION_TAGS`, `composeReflection`, `splitReflection`, `reflectionRoomFor` + tests), `src/lib/parse/receipt.ts` (`lastSetTextOf` + tests) | "How did it go?" over the session's own line ("2 lifts · 9,840 kg · 48 min" — lifts and volume from the receipt, minutes from the workout row's timestamps under the receipt's own 10–360 min sanity rule; a run-only day totals in distance and an implausible span simply drops). Then **the lifts first, the words second**: one row per lift the sheet reads out of the record, its LAST counted set beside the name, and three answers — Could do more (rir 3) · Just right (rir 1) · Nothing left (rir 0), written into the line as an RPE token exactly as before. **Only unrated lifts are asked about**, and the question set is frozen when the sheet opens (or when a late parse lands) so answering a row cannot make it vanish mid-tap. Reversal of a July ruling, on the owner's say-so: the note chips (Slept badly · Felt strong · Short on time) are now **multi-select answers that are stored**, as the reflection's own first line — no new column, no migration, and `splitReflection` reads them back so the sheet re-opens armed. Nothing is preselected and the app still never infers one. Skip / × / swipe / Save session all commit exactly what is on the sheet. |
+| **The session's own rating** (owner ask, 10 Sep 2026) | **done** | `src/lib/session-effort.ts` (+ test), `src/lib/db/schema.ts` (v7), `src/lib/db/workouts.ts` (`setSessionEffort`/`getSessionEffort`), `src/components/check-in-sheet.tsx`, `src/components/check-in-note.tsx`, `src/lib/sync/index.ts`, `src/lib/export-json.ts`, `supabase/migrations/20260910000000_session_effort.sql` | One tap for how hard the WHOLE session was — the session-RPE method, stored on Foster's CR-10 (`Easy` 3 · `Moderate` 5 · `Hard` 8) in its own nullable column on `workouts`. It comes first on the sheet because its cost does not scale with the number of lifts, and it is the input to NO prescription: `sets.rir` is one set's distance from failure and is the engine's; this is what the session cost and is quoted, never computed against. An unrated session has no load — `sessionLoad` returns null, never a zero. Printed back on Today as the word the athlete chose, leading the chips in `CheckInNote`, and summed into **this week's training load on Progress** (`components/week-load.tsx`) — a week holding one unrated session shows no total, because a partial sum is a lighter week that never happened. Monotony, strain and deload timing are deliberately not built. |
 | **§8.1** Reflections included in export and deletion | **done** | `src/lib/export-json.ts`, `src/lib/account/delete.ts`, `supabase/migrations/20260729000000_reflections.sql` | By construction rather than by remembering: the reflection is a **column on `workouts`**, so it inherits that row's RLS, its cascade delete, the local wipe and the JSON export. CSV stays a sets table — the JSON is the complete export and the privacy policy says so. |
-| **§8.1** Next may quote a reflection without inferring causation | **partial** | `src/lib/db/brief.ts` (`BriefNote`, `recentEntryNotes`), `src/app/(tabs)/next.tsx` | 4 Aug: the PER-ENTRY note is captured and quoted (see the section below). The session-level reflection from the check-in sheet is still not read by the brief — that half of step 4 stands. |
+| **§8.1** Next may quote a reflection without inferring causation | **partial** | `src/lib/db/brief.ts` (`BriefNote`, `recentEntryNotes`, `tagPattern`), `src/lib/reflection.ts` (`tagPattern`), `src/lib/brief-prose.ts`, `src/app/(tabs)/next/index.tsx` | 4 Aug: the PER-ENTRY note is captured and quoted (see the section below). **10 Sep: the session-level check-in is half-read.** Its CHIPS are counted across the last five sessions and stated as a tally — *You marked "slept badly" after 3 of your last 5 sessions* — with the verb on what the app actually knows (which button was tapped) and no causal clause anywhere near it (§9.1); a test asserts the paragraph never gains *because*, a prescription or a diagnosis beside it. The PROSE half of a reflection is still never quoted by the brief. |
 | **Per-entry note on a ledger card** (owner ask, 4 Aug) | **done** | `src/lib/entry-note.ts` (+ test), `src/lib/db/entry-notes.ts`, `src/components/entry-note-sheet.tsx`, `src/components/note-surface.tsx` | One sheet carrying that entry's effort scale and a free-text note. Stored in `workouts.entry_notes` (schema v5), never in `raw_text`. **12 Aug: the speech bubble that opened it from every card is gone** — the standing per-card invitation became one end-of-session row (below), and this became a named row inside the ⋯ sheet. The written note still renders on its card; only the prompt moved. |
 | **Visible ⋯ actions on a settled card** (owner ask, 6 Aug) | **done** | `src/components/entry-actions-sheet.tsx`, `src/components/note-surface.tsx` (sideCol, `runEntryAction`), `src/components/icon.tsx` (`ellipsis`, `pencil`) | The card's hidden gestures are now one visible ⋯ (Mobbin-verified logger pattern: Hevy/Gymshark/Bevel per-exercise menu): a BottomSheet with Edit line · Show my words · Note & effort · History · Fix reading · Delete entry (`color.error`, last, own rule). The body's long-press → history was REMOVED — the menu owns it; tap-to-edit stays. Sequencing honours UIKit's one-modal rule: the chosen action fires from `onClosed`, so History/Fix can present their own sheet. Delete routes to the same `deleteNoteLine` the inline editor uses. **12 Aug: two rows added** (words, note) and the ⋯ became the card's only glyph. |
 | **The written line visible on its card** (owner ask, 12 Aug) | **done** | `src/components/note-surface.tsx` (`WordsFlip`, `wordsKey`), `entry-actions-sheet.tsx` (`words` action) | Long-press a settled card — or pick "Show my words" in its ⋯ — and the interpreted SET/KG/REPS table crossfades to the raw line, quoted in mono, exactly as typed. Tap or long-press again to flip back. Read-only display of `raw_text` (§3): no new data, no new column, nothing writable. Both faces are laid out and the words layer reports its height as the wrapper's floor, so flipping never moves the page. `DUR.fast`, instant under Reduce Motion; the hidden face is hidden from VoiceOver rather than merely transparent. |
 | **One reflection prompt per session, not per card** (owner ask, 12 Aug) | **done** | `src/lib/session-activity.ts` (+ test), `src/components/use-session-active.ts`, `note-surface.tsx` (`showReflectionRow`), `session-store.ts` (`finishSession`, `lastActivityAt`, `sessionFinished`), `bottom-toolbar.tsx` | §8.1 asks once, about the session; the note bubble asked once per exercise, five times a session. One quiet row now sits under the ledger — "Add a note about this session" — opening the check-in that already existed. It appears when the session has ENDED: Finish pressed, or 90 quiet minutes with work on the record (so the athlete who never presses Finish is still asked), and disappears once a reflection exists. Finish is remembered per workout in the meta KV (`session_done:<id>`), like receipt mode; writing another line re-opens the session. |
-| **The session's reflection printed under its lifts** (owner ask, 20 Aug) | **done** | `src/components/note-surface.tsx` (`reflection` memo, `reflectNote`/`reflectTags`/`reflectBody`), reads `getReflection` + `splitReflection`/`reflectionTagLine` | The check-in was write-only from Today: the words went into `workouts.reflection` and no screen printed them back, so the prompt row simply vanished and the note was only visible by re-opening the sheet. Now the day prints it where the day's lifts end — the armed tags on one small semibold line, the prose under them, both `textSecondary` a step smaller than a card. It sits **above** the writing line, with the settled record, while the invitation to write it stays below (the prompt row is unchanged and still gated on session-ended + no reflection). Tapping it re-opens the same check-in, so there is still exactly one place the words are written. Day-scoped by construction: `workoutId` follows the selected day, so swiping back shows that day's own note. No new column, no new event, no model. |
+| **The session's reflection printed under its lifts** (owner ask, 20 Aug · redrawn 10 Sep 2026) | **done** | `src/components/check-in-note.tsx` (new — `CheckInNote`), `src/components/note-surface.tsx` (the `reflection` memo, which now also reads `getSessionEffort`) | The check-in was write-only from Today: the words went into `workouts.reflection` and no screen printed them back, so the prompt row simply vanished and the note was only visible by re-opening the sheet. The day prints it where the day's lifts end — and since 10 Sep it prints it as ONE QUOTED BLOCK rather than two grey lines. Owner's ask: *"naredi cim lepsi mozen nacin napisa tistih informaciji na today … naj izgleda tudi cim bolj native ios"*. Four things, in the order the eye reads them: an eyebrow (`HOW IT WENT`) that says what the block is; the session's rating as the word the athlete picked; the armed chips **as the app's own chips** (`chip-row.tsx`'s white pill, hairline, `shadow.card`, ink label, one step smaller because they are answers already given, not controls); and their prose in **ink** at 16/23, a step under an exercise name. A 2 pt block-quote rule runs down the record's rail column, under the check rings, which is what lets the block hold together with no card on the one screen the design system forbids cards on. Three defects it fixes, each one a rule the repository already had: a chip that read as a pill in the sheet and as `a · b` prose on Today (the drift `chip-row.tsx` was written to end); the athlete's own sentence set in `textSecondary`, which §Colour reserves for what the eye may skip; and no label at all, so a note under a ledger could be read as a comment on the last lift. The prose clamps at six lines — ten was tried on the simulator and pushed the writing line off the page, which is the one thing Today may not do — with iOS's own ellipsis as the tell and the whole note in the VoiceOver label. Verified on the iPhone 17 Pro simulator (iOS 26.5) in four states: rating + chips + prose, rating only, a 737-character note, and Dynamic Type accessibility-extra-large. It sits **above** the writing line, with the settled record, while the invitation to write it stays below — and that prompt is now gated on the WORDS, not on the block, so a session someone rated and did not write about is still asked. Tapping re-opens the same check-in. Day-scoped by construction: `workoutId` follows the selected day. No new column, no new event, no model.
 | **Every text field has a way to close the keyboard** (owner ask, 20 Aug) | **done** | `src/components/keyboard-done.tsx` (new), `app/(tabs)/you.tsx`, `app/plan-day.tsx`, `components/check-in-sheet.tsx`, `entry-note-sheet.tsx`, `fix-sheet.tsx`, `planned-checklist.tsx`, `note-surface.tsx` | Audited against three exits — tap outside, return/done, scroll. iOS number pads (`decimal-pad`, `number-pad`) have **no return key**, so the ten fields using one now carry a `Done` accessory bar (`inputAccessoryViewID`); the bar is mounted inside each sheet that needs it, since a `BottomSheet` is its own RN `Modal` window. Five input-bearing ScrollViews gained `keyboardDismissMode="interactive"`. The four sheets whose field is multiline or numeric make their title block a `Keyboard.dismiss()` target (`accessible={false}`, so VoiceOver still reads it as text). The ⋯ sheet's Note row and both reflection rows dismiss before presenting, as the Fix reading row already did. Today's composer is the deliberate exception: return commits a line and a page tap re-focuses, because the page IS the composer — its labelled hide-keyboard button is the exit. |
 | **The accessory bar is three glyphs, drawn by iOS** (owner ask, 20 Aug) | **done** | `src/components/bottom-toolbar.tsx`, `src/components/icon.tsx` (`SF` map, `mic-on`) | Two changes to the bar over the keyboard. **(1) The plan button is removed** — the labelled round that wrote the next prescribed line into the note. It was the "still within reach" clause of the 18 Aug ruling that took the PLANNED strip off Today, and on demand meant a fourth control standing in the row all session for a line most days never have; the bar now holds only what helps someone WRITE (time, voice, a way down) and Today carries no prescription at any depth. `nextPlanLine`/`handlePlan` and the `planRow` style are gone; `checkGhostLine` stays because `ghost-prediction.tsx` still writes through it, and `icon.tsx`'s `plan` glyph + indigo tint stay as vocabulary with no call site. **(2) The three survivors draw as SF Symbols on iOS** — `timer`, `mic` / `mic.fill`, `keyboard.chevron.compact.down` — via one opt-in map inside `Icon`; `SymbolView` renders the existing Ionicons/MCI outline as its own fallback off-iOS, so no call site has a platform branch and the two can't drift. `expo-symbols` was already a dependency and had never been used. The mic gains a FILLED state while listening (`mic-on`, the `note`/`note-on` contract). Only these three are mapped, so no screen shows a mixed pair. |
 | **§8.2** Session-start question on an empty Today (owner ask, 6 Aug) | **done** | `src/components/session-start.tsx`, `src/app/(tabs)/today.tsx`, `src/lib/db/plan.ts` (`getPlanDayChoice`/`setPlanDayChoice`, choice read in `resolveTodayPlanDay`), `src/lib/db/strip.ts` (`PlanStrip.dayId`), `src/state/session-store.ts` (`choosePlanDay`), `src/components/empty-note-cards.tsx` | Shows only with a split AND ≥1 logged session, on today, note empty, keyboard down; otherwise the plain `PlanStrip` rendered as before — **both are gone: the card was removed 17 Aug and the strip 18 Aug (see the change log), so nothing from this row is on Today any more; `getPlanDayChoice`/`setPlanDayChoice` and `PlanStrip.dayId` survive because the calendar sheet and Next's brief still read them.** The chip answer is persisted day-keyed in the local meta KV and read inside `resolveTodayPlanDay`, so the strip, calendar sheet and Next brief agree with it by construction (deliberately not synced — a gym-device answer that expires at midnight). Start only calls `focusNote()`; nothing is written into `raw_text`. The empty-day LAST SESSION peek yields to the card's own last-session line in exactly the card's eligibility condition. Entirely deterministic — no model call, so no §9.4 evaluation needed. No §13 event exists for this surface; none was invented. |
@@ -342,7 +343,7 @@ of drift this repository has actually suffered before.
 | Movement-pattern classifier (push / pull / legs) | **done, consumed by the capture block** | `src/lib/split/pattern.ts`, `src/lib/split/pattern.test.ts` (13 cases) | 13 Aug, step 1 of the owner's auto-split feature. Pure lexicon, zero I/O, `node --test`. Classifies by WORKING SET rather than by exercise (4 sets of bench vs 1 of curls is a push day, not an even split), and `unknown` sets stay in the denominator so a half-recognised session comes out LESS confident. **Contested movements — deadlift, RDL, upright row, pullover, olympic lifts, good morning — return `null` on purpose**; the ambiguity is real and gets resolved by the athlete at the confirm step, not by a cleverer lexicon. `suggestSplitLabel` returns `null` rather than a guess when the record does not support a name, and the capture field then opens empty. Consumed by `save-split.tsx`. **Still not offered automatically after Finish** — that ask, and its "two declines and never again" rule, is not built. |
 | Lever contrast on the filled pill | **measured** | `src/components/next/session.tsx` (`leverSignal`, `leverAttention`) | White on `signal` #547C00 = **4.93:1**; white on `attention` #B45309 = **5.02:1**. Both clear AA for normal text at the label's 10.5 pt bold. The August rejection of a filled chip was of green text on a green *wash* (4.33:1) — a different measurement. The load itself stays ink. |
 | Answers: what happened, what is improving/repeating, what is relevant next | **done** | `src/lib/db/brief.ts`, `src/app/(tabs)/next.tsx` | Blocks disappear when they have nothing true to say. "What happened" is now answered first, in the lede. |
-| Answers: a recovery/energy/reflection pattern the person reported | **missing** | — | Depends on §8.1. |
+| Answers: a recovery/energy/reflection pattern the person reported | **done** | `src/lib/reflection.ts` (`tagPattern` + tests), `src/lib/db/brief.ts` (`Brief.tagPattern`, `recentReflections`), `src/lib/brief-prose.ts` (+ tests) | 10 Sep: the check-in chips, counted over five sessions and printed as one sentence. Null below two occurrences — one tap is a day, not a pattern — and the denominator is SESSIONS, including the ones nobody marked, so the window cannot be chosen to flatter the count. Co-occurrence only; §9.1 forbids the causal clause and a test enforces its absence. |
 | One useful thing to watch or write down next time | **partial** | `src/lib/brief-prose.ts` (watch close), `src/app/(tabs)/next.tsx` (block-1 foot) | 30 Jul: the paragraph closes with a composed watch item — the first stall's rep-watch, carrying the engine's own deload consequence. Chosen by a priority rule in code; the §9.1 "model selects one prompt from an approved set" path (reflection check-ins) still depends on §8.1. |
 | Editorial card, "YOUR BRIEF" label, provenance line | **done** | `src/app/(tabs)/next.tsx` (briefCard/briefHead/briefLede styles), `briefDateline`/`splitLede` in `src/lib/brief-prose.ts` | 30 Jul: dated editorial hero card — "YOUR BRIEF" label in Recore blue (§4.2), dateline, lede one notch over body (`type.lede`), body, and a provenance foot carrying the REAL session count (`Brief.sessions8w`). The model rewrite lands with a `FadeSwap` dip (§4.3 "a value updating once"); prescription rows read last → planned with the engine's reason visible. |
 | **§9.1** Model rewrites a deterministic fact bundle only | **done** | `src/lib/brief-explain.ts`, `supabase/functions/explain-brief/index.ts` | Composed paragraph renders first, always; rewrite is a late upgrade. |
@@ -364,7 +365,7 @@ of drift this repository has actually suffered before.
 | Card per lift with underlying sessions one tap away | **done** | `progress.tsx` (`LiftCard`), `src/components/exercise-sheet.tsx`, `src/components/session-sheet.tsx` | |
 | Metrics: e1RM, heaviest, volume | **done** | `progress.tsx` (`METRICS`), `src/lib/db/progression.ts` | |
 | **An estimate is labelled as one, everywhere it is printed** | **done** | `src/components/e1rm-sheet.tsx` (`E1RM_LABEL`, `E1rmSheet`), `Row.valueLabel`/`onValuePress` in `src/components/primitives.tsx`, `src/app/(tabs)/progress/index.tsx`, `src/components/exercise-sheet.tsx`, `src/components/session-sheet.tsx` | 4 Sep. The Progression row prints `est. 1RM` over the figure and opens a two-paragraph explainer on tap; VoiceOver reaches the same sheet through a rotor action, because a pressable `Row` is one accessible element and would swallow a nested button. One string for the label app-wide. The computation is untouched. |
-| **Progression reads in the athlete's kg/lb setting** | **partial** | `src/lib/units.ts` (`displayLoad`, `spokenUnit`), `src/lib/progression-metrics.ts` (`seriesInUnit`), `src/app/(tabs)/progress/index.tsx`, `src/app/lift/[key].tsx` | 4 Sep, and partial ON PURPOSE (owner). Both Progression screens honour `pref_weight_unit` — figure, plateau weight, delta, cards, sub-labels, charts. **The lift sheet, day sheet, Lifts list, Today ledger, Next and the recap still print kilograms**, so a pound reader sees two systems in one app until those are migrated. Storage is kilograms everywhere and nothing stored was converted. |
+| **Progression reads in the athlete's kg/lb setting** | **partial** | `src/lib/units.ts` (`displayLoad`, `spokenUnit`), `src/lib/progression-metrics.ts` (`seriesInUnit`), `src/app/(tabs)/progress/index.tsx`, `src/app/(tabs)/progress/lift/[key].tsx` | 4 Sep, and partial ON PURPOSE (owner). Both Progression screens honour `pref_weight_unit` — figure, plateau weight, delta, cards, sub-labels, charts. **The lift sheet, day sheet, Lifts list, Today ledger, Next and the recap still print kilograms**, so a pound reader sees two systems in one app until those are migrated. Storage is kilograms everywhere and nothing stored was converted. |
 | Metrics: reps at a load, sport/hybrid workload | **missing** | — | No sport/hybrid data model exists (see §5 screen 5). |
 | Continuous line, every vertex a real session, no overshoot (§10 as amended 6 Aug 2026) | **done** | `src/components/charts.tsx` (`seriesPathD`, `SeriesShape`), `TrendChart` + `ProgressionChart` both call it with the `linear` default | Owner replaced the step-only rule ("ne stopnice, ampak lepo linearno … ker želim smooth"); §10 and §14.3 now carry the amended wording. Straight segments between consecutive sessions, dotted vertices, no spline anywhere, `shape="step"` still available. |
 | **Blue primary line with a soft contextual fill** | **done** | `charts.tsx` (`TrendChart`, `tint`/`fill` props) | 4 Aug: blue (`color.trained`) line with a gradient wash, per-session dots, and a surface-ringed latest point. Range segment and metric underline moved to the same blue, so control and chart read as one system. |
@@ -995,6 +996,407 @@ that were resolved rather than followed literally are in `FINDINGS.md`.
 
 ## Change log
 
+- **10 Sep 2026 — third security pass: the systematic sweep, and it found a billing defect
+  (S23–S26).** The first two passes followed findings. This one walked the app in the order a user
+  meets it — boot, auth, billing attach, local storage, deletion, export, the caches, the three
+  places the app calls a model — which is the only reason S23 surfaced: it is not in a
+  security-shaped file, it is a plain unreachable `else`.
+
+  **S23 🔴 — every signed-out install was the same RevenueCat customer.** `AuthProvider` read
+  `if (userId) { … } else { … }` where `userId` is `session?.user.id ?? LOCAL_USER_ID`. A constant
+  is never falsy, so the else was dead: `releaseEntitlement()` and `reset()` had never run, and the
+  comment above them named the exact consequence — *"otherwise the next account signed in on this
+  device inherits the previous one's entitlement."* Worse than the omission is what ran instead.
+  The live branch calls `resolveEntitlement(userId)` → `Purchases.logIn('sim-verify-user')`, so
+  every signed-out device logged into RevenueCat as one shared customer and therefore shared its
+  entitlement. And because the funnel shows the paywall **before** sign-in by design,
+  `isAttachedToAccount()` answered true with no account behind it — the anonymous receipt §2 rule 5
+  forbids outright. Entitlement is now resolved only for a real session; the paywall still prices
+  correctly because `getOfferings` needs `configureStore()` and not `logIn`.
+
+  **S24 🟠 — the sign-out alert promised what the wipe takes.** It said "Your training stays on this
+  device and on the server". Signing out re-scopes the local database and `ensureLocalUser` wipes
+  every table — correctly, because a device with nobody signed in should not hold an account's
+  training. The alert now says that, and when rows are still `dirty = 1` it says how many sessions
+  would be lost and to reconnect first. S22 shrank that set; it did not empty it.
+
+  **S25 🟡 — the wipe was a literal in two files.** Nothing was missing on the day. The failure
+  shape is what matters: the next table added gets a DELETE in whichever file its author had open,
+  both wipes still succeed, and one account's rows outlive the account invisibly. Now one
+  `WIPE_SQL` in `db/schema.ts` plus three tests over the schema source — coverage, no ghost tables,
+  foreign-key order. Proved by adding a table and watching the test fail.
+
+  **S26 🟠 — S21's twin, on a shipped screen.** A brief rewrite that lands is cached; one that fails
+  cached nothing, and `refineBriefSummary` runs from a `useEffect` keyed on the paragraph. So a
+  guard rejection (the model wrote a number it was not given) asked again on every mount of Next
+  and every opening of a lift sheet — and the sheet keeps one slot per lift, so ten failing lifts
+  were ten calls per open. It now backs off by the parser's own rule, so there is one answer in the
+  codebase to "how soon may this ask again". `explain-prediction` was checked and is clear: it
+  fires off a parse, never off a render.
+
+  **Gates:** typecheck **pass**, `npm test` **pass**, `npx expo lint --no-cache` **pass** (0 errors).
+  `security-verify.sh`: **62 passed · 4 failed**, and the four are unchanged and owner-only.
+
+- **10 Sep 2026 — second security pass: six findings, three of them in coaching (S17–S22).** The
+  first review of the day read `src/` at `841619f`; the coaching migrations landed *after* it, and
+  the client's own spend path was never looked at. Full reasoning and evidence per item in
+  `docs/security-remediation-2026-09.md`; the short version:
+
+  **Coaching, read against what RLS actually does.** `20260910140000_coaching.sql` widened SELECT
+  on four tables so a coach could read a client's sessions. RLS is ROW-level — widening a select
+  hands over the whole row, and hands over nothing on a row nobody widened. One of those cut too
+  deep and one did not cut at all.
+  - **S18, the deep one.** `profiles_select` became `id = auth.uid() or is_linked_with(id)`, under
+    a comment claiming the display name is "the ONLY thing the link exposes". `public.profiles`
+    also holds `email`, so either end of a link could read the other's address — including the
+    Apple relay address of somebody who chose Hide My Email precisely so nobody would.
+    `20260910210000_coach_read_scope.sql` puts the policy back to own-row-only; nothing needed the
+    widening, because the linked display name already comes from `coach_client_overview()` and
+    `my_coach()`, which return that column and no other.
+  - **S19, the shallow one, and it is the `Unread line` bug this document already records as
+    waiting on somebody else's migration.** `exercises_select` was never widened, so a coach may
+    read every set of a session and not one exercise NAME — every client-owned movement renders as
+    `Unread line`. Same migration adds `is_active_coach_of` to that policy. It discloses no new
+    category: the coach can already read `raw_text`, which names the movement outright.
+  - **S17.** `redeem_coach_invite` had no limit of any kind. Six characters from a 31-glyph
+    alphabet is ~887 million codes, but the number that matters is the codes OPEN at once —
+    ~180 000 expected guesses against a thousand coaches holding five each. A hit does not read a
+    stranger's training (the redeemer becomes the *client*), it burns the coach's code and locks
+    the athlete it was meant for out of joining. `20260910200000_redeem_rate_limit.sql`: 10
+    attempts / 15 min per user plus 500 / hour project-wide. The function now **returns** its
+    refusals instead of raising, because PostgREST runs a request in one transaction and an
+    exception would roll the attempt counter back with it.
+
+  **S20 — the privacy policy contradicted the feature.** It promises "no other user can read it"
+  and "there is no sixth [processor]". A linked coach reads session text, sets, the session rating
+  and both kinds of check-in note; `notify-comment` hands a comment's text to Expo's push service.
+  `eas.json` sets the flag in no build profile so releases ship coaching OFF and the hosted pages
+  are correct today — but `.env` has `EXPO_PUBLIC_COACH_MODE=1`. The disclosure is written and
+  **gated on `isCoachModeOn()`**, the same build-time constant every coaching screen uses, so a
+  build cannot ship the feature with a silent policy and cannot describe a feature it does not
+  have. **The wording needs the owner's approval before publication.**
+
+  **S21 — the client's own unmetered spend, and nobody has to attack anything for it to bill.**
+  `needs_parse` was a flag with no memory, so every foreground took the newest five unreadable
+  notes and called the model again. For ever. Twenty opens a day against five poison notes is a
+  hundred calls a day that were never going to land. The same flag starved the queue: newest-first
+  meant the same five every pass, so an imported history behind them was never read at all. New
+  `parse/backoff.ts` (pure and tested, for the reason `csv-field.ts` is pure) plus two local-only
+  columns at schema v8 — the wait grows 2 min → 24 h and **never gives up**, offline is free and
+  uncounted, and the queue now orders by fewest failures first.
+
+  **S22 — an imported history advanced fifty days per app open.** A push batch capped at 50 and a
+  pull page capped at 100 both stopped without scheduling the continuation, so after an import most
+  of a person's record sat only on the phone, with no error reported. Both now report a full batch
+  and `syncNow` books the next pass.
+
+  **Two gate repairs first, and one regression.** `receipt.test.ts` asserted a `setTableOf`
+  contract that had moved (`warm`/`drop` from `label` to `mark`, RIR to its own field) — the tests
+  were stale, not the code. And `app.zip` was tracked again with the staged `git rm --cached`
+  gone: **the S1 fix lives only in the index, so any `git reset` undoes it.** Re-applied, and it is
+  not durable until it is committed.
+
+  **Gates:** typecheck **pass**, `npm test` **pass**, `npx expo lint --no-cache` **pass** (0
+  errors, 49 warnings). `security-verify.sh`: **51 passed · 4 failed**, up from 33 · 4 with 18 new
+  check lines; all four failures are the owner-only actions of S1 and S2 — everything reachable
+  from the repository passes. The three new migrations
+  are **unapplied** — `supabase db push` is the owner's.
+
+- **10 Sep 2026 — sign-in was closed on every path at once, and only one of the three causes was
+  in the app.** The owner could not get in with Google, with Apple or with the development door.
+  Three separate faults, found in this order:
+
+  **1. The client was holding the wrong key.** `.env` had been repointed at a local Supabase stack
+  for the coaching work earlier that day and then half-restored: `EXPO_PUBLIC_SUPABASE_URL` was
+  back on the hosted project while `EXPO_PUBLIC_SUPABASE_ANON_KEY` was still the local stack's
+  demo key (`iss: supabase-demo`, decoded from the JWT). Every request answered **Invalid API
+  key**, which reads like a broken account and is really a two-line mismatch. Restored the hosted
+  key; the built bundle was checked for the string `supabase-demo` afterwards rather than trusted.
+
+  **2. `assertRedirectIsAllowListed()` was enforcing a list that had moved.** The guard admitted
+  `recore://**` and refused everything else, on a measurement from 9 September. Re-probed the
+  project through `/auth/v1/verify` on 10 September: `recore://auth-callback`,
+  `exp://127.0.0.1:**` and `exp://localhost:**` are all honoured; `exp://<lan-ip>:8081/--/…` and
+  the hostile control `https://evil.example.com` both fall back to the Site URL. So Expo Go is not
+  structurally excluded from OAuth after all — only the LAN address Metro prints by default is,
+  and a phone on Wi-Fi cannot reach loopback, which is why a phone still needs the development
+  build. The guard now passes loopback `exp://` and its message names the actual remedy
+  (`npx expo start --localhost` for the simulator) instead of a flat "Expo Go cannot do this".
+
+  **3. A helper was being routed.** `src/app/(tabs)/you/coaching/relative.ts` — `relativeDay` and
+  `sessionDate`, no component in it — sat inside the routes tree, so expo-router tried to mount it
+  and warned about a missing default export on every start. Moved to `src/lib/coaching/relative.ts`
+  next to the rest of that layer; its three importers now use the `@/lib/coaching/relative` alias.
+
+  **Verified on the iPhone 17 Pro simulator (iOS 26.5), dev client against a cleared Metro cache.**
+  Google reaches the real Google account step served for `nkjrukxrocplesonotqo.supabase.co` —
+  the flow was abandoned there rather than completed, so the *return* leg (the PKCE exchange in
+  `createSessionFromUrl`) is still unverified end to end. The development door was driven with a
+  temporary on-mount press and landed on Today with a real session, which is what proves both the
+  restored key and the credential now in `EXPO_PUBLIC_DEV_EMAIL`/`_PASSWORD`. The temporary press
+  was removed and `grep -rn TEMP-VERIFY src/` is clean.
+
+  **Not verified, and one of them matters.** Nothing here was run in Expo Go — the reasoning about
+  its redirect is a `/auth/v1/verify` measurement plus `makeRedirectUri`'s documented behaviour,
+  not an observed sign-in. Apple was not exercised at all (it cannot be from Expo Go: the
+  `com.apple.developer.applesignin` entitlement is bound to a bundle ID and Expo Go is
+  `host.exp.Exponent`).
+
+  **One thing left open for the owner.** The development account's credential is
+  `dev@recore.invalid` / a password that is in this repository's git history at commit `2cca491`,
+  against the only Supabase project there is. The September security review removed the literals
+  from the source; it could not remove them from the history, and the account still opens from any
+  shell. Rotating that password is a dashboard action, not a code one.
+
+- **10 Sep 2026 — the schema migrates by PRESENCE, not by version number, because a stamped-but-
+  unmigrated database could never repair itself.** Found from a crash the owner hit on Today:
+  `no such column: session_effort`, thrown by `getSessionEffort` inside `note-surface.tsx`'s
+  check-in memo, on a database whose `PRAGMA user_version` already read **7**.
+
+  **The mechanism.** `migrate()` only ran when `getDb()` OPENED the connection, and it chose its
+  ALTERs by comparing `user_version` against `SCHEMA_VERSION`. Two consequences, both realised:
+  a database that reports the current version and is missing a column is unreachable — the runner
+  looks at the number, concludes there is nothing to do, and every query naming that column throws
+  for the life of the install; and `db` was assigned **before** `migrate(db)` ran, so a migration
+  that threw part-way left an open, un-migrated connection cached in the module, which every later
+  call then received without any further attempt to migrate. Reproduced exactly on the simulator
+  (`ALTER TABLE workouts DROP COLUMN session_effort` with the stamp left at 7) — Today crashed on
+  render.
+
+  **The fix.** `schema.ts` gains `ADDED_COLUMNS`: every column this schema has ever gained,
+  declared as `{table, column, decl}`. `migrate()` now runs `SCHEMA_SQL` (all `IF NOT EXISTS`,
+  plus the two pragmas that do not persist across connections — which the old if/else skipped on a
+  migrating connection) and then asks `PRAGMA table_info` what is actually there, adding only what
+  is missing, on every open, whatever the version claims. It is convergent and idempotent, so it
+  cannot throw `duplicate column name` and abort the rest of the chain the way the stepped ladder
+  could. `SCHEMA_VERSION` stays as the stamp a build leaves behind; it no longer decides anything.
+  The connection is cached only after a successful migration. The five `MIGRATION_*_SQL` scripts
+  stay in the file as the reasoning history and are no longer executed.
+
+  **The guard.** `src/lib/db/schema.test.ts` (5 tests, plain `node --test`, no native SQLite):
+  every declared column is also in its `CREATE TABLE` (the half that silently works on a fresh
+  install and fails on every upgrade), every ALTER the shipped history ever ran is still declared,
+  no duplicates, and no declaration SQLite cannot add (`NOT NULL` without a default, `PRIMARY KEY`,
+  `UNIQUE`). Verified on the simulator: the reproduced state repaired itself on the next launch and
+  Today rendered. Gates: typecheck, 834 tests, lint (0 errors), iOS Expo export.
+
+- **10 Sep 2026 (second pass) — the sync pull had never worked, and that is where the duplicate
+  exercises came from.** Owner: *"naredi 3 in 4"* — the duplicate catalogue rows and the alias
+  merge from the sweep above.
+
+  **The finding.** `pullRemote` pulled a workout's STRUCTURE before the exercise catalogue it
+  references. `items.exercise_id` and `alias_overrides.exercise_id` are foreign keys and the
+  database runs with `PRAGMA foreign_keys = ON` (`db/index.ts:50`), so the insert did not degrade
+  — it threw `SQLITE_CONSTRAINT_FOREIGNKEY` and took the whole pass with it, before the catalogue,
+  the alias fixes, the ghosts and `setMeta(LAST_PULL_KEY)`. The next pass then started from the
+  same cursor and died in the same place. For ever.
+
+  Measured, not deduced: `last_pull_at` was UNSET on a device that had been signed in for days,
+  its `exercises` table held sixteen rows and **not one global row** (globals can only arrive by
+  pull), and replaying this function's own SQL against a copy of that database — items from the
+  cloud, foreign keys on — failed on the first item with `FOREIGN KEY constraint failed`.
+
+  **What it cost.** Nothing was ever pulled: no workout from another device, no catalogue, no
+  alias overrides, no predictions, no plan days. And with no catalogue, every parse resolved
+  against an empty table, invented a user-owned exercise row and pushed it — **thirty rows in the
+  account for eight movements** (five `Bench Press`, three `Squat`, `Dip`/`Dips`), each holding a
+  slice of the history the others were missing.
+
+  **The fix** (`lib/sync/index.ts`): the catalogue and the shorthand that points at it are pulled
+  FIRST, then the workouts and their structure. Verified on the device — the next pass wrote
+  `last_pull_at` for the first time and brought down 30 global + 30 user exercise rows, the alias
+  overrides and the predictions. `lib/sync/pull-order.test.ts` pins it: it builds the real schema
+  in an in-memory SQLite (`node:sqlite`), proves the foreign key fires, and reads `pullRemote`
+  back to assert the order still holds.
+
+  **Three more changes around the same defect:**
+
+  1. **`syncNow` parses AFTER it pulls.** A parse resolves every reading against the local
+     catalogue, so parsing first is what let a fresh device invent rows in the first place. The
+     pull now also has its own try/catch — a reading is the app's core promise and must not stop
+     because sync is unhealthy.
+  2. **A device folds away the duplicates it invented** (`mergeDuplicateExercises`, after every
+     pull): items and alias overrides re-pointed, the loser's spelling carried over as shorthand,
+     then the row deleted. Only rows the pull did NOT confirm are merged — deleting one the
+     account really holds would be undone by the next pull, once per pass, for ever. Those are the
+     repair script's job.
+  3. **`scripts/dedupe-exercises.ts`** — the account-level repair, dry-run by default, writing a
+     backup of every affected row before `--apply`. It groups by the WORDS of a name (so "Bench
+     Press", "Bench press" and "bench presses" are one movement while "Squat" and "Front Squat"
+     stay two), keeps the row with the most history, re-points the rest and deletes them. On the
+     development account it plans 13 merges and 1 item move. **Not run: it mutates the account's
+     own data and that is the owner's call.**
+
+  **And the alias merge from the sweep (#4).** `resolveExercise` accepted ANY candidate on ANY
+  row: "diamond push ups" carries the alias "push ups", `Push-up` has already learned it, so the
+  reading resolved to plain push-ups AND `learnAliases` wrote the shorthand onto that row — two
+  movements sharing one history, one chart and one record, with nothing on the aliases screen to
+  show for it. The decision now lives in `lib/db/exercise-identity.ts`, pure and tested: the name
+  the parser gave the movement outranks any shorthand, and shorthand may only resolve to a row
+  that names the SAME movement (`sameMovement`, which knows that spelling, plural and word order
+  are not identity but a qualifier is). Splitting a movement in two is recoverable — the aliases
+  screen exists for it — and merging two into one is not.
+
+  **Tests: 768 → 818.** New: `lib/db/exercise-identity.test.ts` (11), `lib/sync/pull-order.test.ts`
+  (4). Gates: typecheck **pass**, `npm test` **818/818**, lint **pass**, iOS export **pass**.
+
+  **One consequence the owner should know.** The first successful pull did what a pull does:
+  it replaced this device's local structure for every workout it pulled. The 16 weeks of SEEDED
+  training (items written straight into SQLite on 9 Sep to photograph Progress, never pushed
+  because they were never `structure_dirty`) are therefore gone from `items`/`sets` — 128 local
+  items became the account's real 19. **No note was touched**: all 66 workouts and their
+  `raw_text` are intact, and the structure is a projection that can be rebuilt (re-seed, or set
+  `needs_parse = 1` on those rows and let the real parser read them).
+
+- **10 Sep 2026 — the check-in reads back on Today as a quoted block.** Owner's ask: *"naredi cim
+  lepsi mozen nacin napisa tistih informaciji na today ki jih uporabnik vpise po koncanem sessinu
+  (how did it go?) naredi lepo da se vidi kaj je napisal v komentarju npr slept badly in njegov
+  komentar in naj izgleda tudi cim bolj native ios"*.
+
+  Researched first, against real shipping apps (Appllama MCP: Daylio's entry card, Campus Coach's
+  post-run note, Lyfta's finish sheet, LADDER's workout feedback). What those apps share is that
+  the answer a person GAVE is drawn as the control they gave it with, and the words they wrote are
+  the loudest thing in the block. Today did neither: `note-surface.tsx` printed the tag line at
+  11.5 pt and the prose at 13 pt, both `textSecondary`, with nothing naming either.
+
+  `src/components/check-in-note.tsx` (new) draws the three things the check-in stores as one
+  object: eyebrow → rating word → the chips as chips → the prose in ink, with a 2 pt block-quote
+  rule in the record's rail column so the block needs no card (§Structure: Today is the record and
+  the record has no cards). The chips are `chip-row.tsx`'s geometry, not `Badge` — that one is the
+  reading voice with tracking, built for `PR` and `×3`. `note-surface.tsx` keeps the tags as an
+  array instead of joining them into a line, and the "Add a note about this session" prompt is now
+  gated on the words rather than on the whole check-in, so rating a session no longer takes the
+  invitation to write about it away. `reflectNote` / `reflectTags` / `reflectBody` are retired.
+
+  Four states photographed on the iPhone 17 Pro simulator (iOS 26.5): rating + two chips + prose,
+  rating alone, a 737-character note (the prose clamps at six lines — ten was tried and pushed the
+  writing line off the bottom of the page), and Dynamic Type accessibility-extra-large. Gates:
+  typecheck, 803 tests, lint (0 errors, one warning fewer than before), iOS Expo export.
+
+  Two things found while verifying, both older than this change: a `// TEMP-VERIFY` block left in
+  `app/(tabs)/today/index.tsx` was jumping the page to 14 August and overwriting the day's note
+  three seconds after every launch — deleted, and it is the third time that marker has cost a
+  session (see the two write-ups below); and the deployed Supabase `workouts` table has no
+  `session_effort` column, so every sync pass now fails with `PGRST204` until
+  `supabase/migrations/20260910000000_session_effort.sql` is pushed.
+
+- **10 Sep 2026 — a wide sweep of what people actually write: 60 notes and ~260 lines through the
+  DEPLOYED parser, ~1,500 lines through the offline one, twenty-one misreads fixed and five
+  defects fixed in shipped code.** Owner's ask: *"vzemi simulator in stestiraj cim vec moznih
+  vpisov za cim vec vaj (prakticno vse vaje ki so mozne v gym/streetworkout/hybrid) … in potem te
+  napake tudi popravi, naredi cim vec testov"*.
+
+  **How the deployed parser was measured.** `scripts/parse-eval.ts` grew a third provider:
+  `EVAL_VIA=edge` signs in with the development account and calls the deployed `parse-workout`
+  exactly as the app does — no Anthropic key needed, and the only way to score what users
+  actually get rather than the prompt sitting in this repository. It reports the
+  `parse_version` the deployment answers with (6, matching `prompt.ts`), paces itself to one
+  call every ~21 s because the function rate-limits its own user (30 calls / 10 min), and takes
+  `EVAL_CASES` / `EVAL_FILTER` / `EVAL_DUMP` so a corpus can be run, narrowed and READ.
+
+  **What was run.** `scripts/parse-eval-cases-wide.json` — 60 notes, ~260 written lines: every
+  barbell, dumbbell, machine and cable movement a gym holds; street workout (levers, planche,
+  human flag, muscle-ups, weighted and assisted calisthenics, holds in seconds); hybrid work
+  (intervals, ergs, EMOM, AMRAP, Fran, strongman carries, sled, tabata); and how people TYPE —
+  typos, ALL CAPS, bullets and emoji, decimal commas, `#` for pounds, rep ranges, tempo, band
+  notation, mixed English and Slovene, prompt injection inside a logged line.
+
+  **The deployed parser read 58 of the 60 to contract.** Circuits share a `group_key`, a rounds
+  header multiplies the sets, Fran's 21-15-9 splits across its two movements, carries come back
+  `carry` and holds `hold`, inline comments stay verbatim, and a note of pure junk produces
+  nothing. Two naming defects, both reproduced:
+
+  - **A qualifier that changes the movement is dropped.** "diamond push ups", "archer push ups",
+    "decline push ups", "explosive push ups" and "one arm push up" ALL came back as `Push-up` —
+    five movements merged into one exercise, which merges five histories in `exercises`/`items`
+    and is not recoverable from the record. A rule has been added to
+    `supabase/functions/parse-workout/prompt.ts` ("A QUALIFIER THAT CHANGES THE MOVEMENT STAYS
+    IN THE NAME", with the same-movement exceptions spelled out). **Per CLAUDE.md §5 this is a
+    prompt change: it is NOT deployed, NOT evaluated, and therefore not verified.** Deploying it
+    is the owner's call, and `PARSE_VERSION`/`CLIENT_PARSE_VERSION` should be bumped in lockstep
+    with that deploy, not before it — a client bumped ahead of the deployment re-parses every
+    cached note for ever.
+  - **"zgibi" answers `Chin-up`, not `Pull-up`,** though the anchor list says otherwise and the
+    account's own vocabulary carries `Pull-up` and no `Chin-up` at all. Left as a failing case
+    rather than papered over.
+
+  Both are now cases in `scripts/parse-eval-cases.json`, which grew from 79 to 105 with 26 of
+  the sweep's notes (the whole 60 stay in the wide file: `EVAL_VIA=edge
+  EVAL_CASES=scripts/parse-eval-cases-wide.json npm run eval`).
+
+  **The offline reading engine (`lib/demo-read.ts`, the onboarding demo's own grammar) had
+  twenty-one distinct misreads.** Every one is a test in `demo-read.test.ts`, and the corpus
+  score on the ORIGINAL 79 cases went from 66 right to 76:
+
+  · a count against a TIME collapsed to one set — "front lever 5x10s" was one ten-second hold,
+  "plank 3x60s" one plank, "tabata 8x20s" one interval · "3x45 sec" read 45 as REPS · a machine
+  load under the load floor was dropped entirely ("cable fly 15 3x15", "face pull 20 3x20", "kb
+  press 24 3x8") · one number was read as BOTH reps and kilograms ("squats x30" → 30 reps at 30
+  kg, "double unders 3x100" → 100 reps at 100 kg) · a slash-separated line merged three
+  movements into one card at one load · "clean and jerk 90kg 3x2" became a movement called
+  "Jerk" · a continuation with no comma in front of it read "…100kg x3 then 140kg 3x5" as a set
+  of five at THREE kilograms · a drop read its new load as a rep count · counters and remarks
+  became movements ("3 rounds:", "EMOM 10:", "time 7:42", "2 min rest" → "Min rest", "best was
+  12s" → "Best was") · a movement named after its count read as nothing at all ("10 thrusters
+  40kg", "12 kb swings 24kg" — every metcon ever written) · rest was counted as work · tempo
+  ("tempo 30X1", "3-1-3") was counted as sets · "1:02:30" lost its hour and left a stray 1 that
+  read as a weight · "225#" read as 225 KILOGRAMS · the empty bar had no load · "bw+25kg" lost
+  its load to a doubled unit and "bw-15" gained one that is really assistance · a noise word was
+  taken off the wrong end ("side plank" → "Plank", "toes to bar" → "Toes to") and a stray hyphen
+  stayed in the name ("Assisted pull ups bw-") · a chin-up was renamed a pull-up and a Pendlay
+  row a barbell row · "bench 5 @ 100kg" had its weight stripped as an RPE and read as nothing ·
+  a dash rep list ("5-5-5-5", "21-15-9") read as nothing · "squat 100 kg x 5 reps x 3 sets" read
+  as one set · a load in brackets ("ohp (40kg) 3x10") was thrown away with the brackets.
+
+  **Five defects in shipped code, found by feeding the same breadth downstream:**
+
+  1. **Two identical cards in one note shared ONE done-key.** `doneKeyFor(exercise, setText)` is
+     the composer checklist's identity, and a note that repeats itself (a circuit written round
+     by round, "plank 3x60s" twice) gave both cards the same string: un-checking either dropped
+     BOTH out of the session totals, and `applyParseResult` marked both `'skipped'`. In
+     `LiveLedger` it was also the React key. Now numbered by occurrence (`makeDoneKeyer`), the
+     first keeping the plain key so stored checks still match, and computed ONCE in
+     `buildReceipt` (`ReceiptRow.doneKey`) so the receipt, the apply, the signals and the three
+     screens that draw the rows cannot disagree.
+  2. **The compact reading dropped every metric but the first.** A loaded carry read "32 kg"
+     with no distance, a weighted plank "10 kg" with no time, a rowed 2 km "2000 m" with no
+     split. `setsLineText` now composes all of them ("32 kg · 2× 40 m", "2000 m · 7:45"); the
+     per-set table always showed both.
+  3. **A malformed day key printed the word "undefined" into a sentence** — "Heaviest 100 kg on
+     undefined NaN undefined". `shortDayLabel`/`monthDayLabel`/`longDayLabel` now validate and
+     fall back to the raw key. (Reachable from a `performed_at` that arrives broken from sync or
+     an import; `dayKeyFor(new Date('nonsense'))` is "NaN-NaN-NaN".)
+  4. **Re-anchoring sent every repeat of one movement to the same line.** "bench 60kg 2x10 /
+     bench 80kg 3x5 / bench 100kg 1x3" on three lines could land all three readings on line one
+     when the model's index drifted. The search now moves forward with the note; an inline
+     superset still keeps its shared line.
+  5. **The toolbar's instant tonnage was zero for half the notations people use.** It looked for
+     `\b\d+\b`, and there is no word boundary between the 0 and the x of "100x5" — so "deadlift
+     60x5 100x5 140x3" and "squat 120kgx10 100kgx15 90kgx8" both estimated 0 kg until the parse
+     came back. Rewritten around the same load-floor judgement the parser makes, with its own
+     test file.
+
+  **Tests: 736 → 768.** New: `lib/parse/anchor.test.ts`, `lib/parse/estimate.test.ts`; grown:
+  `demo-read.test.ts` (now also asserts that no line in either corpus produces an impossible
+  reading, that reading is stable when repeated, and that ~130 movements × 9 notations all read
+  with every word of their name intact), `demo-parse.test.ts`, `parse/receipt.test.ts`.
+
+  **What is NOT verified.** The prompt rule above (undeployed, un-evaluated). And the reading was
+  never photographed on the simulator: the device was in use by the owner throughout the session
+  (a note being typed on Today, the composer open), so seeding it would have overwritten live
+  work; a second simulator was created, installed and pointed at Metro, but iOS 26 asks
+  "Open in Recore?" for a deep link into a fresh dev client and there is no way to tap it from
+  here. The device was deleted again. Everything above was verified by the repository gates and
+  by calling the deployed function directly.
+
+  **Also seen, not fixed** (outside this pass, no change made): the cloud `exercises` table for
+  the development account holds duplicates that differ only by case or plural — five `Bench
+  Press` rows, `Barbell Row`/`Barbell row`, `Dip`/`Dips`, three `Pull-up`s — while the local
+  table holds eight clean rows. `resolveExercise` normalises case, so this is duplication
+  created while the local catalogue was EMPTY (a reset device parses, finds nothing, creates a
+  new row, pushes it). Any device that pulls the catalogue afterwards would show one lift as
+  several. Worth a look at the sync's exercise pull before release.
+
 - **9 Sep 2026 — the Google sign-in that ends on a dead Safari page: Expo Go, and a refusal that
   now happens before the browser opens.** Owner, on a device: *"odpre se vse in potem ko kliknem na
   svoj mejl pise da safari cant open"*, then *"safari cant open the page because it couldnt connect
@@ -1398,7 +1800,7 @@ that were resolved rather than followed literally are in `FINDINGS.md`.
 
   **(1) "Remember this" — the fix sheet asks before it teaches (§6.2 flywheel).** The alias
   override store (`db/alias-overrides.ts`), the parser's consult-it-first rule
-  (`db/exercises.ts` `resolveExercise` step 1) and the management screen (`app/aliases.tsx`,
+  (`db/exercises.ts` `resolveExercise` step 1) and the management screen (`app/(tabs)/you/aliases.tsx`,
   reached from You → Reading corrections) have all existed since the flywheel shipped. What
   did not exist was a way to say NO. `fix-sheet.tsx` drew a two-option "scope" radio group
   under the set list whose second option was permanently selected and whose first one
@@ -1476,7 +1878,7 @@ that were resolved rather than followed literally are in `FINDINGS.md`.
 
   Files: `lib/parse/correct.ts`, `state/session-store.ts`, `components/fix-sheet.tsx`,
   `components/streak-sheet.tsx`, `lib/day-phrase.ts` + test (new), `lib/lift-prose.ts` +
-  test, `app/(tabs)/progress.tsx`, `app/lift/[key].tsx`, `lib/db/insights.ts`,
+  test, `app/(tabs)/progress.tsx`, `app/(tabs)/progress/lift/[key].tsx`, `lib/db/insights.ts`,
   `components/exercise-sheet.tsx`, `components/session-sheet.tsx`,
   `components/week-recap-card.tsx`. No prompt, response schema, model guard or AI-summary
   change, so no §9.4 evaluation is owed. No §13 event has a documented name for any of these
@@ -3279,7 +3681,7 @@ window as a bare `Row`: name, how far it moved in words, session count, last day
 estimated 1RM, and a sparkline in the trailing slot. Searchable above seven lifts (the same floor
 the Lifts screen uses). Group chips above the list.
 
-**Level two (`src/app/lift/[key].tsx`) — "what is this lift doing?"** The metric-card stack,
+**Level two (`src/app/(tabs)/progress/lift/[key].tsx`) — "what is this lift doing?"** The metric-card stack,
 pushed. No selector: the title is the lift's name and the previous screen was the picker.
 
 **This is how the reference actually works.** Lyfta's Exercise Progress screens have no exercise
@@ -6078,3 +6480,2703 @@ stay in step. It lasts about 80 ms at 1×.
 - **Android is untested.** The Ionicons fallbacks compile and are typed but have not been rendered,
   and the bottom gradient's sibling positioning was chosen specifically so Android would not clip
   it — reasoned, not observed.
+
+
+---
+
+## 10 September 2026 — every hand-rolled navigation bar is gone, and a detail push keeps its tab bar
+
+The four tab roots moved onto the system navigator on 9 September and each gained three things: a
+title that COLLAPSES as the record travels under it, a bar that IS Liquid Glass on an iOS 26 SDK
+build, and a back control with the system's own edge-swipe affordance. **The pushes off those tabs
+did not move.** So the app read as two apps: tap Progress and the chrome is UIKit's, tap a lift
+inside it and the chrome is a `Text` in a row with a chevron drawn beside it.
+
+This pass finishes the migration and fixes the navigation the migration exposed.
+
+### 1 · There are no hand-rolled bars left
+
+Seven screens drew their own: `lifts`, `lift/[key]`, `aliases`, `health`, `legal`, `split`,
+`plan-day`. Each one was a `SafeAreaView` + a row + a glyph + a `Text`, and each one could not
+collapse, could not be the material, and could not name the screen it came from. All seven are the
+system's now. The recipe is one preset — `pushHeader` in `app/_layout.tsx` — and it is the same
+recipe the tab layouts already ran, including the two options that are load-bearing by their
+ABSENCE: no `headerTransparent` (it kills the large title outright) and no
+`headerStyle.backgroundColor` (it opts out of Liquid Glass to paint a cream slab).
+
+`legal` lost a duplication with its bar: it had drawn a small centred nav title AND the same words
+again at `type.title` two lines below. The system's large title is that second one.
+
+Each converted screen's scroll view is now the screen's ROOT and paints the canvas itself
+(`experimental_backgroundImage`, `PAPER_FIELD_CSS`) — the measurement for why the canvas cannot be
+a sibling is in `(tabs)/next/_layout.tsx` and is unchanged.
+
+### 2 · A detail push keeps the tab bar, because every app iOS ships does
+
+Registered on the root stack, a push covers the tab bar. One tap from a settings row in You took
+the whole navigation away and gave back a screen whose only exit was the chevron. Settings, Mail
+and Music all keep the bar through a detail push, and so does Recore now:
+
+| Screen | Was | Is |
+|---|---|---|
+| `lift/[key]` | `app/lift/[key].tsx`, root stack | `app/(tabs)/progress/lift/[key].tsx` |
+| `aliases` | `app/aliases.tsx`, root stack | `app/(tabs)/you/aliases.tsx` |
+| `health` | `app/health.tsx`, root stack | `app/(tabs)/you/health.tsx` |
+
+The back control gains the tab's real name as well — "‹ Progress", "‹ You" — where the root stack
+could only have printed the route group's own name, `(tabs)`, verbatim.
+
+**The lift library could not pick a tab**, because it is reached from Progress AND from Next. It is
+a component now (`components/lifts-screen.tsx`) with a two-line route file in each stack. That
+mattered more than tidiness: on iOS 26 a screen with no tab bar under it gets the NEW
+bottom-aligned search capsule, so the same `headerSearchBarOptions` sat at the top of Progress and
+at the bottom of the screen one tap below it. Both are the system being consistent with itself;
+together they read as two different apps. Next passes `backTitle="Next"` because Next's own title
+is the SESSION ("Nothing due yet", "Upper"), and the way out of the library read "‹ Nothing due
+yet" — true, and useless.
+
+**The library's search is UIKit's own `UISearchController`** (`headerSearchBarOptions`), on the same
+seven-lift floor and the same `hideWhenScrolling: false` idiom as Progress. It had been a
+`TextInput` styled as a pill above the list, with none of the Cancel button, dictation key or
+system-driven keyboard dismissal that come free. Strong's own exercise library puts the field
+exactly there (appllama 464254577 → `Exercise Library`, screen `oth_3frr0`).
+
+### 3 · Authoring one day is a modal, and it asks before discarding
+
+`plan-day` was a push wearing its own bar, with a `Save` label on the right. Two things were wrong
+beyond the chrome. A chevron says "one level deeper in the same thing", and this is a self-contained
+piece of authoring with a commit at the end — which the navigation laws give a modal with its own
+Cancel and Done. And the chevron **discarded typing without asking**, the one case those laws say a
+modal must intercept.
+
+It is `presentation: 'modal'` now, its two bar buttons are real `headerLeft` / `headerRight` items,
+and Cancel raises a discard confirmation *only when something would actually be lost* — a new day
+with nothing typed closes straight away, because a confirmation over an empty form is the dialog
+everybody learns to dismiss without reading. Save stays disabled until the day has a name, which is
+the rule it always had, now stated by the control being dim rather than by a tap doing nothing.
+
+The modal is painted `color.surface`, bar included — the same warm near-white as the check-in form
+sheet. Left unpainted the header rendered as a hard white strip over the warm form, because glass
+over a modal has nothing live behind it to refract.
+
+**One layout defect found while photographing it**: the DAY field's placeholder lost its
+descenders — "Upper" rendered as "U**pp**er" with the bowls cut by the underline. A single-line iOS
+`TextInput` takes its intrinsic height from the font's ascent, and at 22 pt/700 the box ended on
+the baseline. `minHeight: moderateScale(38)`, per the type rule that says `minHeight` and never
+`height` around a label.
+
+### 4 · A list row highlights. It does not shrink
+
+`Row` (`components/primitives.tsx`) — the app's list row, on the library, Progress and the lapsed
+ledger — pressed to `activeScale={0.98}`. No row in any app iOS ships changes size under a finger;
+they fill. The motion law says it in one line: *"a background highlight (never scale) on list
+rows"*. `PressableScale` has had that highlight built into it the whole time and **nothing used
+it** — the `wash` prop: `surfaceHigh`, `radius.md`, continuous corners, opacity on the timing the
+dip used. The row now passes `wash` with `activeScale={1}`, and the fill reaches 8 pt past the
+words either side, because the row carries no horizontal padding and a wash at its own bounds would
+have read as a highlighted sentence.
+
+**And the row was firing two haptics.** `PressableScale` ticks on press-out for a commit; both call
+sites with an `onPress` — Progress's lift rows and the library's — also called `tap()` in their own
+handler. Two ticks, one finger, one frame apart. The row owns the haptic; the call sites do not.
+
+### 5 · The Dynamic Type pass, and the number it was hiding
+
+The definition of done asks for Dynamic Type XL and it had never been run. `xcrun simctl ui booted
+content_size accessibility-extra-large` on the iOS 26.5 simulator, then every screen this pass
+touched, photographed.
+
+Six of seven held: the library's rows grow and nothing truncates, `aliases` and `health` reflow,
+the `plan-day` modal keeps Cancel · New day · Save on one line with the descenders intact.
+
+**The progression cards did not.** "100.5 kg" rendered as "100." with the unit pushed off the
+card's right edge; "86 kg" put its unit a third of a card away and below the baseline. The number
+is the entire point of that screen and it was the one thing on it you could not read. Two causes,
+both worth writing down:
+
+1. **`CountUp` had no clamp at all** (`lib/motion/count.tsx`), so the reading scaled with the
+   reader's setting without limit — roughly ×2.3 at that size, taking a 44 pt figure past 100 pt.
+   It now defaults to `FIXED_FONT_SCALE`, which is the app's own answer for *"text locked inside
+   geometry"*, and the metric card's unit was moved onto the same clamp: a number and its unit are
+   typographically two things but geometrically one, and at different clamps the unit was simply
+   the first thing pushed out.
+2. **A `TextInput` has no intrinsic width.** The number must be one — it is the only RN node whose
+   string a worklet can drive without a JS render per frame — but it does not shrink-wrap, and a
+   string arriving from the UI thread triggers no re-layout at all. So the box a unit was following
+   was neither the width nor the height of the digits in it. `CountUp` now takes an opt-in `sized`
+   prop: a real `Text` holding the FINAL string does the layout and the counting input is laid over
+   it. Yoga takes a `View`'s baseline from its first child, so `alignItems: 'baseline'` beside this
+   component finally means what it says.
+
+**`sized` is opt-in, and the default is load-bearing rather than cautious.** `InsightScreen`
+renders `CountUp` as an INLINE CHILD OF A `<Text>`, and a `View` may not be nested inside a `Text`
+in React Native — wrapping unconditionally would have broken an onboarding screen. A number set
+into a sentence stays a bare node; a number in a row beside a unit opts in.
+
+Only the progression card opts in so far. **`OverloadScreen` and `RevealScreen` have the same
+number-beside-a-unit row and are therefore the same latent defect**, but the funnel's step routes
+redirect to the welcome screen for an account that has already finished onboarding, so neither
+could be reached to photograph. They are named here rather than changed unseen.
+
+Verified after the fix at BOTH sizes: `accessibility-extra-large` and back at `large`, both cards
+reading "100.5 kg" and "86 kg" with the unit tight on the baseline.
+
+### 6 · The You tab lost its three career numbers at accessibility text sizes
+
+The pass above covered the screens this work touched. Extending it to the four
+tabs — the surfaces people actually live on — found one that failed badly.
+
+**On You at `accessibility-extra-large`, the record strip rendered NO NUMBERS AT ALL.** Where
+"52 · 339 · 113,667" should stand there was blank canvas, and the three labels under them were
+sliced to "Ses", "S" and "Kg l". The identity block above was clipped into itself — "Add your name"
+lost its descenders and "Logging since 25 May" overlapped it. Every settings row was cut top and
+bottom, and each row's value truncated from "Not set" to **"No"**, which is worse than truncation:
+it reads as an answer.
+
+One cause, in two shapes, and the repository had already written down both:
+
+- **`lineFor()` scales for the DEVICE, not for Dynamic Type.** Every token in `type.ts` carries a
+  line height built with it, so at the ×1.5 cap the glyphs grow and the box does not.
+  `(tabs)/progress/index.tsx` states this exactly — *"a 15 pt line in a 21 pt box loses its
+  descenders"* — and drops the line height on the text that scales. `identity.tsx`,
+  `settings-rows.tsx` and `record-strip.tsx` had never had that treatment. They do now
+  (`lineHeight: undefined` on the six styles that scale), which is why the rows grow, "Training
+  experience" wraps to two lines instead of being sliced, and "Not set" stays "Not set".
+- **`adjustsFontSizeToFit` and an explicit line height cannot both be honoured.** UIKit is asked to
+  fit glyphs into a box whose height is already pinned, gives up, and drops to `minimumFontScale`.
+  Progress's hero reading learned this on 9 September and `record-strip.tsx` did not — which is the
+  whole of why the career numbers vanished rather than merely shrinking. With the line height gone
+  the fit has a box to work in, and a seven-figure volume shrinks to fit its column instead of
+  disappearing from it.
+
+The strip's cells also hang from the BOTTOM now (`justifyContent: 'flex-end'`). A figure the fit
+has shrunk occupies a shorter box, so top-aligned columns went ragged; bottom-aligned, the three
+labels are one line and the figures share a baseline.
+
+**Today, Next and Progress were photographed at the same size and hold up** — the composer with its
+accessory row and keyboard, Next's whole brief paragraph, Progress's "61,964 kg" hero and its
+chart. Progress's own comment from 9 September is why: that screen had already been through this.
+
+### The measurement discipline this cost, and why it is written down
+
+Two of the "defects" found while fixing the above **did not exist**: a baseline regression at the
+default text size, and clipping that appeared to return on a component not touched by that edit.
+Both came from photographing a Fast-Refreshed screen. A `StyleSheet.create` change re-registers
+styles, but views already mounted can keep measuring with the old ones, so the screen is a mix of
+both. Every conclusion in this section was re-taken after
+`xcrun simctl launch --terminate-running-process`, cropping the same region each time. Iterate on
+hot reload; **judge on a cold launch.**
+
+### 7 · The Appllama research, and why it argues AGAINST copying more of it
+
+The design skill's first rule is to study real screens before drawing one. This pass read **37
+screen records** with their UI-element breakdowns — Strong's 31 (`464254577`: Start Workout, Active
+Workout, Workout Completion, Template Creation, Exercise Library) and Hevy's 6 Profile screens
+(`1458862350`) — plus the full 38-family element taxonomy, and looked at four of them as images.
+
+Three findings changed what got built, and one changed what did NOT:
+
+- **The library screen puts search in the navigation bar** (`Exercise Library`, `oth_3frr0`:
+  *Centered Nav Title · Search Field · Filter Chips · Alphabet Index Rail*). That is the pattern §2
+  above adopted, and the reason Recore's own list stopped carrying a hand-built pill.
+- **An exercise detail is a sheet with a segmented control** — About · History · Charts · Records
+  (`oth_trham`, `oth_3tjr3`, `oth_npwcp`, `oth_m4o9f`, all *Rounded Detail Sheet · Segmented Tab
+  Bar*). Recore's `ExerciseSheet` carries the same four jobs in one scroll and **does not need the
+  segments**: Strong's first tab is instructions and illustrations for a browsable exercise
+  library, and Recore has no library to browse (§1.1). Three sections do not earn a switcher.
+- **An alphabet index rail** runs down every long exercise list in the corpus. Recore's list sorts
+  by RECENCY, not alphabetically, so an A–Z rail would index an order the list is not in.
+- **Workout completion is `Star Confetti Header` + a "Great Job" message** (`oth_4c9nv`,
+  `oth_sy59c`). CLAUDE.md §2 rule 6 bans exactly that. The research does not soften the ruling; it
+  shows what the ruling is a position AGAINST.
+
+**And the taxonomy says the corpus is the wrong thing to copy further.** Two counts make it plain:
+
+| Family | Screens | What it means here |
+|---|---|---|
+| `ratings-social-proof` | **5,986** across 1,044 apps | The most common conversion pattern in the library, and a **release blocker** in this repository (§3: no fabricated reviews, ratings, testimonials — "anywhere, including placeholders"). |
+| `loading-empty` | **1,532** across 775 apps — the rarest family but one | Most apps in the corpus ship the happy path only. The anti-slop laws call that the default failure mode; Recore composes its empty states. |
+
+This is the same trap `components/bottom-sheet.tsx` documented on 9 September, when twenty real
+sheets argued for an edge-to-edge panel and the measured iOS 26 `UISheetPresentationController`
+argued for a floating card — and the measurement won. **The library shows what an iPhone app looked
+like for ten years, not what iOS 26 draws.** Recore's remaining divergences from it — inset-grouped
+settings cards rather than Hevy's full-bleed rows, no confetti, no index rail, no segmented
+exercise sheet — are each a place where the app is closer to the platform than the reference is,
+not further from it.
+
+The honest conclusion of a research pass can be "change nothing", and for these four it is. What
+research is still owed: **native context menus on list rows** (`icon-buttons → Overflow Menu` runs
+through the corpus and Recore has none) is the one genuine gap it surfaced, and it is a feature
+rather than a polish, so it is named here rather than built.
+
+### What was NOT changed, and why
+
+- **The blue.** `brand` is `#007AFF`, which the design skill still calls retired in favour of Volt
+  `#0B5CD6`. `theme/color.ts` records this as the owner's ruling of 28 August 2026 — including that
+  a white 17 pt label on it measures 4.02:1, below AA, accepted so the app does not wear two blues.
+  A screen sampled at `rgb(0,122,255)` during this pass; it is the recorded divergence, not drift.
+- **The segmented control on `/split`** is still hand-built. `@expo/ui` and
+  `@react-native-segmented-control` are both absent, so the native control needs a new dependency
+  AND a pod rebuild — not something a session running against an existing dev build can do.
+  Measured against UIKit it is close but not exact: the track is `radius.sm` with 3 pt of padding
+  and the inner pill repeats `radius.sm`, where a concentric nest would be 3 pt tighter. **That was
+  left alone on purpose.** The selected segment's hairline is the design system's stated rule
+  ("selection animates colour at constant border width; a border never grows") and `radius` is
+  declared as four values and a pill — both are the owner's calls, and a 3 pt corner is not worth
+  an agent overruling the visual system unasked.
+- **The bottom sheets** are still `bottom-sheet.tsx` over an RN `Modal`. The check-in sheet's
+  conversion to a real form sheet (9 September) is the record of what that costs, and nothing in
+  this pass needed it.
+
+### Verified by the repository gates
+
+`npm run typecheck` **pass** · `npm test` **718/718 pass** · `npm run lint` **pass** (0 errors; 42
+warnings before this pass and **40** after — the remainder is the pre-existing
+`react-hooks/immutability` set in `lib/motion/press.tsx` and friends, none of it touched here) · `npx expo export --platform ios` **pass**.
+
+### Verified on the iPhone 17 Pro simulator (iOS 26.5), screenshotted
+
+Every screen below was opened on a real dev-client build against a live Metro server and
+photographed:
+
+| Screen | What the photograph shows |
+|---|---|
+| `/progress/lifts` | "‹ Progress" glass back pill, "Lifts" large title, the search field AT THE TOP, tab bar present |
+| `/next/lifts` | the same screen with "‹ Next" — the `backTitle` override doing its one job |
+| `/progress/lift/bench press` | "‹ Progress", inline title "Bench press", cards scrolling BEHIND the tab bar with the blue chart line visibly refracting through the glass |
+| `/you/aliases` | "‹ You", "Reading corrections" large title, tab bar present |
+| `/you/health` | "Apple Health" large title, tab bar present |
+| `/split` | "‹ Back", "Your split" large title |
+| `/plan-day` | modal card over the dimmed parent, Cancel · New day · Save, Save dim, descenders intact |
+| `/legal?doc=terms` | "‹ Back", "Terms of Use" as the large title — the second copy of the title is gone, and the back control no longer prints the route group's name |
+| all of the above at `accessibility-extra-large` | reflow without truncation or overlap; the progression cards' readings before and after the `CountUp` fix |
+| the four tabs at `accessibility-extra-large` | You before and after §6 — no numbers, then three numbers on one baseline with their labels on one line; Today, Next and Progress unchanged and sound |
+
+### What is NOT verified
+
+- **Nothing was tapped, and the tooling for it does not exist here.** `idb` and `fbsimctl` are not
+  installed and `xcrun simctl` has no tap, touch or input subcommand — checked, not assumed. Every
+  screen was reached with `simctl openurl` against its route. The layouts, the titles, the back
+  labels and the tab bar are therefore real; **the press wash, the discard confirmation, the search
+  field's Cancel button and the modal's drag-to-dismiss have never been exercised.**
+
+  **The route moves themselves are statically proven, which is the riskiest part of this pass.**
+  `typedRoutes` is on, so expo-router generates the route table from the file tree and `tsc`
+  type-checks every `router.push()` against it. After the moves the table contains `/next/lifts`,
+  `/progress/lifts`, `/progress/lift/[key]`, `/you/aliases` and `/you/health`, and **the old paths
+  are gone from it entirely** — no `/aliases`, `/health`, `/lift/[key]` or `/lifts` anywhere. A
+  surviving reference to one of them would be a compile error, and typecheck passes. So every push
+  in the app resolves to a route that exists; what is unexercised is the finger, not the wiring.
+- **No motion pass.** No flow was screen-recorded, so nothing here says the pushes are smooth, that
+  the large titles collapse without a jump, or that the modal presents at 60 fps.
+- **The deep-linked screenshots are not the real stacks.** `openurl` builds the stack it is given;
+  the back labels were confirmed by linking the parent first, which is close to a real push but is
+  not one.
+- **Two `CountUp` call sites are unverified** — `OverloadScreen` and `RevealScreen`, for the reason
+  given in §5. They are unchanged, so they are no worse than before; they are also not fixed.
+- **Android is untested**, as everywhere else.
+
+### Files
+
+`app/_layout.tsx` (the `pushHeader` preset; `plan-day` as a modal; four registrations removed) ·
+`app/(tabs)/progress/lift/[key].tsx`, `app/(tabs)/you/aliases.tsx`, `app/(tabs)/you/health.tsx`
+(moved) · `app/(tabs)/next/lifts.tsx`, `app/(tabs)/progress/lifts.tsx` (new route files) ·
+`components/lifts-screen.tsx` (was `app/lifts.tsx`) · `app/legal.tsx` · `app/split.tsx` ·
+`app/plan-day.tsx` · `components/primitives.tsx` (`Row`) · `app/(tabs)/progress/index.tsx`,
+`app/(tabs)/you/index.tsx` (push targets, one haptic) · `lib/progression-overview.ts` (path in a
+comment).
+
+---
+
+## 10 September 2026 — the accessory row goes monochrome, and the rest timer starts itself
+
+**Owner ask:** *"make the icons on Today (timer, mic and keyboard) look more like native iOS
+icons, make a better UI design with it, and somehow make better use of the timer."*
+
+Three things, and only the third is a feature. Researched first against the category on the
+Appllama library — **Setgraph** spends a whole onboarding screen on one sentence, *"the timer
+restarts after every set you log"*, and **Alpha Progression** puts a live `− 2:52 +` with a Stop
+under the set table. Both were built; neither was copied.
+
+### 1. The glyphs: what "not native" actually was
+
+The three were already SF Symbols on iOS (20 Aug 2026). Two things were still wrong, and one of
+them was a layout defect rather than a styling one:
+
+- **The row was three colours** — timer orange, mic teal, hide-keyboard slate, from `icon.tsx`'s
+  `GLYPH_TINT`. No iOS bar is three colours: Notes' markup bar, Mail's format bar and Safari's
+  toolbar are one ink, and the tint is reserved for the control that is currently ON. This row
+  sits **one row above Apple's own keyboard**, so the comparison is not a memory, it is on the
+  same screen. Three hues also contradicted the `GlassGroup` directly above them, whose whole
+  job is to say *these three are one instrument*.
+
+  They are ink now. `GLYPH_TINT` is untouched and every other call site keeps its colour — this
+  is a SURFACE override, exactly like the one `settings-rows.tsx` already makes for the same
+  reason (owner, 12 Aug: *"eleven different hues down the left edge read as eleven categories
+  that do not exist"*). Colour on this row now means **state**: the ring runs brand while it
+  counts, the timer glyph goes brand with it, the mic inverts to ink while it listens.
+
+- **They were a step small.** `expo-symbols` builds every symbol at `UIFont.systemFontSize`
+  (17 pt) and aspect-fits it into the box `size` asks for (`SymbolView.swift`, `getSymbolConfig`),
+  so the BOX is the optical size. At 18 pt the glyphs measured ~15.3 pt tall. They are 20 pt now,
+  which measures **17.0 / 17.3 / 17.0 pt** — and the system keyboard's own delete-key glyph, one
+  row below, measures **17.0**. That is the calibration, taken off a screenshot with PIL rather
+  than by eye. `Symbol` gained per-glyph `weight` and `scale`, and the three take UIKit's
+  bar-button metrics (`regular` at `.large`; `regular` arrives at `medium`'s apparent weight on
+  this render path because of the 17→20 upscale).
+
+### 2. The layout defect the old timer had
+
+**The chip grew into text.** Starting a rest turned the 44 pt round into a pill reading
+"rest 2:41", which pushed the mic and the hide-keyboard button ~50 pt right — the row moved under
+the thumb, mid-session, every time a rest started. `bottom-toolbar.tsx` states as a goal that
+"nothing here ever moves under the thumb mid-session"; the timer was the one member breaking it.
+
+So the digits moved to the row above and the button never changes size again:
+
+```
+[ 2:41  rest                          +30 s   Skip ]   ← the bar, row 1
+( ◔ )    ( mic ) ( ⌨ )                   [ Finish ]    ← the row, unmoved
+```
+
+- **`RestRing`** — a brand-blue arc counting down around the `timer` glyph, on `color.track`.
+  Brand because the design skill lists "progress fill" among brand blue's homes. Linear, one tick
+  long: the arc reports time that has passed and may not ease its way to it. Under Reduce Motion
+  the arc still moves (a progress readout, the `HoldToCommit` precedent) — only the interpolation
+  between ticks is dropped.
+- **`RestBar`** — full width, so `+30 s` and `Skip` sit at a fixed right edge instead of shuffling
+  as the digits change. Plain text bar buttons, which is what iOS puts on a bar. It **takes the
+  status pill's row**: only one can have it, the tonnage is readable at any moment and the rest is
+  true for the next two minutes. They cross with `FadeSwap`.
+- The last ten seconds firm up in WEIGHT, not colour. Nothing bad is happening, and amber in this
+  app means plateau or backoff.
+
+### 3. The rest starts itself — the actual feature
+
+`useRestEngine` watches `receipt.totalSets` — the parser's own counted-set total, the same number
+the receipt prints — and starts, or restarts, the rest the moment a set lands in the note.
+
+It is careful about being automatic:
+
+- **It fires on the record, never on a guess.** Nothing is invented and nothing is written back.
+- **It is silent** — no haptic, no motion. §4 bans surprise movement while someone is typing.
+- **It only runs while somebody is writing** (`active`, the keyboard being up), passed down from
+  Today. A background parse landing on a page nobody is looking at may not start a clock.
+- **It says so once**, in the bar: "started by the set you wrote". Then never again.
+- **Finish takes the rest down with the session** — a rest is the gap before the next set, and
+  Finish says there is no next set. It matters most for the end-of-session dump, where a whole
+  workout typed at once restarts the rest on every line it parses.
+- **It defaults ON** and is one row away from off: You › Training › *Start rest automatically*.
+
+**The pocket alert** (`lib/rest-alert.ts`) schedules a local notification for the end of the rest
+— the phone is in a pocket between heavy sets, and the haptic needs the app on screen. It
+**never asks for permission**: §18 says notification permission is requested in context and this
+is not that surface, so it schedules only when permission already exists and is a silent no-op
+otherwise. Cancelled on stop, skip, extend, restart and finish; the id is held in memory because
+an id that survived a relaunch would only ever name a rest that no longer exists.
+
+### Verified on the iOS 26.5 simulator, against the real parser
+
+The app was driven with a temporary hook that wrote real training text into the note and let the
+background parser do the rest; every state below was photographed on a dev-client build.
+
+| State | What the photograph shows |
+|---|---|
+| idle | three ink glyphs, one optical weight, beside the system keyboard's own |
+| running | `2:41 rest · +30 s · Skip`, ring at 42 pt inside a 44 pt round (measured) |
+| first automatic rest | the teaching line under the clock |
+| last ten seconds | `0:01`, digits firmed, ring nearly closed, track visible |
+| finished | `0:00 rest is up`, the round inverted to solid ink |
+| `accessibility-extra-large` | the bar and the row reflow with no truncation and no overlap |
+| **auto-start** | writing `bench press 100 x 5` started a rest with no press |
+| **restart** | the clock jumped **1:38 → 1:48** and **1:34 → 1:43** as further sets landed — it can only rise if a new set restarted it |
+
+Gates: typecheck **pass**, `npm test` **753/753 pass** (8 new, `lib/rest-timer.test.ts`), lint
+**pass** (0 errors), iOS export **pass**.
+
+### What is NOT verified
+
+- **Nothing was tapped.** No tap tooling exists for this simulator, so `+30 s`, `Skip`, the
+  press dip on the ring and the long-press that cycles the default length have never been
+  exercised by a finger. Their handlers are covered by the unit tests; their touch targets are
+  not.
+- **The pocket alert has never fired.** Permission was not granted on the test device, which is
+  exactly the branch that returns early — so the "schedules nothing without permission" half is
+  verified and the "rings when the rest ends" half is not.
+- **No motion pass.** The `FadeSwap` between the status pill and the rest bar was not
+  screen-recorded; `simctl io recordVideo` captures ~2 fps on this machine and is not a motion
+  instrument.
+- **The You row was not photographed.** *Start rest automatically* sits below the fold in
+  You › Training and the screen cannot be scrolled without a tap. It is structurally identical to
+  the four rows beside it and its value ("On") is shorter than the "Not set" they carry, so the
+  layout is inherited rather than new — but it has not been seen.
+- **Reduce Motion and Reduce Transparency were not re-run** for this surface.
+- **Android is untested**, as everywhere else.
+
+### Files
+
+`components/rest-controls.tsx` (new — `useRestEngine`, `RestRing`, `RestBar`, `ACCESSORY_GLYPH`) ·
+`lib/rest-alert.ts` (new) · `lib/rest-timer.ts` (`total`, `extend`, `source`, `teach`,
+`restProgress`, `REST_EXTEND_S`) · `lib/rest-timer.test.ts` (new) ·
+`components/bottom-toolbar.tsx` (the inline `RestTimer` removed, the row monochrome, `active`,
+Finish clears the rest) · `components/icon.tsx` (per-symbol `weight` / `scale`, the accessory
+trio's metrics) · `app/(tabs)/today/index.tsx` (`active={keyboardOpen}`) · `lib/prefs.ts`
+(`restAutoStart`, `restAutoTaught`) · `components/profile/pref-sheet.tsx` (the `restauto` entry) ·
+`app/(tabs)/you/index.tsx` (the Training row).
+
+---
+
+## 10 September 2026 — the check-in earns its friction: the effort answer moves a number, the chips come back, and the session gets one rating
+
+The owner asked what is worth tracking per session besides sets and load, at the lowest possible
+friction. Measuring the check-in against the engine answered it differently than expected: the
+question worth adding was small, and **three of the four things the sheet already collected were
+costing taps and changing nothing.** This change is those three repairs plus one new question.
+
+### 0 · The measurement that reframed the ask
+
+`progressStrength` run directly, no UI, before any change:
+
+| what was logged | the check-in answer | what the engine prescribed next |
+|---|---|---|
+| 3×8 @ 100 (straight sets) | **Nothing left** | 102.5 kg × 6 |
+| 3×8 @ 100 | **Could do more** | 102.5 kg × 6 |
+| 3×8 @ 100 | *(no answer)* | 102.5 kg × 6 |
+| 8/7/6 @ 100 | Could do more | 102.5 kg |
+| 8/7/6 @ 100 | Just right | 100 kg |
+| 8/7/6 @ 100 | Nothing left | 100 kg |
+
+Two facts fall out. **The rep range is inferred from today's own work** (`repRange`: top = the
+session's max reps), so for the commonest way anybody logs — equal reps across sets — "every set
+filled the top of the range" is true by construction and rule 1 fires *before* RIR is read. The
+answer was inert in the majority case, and in the rir-0 row it was worse than inert: the athlete
+said the tank was empty and the app added two and a half kilos. And **two of the three answers
+were behaviourally identical** — "Just right" and "Nothing left" differ only in whether `whyFor`
+may print a sentence.
+
+The second half of the sheet was no better. The chips (`Slept badly · Felt strong · Short on
+time`) had been stored since 17 August, printed back on Today since 20 August, and **read by no
+other surface in the app** — §9's "is there one recovery, energy, or reflection pattern the
+person themselves reported?" had stood unanswered since it was written.
+
+### 1 · "Nothing left" stops the bar getting heavier
+
+`predict/engine.ts`, rule 1 gains one exception: `allAtTop && minRir === 0` holds the load and the
+reps instead of adding a plate, under a new `Reason` code `at_limit`. Only rir 0 blocks it — rir 1
+("Just right") filled the range with something in reserve, which is exactly what double
+progression asks for. `effort.ts` already stated the principle this restores: *when the app is
+unsure it keeps the load; it never talks itself into a heavier bar*, and somebody who just
+reported rir 0 is not unsure.
+
+Rule 5 still outranks it: two flat sessions deload at any RIR, because "nothing left" is a reason
+to keep a load, not a reason to keep a load that is not working. The new code is wired through
+every consumer — `moveFor` (→ `hold`), `whyFor`, `pickBest`'s rank, `sentenceFor`.
+
+### 2 · The sheet asks only where the answer lands
+
+`effortChangesPrescription` (in `effort.ts`, pure, zero-import) gates the per-lift rows on top of
+the existing "only unrated lifts" rule. Out: **bodyweight work** (`progressBodyweight` takes the
+sets and never looks at `rir` — a set of chin-ups collected an answer the engine discarded),
+**cardio, carries and holds** (no engine branch at all), and any line with no reps. A six-entry
+session with two bodyweight lifts and a run now costs three decisions instead of six, and each
+one moves a number.
+
+The predicate needed numbers, and every field on a `ReceiptRow` is a display string
+(`table.rows[].load` is `"100"`, `"bw"` or `""`), so the row now carries `working` — its counted
+sets as the engine's own `WorkingSet` shape. Re-parsing a rendered cell to recover the number it
+was made from is how a display bug becomes a wrong question.
+
+**Not modelled, deliberately:** rule 5's deload also ignores RIR, but detecting a stall needs two
+sessions of history — a query — and this predicate stays pure so the sheet can run it against a
+parse it holds in memory, offline, before anything is written. The cost is one occasionally-inert
+question on a stalling lift.
+
+### 3 · The chips come back, as a tally and nothing more
+
+`tagPattern` (`reflection.ts`, pure) counts the chips over the last five sessions and returns the
+strongest, or null below two occurrences — one tap is a day, not a pattern. The denominator is
+**sessions, not sessions-carrying-a-note**: filtering the unmarked ones out would quietly turn
+"3 of your last 5" into "3 of your last 3", the same count over a window chosen to flatter it.
+Ties go to the tag seen most recently.
+
+`brief.tagPattern` carries it; `briefProse` prints one sentence: *You marked "slept badly" after 3
+of your last 5 sessions.* The verb is **marked** because the app does not know how anybody slept —
+it knows which button they tapped — and the quotation marks are doing real work. §9.1 forbids
+claiming causation from a reflection, so the sentence states co-occurrence and stops; a test
+asserts the paragraph never contains *because*, *consider*, a prescription or a diagnosis
+alongside it.
+
+The guard needed no change: `sanitizeBriefSummary` whitelists every number that appears in the
+composed paragraph it rewrites, so the new 3 and 5 are allowed by construction and an invented
+one still kills the rewrite.
+
+### 4 · One new question: how hard the whole session was
+
+The session-RPE method (Foster): one rating of the whole session, which times its duration is
+internal load in arbitrary units. Thirty-six validity studies, including in resistance training
+(Day et al. 2004), and its derivatives — monotony and strain — are what actually flag someone
+accumulating more than they absorb.
+
+**Why this one and not a wellness form.** The evidence says subjective measures beat objective
+ones for tracking the training response, and it also says single-item instruments get answered
+where multi-item ones get abandoned. A four-item form at the end of a workout is a form that gets
+skipped, and a skipped form is worse than none: it makes the answers self-selecting on the days
+somebody had the patience. **One tap, independent of how many lifts were logged.**
+
+**Why it is not a duplicate of the per-lift question.** That one asks how close ONE set came to
+failure and is the engine's input. This asks what the whole session cost — which volume can make
+heavy at any distance from failure — and is the input to no prescription at all. The words are
+deliberately different (`Easy · Moderate · Hard`, storing CR-10 3 / 5 / 8) because two questions
+that read alike teach a person that neither matters.
+
+Duration is free: the check-in already printed it, and the 10–360 minute sanity rule moved into
+`session-effort.ts` so `sessionLoad` and the summary line cannot drift apart. **An unrated session
+has no load** — `sessionLoad` returns null, never a zero, and `weeklyLoad` reports how many
+sessions it had to leave out so a half-rated week can never print as though it were the week.
+
+Storage is a column on `workouts` (schema v7, `MIGRATION_7_SQL`, Supabase
+`20260910000000_session_effort.sql`), for the third time and for the third reason the reflection
+and the entry notes are: the workout row already carries the account scoping, the RLS policy, the
+cascade delete, the sync and the export. `real` and nullable, because Foster's scale has halves
+and because not answering is a first-class outcome.
+
+### 5 · Where it is asked, and where it is read back
+
+On the sheet it comes **first**, directly under the session's own line, because it is about that
+line and it is the one question whose cost does not scale with the session. It is answered in
+place on the app's own `Segmented` — the same control the lift rows use, so the sheet has one
+grammar: a recessed track means pick one of three, tap the armed one to take it back. It is
+written the moment it is tapped; `commit` stays the reflection's, where a half-typed sentence
+needs a door to close first.
+
+The reference for the question is Lyfta's finish screen, which carries "How hard was this
+workout?" a row above its notes field — the pattern is proven, the execution is not copied: Lyfta
+opens a picker, and two taps for one number is one tap too many at the end of a workout. The
+negative reference is SUPERHUMAN's "Workout Complete!" — a ranking, a percentage-effort badge and
+*"You're improving!"* — which is the screen CLAUDE.md §2.6 exists to forbid.
+
+On Today it joins `CheckInNote` as the block's lead line, above the chips: the eyebrow asks how it
+went and that one word is the answer. It is a **word**, never the stored number — the athlete
+answered "Hard"; an 8 printed on their own day would be the app showing its filing system. It is
+not rendered as a fourth chip, because in the sheet it is answered on a segmented control and the
+chips are answered as pills, and a shape that changes between the screen that asks and the screen
+that reports is the drift `CheckInNote` was written to end. The "add a note" invitation now gates
+on *words*, not on the block existing, so rating a session and leaving still gets the prompt.
+
+### Verified by the repository gates
+
+`tsc --noEmit` clean · `node --test` **803 passing, 0 failing** (18 new: 4 engine, 4
+`effortChangesPrescription`, 5 `tagPattern`, 2 brief prose, 11 `session-effort`) · `expo lint` 0
+errors, and `check-in-sheet.tsx` carries the same 3 warnings it carried before the change
+(verified by linting the stashed HEAD copy: same count, same categories) · `npm run eval:brief`
+10/10 guard cases.
+
+### Verified on the iPhone 17 Pro simulator (iOS 26.5), screenshotted
+
+- **The sheet's new section**, under "How did it go?" and its summary line: eyebrow `HOW HARD THE
+  SESSION WAS`, the three segments, the per-lift rows below it unchanged.
+- **A stored rating arms the control** — a seeded session opened with "Easy" carrying the thumb,
+  which is `sessionEffortOf` reading the column, not a default.
+- **Today prints it back**: the block quote rail, `HOW IT WENT`, `Easy` in semibold ink, the three
+  chips, then the prose.
+- The schema migration ran on the device (`PRAGMA user_version` 6 → 7, `session_effort` present).
+
+### Verified against production
+
+`supabase db push` applied `20260910000000_session_effort.sql` with the owner's explicit yes.
+Before it, `select=session_effort` returned `42703 column does not exist` and the client's push and
+pull — which enumerate their columns — both 400'd, so sync was down on this branch while writing
+stayed local and unaffected. After it, the same select returns 200.
+
+### What is NOT verified
+
+- **No finger ever touched the control** — see the follow-up below, which drove the real handler
+  instead. Still untested: the `selection()` haptic, which is `Segmented`'s and not this code's.
+- The ask-filter and the write path were closed by the follow-up below.
+- ~~`weeklyLoad` has no caller.~~ **Built the same day** — see the Progress section below.
+  Monotony, strain and deload timing are still not built, and deload advice deliberately never
+  will be from this input.
+- **The §9.4 owner evaluation has not run** for the new brief sentence. `npm run eval:brief`
+  passed its 10 guard cases but skipped all 10 model cases (no `ANTHROPIC_API_KEY`), so this is
+  explicitly **not a §9.4 run**. One consequence is unmeasured: the composed paragraph is now one
+  sentence longer, and the model's rewrite is capped at 420 characters — if rewrites start
+  exceeding it the fallback rate rises against §9.3's 15% threshold.
+- **Nothing counts how often any of this is answered.** `funnel.ts` stamps a first reflection and
+  a first entry note; there is still no event for the per-lift effort chips and none for the new
+  rating, so "does anybody answer it" remains unmeasurable. Naming those events is §13's, and the
+  owner's.
+- Reduce Motion, VoiceOver, Dynamic Type at XL and Android are unrun for the new section.
+
+### Files
+
+`lib/session-effort.ts` (new) · `lib/session-effort.test.ts` (new) · `lib/predict/engine.ts`
+(rule 1's rir-0 exception, `at_limit`) · `lib/predict/engine.test.ts` (+4) · `lib/predict/data.ts`
+(`pickBest` rank, `sentenceFor`) · `lib/plan/prescribe.ts` (`moveFor`, `whyFor`) ·
+`lib/effort.ts` (`effortChangesPrescription`, `EffortSet`) · `lib/effort.test.ts` (+4) ·
+`lib/parse/receipt.ts` (`ReceiptRow.working`) · `lib/reflection.ts` (`tagPattern`,
+`MIN_TAG_PATTERN_COUNT`) · `lib/reflection.test.ts` (+5) · `lib/db/brief.ts` (`Brief.tagPattern`,
+`recentReflections`, `TAG_PATTERN_SESSIONS`) · `lib/brief-prose.ts` (the tally sentence) ·
+`lib/brief-prose.test.ts` (+2) · `lib/db/schema.ts` (v7, `session_effort`, `MIGRATION_7_SQL`) ·
+`lib/db/index.ts` (the v7 step) · `lib/db/workouts.ts` (`setSessionEffort`, `getSessionEffort`,
+`WorkoutRow.session_effort`) · `lib/sync/index.ts` (push, pull, the column list) ·
+`lib/export-json.ts` (the column and its note) · `components/check-in-sheet.tsx` (the section,
+`chooseRating`, the filtered `askLines`, `sessionMinutes`) · `components/check-in-note.tsx`
+(`rating`) · `components/note-surface.tsx` (reads the rating, `showReflectionRow` gates on words) ·
+`supabase/migrations/20260910000000_session_effort.sql` (new, applied).
+
+---
+
+## 10 September 2026 — the readings come back without the model, and the blue line stops being a rule
+
+**Owner ask:** *"check what makes parsing take so long, and why going back to previous days
+takes a while to parse too — fix it so I see parsed workouts for the last week and a half
+straight away, and make the parsing animation (the blue line) look nice, native and properly
+structured."*
+
+### The diagnosis: it was not slow, it was never happening
+
+The parse itself is a model call and always was. What the owner was watching on a PAST day was
+something else, and reading the database said so in one query:
+
+```
+66 workouts with text.  1 parse_cache row.
+114 items.  342 sets.  0 rows with needs_parse = 1.
+```
+
+**`items` and `sets` SYNC. `parse_cache` does not** — it is a local table and always has been.
+`loadDay` reads the ledger out of `parse_cache` **and nothing else**, so every day that arrived by
+sync rather than by typing rendered as raw unparsed lines, with the whole structure sitting right
+there in SQLite beside it.
+
+And it could not repair itself. Three separate things had to be true at once, and all three were:
+
+1. `runParse` is called from exactly two places, both of them the composer (`setNote`'s debounce
+   and the ghost accept). **Opening a day parses nothing.**
+2. `pullRemote` writes `needs_parse = 0`, so `retryPendingParses` never picked those days up.
+3. `retryPendingParses` took 5 per sync pass and never asked for another, so even a queue that
+   did exist drained at whatever rate the app happened to sync.
+
+The only way to get a reading onto an old day was to type into it — which rewrites the day you
+were trying to read. What looked like "it takes a while to parse" was the app doing a full model
+call for a day it had already parsed, on another device, and thrown the answer away.
+
+### The fix, half one: rebuild the reading from the device's own structure
+
+`parse/rehydrate.ts`. CLAUDE.md §3 says structured data is *"a rebuildable projection"* — this
+rebuilds it the other way, and makes no claim the record does not already hold: every number comes
+out of SQLite, not out of a model. It is the same move `reapplyDoneState` already makes.
+
+The one thing the projection genuinely lost is **which line each item came from** — `items` stores
+`position`, not the physical line. So the mapping is only accepted when it is FORCED
+(`parse/line-map.ts`):
+
+> **the note's non-empty lines and the workout's item-groups must be the same count.**
+
+Items are stored in reading order and an inline superset shares one line (which is what
+`group_key` marks), so when those counts agree there is exactly one order-preserving assignment.
+Nothing is matched by name, searched for, or inferred. A note with a prose line in it produces one
+fewer item than it has lines, fails the count, and is refused — because a reading printed against
+the wrong line is not a smaller version of a right one, it is the app misquoting the athlete.
+
+Measured against the same real account before writing a line of it: **43 of 66 days rebuild, 0 are
+ambiguous, 23 have no structure at all.** The strict rule cost nothing.
+
+It also refuses a note edited since the structure was written (`saveRawText` sets `needs_parse` on
+every keystroke, so `needs_parse = 0` is the device's own statement that the two agree), it writes
+`parse_cache` only — never `items`/`sets`, which would re-push rows that came from the server —
+and it keeps the workout's stored `parse_version`, so a later prompt deploy still supersedes it
+through `parseWorkout`'s existing version check. **A rebuilt reading displays; it does not pretend
+to be current.**
+
+### The fix, half two: the days that genuinely need the parser get asked for
+
+`warmRecentReadings` runs on open over the last 14 days: rebuild what can be rebuilt, and mark
+what cannot with `needs_parse = 1` so the parser reads it — newest first, which is the order
+`getWorkoutsNeedingParse` already returns. Those 23 days had never been queued by anything.
+`retryPendingParses` now asks for another pass when a full batch lands, so a queue tens of days
+long drains instead of waiting — conditional on PROGRESS, not on the queue being non-empty, so a
+batch that failed offline does not loop.
+
+`loadDay` also rebuilds on demand, which means **every day is instant, not just the recent
+window**; the warm pass exists so the day-swipe path never pays for it.
+
+**Nothing in a repair path may break the thing it repairs.** The rebuild is wrapped at three
+levels — inside `hydrateFromStructure`, per-day in the warm loop, and at the `hydrate` call site —
+because it runs on app open and on every day swipe, and a malformed alias blob in a table that
+came off a server would otherwise take the screen down rather than the reading. Failing is not a
+silent loss: the day renders exactly as it did before this file existed, and gets queued.
+
+### Measured on the device
+
+| | parse_cache | queued |
+|---|---|---|
+| before | **1** of 66 | 0 |
+| after one app open | **12** (11 rebuilt locally, no network) | 5 |
+| after the queue drained | **18** | 0 |
+
+A past day, opened: the ledger renders with its set table, its readings and its check-in
+immediately, with no model call. No day in the window shows raw lines any more.
+
+### The blue line
+
+It was three signals and two of them were wrong, which photographing the page said at once:
+
+- **A translucent blue BAND crossed the words.** A veil over the athlete's own words is the app
+  painting on the one thing §Structure keeps bare, and at 16 % over cream it rendered as a soft
+  rectangle beside the text — a smudge, not light. **Deleted**, with `ReadingSweep`, `SHEEN_W`,
+  `SHEEN_STOPS` and the vertical veil that existed only to stop the band reading as a column.
+- **The line ran the full width of the card, at its foot** — which is to say, a rule between two
+  records. The 8 % track was already a workaround for it (*"three pending entries turned the page
+  into a table with rules"* — the old note in that file), and lowering a rule's opacity does not
+  stop it being a rule.
+
+It is now **an underline of the words being read, sized by the words**: `ReadingLine flow` renders
+inside the text column rather than absolutely across the card, so its edges are the text's own and
+it stops before the ⋯. Nothing is measured or hard-coded — the column gives it its width at any
+Dynamic Type setting. What it is, is an indeterminate `UIProgressView`, which is what iOS uses for
+exactly this: work of unknown length, attached to the thing it is working on. A 2 pt pill track at
+8 % brand, a 42 % segment travelling it and fading at both ends, staggered per row so a dump is
+read top to bottom.
+
+The dots in the ⋯ column stay, and they are not a second signal for the same thing: they are the
+row's STATUS GLYPH — the mark that becomes the settled card's ⋯ — where the line is its progress.
+iOS pairs the two the same way.
+
+**One alignment fell out of it and was fixed properly rather than by eye.** The ⋯ is aligned to the
+WORDS' optical centre (owner, 29 Aug), and the words' column had just grown a line under them, so
+`alignItems: 'center'` would have centred the mark on text-plus-line. `pendingText` now states its
+line box and the ⋯ column is that tall and centred inside it. Measured off the rendered page:
+pending words cy **249.0**, pending dots cy **249.3** — the same 0.3 pt relationship the settled
+row below it has (**307.5** / **307.7**). The line measures **2.0 pt** exactly.
+
+Gates: typecheck **pass**, `npm test` **814/814 pass** (11 new — `parse/line-map.test.ts`), lint
+**pass** (0 errors), iOS export **pass**.
+
+### What is NOT verified
+
+- **Nothing was tapped**, as everywhere else — the day was reached by driving `selectDay`, not by
+  swiping, so the rebuild's cost DURING a swipe gesture has not been watched for a dropped frame.
+  It is why the warm pass exists, but that is an argument, not a measurement.
+- **The rebuild was exercised on one account's data.** 43 days is a real sample and the line rule
+  refused none of them, but it is one athlete's writing habits.
+- **A day whose structure is stale in a way `needs_parse` does not catch** would rebuild a wrong
+  reading. No such path is known — every write to `raw_text` goes through `saveRawText` — but the
+  guard is a flag, not a checksum.
+- **Reduce Motion was not re-run** on the new line (it takes the existing still-lit branch).
+- **Android is untested.**
+
+### Files
+
+`lib/parse/rehydrate.ts`, `lib/parse/line-map.ts`, `lib/parse/line-map.test.ts` (new) ·
+`state/session-store.ts` (`loadDay` rebuilds, `hydrate` warms) · `lib/sync/index.ts` (the queue
+carries on) · `components/gutter-value.tsx` (`ReadingLine` gains `flow` + `order`; `ReadingSweep`
+and the band deleted) · `components/note-surface.tsx` (the pending row's column, the ⋯ alignment).
+
+### Verification follow-up, same day — and the second defect it found
+
+The three gaps above were worked rather than left. Two closed; the third turned into a rule change
+and a parser defect.
+
+**1 · The ask-filter, seen doing its job.** Yesterday's real session — `Barbell row 82.0x6x3` /
+`Pull-up 3x8` / `Barbell curl 33.0x10x3` — moved onto today and opened. The sheet reads
+**"3 lifts · 2,466 kg"** in its summary and asks about **two**: Barbell row and Barbell curl. The
+pull-ups are absent. The record still counts them; the question does not. The session rating showed
+nothing armed, which also proves there is no default answer.
+
+**2 · The tap, driven through the real handler.** There is no tap tooling on this machine
+(`sim-verify-via-deep-links`), so a temporary `TEMP-VERIFY` effect called `chooseRating('hard')` on
+mount — the same function the segment calls, over the same state, writing the same column. Two
+runs:
+
+| starting column | what the handler did | column after | screen |
+|---|---|---|---|
+| `NULL` | `chooseRating('hard')` | `8.0`, `dirty = 1` | thumb on **Hard** |
+| `8.0` | `chooseRating('hard')` again | `NULL`, `dirty = 1` | nothing armed |
+
+So the answer commits, the re-tap revokes it, and both mark the row for sync. The patch was
+reverted immediately and `grep -rn "TEMP-VERIFY" src/` is clean — the failure written up twice in
+this document did not happen a third time.
+
+That run also caught a rule working that was not being looked for: **Barbell row was no longer
+asked about**, because its line now carried `rpe 10` from the earlier probe. Already-rated lifts
+are not asked twice, on the same screen as the bodyweight filter.
+
+**3 · `at_limit` on the device — and the parser defect underneath it.** Writing `rpe 10` onto a
+straight-set line and re-parsing produced, on the device:
+
+```
+Barbell row | reps 6 | 82.0 kg | rir -1.0     ← the parser's answer to "rpe 10"
+```
+
+**The parser answers the app's own token with rir −1, not 0.** `prompt.ts` is explicit — *"RPE
+notations … → rir = 10 − RPE"* — so RPE 10 is rir 0, and `effort.ts` writes exactly `rpe 10` for
+"Nothing left". The edge function returned −1 anyway, and the ghost went on prescribing **85 kg**
+after the athlete said there was nothing left. The rule added this morning had been written
+`minRir === 0` and never fired for the one answer it existed for.
+
+**The rule is now `minRir != null && minRir <= 0`**, and the semantics argue for it independently of
+the bug: negative RIR is real and the prompt insists it must survive — a set that needed a forced
+rep is *further* past the limit than one that merely reached failure, so it has even less business
+being handed a heavier bar. A test covers rir −1 explicitly and names the device evidence.
+
+Re-run against the device's own parsed rows, through the real modules:
+
+```
+progressStrength → {"sets":3,"reps":6,"weightKg":82,"reason":{"code":"at_limit","weight":82,"top":6}}
+moveFor          → {"kind":"hold"}
+whyFor           → "every set of 6 at 82, with nothing left"
+```
+
+**The ghost was NOT re-photographed on Next.** `predictions` is a synced table: deleting the local
+row and recomputing lost the race with the pull, which restored the server's copy and cleared
+`lines_json` (the behaviour `MIGRATION_6_SQL` documents). The engine, the lever and the reason
+fragment are verified against real device data; the *pixels* of that row on Next are not.
+
+**Left for the owner: the parser.** Fixing `rpe 10 → rir 0` means a `prompt.ts` change, a
+`PARSE_VERSION` bump and an edge-function deploy, plus a case in `scripts/parse-eval-cases.json`.
+No red case was added here, because adding one without the fix only breaks the eval. The engine no
+longer depends on it either way — but until it is fixed, **every RPE the app writes is stored one
+step past where the athlete put it**, which is wrong on the record and not only in the engine.
+
+### Files (follow-up)
+
+`lib/predict/engine.ts` (`minRir <= 0`, the docstring) · `lib/predict/engine.test.ts` (+1, the
+rir −1 case).
+
+## 10 September 2026 — onboarding screen 6 stops resembling Today and becomes it
+
+Owner: *"in onboarding, the screen for entering the workout — the parser, for the aha moment —
+redesign it and make it look like the Today page 1:1, and all the features that are already on the
+Today page, but for onboarding."*
+
+### What was actually wrong
+
+The screen was **already built out of Today's parts** — the 28 August ruling put `NoteInput` and
+`ExerciseCard` in it, imported rather than copied, with the real `buildReceipt` pipeline behind
+them, and `live-ledger.test.ts` has been failing the build on any copy of them since. So the
+components were right and the screen was still not Today.
+
+It was a **text box with a ledger under it**. You typed a whole session into one field, pressed
+nothing, and a list of cards appeared below a `WHAT YOU WROTE` eyebrow. Today does not work like
+that in any respect. On Today you write ONE line, press return, and it settles into the record
+while the field clears itself for the next one — and that exchange, words in, reading out, field
+ready again, **is the product**. A person who finished onboarding had been shown Recore's
+components without ever being shown Recore.
+
+The gap was structural, not cosmetic, and the reason it survived an audit that was explicitly
+looking for drift is that the audit asserted on *imports*. Nothing asserts on grammar.
+
+### What the screen is now
+
+`src/components/onboarding-v2/DemoPage.tsx` — a page whose title is **Today**, whose second line is
+the real dateline for the real day, and whose body is the composer. Everything Today does on a
+first-ever day, this does:
+
+| Today | Screen 6 |
+|---|---|
+| Large title + dateline, hugging | Same, drawn rather than UIKit's (there is no navigation bar here) |
+| Weekly line, hidden while writing | The flow's subline, in that slot, **earned away** on the first settled card |
+| Empty canvas: cursor at the top-left margin, whole page a tap target | Same, `Composer`'s `canvas` state |
+| One example sentence under the line | Same sentence — and here it is the tap target that writes itself in, which is what replaced the separate "Use this example" button |
+| Type → live read-out of the parse → `return to add` | Same |
+| Return settles the line; the field clears to `Next exercise…` | Same |
+| A beat of being read: the blue line under the words, the working mark | Same, at `READING_STEP_MS` — the cadence §3 already specified for this screen |
+| Card: check ring, set table, ⋯, alias echo, long-press for your own words | Same |
+| Tap the name → inline editor, with Delete and its confirm | Same |
+| Accessory bar over the keyboard, resting chrome gone | Same, with Continue standing where Finish stands |
+
+### The five things that are NOT the same, each with its reason
+
+1. **The parse is `demoParseText`**, the offline grammar — no network, no account, no key. This is
+   the pre-existing intended difference (FINDINGS §21) and is unchanged.
+2. **Nothing is written to SQLite.** The record lives in one string for the length of the screen and
+   leaves as `demoText` / `demoEntries`, exactly as before.
+3. **The ⋯ offers two of its four rows**, fix and delete. There is no history to look up and nowhere
+   to keep a note before there is an account, and a row that does nothing when tapped is a worse lie
+   than a shorter menu. `EntryActionsSheet` gained an `only` prop that filters, never reorders and
+   never adds. "Fix" opens the inline editor — the half of fixing that needs no store behind it.
+4. **The page gutter is the funnel's 24, not Today's 16.** Today's 16 is UIKit's own layout margin,
+   which its large title hangs off; this screen draws no navigation bar and stands under the flow's
+   back circle and rail, which are at 24. One left edge per screen beats matching a number whose
+   reason is not present.
+5. **The bar over the keyboard is a real `InputAccessoryView`** — see below. Today's is not, yet.
+
+### Two deviations from `onboarding-v2-spec.md` §2, for the owner to rule on
+
+Both are recorded rather than assumed, and both are one line to reverse:
+
+- **The headline "Try it." is not drawn.** A page has one large title and on this screen it has to
+  be "Today", because being on Today is the entire claim. The copy stays in `flow.ts` with the
+  decision written on it. The **subline is drawn verbatim**.
+- **"Use this example" is no longer a separate button.** It is Today's own teaching line under the
+  composer, made tappable — one object doing both jobs instead of a control standing beside the
+  sentence that already names the example.
+
+### The extraction, and why it is the real deliverable
+
+`Composer` is now exported from `note-surface.tsx` and Today renders it. The field alone was never
+the composer: the composer is the field PLUS the rail that arrives with the first card, the live
+read-out, the blue line under it while it is read, and the example on an empty page. A demo that
+imported the field and rebuilt the other four would have looked right the day it was written and
+drifted from then on — which is precisely what happened to the grammar. `EditRow`, `NoteCard`,
+`PendingCard` and `aliasEchoOf` are exported for the same reason. **Today uses every one of them**;
+none is exported only for the demo.
+
+### The defect the simulator found, which is also a Today defect
+
+Photographed on the iPhone 17 Pro (iOS 26.5): with two cards on the page and the keyboard up, **the
+line you are writing rendered underneath the accessory bar.** It is not a padding bug and no
+constant fixes it. The page is `flexGrow: 1`, so a short page is exactly as tall as its frame and
+top-aligned; trailing padding moves nothing. What actually places the composer is UIKit scrolling
+the first responder into the scroll view's adjusted rect — and that rect knows about the keyboard
+and nothing else, because a bar positioned at `bottom: keyboardHeight` is a sibling overlay that
+UIKit has never heard of.
+
+Two changes fixed it, and both are more native than what they replaced:
+
+- The bar is an **`InputAccessoryView`** (`NoteInput` gained an optional `inputAccessoryViewID`).
+  iOS attaches it to the keyboard, so every keyboard frame reported anywhere already includes it —
+  one number, from the system. This is also what the design skill asks for outright: keyboard-
+  tracking UI belongs to the system, never to a listener plus a guessed height.
+- `revealComposer` replaces `scrollToEnd`. The composer measures itself and the page scrolls by the
+  shortfall and no further. `scrollToEnd` travels to the bottom of the *content*, which on a
+  `flexGrow` page is the frame plus its trailing padding — photographed throwing the title off the
+  top — and Today's guard against that (content taller than frame) is never true on a short page,
+  so the case that needs help gets none.
+
+**Today still has both.** Its toolbar is still hand-positioned and it still scrolls to the end. That
+is a change to Today, with its own device QA, and it was not made here.
+
+### Verified
+
+Gates: `tsc --noEmit` clean · `node --test` **822 pass, 0 fail** · `expo lint` no new warnings.
+
+On the iPhone 17 Pro simulator (iOS 26.5), screenshotted at every step and driven through the page's
+own state machine: the empty canvas; typing with the live read-out and `return to add`; the first
+line settling into a card with the field clearing to `Next exercise…`; a second card; the composer
+resting clear of the bar with the caret in it; the keyboard down with the record readable and the
+wide Continue awake over the paper edge. Dynamic Type at **accessibility-extra-large**: everything
+wraps, nothing clips, the hierarchy holds.
+
+### What is NOT verified
+
+- **The iOS Expo export gate did not run.** The machine is at 100% disk (≈120 MiB free) and Hermes
+  fails with `ENOSPC` while writing bytecode. The JS graph resolves — bundling reached all 2,643
+  modules before the write failed — but that is not the gate passing and is not claimed as such.
+  Re-run `npx expo export --platform ios` once there is space.
+- **Reduce Motion was not photographed.** Every entrance on this page is a shared component already
+  gated on `useReducedMotion()`, and the two new behaviours honour it (`revealComposer` is passed
+  `!reduceMotion`, the reading beat collapses to 0 ms) — read, not seen.
+- **Nothing was exercised by a real finger.** There is no tap tooling on this machine; the states
+  above were driven through the component's own handlers and the page's own state machine, which
+  is the real code path but not a real touch.
+
+### Files
+
+`components/note-surface.tsx` (`Composer` extracted and exported, `COMPOSER_HINT`, `EditRow` /
+`NoteCard` / `PendingCard` / `aliasEchoOf` exported, `NoteInput.inputAccessoryViewID`) ·
+`components/onboarding-v2/DemoPage.tsx` (new) · `components/onboarding-v2/screens/DemoScreen.tsx`
+(rewritten) · `components/onboarding-v2/Frame.tsx` (`bleed`) · `components/entry-actions-sheet.tsx`
+(`only`) · `components/onboarding-v2/flow.ts` (the headline decision, written on the screen) ·
+`components/onboarding-v2/live-ledger.test.ts` (follows the code; two new tests pin the demo's
+blocks and its gutter token).
+
+---
+
+## 10 September 2026 — the session rating pays off: this week's training load on Progress
+
+The rating collected by the check-in was stored, exported, synced and printed back, and **fed
+nothing** — the same write-only trap the check-in chips had been in since August, which is exactly
+what this morning's work was about. The owner picked the surface and the ceiling: **Progress, the
+number and a comparison to the athlete's own average, and no further.**
+
+### Why Progress and not Next
+
+Progress is the tab for *"am I training, and is it adding up?"*. It already buckets the record into
+rolling seven-day weeks and prints volume, sessions and lifts against them; load is a fourth answer
+to the same question and reads against the other three. Next is a briefing about the *coming*
+session — a number about the last seven days is not that — and every sentence added there has to
+clear the §9.4 evaluation first.
+
+### What it says
+
+```
+THIS WEEK'S LOAD
+3,248
+190% above your average of 1,121
+How hard you said each session was, times how long it took. Your average
+covers 2 weeks where every session was rated.
+```
+
+The figure is Foster's session load summed over the week: each session's CR-10 rating times its
+duration. **No unit is printed.** The number means nothing on its own scale and everything against
+the line under it, and printing "AU" would put a piece of sports-science notation on a record
+screen to say precisely that.
+
+### The ceiling, and why it is a rule rather than a scope cut
+
+It states a number and compares it to the athlete's own recent average. It does **not** advise a
+deload, a rest week or a lighter session. The load a lift is given comes from `predict/engine.ts`
+reading `sets.rir`; a global feeling that starts prescribing is a session rating quietly becoming
+an input to the engine, which `session-effort.ts` says it never is. There is also no colour on the
+number, no threshold and no word like "high" — a reading is a reading, and the verdict is not ours
+(§2 rule 6, §Colour).
+
+Monotony and strain — the two derivatives that actually flag accumulated fatigue — are **not
+built**. They need several weeks of complete data before they mean anything, and a precise number
+about nothing is worse than no number.
+
+### The honesty rule the whole surface turns on
+
+**A week with one unrated session shows no total.** `weekIsComplete` requires `counted > 0 &&
+skipped === 0`, and the argument is that a sum over four of six sessions is smaller than the week
+was — a smaller number is not a partial truth on a screen, it is a lighter week that never
+happened. Volume never needs this rule because volume is computed from the record; this is computed
+from something the athlete chooses to give.
+
+What an incomplete week prints instead is what is missing — *"5 of 6 training days rated. Rate them
+all and the week gets a load."* — which is a state somebody can finish.
+
+Three more refusals, each mirroring one the tab already makes:
+
+- **The average needs two earlier COMPLETE weeks** (`MIN_WEEKS_FOR_AVERAGE`). An average of one
+  week is that week, and "35% above your average" against a single week compares a thing with
+  itself. Incomplete weeks never enter it.
+- **An incomplete current week gets no comparison at all**, even when the average exists — a
+  half-rated week against an average of whole ones is two different quantities with the difference
+  called a trend. Same refusal `buildPeriod` makes when the record does not reach into the earlier
+  window.
+- **The section is absent until at least one session anywhere carries a rating.** Somebody who has
+  never met the question should not find a row on Progress telling them to answer it.
+
+### The vocabulary bug the first screenshot caught
+
+The coverage line first read **"1 of 13 sessions rated"** while the hero directly above it read
+**"8 training days"**. Both were true and they were counting different things: a load is per
+workout row, because a row is what carries a rating and a duration, but `progress-summary.ts` is
+explicit that *"two entries written on one evening are one day of training and a chart that says
+two is flattering"*.
+
+So the arithmetic still counts rows — `weekIsComplete` must — and the **sentence counts days**:
+`LoadWeek` gained `days` and `ratedDays`, where a day is rated only when every one of its entries
+is. One screen using one word for two things is a defect even when both readings are correct.
+
+### Verified on the iPhone 17 Pro simulator (iOS 26.5), screenshotted
+
+All three states, against the dev account's real 66-session history:
+
+| state | what it printed |
+|---|---|
+| incomplete week | `1 of 13 sessions rated…` → after the fix, `5 of 6 training days rated. Rate them all and the week gets a load.` |
+| complete, no average yet | `3,248` · `across 6 training days` |
+| complete, with an average | `3,248` · `190% above your average of 1,121` · note naming the 2 weeks behind it |
+
+The complete states were reached by seeding ratings and plausible spans onto the account's own
+sessions, then **restored exactly** from a snapshot taken before the mutation (`session_effort`,
+`created_at`, `updated_at`, `dirty` per row) — verified row by row afterwards. Nothing was pushed:
+every seeded row was left `dirty = 0`, so none of it reached the server.
+
+### Verified by the repository gates
+
+`tsc --noEmit` clean · `node --test` **834 passing, 0 failing** (+7 for the load model) ·
+`expo lint` 0 errors · `grep -rn "TEMP-VERIFY" src/` clean.
+
+### What is NOT verified
+
+- **The comparison line was reached with seeded ratings, not lived ones.** 190% is what three
+  weeks of very uneven seeded data produce; no real usage has run through it.
+- **Dynamic Type, VoiceOver and Reduce Motion** are unrun on the new section. The reading
+  auto-shrinks (`adjustsFontSizeToFit`, floor 0.6) and carries its own accessibility label, but
+  neither was seen at an accessibility size.
+- **A negative comparison has never rendered.** `percent < 0` prints "below" through the same
+  branch, and is unit tested, but no screenshot shows it.
+- **The metric is not on the hero's chart.** Load is a row under the chart, not a fourth
+  `PeriodMetric` tab, because a bar chart of partially-rated weeks is exactly the misreading
+  `weekIsComplete` exists to prevent. Whether it earns a chart is a question for after there is
+  enough complete data to draw one.
+
+### Files
+
+`lib/session-effort.ts` (`LoadWeek` with `days`/`ratedDays`, `weekIsComplete`, `buildLoadWeeks`,
+`loadTrend`, `MIN_WEEKS_FOR_AVERAGE`, `LOAD_WEEK_DAYS`; `weekIsReportable` /
+`MIN_RATED_SESSIONS_FOR_WEEK` removed — "enough sessions" was the wrong rule) ·
+`lib/session-effort.test.ts` (+7) · `lib/db/stats.ts` (`getLoadSessions`) ·
+`components/week-load.tsx` (new) · `app/(tabs)/progress/index.tsx` (the section, its two hooks).
+
+---
+
+## 10 September 2026 — the September security review, worked to the end of what code can close
+
+Full write-up and per-item evidence: **`docs/security-remediation-2026-09.md`**. This section is
+the implementation-status entry CLAUDE.md §5.7 requires; the remediation document is the
+authority for the findings themselves.
+
+Sixteen findings were opened against `src/` (362 files), four edge functions, five migrations,
+`scripts/`, configuration, git history and the dependency tree. **Thirteen are now closed and
+three are partial** — and every part of those three that a repository can close is closed. What
+remains is four owner actions, none of them a code change: disable the Email provider, rewrite
+the `app.zip` blob out of public history and rotate the keys, delete the `dev@recore.invalid`
+user, and wire the RevenueCat webhook that would let server-side entitlement be switched on.
+
+**The one that matters most to this product is S4.** `explain-brief` had a number whitelist;
+`explain-prediction` had type, length and newline checks and nothing else. Given
+`{"weight_kg":97.5,"next_weight_kg":100}` the model could answer "Last time at 140 kg…" and that
+sentence was written to the database and rendered under a figure the code had computed, where a
+person reads it as fact. That is CLAUDE.md §4 — *"every response passes a guard that validates
+numbers … against source facts"* — open on the one invariant the product is built on.
+`sanitizePredictionReason` closes it with the same whitelist the brief guard uses, built from the
+fact bundle that was sent plus the user's own quoted lines.
+
+**S5 is its necessary other half.** Both guards returned `null` and the caller moved on, so a
+prompt that drifted into inventing numbers would have been caught by the guard and been
+completely invisible — indistinguishable from being offline. `bumpGuardRejection` counts each
+refusal by surface, the count rides in the JSON export like every other funnel counter, and the
+You tab's Development rows print the total and flag it above zero.
+
+**Truthfulness came up twice as a design constraint, not a nicety.** S10's oversized-import case
+was specified to return the existing `invalid` outcome, whose copy reads *"That file is not a
+Hevy or Strong export"* — a lie about a genuine export that happens to be large. It got its own
+`too-large` outcome and its own sentence instead. And the row ceiling reports what it dropped
+rather than truncating silently, because an import that quietly loses the tail of someone's
+history is exactly the untrustworthy record §2 rule 1 exists to prevent.
+
+**Three of the verifier's own checks were wrong and were repaired.** S8's used `grep -rzq`, which
+assumes GNU grep; `grep` on this machine is ugrep, where `-z` means *decompress*, so that check
+could never match no matter what the migration said. S6's check followed its subject into
+`csv-field.ts` and grew to also assert the rule is applied, not merely present. S2's entitlement
+check would have passed on a gate that lets everyone through, and now reports enforcement
+separately — which is why S2 reads as open rather than closed by a grep.
+
+**The `lint` gate was failing on nothing.** `npm run lint` is `expo lint`, which caches by
+default, and the cache held a stale entry claiming a merge conflict marker in
+`src/components/lifts-screen.tsx` — a file with no such marker, that parses cleanly under both
+`hermes-parser` and `@babel/parser`, and that `npx expo lint --no-cache` reports zero errors on.
+The entry survived the `src/app/lifts.tsx` → `src/components/lifts-screen.tsx` rename. One
+`--no-cache` run refreshed it. Worth knowing: a gate that fails for a reason you cannot reproduce
+in a fresh run is a cache, not a defect.
+
+### Verified by the repository gates
+
+`tsc --noEmit` clean · `node --test` **850 passing, 0 failing** (+17: 8 for the prediction guard,
+9 for CSV escaping) · `expo lint` **0 errors** · `./scripts/security-verify.sh` **33 passed · 4
+failed · 0 skipped**, against a baseline of 3 · 31. The four failures are the owner actions above.
+
+### What is NOT verified
+
+- **Nothing is committed.** Every change sits in the working tree; the remediation ledger's
+  Commit column reads `working tree` throughout and needs real short hashes. The tree also
+  carries roughly a hundred files of unrelated in-progress work, which is why the fixes were not
+  split into commits by an agent.
+- **The migrations have not been applied.** `20260910120000_security_remediation_rls.sql` (S8,
+  S13) and `20260910130000_entitlement_and_global_rate.sql` (S2) are written and their checks pass
+  against the files. No database has run them, and `supabase/tests/rls-verification.sql` — which
+  gained the `alias_overrides_cross_user` case, a case proving own/global ids are still accepted,
+  and the S13 delete case — has not been run against a live database either.
+- **The edge functions have not been deployed.** All four changed (S2, S11, S12, S16). Until
+  `supabase functions deploy` runs, the deployed functions answer with the old code. This
+  repository has shipped code that lagged its functions before, so a repo grep is not evidence.
+- **Deno never type-checked the edge functions.** No Deno toolchain is installed here; the four
+  functions and the two new `_shared` modules were syntax-checked with the local TypeScript
+  parser only. Types across the `npm:@supabase/supabase-js@2` boundary are unverified.
+- **`max_tokens` 16000 → 8000 is an AI-path change and is not fully verified** (CLAUDE.md §5).
+  The number is derived rather than guessed — across the 105 cases in
+  `scripts/parse-eval-cases.json` the structured output is at most 1.9× the input in characters,
+  and 8000 tokens is roughly 7× the 4000-char input ceiling — but the owner-run §9.4 evaluation
+  has not been run against it.
+- **The CORS allow-list has not been exercised from a browser.** The reasoning is that React
+  Native sends no `Origin` at all, so native is unaffected by construction; that was not observed
+  on device.
+- **The guard-rejection row on the You tab was not seen rendered**, at any Dynamic Type size or
+  under VoiceOver. It is a `__DEV__`-only row.
+- **No device QA.** Nothing in this pass was run on a simulator or a phone.
+
+### Files
+
+`lib/brief-guard.ts` (`sanitizePredictionReason`) · `lib/brief-guard.test.ts` (+8) ·
+`lib/predict/explain.ts` · `lib/brief-explain.ts` · `lib/funnel.ts` (`bumpGuardRejection`, two
+counters, two snapshot fields) · `app/(tabs)/you/index.tsx` (the Development row, the `too-large`
+and dropped-row outcomes) · `lib/csv-field.ts` (new, pure) · `lib/export-csv.ts` ·
+`lib/export-csv.test.ts` (new, 9) · `lib/secure-storage.ts` · `lib/import/pick.ts`
+(`MAX_IMPORT_BYTES`, the `too-large` outcome) · `lib/import/formats.ts` (`MAX_IMPORT_ROWS`,
+`MappedCsv`) · `app/import-start.tsx` · `app/(tabs)/progress/index.tsx` ·
+`lib/auth/dev-sign-in.ts` (literals and the `signUp` fallback removed) · `.env.example` ·
+`.gitignore` · `package.json` (`expo-modules-core`) · `supabase/functions/_shared/cors.ts` (new) ·
+`supabase/functions/_shared/gate.ts` (new) · all four `supabase/functions/*/index.ts` ·
+`supabase/migrations/20260910120000_security_remediation_rls.sql` (new) ·
+`supabase/migrations/20260910130000_entitlement_and_global_rate.sql` (new) ·
+`supabase/tests/rls-verification.sql` · `scripts/security-verify.sh` ·
+`scripts/check-alias-policy.py` (new) · `docs/security-remediation-2026-09.md`.
+
+---
+
+## 10 September 2026 — Next's Edit sits in the middle of its own button
+
+The bar button the 9 September pass put on Next's trailing edge was measured on the 26.5 simulator
+and was off-centre by 16 pt. The capsule is **66.7 × 43.7 pt**; the 26 pt "Edit" label sat **35.7
+pt from its left edge and 4.7 pt from its right**, hard against the wall of the pill and two
+finger-widths from the page's right margin. The owner saw it before any measurement did.
+
+**Why it happened, and why the old value was not wrong when it was written.** The slot states a
+width — `minWidth: moderateScale(58)` — because `RNSScreenStackHeaderSubview` measures its React
+child and a bare `Text` came back narrower than its own glyphs at the accessibility sizes ("Edit"
+rendered as "Ed"). While that reserve was invisible padding in an undrawn box, `alignItems:
+'flex-end'` put the label where a trailing bar button belongs. On an iOS 26 build the navigator
+draws its own glass capsule around the subview, so **the slot is the pill**: every point of slack
+became visible geometry, all of it on one side.
+
+`alignItems: 'center'`. The label now sits 20.7 / 19.7 pt inside the capsule — the difference is
+ink versus advance width, not layout. The width stays stated rather than intrinsic, which keeps
+the measurement guard and also keeps the pill from resizing under the finger as Edit becomes Done.
+
+Verified cold-relaunched on the iOS 26.5 simulator (Fast Refresh does not re-lay-out a header
+config), measured off the screenshot. Not checked at the Dynamic Type cap or under VoiceOver — the
+label's `FIXED_FONT_SCALE` clamp and its accessibility label are unchanged by this.
+
+### Files
+
+`app/(tabs)/next/index.tsx` (`barButtonSlot`).
+
+---
+
+## Coach ↔ client layer (10 September 2026) — what shipped, and what is NOT verified
+
+Built against `docs/spec/recore-coach-feature-prompt.md`. **Behind `EXPO_PUBLIC_COACH_MODE`,
+default off**, so a build without the flag has no coaching UI, sends no coaching query and
+registers no push token.
+
+Note the spec's own path is `docs/spec/recore-coach-feature-prompt.md`; there is no
+`docs/specs/coach-feature.md` and there never was.
+
+### What is live
+
+| Piece | Where | State |
+|---|---|---|
+| Schema, RPCs, RLS | `supabase/migrations/20260910140000_coaching.sql` | applied on a LOCAL database only |
+| Notification webhook | `supabase/migrations/20260910150000_coaching_webhook.sql` | applied locally; inert until two DB settings are set |
+| RLS + RPC test suite | `supabase/tests/coaching-rls.sql` | **20/20 assertions pass** |
+| Remote-only data layer | `src/lib/coaching/index.ts` | typechecks; not exercised on a device |
+| Coach's read of one session | `src/lib/coaching/read-workout.ts` | rebuilds a `ParseResult` from `items`+`sets`, reuses the pure `buildReceipt` |
+| Push registration + tap target | `src/lib/coaching/push.ts`, `src/app/_layout.tsx` | **never run on a device** — `Device.isDevice` is false on a simulator |
+| `notify-comment` | `supabase/functions/notify-comment/index.ts` | **written, never deployed, never invoked** |
+| Six screens | `src/app/(tabs)/you/coaching/**`, `src/components/coaching/**` | typecheck only — see "not verified" |
+
+### The finding that shaped the whole thing
+
+`pullRemote` in `src/lib/sync/index.ts` queried `workouts`, `exercises`, `alias_overrides` and
+`predictions` with **no `user_id` filter at all** — it trusted RLS to do the scoping, and only
+`plan_days` named the user. That is correct exactly while "what the policy allows" and "what
+this device may store" are the same set, and the coaching link is the feature that separates
+them: the moment `workouts_select` widened, every coach's device would have pulled every
+client's raw text, reflections and per-entry notes into the coach's local SQLite, on every sync
+pass, silently.
+
+**The client filter went in FIRST, and was verified, before any policy widened.** It is a
+standalone correctness fix and it should be kept even if coaching is dropped.
+
+### Deviations from the spec, and why
+
+1. **`profiles` is not created.** It has existed since the initial migration. Only its SELECT
+   policy widened.
+2. **`workout_comments.exercise_ref` is a normalised exercise NAME, not a uuid.**
+   `applyParseResult` deletes and recreates every `items` row on each re-parse with fresh
+   uuids, so a comment anchored to one would be orphaned by the client's first correction. It
+   uses `entryNoteKey` — the same key, and the same stated trade-off, the athlete's own
+   per-entry notes already use.
+3. **`items` and `sets` got the widened SELECT too.** The spec widens `workouts` alone, which
+   would have given a coach `raw_text` and no structure.
+4. **No `deleted_at`.** The schema has no per-workout delete path to tombstone.
+5. **No generated TypeScript types.** The repository has never had them; `supabase.rpc()` is
+   untyped here exactly as everywhere else.
+6. **`NoteSurface` was not reused with a `readOnly` flag.** It reads the singleton
+   `session-store`, which is one signed-in person's local SQLite. The reuse happens one level
+   down instead, at `buildReceipt` + `SetTable` — same arithmetic, same typography, no fork.
+7. **The coach sees no gutter comparison.** `buildReceipt` is called with an empty signals
+   array: computing it needs the client's history on the coach's device, which this feature
+   deliberately never fetches.
+8. **The comment thread IS a native form sheet** (`src/app/coach-thread.tsx`), and getting
+   there took four attempts, each of which taught something the type checker could not:
+
+   1. Registered inside the You tab's stack — the `formSheet` presentation was silently
+      IGNORED and the route rendered full screen, under the status bar and behind the tab bar.
+      Moving it to the ROOT stack, where `check-in` lives, fixed the presentation. That
+      placement is load-bearing, not convenient: a form sheet needs a navigator that owns the
+      window.
+   2. With `sheetAllowedDetents: [0.6, 1]` the sheet presented but the header and the first
+      message rendered ON TOP OF each other — the exact "every child measures height 0"
+      symptom `check-in` recorded. Reproduced independently here, on a different screen.
+   3. `fitToContents` sized the sheet correctly and did NOT fix the overlap, so the detent
+      config was never the cause. Nor was `KeyboardAvoidingView`, tried next and also innocent
+      (it was dropped anyway — a `UISheetPresentationController` resizes for the keyboard by
+      itself, which the `<Modal>` imitation never did).
+   4. The fix is the one `check-in` already found: **ONE ScrollView holding everything**, head,
+      messages and composer, so the content measures itself. Verified on the iOS 26.5
+      simulator.
+
+   **The honest cost:** `fitToContents` is a single system-computed detent, so there is no
+   dragging between two heights. Fixed detents remain unusable in this RN/iOS combination for
+   any layout expecting a height handed down, and both native sheets in this app now say so.
+   What the native sheet buys over the `<Modal>` is real: it is not a second modal, so the
+   first-open spotlight can no longer silently block it — which is a bug that actually happened
+   during this session's verification.
+
+9. **A native context menu on the client row, and it is ADDITIVE.**
+   `entry-actions-sheet.tsx` records this app moving actions OFF a long-press because it was
+   "a gesture nobody could see", and that ruling is respected rather than overturned: nothing
+   is reachable ONLY by long-pressing. The row still taps through, and "Remove access" is also
+   a visible `headerRight` on the feed and a visible row in You. The menu adds a `Link.Preview`
+   peek at the client's sessions and a destructive shortcut, via expo-router 57's
+   `Link.Menu` / `Link.MenuAction` with SF Symbols.
+
+   **VERIFIED ON DEVICE** (iOS 26.5 simulator, 10 September 2026): a 1300 ms press opens a real
+   `UIContextMenu` — dimmed background, a `Link.Preview` peek showing the client's session, and
+   the two actions with their SF Symbols, the destructive one in the system's own red.
+
+   Getting there corrected a standing belief about this repository's tooling. The row was first
+   written as `<Link asChild><Link.Trigger>…`, and **`asChild` and `Link.Trigger` are mutually
+   exclusive** — with both, the link works as a tap and no menu is ever built. The bug was only
+   findable by pressing the row, which needed the second correction: **simulator input works
+   fine; it had simply never been tried with `Simulator.app` actually open.** A device booted by
+   `simctl` runs headless, which is why screenshots and deep links kept working with no window on
+   screen and why every earlier attempt at a synthesised click went nowhere. `open -a Simulator`,
+   then JXA's ObjC bridge to CoreGraphics for mouse down / hold / up. No tooling installed.
+10. **The client's comment indicator is in the You tab, not on Today's ledger.** A badge on a
+    ledger card would mean the logging screen issuing a coaching request on every render.
+
+### What was verified on device, and what was not
+
+**All six screens were seen on the iOS 26.5 simulator** (iPhone 17 Pro, cold relaunch after
+`expo start --clear`), four of them against a REAL coaching link: the app was pointed at the
+local Supabase stack, two accounts were created there, a link and two sessions were seeded, and
+the coach signed in through the existing development door.
+
+Screens confirmed: the Coaching section in You · Join a coach (six code cells, CTA dead until
+six characters) · Invite a client · Clients (empty, and with a real client showing "Yesterday"
+and a blue unread count) · the client feed (two sessions, previews from the client's own words,
+the coach's red "Remove" in the header) · the read-only session (set table, the client's italic
+per-entry note, "AS THEY WROTE IT", their reflection, and NO edit control anywhere) · the
+comment thread, deep-linked with `openRef` and correctly resolving the stored key `bench press`
+to the record's own "Bench Press".
+
+**Three defects were found this way and no other way:**
+
+1. **The notification deep-link never opened its thread.** `useLocalSearchParams` is empty on
+   the first render, and the auto-open was folded into a loader effect keyed on `[id]` — so it
+   read `openRef` as `undefined` and never ran again. A background tab also keeps its stack
+   mounted, so a second notification about a workout already on screen would not have remounted
+   anything either. Fixed: the params are dependencies, the effect waits for the workout to load,
+   and an `autoOpened` latch keeps a dismissed sheet dismissed.
+2. **Two settings glyphs denoted nothing.** "Join a coach" wore a weight plate and "Invite a
+   client" a target. Now `plus` and `share`, and the client's comments row wears the speech
+   bubble the per-entry note already uses.
+3. **A sheet cannot be observed while the first-open spotlight is up.** Not a defect in this
+   feature — the spotlight is a `<Modal>`, every `BottomSheet` is a `<Modal>`, and UIKit refuses
+   the second one. It is the rule `entry-actions-sheet.tsx` is built around, and it cost an hour
+   here because it looks exactly like a broken deep link.
+
+The settled sheet measures **8.00 pt left and 8.00 pt right**, matching the numbers
+`bottom-sheet.tsx` records from a real `UISheetPresentationController`.
+
+Two temporary harnesses were used to drive the simulator (it offers no tap injection) and both
+were removed; `src/app/sign-in.tsx` is byte-identical to its pre-session state.
+
+**Still not verified:**
+
+- **The push chain WAS executed locally, end to end except APNs delivery.** The trigger was
+  pointed at an HTTP interceptor and a comment insert produced a real POST to
+  `/functions/v1/notify-comment` carrying the right `x-webhook-secret` and the full record
+  (pg_net logged 200). The function itself was then served locally and exercised: 401 with no
+  secret and with a wrong one, 405 on GET, `bad_payload` on junk, `skipped: no_tokens` with no
+  device registered, `sent: 1` with one registered — **and the token was deleted afterwards, so
+  the `DeviceNotRegistered` cleanup works against the real Expo API** — `skipped:
+  no_active_link` once the link was revoked, and `skipped: gone` for a comment id that does not
+  exist. What remains unproven is only APNs delivery to a physical device, which a simulator
+  cannot do (`Device.isDevice` is false).
+
+- **THAT TESTING FOUND A SILENT BUG IN THE WEBHOOK.** `create extension pg_net with schema
+  extensions` installs the extension there, but pg_net creates its own `net` schema for the
+  queue and the API regardless — so `extensions.net.http_post` did not exist, the call raised,
+  and the trigger's own `exception when others then null` swallowed it. Every comment committed
+  and not one request was ever enqueued, invisible from the app and invisible in the logs. Fixed
+  (`net.http_post`, `search_path = public, net`), and the handler now `raise warning`s instead of
+  swallowing silently — it still never fails the insert.
+- **Dynamic Type, VoiceOver and Reduce Motion were not exercised** on any of the six screens.
+- **Nothing is deployed and no hosted database has run either migration.**
+
+### The parser suite, measured before and after
+
+`npm run eval` calls a model, so it is not deterministic and "the same score as before" is not a
+well-defined invariant for it. It was measured properly instead — a clean `git worktree` at HEAD
+containing **none** of this session's files, with the eval's four inputs copied in and their
+SHA-256 checksums confirmed identical to the working tree's:
+
+| Tree | Runs |
+|---|---|
+| BEFORE — pristine worktree, zero session files | 104/105, 103/105 |
+| AFTER — working tree, all session work | 105/105, 104/105 |
+
+The run-to-run spread on one unchanged tree (104 → 103) is as large as the difference between
+the trees, and the failures move between cases. `src/lib/parse/` and
+`supabase/functions/parse-workout/` were not touched — both last modified 11:42, before this
+work began — so there is no path by which this session could have moved the score.
+
+### Open questions for the owner
+
+1. Per-workout delete does not exist. Does coaching need it, or is the spec's "client deletes a
+   workout" edge case simply not applicable yet?
+2. Does coaching require an entitlement? `src/app/index.tsx` sends an unentitled account to the
+   lapsed surface; what should a coach with a lapsed subscription see?
+3. Should generated Supabase types be introduced as part of this, or stay absent?
+
+### Gates at the end of this pass
+
+`supabase db reset` (local) **all 10 migrations clean** · `supabase/tests/coaching-rls.sql`
+**20/20** · `supabase/tests/rls-verification.sql` **5/5, no regression** ·
+`npx tsc --noEmit` **exit 0** · `npm test` **850/850** · `npm run eval` **105/105**.
+
+---
+
+## The coaching link existed and no screen ever said so (10 September 2026, evening)
+
+**Owner's report:** "I take the code from the coach, give it to the client, they type it in —
+and after that nothing appears anywhere to say the client is with that coach."
+
+Every word of that was accurate, and **nothing was wrong on the server.** Probed against the
+hosted project before touching any code: two fresh accounts, `create_coach_invite` →
+`redeem_coach_invite` → `my_coach` → `coach_client_overview` → the coach reading the client's
+`workouts` → a comment in both directions. All of it correct, first try. The link the owner
+created was in `coach_clients` with `status = 'active'` the whole time. **The client simply
+never asked again, and would not have re-rendered if it had.**
+
+### Four defects, three of them in one screen
+
+1. **`(tabs)/you/index.tsx` fetched the coaching state exactly once, at launch.** The effect was
+   a plain `useEffect` keyed on `[userId]`, under a comment that claimed "refreshed whenever You
+   comes forward". A tab screen mounts once and stays mounted — the note in `recore-sim-switch-
+   tabs` and in `(tabs)/_layout.tsx` says so — so `userId` never changed and the effect never ran
+   twice. Now `useFocusEffect`, which is what the comment always described.
+
+2. **`coach` and `clientCount` were missing from the `sections` `useMemo` dependency list.** So
+   even once the state was refreshed, the page being rendered was the one memoised before the
+   link existed. Both halves had to be wrong for the symptom to be "absolutely nothing happens",
+   and both were. (`react-hooks/exhaustive-deps` did not flag it; the list is long and hand-kept.)
+
+3. **`join.tsx` popped silently on success.** `router.back()` the instant the RPC returned a link
+   id — the same animation a Cancel produces, and no sentence anywhere. The screen now stays and
+   answers, naming the coach it reads back from `my_coach` rather than one it assumed, with
+   `Done` doing the popping.
+
+4. **`profiles.display_name` was never written by anyone but the Apple and Google sign-in paths,
+   and only when the provider handed a name over.** Measured on the hosted project: every
+   `my_coach` and `coach_client_overview` row came back `display_name: null`, so a pair who had
+   linked perfectly read each other as the literal words "Coach" and "Client" — indistinguishable
+   from no link at all. `publishDisplayName()` (`src/lib/coaching/index.ts`) now writes the name
+   the person typed in onboarding, at the two moments they deliberately open a coaching
+   relationship — issuing a code and redeeming one — and nowhere else. The join sheet's consent
+   copy says so ("They will see your name…"). The `profiles` SELECT policy already exposed that
+   column to a linked account and to nobody else; verified again here, a stranger reads `[]`.
+
+**A fifth, found while verifying the coach's half:** the client roster's rows could not be
+tapped. `clients.tsx` wraps a `PressableScale` inside `Link.Trigger`, and a `Pressable` claims
+the touch through React Native's responder system and never hands it to the `Link` — so with no
+`onPress` of its own the row swallowed every tap. The long-press context menu and its
+`Link.Preview` worked perfectly, which is what made it look fine. That is precisely the failure
+the file's own header forbids ("nothing here is reachable ONLY by long-pressing"). The trigger
+now navigates itself, through one `open()` the tap, the menu item and the `href` all share.
+
+### Verified on device, against the hosted project
+
+iPhone 17 Pro, iOS 26.5, real session through the development door, two counterpart accounts
+driven from a script — **`display_name` "Trener Ana" as the coach and "Stranka Miha" as the
+client, so both names had to survive the round trip to be believed.**
+
+- Client half: `recore:///you/coaching/join?code=…` → Join → the consent alert → **"Trener Ana is
+  now your coach."** → Done → You shows **Your coach · Trener Ana**, "Comments from your coach"
+  and "Remove access", **with no relaunch**. Before the fix, the identical sequence left You
+  offering "Join a coach".
+- Coach half: "Invite a client" in the app → the code redeemed by the second account → back to
+  You → **Clients · 1** appears on focus → the roster row **taps** through to "Stranka Miha" and
+  her session.
+- Both ends at once, which is the spec's edge case: the same account showed **Your coach** and
+  **Clients** in one section.
+- The comment round trip: the coach's comment arrived as **Comments from your coach · 1**, the
+  client's own feed marked that session unread, the thread rendered it under the author's real
+  name, and opening it set `read_at` (so `mark_comments_read` is exercised too).
+- Removing the coach from You collapsed the section live.
+
+Afterwards the test links were revoked from the dev account, the test comment was deleted by its
+author, and the account is back to no coach and no clients. Its `display_name` is now "Edis" —
+written by the app, from the name in onboarding.
+
+### Still not verified
+
+Dynamic Type, VoiceOver and Reduce Motion on the coaching screens (unchanged from the pass
+above). APNs delivery still needs a physical device. The hosted project **does** carry the
+coaching migration — that was probed today and the earlier note saying no hosted database had
+run it is out of date for this project.
+
+### Gates
+
+`npx tsc --noEmit` **exit 0** · `npm test` **850/850** · `npx expo lint --no-cache` **0 errors**
+(52 pre-existing warnings, none in the touched files) · `grep -rn "TEMP-VERIFY" src/` **empty**.
+
+---
+
+## The set table: kind, effort and chain (10 September 2026)
+
+**Owner's brief:** *"redesign this parser table, make it more user experience and also it needs
+to be native iOS look (you need to know that if somebody includes RIR or dropset or something
+like it, it needs to be marked)"* — with a photograph of Today showing Bench Press as three rows
+of `1 · 120 · 12`.
+
+### What was actually wrong, in the order it matters
+
+1. **Three of the six set kinds the parser reads never reached the screen.** `setTableOf` mapped
+   `warmup` → "warm", `drop` → "drop", `skipped` → "skip" and let everything else fall through to
+   the counted numbering. `amrap`, `myo` and `failure` pass the counted test, so they were drawn
+   as plain numbered sets and their kind was discarded on the way. "push ups AMRAP 22" rendered
+   `1 · 22`: the parser had read the word, the eval suite asserts it reads the word, and the table
+   threw it away. That was the defect the brief is about.
+2. **RIR was a substring, not a field.** It was joined into the row's grey `note` beside whatever
+   second metric the set carried — "AMRAP · RIR 2 · 1:00", three unlike facts in one sentence.
+3. **`parent` was never drawn.** Every parsed set carries the index of the set it chains off, and
+   no rendering of it existed, so a dropset read as loose sets that happened to be labelled.
+4. **Two hundred points of dead paper** between the position and the numbers, and a tracked-caps
+   `SET` header over `1 · 2 · 3` that made the record look like a spreadsheet on a paper canvas.
+
+### What it is now
+
+`SetTableRow` splits position from kind, which were one field asserting a set can only be one
+thing. `label` is the counted position, `mark` is the word that replaces it (`warm-up` · `drop` ·
+`skipped`), `kindTag` qualifies a set that keeps its number (`AMRAP` · `MYO` · `FAILURE`), `rir`
+is digits in a field of its own, `note` is only a second measurement, and `chained` says the set
+hangs off the one above it.
+
+The lane between the position and the numbers carries all of it, right-aligned so it ends where
+the numbers begin — the qualifier sits against the number it qualifies, which is the 9 August
+short-eye-travel ruling applied to the fact instead of the figure. A drop or myo set indents.
+A skipped set's figures are struck through: the word saying "recorded, not performed" was two
+hundred points from the numbers it was about, and a rule through them is a shape, not a hue.
+
+**This supersedes the 10 September "meta lane is the group's third cell" ruling and keeps what
+that ruling defended.** The grid held then by paying every table a dead 56 pt cell; it is held
+now by the numeric group carrying **only** load and work, so it is the same width on every card
+whether or not anything qualifies the set, with the qualifier outside it in flexible space that
+cannot push a number. One grid, no dead cell. `SET` left the header with it — a native list does
+not label its leading column.
+
+### The set-by-set logger — "+ set" (`src/lib/parse/next-set.ts`)
+
+The second half of the brief: *what about someone doing pull-ups who writes the reps after each
+set.* The page assumed a session arrives as a sentence; for that person every set meant typing
+the exercise name again, and the record filled with three "pull ups" cards that were one
+exercise — three cards' worth of wrong in every total that counts exercises.
+
+One tap appends the last working set to the line that exercise already owns and opens the line for
+editing, so the common case (same load, fewer reps) is one tap and one digit. The words go into
+`raw_text`, where they are visible, editable and exportable like every other word on the page, and
+the parser re-reads the line as it would any edit. **The RIR is deliberately not carried
+forward** — load and reps are a plan a body meets or does not, reps-in-reserve is a judgement
+about a set nobody has done yet, and copying it would put a feeling into the record that its
+author never had. The kind is dropped for the same reason. Two guards decide whether the control
+exists at all: one exercise on the line (a superset has no honest place to put the words) and
+something rep-based to repeat (a run or a hold returns null and the row does not appear).
+
+### Verified on the simulator
+
+iPhone 17 Pro, iOS 26.5, real account. Today with Bench Press (RIR 1 on every set) and Chest Fly
+(nothing to qualify) on one page, then a fixture route covering warm-up, RIR 0 and −1, a two-deep
+dropset chain, a bodyweight AMRAP, a myo chain, a to-failure set, a skipped set, and a loaded
+carry with a distance and a clock. Both layouts: columns, and the accessibility-size stacked
+layout, where the spoken forms read "as many reps as possible", "myo-reps", "to failure". The
+fixture route was deleted afterwards.
+
+**One defect found and fixed by looking.** `Qualifiers` returned `null` when a row had nothing to
+say, which removed the `flex: 1` lane along with the content — so Bench Press right-anchored
+correctly and Chest Fly collapsed its numbers against the set index. One page, two grids: exactly
+the failure the 10 September ruling exists to prevent, reintroduced by the fix for it. The lane is
+now always drawn; it is a spacer as much as it is a lane.
+
+### Still not verified
+
+The `+ set` tap itself was not exercised on device — no tap tooling is installed on this machine
+and the Simulator exposes no window to System Events. Its two effects (`setLineText`,
+`startEditLine`) are the same calls the card body's own press already makes, and if the nested
+pressable failed to claim the touch the outer card's `onEdit` would run instead — the line opens
+without the append, which is a benign fallback rather than a wrong record. Dynamic Type at the
+OS level (rather than the in-app Display toggle), VoiceOver and Reduce Motion on this table are
+also unverified.
+
+### Gates
+
+`npx tsc --noEmit` **exit 0** · `npm test` **887/887** · `npx expo lint --no-cache` **0 errors**,
+per-file warning counts identical before and after (none in the touched files).
+
+---
+
+## The coach role, the split day, and the two coaching screens (10 September 2026, night)
+
+Owner's report, on two screenshots: *"as a client you have no business being offered 'invite a
+client', because you are a client and not a coach"*; *"three displays even though one session was
+done"*; *"and when you open it, it is very bad"*; and a question — *how would we verify trainers?*
+
+### 1 · Being a coach is a choice now, and the client side is not it
+
+`20260910140000_coaching.sql` says in as many words that there is deliberately no coach role,
+because a link is the only thing that makes somebody a coach. That was a clean model with no way
+to hide the coach's half, so every account was shown BOTH ends of a relationship it had one end
+of. **`coach_profiles` (migration `20260910190000`) reverses that ruling.** A row means "I coach
+people": it lets you issue codes and nothing else — it grants no read of anybody until they type
+one. `create_coach_invite` raises `not_a_coach` without it, so hiding the row is not the rule, the
+RPC is. Accounts that already had an active client were backfilled, so no coach lost a roster.
+
+**Verification is a column and nothing else yet.** The owner asked how trainers would be
+verified; `coach_profiles.verified_at` is where that will live and **nothing reads it, nothing
+writes it, and there is no UPDATE policy at all**, so a client cannot set it. §3 forbids fabricated
+credentials including placeholders, and a "verified coach" mark meaning "typed their own name"
+would be one. The owner chose the opt-in switch over an application-and-approval flow for now
+(asked and answered in-session).
+
+`set_coach_role(false)` **refuses while people are still linked** (`still_coaching`). Turning it
+off would take a client off the coach's screen while the link — and the read access — stayed live.
+Ending a relationship is `revoke_coach_link`, and the refusal says so.
+
+### 2 · One day was three sessions, and the app was hiding it from its owner
+
+Not a rendering bug. Measured on the hosted project: the development account carried **six**
+`workouts` rows for 9 September and two each for five other days.
+
+`saveRawText` keeps one row per local day by looking the day up — **in SQLite**. A device that had
+not pulled yet found nothing, minted a random uuid and pushed a second row; nothing rejected it,
+because the table has no uniqueness on (user, day) and `upsert` matches on `id`, which is exactly
+what differed. The person's own app then showed one of them (`getWorkoutForDay` took the first row
+it found, with no ORDER BY) — **so the record their coach read was not the record they were
+shown**, and every count built from rows, including the sessions figure on their own profile
+header, was inflated.
+
+Three locks, because one was not enough:
+
+1. **`src/lib/db/day-id.ts`** — a day's id is UUIDv5 of (person, date). Two devices writing the
+   same day now write the SAME row and the push upserts. A unique index was considered and
+   rejected: a 409 lands in `pushWorkouts`, which throws, which stops the whole sync pass for
+   every table behind it — a person would lose sync to fix a duplicate they cannot see. SHA-1 is
+   written out because `expo-crypto` has no synchronous digest and this sits on the writing path;
+   it is checked against the FIPS vectors, against Node's own digest across every padding case,
+   and against the published UUIDv5 vector (`day-id.test.ts`, 8 tests). **The first draft had `b`
+   and `c` swapped in the compression round and produced a plausible 160-bit digest matching
+   nothing** — which is the entire argument for using somebody else's vectors.
+2. **`merge_duplicate_workout_days()`** (migration `20260910191000`) + `db/merge-days.ts` — the
+   days that already split. Same rules on both sides: oldest row survives, each duplicate's text
+   appended verbatim **unless the survivor already contains it** (three rows reading "benchpress
+   120kgx12x3" are one session the sync split, not three the person did), `items` REPOINTED rather
+   than cascaded away so no structure is lost, comments repointed so nothing a coach wrote is
+   orphaned. The migration only DEFINES the function; the app calls it once per account after a
+   sync. Tested on a throwaway account with a coach's comment on the middle row: 3 rows → 1, all
+   10 sets kept, positions 0–3, comment on the survivor, second run a no-op. Locally: 8 tests
+   against the real schema with foreign keys on.
+3. **`clientFeed` groups by day** — so a client who has not opened their app since the fix still
+   reads as one session per day on their coach's screen.
+
+### 3 · The two screens
+
+Researched first (Appllama, 10 September 2026). The library has **no trainer-side roster or client
+feed** — searched semantically again and the nearest neighbours were team-discovery and social-feed
+screens — so the skeleton comes from the finished-workout summary, which every studied app builds
+the same way: STNDRD `1573298047/oth_tckah`, Symmetry `6474446718/oth_sa9ac`, Boostcamp
+`1529354455/oth_t8187`, Lyfta `6443740936/oth_yw15g`. All of them lead a session with a short count
+of what it WAS and put the detail underneath; Lyfta's exercise rows are the tightest version, a
+name over one grey line of "4 Sets 3-9 reps".
+
+- **The feed row says what the day was.** It was a date and two lines of raw text, so every session
+  in a month looked the same size and the only way to find the heavy one was to open all of them.
+  Now: date in ink, `4 lifts · 12 sets · 4,320 kg` in the reading face, their own first lines under
+  it. The arithmetic is copied from `getProfileTotals` — same exclusions — so the coach's number
+  and the athlete's profile cannot disagree about one session. **Absent, not zeroed, when the
+  parser has not read the text yet**: three zeros would report an empty day where somebody wrote
+  something (`facts.test.ts`).
+- **The session leads with a summary.** `RecordStrip` — the app's own three-up, already bare on
+  canvas and already tabular — over the set tables, so the coach reads the size before the rows.
+- **The whole-session comment is a control again.** It was a 15 pt grey row floating in the empty
+  two-thirds of the owner's screenshot, indistinguishable from a label, and it is the only thing a
+  coach comes to the screen to DO. It is a secondary `AppButton` now.
+- **Both screens speak to whoever is reading them.** The client's "Comments from your coach" opens
+  the coach's own feed with their own id, and it used to tell them "this client has not logged a
+  session yet" and title the page with their coach's name over their own training.
+
+**A fifth defect, found while verifying:** the client roster's rows could not be tapped at all.
+`clients.tsx` puts a `PressableScale` inside `Link.Trigger`, and a `Pressable` claims the touch
+through React Native's responder system and never hands it to the `Link` — so with no `onPress` of
+its own the row swallowed every tap. The long-press context menu and its preview worked perfectly,
+which is exactly what made it look fine, and which is the failure the file's own header forbids
+("nothing here is reachable ONLY by long-pressing").
+
+### Verified on device
+
+iPhone 17 Pro, iOS 26.5, hosted project, dev account as the coach and a seeded client with one
+clean day and one day split into two rows:
+
+- Coaching in You with the role OFF shows **"Join a coach"** and the switch, and **no "Invite a
+  client"** — the owner's first complaint, gone. Footnote: *"Turn this on if you train other
+  people. On its own it gives you access to nobody."*
+- Role ON adds **Clients · 0** and **Invite a client** on the next focus.
+- The feed shows **two rows for three stored sessions** — "Thursday, 10 September · 2 lifts · 6
+  sets · 1,500 kg" and "Wednesday, 9 September · 2 lifts · 6 sets · 4,200 kg".
+- The session screen shows the strip, both entries of the split day, both raw lines, and the
+  comment button.
+- Server-side, nine assertions: invite refused before the role, allowed after, refused again once
+  turned off, turning off refused while coaching, a client's `coach_profiles` empty.
+
+### Not verified, and why
+
+- **Exercise names still print "Unread line" on a coach's screen.** `exercises` is the table
+  `20260910140000` did not widen. A concurrent session has already written the fix
+  (`20260910210000_coach_read_scope.sql`, S19) and it is **not pushed**; this pass deliberately did
+  not push somebody else's migration. Until it lands the count of lifts is right and the names are
+  not — `factsOf` counts unreadable lines individually so a two-lift session no longer reports as
+  one.
+- Dynamic Type, VoiceOver and Reduce Motion on the coaching screens.
+- The switch's own touch: the role was flipped through the RPC to photograph both layouts, because
+  the Simulator window stopped being reachable by System Events part-way through the session.
+
+### Gates
+
+`npx tsc --noEmit` and `npx expo lint` are **red on files this pass did not touch** — a second
+session was editing `sync/index.ts`, `set-table.tsx`, `EntryCard` and the onboarding demo at the
+same time. Every file changed here is clean in both, and `npm test` is **887/887**.
+
+## 11 September 2026 — a merged day kept the reading it had thrown the words away for
+
+The owner's screenshot: one session screen, headed **"1 Lift · 9 Sets · 12.960 Kg lifted"**, three
+identical **Bench Press** entries of 3 × 120 kg × 12 under it, and at the bottom, under *AS YOU
+WROTE IT*, **two** lines reading `benchpress 120kgx12x3`. Two lines of record, three entries of
+reading, and a header counting a third of a session nobody wrote.
+
+### What it was
+
+Not the renderer. The duplicate-day repair of 10 September applies two rules that contradict each
+other, and both halves of it — `merge_duplicate_workout_days()` and `db/merge-days.ts` — carry the
+contradiction:
+
+- a duplicate row's `raw_text` is **skipped** when the survivor already contains it, because "three
+  rows reading benchpress 120kgx12x3 are one session the sync split, not three the person did";
+- a duplicate row's `items`/`sets` are **repointed onto the survivor, always**, so "no structure is
+  lost".
+
+So the words of the split were dropped and its reading was kept. A day whose text says six sets
+ends up owning nine, in the coach's header, in `getProfileTotals`, and in every volume total behind
+them. `items`/`sets` are a projection of `raw_text` (CLAUDE.md §3) — a projection of words that are
+not in the record is not a projection, it is invented training.
+
+The same asymmetry sat in the two places that merge a day **at read time**, which is what a coach
+sees for a client whose own device has not run the repair yet: `clientFeed` and `loadCoachDay`.
+
+### The rule now
+
+**Text and structure travel together.** Words appended → items repointed, exactly as before. Words
+skipped as already-present → the items go with them (the row is deleted and `items.workout_id`
+cascades; locally the sets are deleted child-first, because `sets.parent_set_id` is a self-
+reference with no cascade of its own and a drop set must not outlive its working set).
+
+One exception, and it is the reason this is not a two-line change: **if the survivor has no
+structure at all**, the duplicate's reading is the only reading those words have ever had, so it is
+repointed. Dropping it would blank a parsed day for anyone offline.
+
+Comments are repointed in every case, unchanged. Nothing a coach wrote may be orphaned by what
+happens to the sets beside it.
+
+### Two more of the same family, found while reading it
+
+- **`clientFeed` summed `lifts` across the rows of a day.** A day split across two rows that both
+  hold a bench press did one bench press; the session screen's `factsOf` counts distinct names, so
+  the feed row and the screen it opens disagreed about the same day. It is a union now.
+- **The feed row never passed `ids`.** `workout/[id].tsx` has taken a comma-joined list of every
+  row of the day since it was written, and `client/[id].tsx` sent only `day.id` — so a day the sync
+  split was listed with all of its sets and opened showing the first row's, which is the exact
+  mismatch `loadCoachDay` exists to prevent ("a coach taps 3 lifts · 9 sets and lands on a screen
+  with one lift on it"). Fixed.
+
+### What this does NOT repair
+
+**Days the first version already merged** — including the one in the screenshot. Their duplicate
+rows are gone and the extra items belong to the survivor, indistinguishable from a reading it was
+always entitled to. The repair for those is a re-parse of the survivor's text, and the app already
+has one the owner can reach: **You → Clear local cache**. It deletes `parse_cache` and marks every
+non-empty session `needs_parse`; the merged text no longer matches any cached snapshot, so the
+parser reads it again, `applyParseResult` replaces `items`/`sets` wholesale, and the next push
+replaces the remote copy. Marking `needs_parse` alone would not do it — a workout whose text the
+merge did not change would hit its cache and clear the flag without rebuilding anything.
+
+A bulk repair in a migration was considered and rejected for the reason `20260910191000` already
+gives: rewriting somebody's training in a migration they never asked for is what CLAUDE.md §3 is
+about. Pre-release, the only records affected are the owner's own.
+
+### Changed
+
+- `src/lib/db/merge-days.ts`, `+ 2 tests` (10 total, real schema, foreign keys on) — one of them is
+  the screenshot reduced to two rows — and the day-split-in-three test now counts the items and
+  sets it leaves behind, which is what nobody was asserting.
+- `supabase/migrations/20260911090000_merge_days_structure.sql` — replaces the function.
+  **NOT PUSHED**: `supabase db push` needs the owner's yes.
+- `src/lib/coaching/index.ts` (`clientFeed`), `src/lib/coaching/read-workout.ts` (`loadCoachDay`),
+  `src/app/(tabs)/you/coaching/client/[id].tsx`.
+
+### Gates
+
+`npm run typecheck` clean, `npm test` **902/902**, `npx expo lint --no-cache` 0 errors (49 pre-
+existing warnings, none in a file this pass touched).
+
+### Not verified
+
+Not on a device. The merged-day path needs an account that still holds a split day, and the
+screenshot's account is the owner's, not the seeded dev one. The rule itself is covered by the
+local tests; the remote function is the same rule and has not run anywhere yet.
+
+## 11 September 2026 — the set reads as one thing, on the left, at a size you can read
+
+**Owner's brief**, with a photograph of Today (Pull-up, Incline Dumbbell Press, Seated Cable Row):
+*"naredi tako da ni tako narazen, ker bi vseeno rajše videl da vidim sets, kg in število
+ponavljanj eno ob drugem; mogoče da vse skupaj malo premakneš v levo, da ni čisto ob robu; in
+naredi tako da bo dovolj vidno tudi za te ki imajo slabšo dioptrijo na blizu."*
+
+### What the photograph showed
+
+Three complaints, one fault. A set is ONE reading — *set 2, 25 kg, 12 reps* — and the table was
+printing it at three addresses:
+
+1. **The position was on the left margin and the numbers were hard against the card's right
+   edge**, with ~200 pt of paper between them. The 9 September pass put the readings there on
+   purpose (the card had no right edge before it) and the 10 September pass filled the middle with
+   the set's qualifiers — but a card that carries no RIR and no AMRAP, which is most cards, still
+   printed a set as two facts at opposite margins.
+2. **The two numbers were not together either.** Both were right-aligned inside a fixed `CELL`
+   of 56 pt, so a two-digit load and a two-digit rep count landed ~40 pt apart. The 10 September
+   note already saw this coming ("at 64 the pair was wide enough that `100` and `5` read as two
+   separate facts") and paid 8 pt against it; the cell itself was the problem.
+3. **It was too small for the person it is for.** 15 pt readings, a 13 pt position, and an 11 pt
+   tracked `KG REPS` header two lines above the numbers it named. Associating a header with a
+   column is exactly the work presbyopia makes expensive.
+
+### What it is now (`src/components/set-table.tsx`)
+
+- **One left-anchored cluster per set, indented `spacing.md` under the exercise name** — a
+  sub-list of the line above it, against neither margin. `1 · 25 kg × 12`.
+- **The columns are measured, not fixed.** `inkWidth()` sizes each column to the widest thing in
+  it from the measured em-advances of the reading face (SF Pro, `tabular-nums`, so a digit is one
+  number rather than ten), in the render pass that draws them — `onLayout` would mean a frame of
+  the wrong grid on every card, which on a scrolling page is a visible shudder. Every cell is a
+  `minWidth`, never a `width`, and RN's default `flexShrink` is 0: an under-estimate loses that
+  one row's column, an over-estimate costs a point of air, and **nothing can be cropped**. The
+  56 pt `CELL` constant is gone.
+- **The header is gone; every row says its own units.** `25 kg × 12` is the notation the app's own
+  compact line already speaks (`setsLineText`, and `session-receipt` renders it with
+  `readingText(setText, ' × ')`), so the legend two lines up was never needed. A table with no
+  load column spells the word instead — `12 reps` — because nothing else in that row would say
+  what the number counts. Distance and duration already carry their unit and are left alone. The
+  unit is a step smaller and a step lighter than the figure (design skill §Structure: *"Number and
+  unit are typographically two things"*), and `kg ×` is right-aligned in its own measured slot so
+  the `×` holds its x on a bodyweight row that prints no `kg`.
+- **The marks moved into the qualifier lane.** `warm-up` · `drop` · `skipped` used to stand in the
+  position column, which sized that column to the longest WORD — so a card with a warm-up started
+  its numbers ~45 pt right of the card above it, and a page of sets had no left edge. The position
+  column holds positions now, the lane holds words, and every card on the page starts its figures
+  at the same x. The word is still a word at 14 pt, never an abbreviation and never a lighter grey
+  (the 9 August low-vision ruling), and it sits immediately after the numbers it is about — the
+  same short-eye-travel argument as before, other side of the figures.
+- **The chain survived the move.** A `marginLeft` on a left-anchored grid would push that row's
+  numbers out of their column, so the indent is paid INSIDE the position cell: the chained row
+  gets a wider cell and a smaller right margin, the others the reverse, both totalling the same
+  width. The number moves, the grid does not.
+- **Sizes:** readings 15 → **17** (the size iOS sets Body in, and the size of the exercise name
+  above them), position 13 → **15** in full ink, marks 12.5 → **14**, lane 10.5/12.5 → **11.5/14**,
+  stacked line 16 → **18**. The room came out of the two dead columns, so the card is no taller.
+- **`note-surface.tsx`:** the one-line reading a single set keeps instead of a table
+  (`exValue`) was 14 pt grey — the smallest type on the page, for the same fact a table row holds.
+  It is `readingStyle('500')` at 16 in ink now.
+
+Unchanged: the stacking thresholds (1.2, or 1.1 when the lane competes), the spoken sentence
+(`setSentence`) VoiceOver reads per row, `setTableOf` and every number in it. This pass moved and
+resized what was already parsed; it added no fact and dropped none.
+
+### Verified on the simulator (iPhone 17 Pro, iOS 26.5)
+
+A throwaway route rendering `SetTable` against hand-built fixtures — it is deleted, and
+`grep -rn "TEMP-VERIFY\|tmp-settable" src/` is clean. Photographed: plain sets; a loaded exercise;
+warm-up + RIR + a decimal load + drop + skipped in one table; AMRAP and FAILURE; a mixed
+loaded/bodyweight exercise; distance with a ride-along duration; a myo chain; a weighted carry
+(`40 kg × 20 m · 1:00`); duration-only sets. Columns hold in every one of them. Then the real
+Today, on the owner's own signed-in data, after a **cold relaunch** (Fast Refresh reports layout
+defects that are not there — [[rn-style-changes-need-cold-relaunch]]).
+
+Dynamic Type: at `extra-large` the columns still hold, and a table carrying a ride-along already
+gives way to the spelled-out line at 1.1 as designed; at `accessibility-large` every table is one
+wrapped sentence per set and nothing crops.
+
+### Gates
+
+`npm run typecheck` clean, `npm test` **902/902**, `npx expo lint --no-cache` 0 errors (49 pre-
+existing warnings, none introduced).
+
+### Not verified
+
+Not on a physical device, and the `session-receipt` copy of the table still has no importers, so
+that surface is inert whatever it draws. No parser, prompt or guard behaviour changed, so §9.4
+does not apply.
+
+---
+
+## 11 September 2026 — the delete gets an undo, and the dialog stops claiming it cannot be undone
+
+**What was wrong.** Deleting an entry removed a physical line from `note`, which is `raw_text`,
+which is the record — and nothing could put it back. The repository knew, and had written the gap
+down twice in the same file rather than closing it:
+
+- `note-surface.tsx`, on the confirmation dialog: *"`deleteNoteLine` splices out of `note`, which
+  is `raw_text`, which is the record, **and there is no undo stack behind it**"*.
+- `note-surface.tsx`, on the inline editor's Delete: *"a bare one-tap Delete beside an autofocused
+  field, **on a line with no undo behind it**, was the more accidental of the two doors"*.
+
+Both comments argue for MORE FRICTION because the action was unrecoverable. The friction was
+standing in for a missing undo, and it was also the only edit in the app with that shape: "Remove
+reading" in the fix sheet destroys nothing the athlete wrote, "Edit my words instead" is a rewrite
+they can rewrite again, a mis-tapped effort token clears, an untapped planned set goes back. Delete
+was the one door out of the record with no way back through it, and it is used mid-workout, one
+handed.
+
+### What shipped
+
+| Piece | Where |
+|---|---|
+| The line surgery and its **exact inverse**, pure and tested as a pair | `src/lib/note-lines.ts` (`removeLine` / `restoreLine`), `note-lines.test.ts` — 10 tests |
+| `lastDelete` on the session store, plus `undoDelete` / `clearUndo` | `src/state/session-store.ts` |
+| The floating pill — `Deleted "Bench Press" ↩ Undo`, six seconds | `src/components/undo-delete.tsx` |
+| The glyph (`arrow.uturn.backward` / `arrow-undo-outline`) | `src/components/icon.tsx` |
+| Mounted over whatever owns the bottom of the screen | `src/app/(tabs)/today/index.tsx` |
+
+**The undo restores TEXT, not a reading.** The reading is a projection that rebuilds itself, so
+putting the words back puts the entry, its sets, its effort token and its check state back with
+them — the same reason "Edit my words instead" needs no separate re-parse path. It goes out through
+`setNote` like a keystroke, so there is still exactly one way into the record.
+
+**It is scoped to the day.** `undoDelete` refuses across a day boundary instead of clamping, and
+`selectDay` withdraws the offer outright. Restoring at a wrong index costs a position inside a
+session the athlete is looking at; restoring into the wrong DAY writes a lift into a session that
+never happened, which §3 does not allow at any price.
+
+### The dialog stays, and its last sentence had to go
+
+It said **"This cannot be undone."** That stopped being true, so it now reads *"Undo is offered
+straight after."* A warning that overstates what it is warning about teaches the athlete to
+distrust the next one.
+
+The dialog itself is kept because it still does the one thing the undo cannot: it NAMES THE
+SIBLINGS that go with a run-on line before they go. **For a line holding a single entry it is now
+pure friction on a reversible action.** Dropping it there is the owner's call — it was their ruling
+of 20 August 2026 that put it in, and the argument it rested on is the half that just changed.
+
+### The pill is PAPER, not glass — measured, not chosen
+
+It was built as a `GlassPressable`, on the design skill's rule that floating chrome is Liquid Glass.
+On the simulator it then rendered as **bare text on the canvas**: mean RGB inside the shape came
+back `244,245,241` against a `245,245,239` canvas — no surface at all. The cause is the one
+`bottom-toolbar.tsx` already records — *"glass needs something behind it to refract or it is just a
+grey rectangle"* — and it bites hardest here, because the pill appears at the exact moment the page
+has just lost the entry it was showing. Glass is right for the chrome the skill lists; every one of
+those floats over content that moves. A six-second control the athlete has to FIND may not be the
+one that disappears when the page is empty, so it takes the other half of the same vocabulary: the
+white pill with the soft warm shadow, which is what `glass.tsx` itself falls back to.
+
+### Verified on the simulator (iPhone 17 Pro, iOS 26.5), on the owner's own signed-in data
+
+Today was empty, so a two-line session was seeded into it and **deleted again afterwards, locally
+and on Supabase** — `workouts` for 11 Sep is 0 rows in both, and the account is back to its 53
+sessions. `grep -rn "TEMP-VERIFY\|SIMPASS" src/` is clean; no source bypass was used.
+
+Photographed end to end, reading `raw_text` out of SQLite at each step:
+
+- ⋯ → Delete entry → the dialog, carrying the new sentence.
+- Delete → the line leaves `raw_text`, the pill arrives naming the entry.
+- Undo → `''` → `'barbell row 3x10 60kg\n'`, byte for byte, trailing composer line included.
+- **Dynamic Type at `accessibility-extra-large`**: the pill holds its shape, the description
+  truncates with an ellipsis and **the action never does**. Undo tapped on the pill BODY (not the
+  label) still restored the line — the whole pill is one target by design.
+- **Reduce Motion on**: the pill arrives fully formed, no fade, and undo works.
+
+### Gates
+
+`npm run typecheck` clean · `npm test` **902/902** (892 before this change, +10 new) ·
+`npx expo lint --no-cache` **0 errors** (49 pre-existing warnings, none introduced) ·
+`npx expo export --platform ios` **pass**.
+
+### Not verified
+
+Not on a physical device. VoiceOver was not driven: the pill announces itself with
+`announceForAccessibility` and extends its window to 20 s while a screen reader is on
+(`UNDO_WINDOW_SCREEN_READER_MS`), and both are reasoned from the API, not measured with VoiceOver
+running. No parser, prompt or guard behaviour changed, so §9.4 does not apply.
+
+---
+
+## 11 September 2026 — the walk-through is owed to one person, and being shown spends it
+
+Owner: *"popravi to, da se tour guide pokaže samo prvič ko nekdo ustvari profil."*
+
+**The gate was the absence of a flag, and absence meant four different things.** `SpotlightTour`
+opened when `!isTourDone()` — no `pref_tour_done` row in the local meta KV. That KV is
+device-local and `ensureLocalUser` drops the whole table whenever a different account signs in, so
+"no row" was equally true of:
+
+1. somebody who has just finished the funnel — **the one person the tour is for**;
+2. a returning athlete on a **second phone**, or after a reinstall — their record is years old and
+   the device simply has no flag yet;
+3. anybody switching back to their own account after somebody else used that phone;
+4. **the same person again after force-quitting mid-tour** — `markTourDone()` ran only from
+   `finish()`, so leaving on step two left the flag unwritten and replayed all five beats on the
+   next launch.
+
+Three of the four are wrong, and none of them is distinguishable from the flag.
+
+### The fix: arm, don't assume
+
+Nothing is owed unless something says so, and the only thing that says so is **the funnel reaching
+its end**. `markOnboardingDone()` — which both funnels call, v2 via `commitV2Onboarding` and the
+illustrated one directly — now also calls `armTour()`. `app/index.tsx` already draws this exact
+line for routing (*"signed in with no local onboarding flag is a returning user, not a new one"*),
+so this is that same rule applied to the walk-through.
+
+A returning athlete never reaches it: screen 1's "I already have an account" hands them a session,
+and the dispatcher lets a signed-in user past the funnel.
+
+**And it is spent on sight, not on completion.** `markTourDone()` now runs the instant the scrim
+goes up. Being shown is what "shown once" means; case 4 above is what the old contract cost.
+
+| Piece | Where |
+|---|---|
+| The rule, pure and away from SQLite | `src/lib/tour-gate.ts` + `tour-gate.test.ts` — 9 tests, one per life above |
+| `pref_tour_armed`, and the two accessors over it | `src/lib/prefs.ts` (`armTour`, `isTourOwed`, `markTourDone`) |
+| Armed where a profile is made | `src/lib/prefs.ts` (`markOnboardingDone`) |
+| Gate and spend-on-open | `src/components/spotlight-tour.tsx` |
+
+The rule lives in `tour-gate.ts` because `prefs.ts` imports `expo-sqlite` and cannot be loaded
+under `node --test` — and the thing that was wrong was never the storage, it was the meaning read
+off it. `pref_*` on purpose, so `export-json.ts`'s `pref_%` sweep, `account/delete.ts` and the dev
+sandbox's snapshot all cover the new key with no further work.
+
+`isTourDone()` is kept: it is the historical record that this account was walked through, and one
+key answering "was it offered" separately from "is it owed" is precisely what let the absence of a
+flag mean two things.
+
+### Verified on the simulator (iPhone 17 Pro, iOS 26.5), on the owner's signed-in install
+
+The install's flags were recorded first and **restored byte-identically afterwards**
+(`pref_tour_done='1'`, no `pref_tour_armed`); the record was untouched throughout — 0 rows for
+today, 53 sessions, before and after.
+
+| Case | Flags before | Result |
+|---|---|---|
+| Returning athlete / account switch | no tour rows at all | **no tour** — this exact state showed it before |
+| Profile just created | `pref_tour_armed='1'` | tour opens on step 1 of 5, and the flags are already `armed=NULL, done='1'` in the same breath |
+| Force-quit on step 1, relaunch | as left by the case above | **no replay** |
+
+### Gates
+
+`npm run typecheck` clean · `npm test` **925/925** · `npx expo lint --no-cache` **0 errors**
+(49 pre-existing warnings, none introduced) · `npx expo export --platform ios` **pass**.
+
+### Not verified, and one deliberate loss
+
+Not on a physical device, and the funnel was not walked end to end — the armed flag was written
+directly, which is what `markOnboardingDone` writes. An install that finished the funnel on a build
+BEFORE this one and updates before ever opening Today will never be armed, so it loses its
+walk-through. That set is empty in practice (there is no store build yet — `TESTFLIGHT_READINESS.md`
+B1 is open), and no migration was written rather than guessing from `onboarding_done` alone, which
+cannot tell case 1 from case 4.
+
+## 11 September 2026 — the parse asks about what changed, and answers in parallel
+
+**Owner's question**, twice: *"zakaj toliko časa potrebuje?"* — then, on the plan below,
+*"vse: inkrementalno + vzporedno"*.
+
+### Why it was slow — one number
+
+A parse's wall time is its OUTPUT and nothing else. Measured against the deployed function and
+against the same call made directly, `claude-haiku-4-5`, same notes:
+
+| note | wall | output |
+|---|---|---|
+| 1 exercise | 5.7 s | 166 tok |
+| 3 exercises | 11.6 s | 450 tok |
+| 6 exercises | 21.0 s | 855 tok |
+
+**~40 output tokens a second.** Everything else is small and was measured to be small: the edge
+preamble ~1–2 s, the typing debounce 0.9 s, and the 17.9k-token system prompt **is not the cost** —
+it is cached, and `cache_read` hits moved the total by under 2%. A/B on the two multipliers:
+constrained decoding (`json_schema`) halves throughput (38 vs 134 tok/s), and the 44 few-shot
+examples make the model spell out every `null` (450 output tokens where a lean shape needs 189).
+
+And `applyParseResult` deletes every item and rebuilds, so the cost was proportional to the
+SESSION, not to the edit: writing six exercises one at a time paid for 1+2+3+4+5+6 exercises of
+output — twenty-one exercises' worth of model time to record six.
+
+### What it is now
+
+- **`src/lib/parse/incremental.ts` (new, 14 tests).** A prefix/suffix line diff decides what has to
+  be read again; the rest is spliced from the cached reading, re-indexed. The whole note still
+  travels as CONTEXT — only the question narrows. Two rules the plan must respect, both from the
+  prompt's own line rule (*"if an exercise's sets continue on later lines, the item keeps the FIRST
+  line's index"*): a changed line expands to the ANCHOR of the item that owns it, and the block
+  immediately before the change is always re-read, because a line joining or leaving an exercise's
+  sets changes that exercise rather than itself. More than `MAX_PARTIAL_LINES` (4) touched, or no
+  cached reading, falls back to a full read — which is no longer the expensive branch.
+- **`supabase/functions/parse-workout/fanout.ts` (new, 19 tests) + `index.ts`.** A full note is
+  split across parallel calls, at most `MAX_MODEL_CALLS` (8). Every call gets the whole note; each
+  is asked for a few lines of it. Chunks are contiguous and cover every line exactly once, so the
+  merge is a CHOICE between duplicates (the owning chunk wins) and not a guess; a line only falls
+  back to another chunk's answer when its own said nothing, which is the model's known line drift
+  and what `reanchorLines` already survives.
+- **`only_lines` in the request, `partial: true` in the response.** The response flag is the
+  contract, not a hint: a deployment that predates this ignores `only_lines` and never sets it, so
+  a newer client sees a whole-note reading and uses it whole instead of printing every kept line
+  twice. **The app is therefore safe to ship before the function is deployed.**
+- **One parse per workout at a time (`parse/client.ts`).** There was no guard at all: typing during
+  a 21 s parse started a second full parse 900 ms later, and a third behind that — every one a
+  model call, all racing to rebuild the same rows, and a long session could spend the whole
+  30-calls-per-10-minutes window on itself. The 429 was recorded as a failure and put the note into
+  backoff, so the punishment for writing quickly was a reading that stopped updating. At most one
+  parse is queued behind the running one, and every caller that arrives meanwhile is handed that
+  same queued run. It lives in `client.ts` rather than the store because `retryPendingParses` is a
+  second caller with the same workout and no knowledge of the first.
+- **The rate limiter counts MODEL CALLS, not requests.** The window was sized when a parse was
+  exactly one call; the fan-out would otherwise have multiplied the ceiling by eight behind a limit
+  that still read "30". The bumps go out together, so counting honestly costs one round trip.
+
+### The narrowing instruction, and why every clause of it is there
+
+Tested against the ten hardest multi-line cases in `scripts/parse-eval-cases.json` — headers,
+rounds circuits, metcons, six-line machine sessions, mixed-language lines — fanned out one line per
+call, with `parse-eval.ts`'s own line-aware `findItem` doing the checking:
+
+| instruction | passes | what broke |
+|---|---|---|
+| "the items whose line index is N" | **1 / 10** | asked for an index, the model RENUMBERS — it decides which lines are exercise lines and counts those, so a note with a "Monday" header answered line 0 for the bench press on line 1, and every index after it shifted |
+| quote the line with its index | **8 / 10** | nothing to count, nothing to drift |
+| + "anything above that governs these lines still governs them" | 9 / 10 | a "3 rounds" header multiplies the sets of the lines under it; a line read in isolation came back with one set instead of three |
+| + "a line that records no exercise gets an empty list" | **10 / 10** | asked about the "5 rounds:" line, the model answered with the WHOLE circuit — 643 output tokens against 166 per chunk, so one runaway call set the wall clock and that note took 17 s instead of 6 |
+
+The quoted text is stripped of angle brackets (S16): it is the one place a line of the athlete's own
+writing is interpolated OUTSIDE the `<workout_log>` tags, and a line containing `</answer_lines>`
+would otherwise close the block early.
+
+**The head start is the prompt cache, not a delay.** Fired truly simultaneously, every call misses
+the cached prefix and every one of them WRITES it. Measured cold with the cache deliberately
+busted: a 1200 ms head start on the first call gives **1 write and 3 reads**, and the wall clock is
+still 5.4 s. Skipped when the isolate called recently, because then the prefix is already warm.
+
+### Measured end to end, on the shipped code paths
+
+| | before | after |
+|---|---|---|
+| 6-exercise note, cold | 21.0 s, 1 call | **5.8 s**, 6 calls |
+| the 10 hardest multi-line eval cases | — | 3.9–7.5 s, **10/10 pass** |
+| 3-exercise note, cold | 11.6 s | 5.5 s, 3 calls |
+| one exercise added to it | 11.6 s (whole note again) | **6.5 s**, 2 calls |
+| one set added to an exercise | 11.6 s | **5.4 s**, 2 calls |
+| a line deleted | 11.6 s | **no model call at all** |
+
+Cost moves the same way: the note is no longer re-emitted from the top on every pause, so writing a
+six-exercise session goes from ~21 exercises of output to ~6.
+
+### Gates
+
+`npm run typecheck` clean, `npm test` **944/944** (33 new), `npx expo lint --no-cache` 0 errors
+(49 pre-existing warnings), `npx expo export --platform ios` pass. The edge function is outside
+`tsconfig.json`, so it was type-checked separately against the real `@anthropic-ai/sdk` and
+`supabase-js` declarations under `strict` + `noUncheckedIndexedAccess`: clean.
+
+### NOT DONE — and it is the owner's to do
+
+1. **`supabase functions deploy parse-workout` has not been run.** Until it is, `only_lines` is
+   ignored by the deployed function, the response carries no `partial`, and the client falls back
+   to whole-note readings — correct, and exactly as slow as before.
+2. **The §9.4 evaluation has not been run.** The narrowing instruction changes what the model is
+   asked, so per CLAUDE.md §5 this is **not fully verified**. The ten-case check above is evidence,
+   not the gate: it is one run of the hardest tenth of `parse-eval-cases.json`, scored by a
+   re-implementation of the eval's matcher. After deploying, `npm run eval` and
+   `EVAL_VIA=edge npm run eval` are the real answer.
+3. Not exercised on a device or against a real account, for the same reason.
+
+---
+
+## 11 September 2026 — the coaching stack was still living in the grouped world
+
+Owner: *"ni mi všeč dizajn … ko prideš notri v session"* — the screen a coach lands on after
+Clients → a client → a session.
+
+### What was actually wrong, measured
+
+| Defect | Evidence |
+|---|---|
+| **The canvas was the retired `#F2F2F7` grouped world.** Flat `242,242,242` from the status bar to the tab bar, against Today's `247,245,238 → 245,244,243`. The design skill says in so many words that there is no grouped world left; the coaching stack was the last place still in it. | sampled on the iOS 26.5 simulator |
+| **A hard white slab over the top 115 pt.** `255,255,255` down to y≈115 where Today reads `247,244,237` from its first row. | same |
+| **Two number voices.** `lib/coaching/facts.ts` carried its OWN `groupThousands` using `toLocaleString(undefined, …)`, so the session header printed **`1.500 kg`** for fifteen hundred kilograms while Today, three taps away, printed `27,869 kg`. Every label beside it is English, and `1.500` reads as one and a half. | photographed |
+| **`Unread line` in place of every exercise name.** NOT a client defect — see below. | photographed, then proved against the database |
+
+### The canvas
+
+`you/_layout.tsx` already hangs a `PaperField` beside its navigator, and that file already records
+why it is not enough: **the navigator's own container view is opaque and paints over the sibling.**
+The fix it lands on — the gradient as the scroll view's OWN background — was applied to
+`you/index.tsx` and `aliases.tsx` and never to this folder. All five screens
+(`workout/[id]`, `client/[id]`, `clients`, `join`, `invite`) now carry
+`experimental_backgroundImage: PAPER_FIELD_CSS`.
+
+### The white slab was one missing prop
+
+`workout/[id].tsx` was **the only screen in `you/` with a plain inline title.** An inline bar
+materialises the instant it has content under it; a large title stays transparent at the top of the
+scroll and materialises as the content travels under it. Its four siblings all set
+`headerLargeTitle` and all read correctly.
+
+Setting it revealed the second half: **"Thursday, 10 September" truncated to
+"Thursday, 10 Septemb…"**. The answer is not an abbreviation, it is the division of labour Today
+already uses — the bar carries the short name and the page carries the full date:
+
+```
+Yesterday                     ← headerLargeTitle, sessionDayTitle()
+Thursday, 10 September        ← the dateline on the page, sessionDate()
+2 Lifts   6 Sets   1,500 Kg lifted
+```
+
+`sessionDayTitle` is new in `lib/coaching/relative.ts` (5 tests) — "Today" / "Yesterday" /
+"10 Sep", with the year only when it is not the current one. It is not `labelForDay`, which takes a
+local `DayKey`; these are timestamps from another person's account, which is why that file exists.
+
+### One number voice
+
+`facts.ts` now re-exports the app's own `groupThousands` from `parse/estimate.ts`, which is
+deliberately **not** locale-aware so two screens stay comparable. A relative, extensioned import,
+because the module is node-testable and `node --test` does not resolve `@/`. Pinned by a test that
+fails on a full stop.
+
+### `Unread line` is a SERVER defect, and the migration for it exists and is not applied
+
+Probed as the coach against the live project, with the dev account's own token:
+
+```
+GET /rest/v1/items?workout_id=eq.<client session>   → [{ …, "exercise_id": "8dd7667c-…" }]
+GET /rest/v1/exercises?user_id=eq.<the client>      → []
+```
+
+The coach can read the item and not the catalogue row it points at, so
+`read-workout.ts` falls back to `UNRESOLVED_EXERCISE`. `supabase/migrations/20260910210000_coach_read_scope.sql`
+fixes exactly this (S19) and predicts this exact symptom in its own comment — *"the feature reads
+as broken by anyone who tries it"*. **It has not been pushed.** The same migration also carries
+S18, which closes a live disclosure: `profiles_select` currently lets either end of a coaching link
+read the other's `email`.
+
+No client-side fallback was written. Naming a lift from the raw line by position is a guess, and a
+mislabelled lift on a coach's screen is a fabricated fact (§3). **Owner's call — the migration is
+written, reviewed and unpushed.**
+
+### Gates
+
+`npm run typecheck` clean · `npm test` **950/950** · `npx expo lint --no-cache` **0 errors**
+(49 pre-existing warnings, unchanged count, none introduced) · `npx expo export --platform ios`
+**pass**.
+
+### Verified on the simulator, on the owner's own coaching link
+
+Nothing was written to any record. Before/after on the same session: canvas `242,242,242` →
+`247,244,237 … 245,245,242`; the white slab gone; `1.500 kg` → `1,500 kg`; the title no longer
+truncating. The four sibling screens were re-checked for the canvas.
+
+### Not verified
+
+Not on a physical device. Dynamic Type and VoiceOver were not re-run on this screen — the change is
+a background, a header option, a formatter and one line of text, none of which alters layout
+behaviour under type scaling, but that is reasoning rather than measurement.
+
+---
+
+## 11 September 2026 — the parser was not slow, it was down; and what was left of the slowness was the shape of its own answer
+
+The owner, after the fan-out landed: *"popravi parser tako, da bo se vedno delal ne moteno ampak
+se mora dosti hitreje izvedt, kaj je problem preveri in popravi"*. Two halves, and the first one
+turned out to be the urgent one.
+
+### The parser is not answering at all
+
+Called from this machine with the development account's own token, the deployed function returns
+**502 `parse_unavailable`** — for a one-line note, for a six-line note, for an `only_lines` request,
+every time. `explain-brief` returns **502 `explain_unavailable`** on the same account in the same
+second. Two functions, two prompts, one thing in common: the Anthropic key. The failure is the
+provider refusing, not the parser misreading.
+
+The repository's own key — the one `npm run eval` and `scripts/parse-eval.ts` read out of `.env` —
+answers every request with `400: "You have reached your specified API usage limits. You will regain
+access on 2026-10-01 at 00:00 UTC."` It is a **different key** from the deployed one (sha256 of the
+local value does not match the digest `supabase secrets list` reports), so the two are separate
+accounts or separate limits hitting the same wall.
+
+Three consequences, all the owner's to act on:
+
+1. **Nobody's notes are being read right now.** Not slowly — not at all.
+2. **The §9.4 evaluation cannot be run** by anyone without a key that answers. Every measured claim
+   below is either a timing taken through the failing deployment (which still exercises the whole
+   preamble) or an unmeasured change that says so.
+3. **The deployed function is `parse-workout` version 13, 10 September 05:26 UTC** — it predates the
+   fan-out, `only_lines`, and the per-model-call rate accounting written earlier today. Whatever the
+   repository now says about parse speed, production is still running one call that re-reads the
+   whole note. The prompt differs too: the deployment is missing the
+   "A QUALIFIER THAT CHANGES THE MOVEMENT STAYS IN THE NAME" rule.
+
+### The preamble was five round trips in a queue
+
+Timed against the deployed function from this machine, median of five:
+
+| what the request reaches | wall |
+|---|---|
+| network floor (401, no work done) | 139 ms |
+| stops right after `getUser` | 358 ms |
+| runs the whole preamble, then the model call fails | 954 ms |
+
+So roughly **600 ms of every parse** was spent waiting on five answers that do not depend on each
+other: `auth.getUser`, the rate bump, the global ceiling, the entitlement read, and the personal
+vocabulary, each awaited before the next began.
+
+Taken apart, with the same account's own token against the same backend (median of seven):
+`getUser` **74 ms**, one PostgREST round trip **111 ms**, the vocabulary's two sequential hops
+**172 ms**. The function makes `getUser`, then three single round trips (rate bump, global ceiling,
+entitlement), then the vocabulary — **579 ms serialised**, which is the same number the end-to-end
+timing found from the other direction (596 ms) without being told. Overlapped, it is
+`max(getUser, vocabulary) + one round trip` = **283 ms**. **296 ms saved, 51%**, on every parse.
+
+The rule that keeps it honest is that **nothing with a side effect moved ahead of
+authentication**: the rate bump writes, and the gates decide whether money may be spent, so they
+still start only once `getUser` has answered — and then all three go out together. The one thing that
+overlaps `getUser` is the vocabulary READ, issued for the `sub` claim of a token the platform has
+already verified (`verify_jwt = true`), and thrown away and re-read if the verified user turns out to
+be anyone else. The order the answers are ENFORCED in is unchanged, status codes included.
+
+### The answer was mostly the word "null"
+
+A parse's wall time is its output. The output was this, for one ordinary working set:
+
+```
+{"kind":"working","reps":8,"weight_kg":80,"distance_m":null,"duration_s":null,"rir":null,"parent":null,"note":null}
+```
+
+Five facts the athlete never stated, written out on every set of every session, because every
+optional field was `anyOf: [T, null]` AND listed in `required` — which under constrained decoding is
+not a hint, it is an obligation. The 44 few-shot examples taught the same habit: the old prompt
+printed the word `null` **914 times**.
+
+The schema now leaves the optional fields out of `required` and gives them plain types, the prompt
+says to write only the fields that carry a fact, and all 44 examples were rewritten by machine to
+omit their null-valued fields — the system prompt went from **49,025 to 35,932 characters**, 28%
+smaller, with every example still present and still parseable. `validateResult` already read a
+missing field as null (`clampNumber(undefined)` and `clampText(undefined)` both return null), so the
+JSON this function RETURNS is byte-identical to before. The client cannot tell. Only the model writes
+less.
+
+`aliases_seen` was deliberately kept `required`: an empty array is a fact ("they wrote the canonical
+name"), it is how the alias learning sees the athlete's own words, and it is six tokens.
+
+**Measured, without an API.** How long an answer is, is a property of the FORMAT, not of who wrote
+it — so the same readings were serialised both ways over the real corpus. 102 notes, 544 sets:
+**85,533 characters the old way, 40,305 the new — 2.12x, 53% fewer.** Per note that is a mean of
+**233 output tokens down to 110**, and at the 38 tok/s measured earlier today on `claude-haiku-4-5`
+under constrained decoding, **6.1 s of writing down to 2.9 s**. The worst note in the corpus (twenty
+written lines) goes from 63.5 s to 29.3 s of output — which is also the case the fan-out then splits
+across parallel calls.
+
+Together with the preamble: an ordinary note that spent roughly **6.7 s** before spends roughly
+**3.2 s**, before the fan-out divides what is left.
+
+`PARSE_VERSION` is **7**. `CLIENT_PARSE_VERSION` stays at **6**, on purpose — the shape the client
+receives did not change, so forcing every cached note in every install to be read again would be a
+burst of model calls for an answer that is meant to be the same one. A new parse stamps 7; an old
+cache at 6 is still valid.
+
+### The one thing that could not be verified, and what was built instead of a hope
+
+Anthropic's structured outputs document what they do **not** support — recursive schemas, numerical
+and string constraints, `additionalProperties` set to anything but `false`. An incomplete `required`
+list is not on that list, and `anyOf` is supported, so this is a real JSON Schema rather than a
+narrow strict-mode subset. That is an argument, not a measurement, and the measurement was not
+available: with the key over its limit, a deliberately-invalid schema (`minimum`/`maximum` on an
+integer) and the new one come back with the **same** 400, because the spend check answers before the
+schema is ever looked at.
+
+So the retry was given a job. `runCallWithRetry` already re-ran a call once on a transport failure;
+it now re-runs it with `STRICT_OUTPUT_SCHEMA` — every field `required`, every optional one a
+`T | null` union, byte-for-byte the shape deployed since PARSE_VERSION 6. A dropped connection is
+answered as before. A schema the API will not accept is answered by a second attempt it cannot
+refuse. The worst case is yesterday's speed, not a dead parser. Delete it once the evaluation has
+passed on a working key.
+
+### An outage is not an unreadable note
+
+`parse/backoff.ts` had one schedule — 2, 10, 60, 360, 1440 minutes — and it was applied to every
+failure the server answered. Today's outage is exactly the case that breaks: five foregrounds would
+have put **every note the app holds** into a day-long wait for something that had nothing to do with
+any of them, and the day keeps running after the key comes back. The parser would have looked broken
+for a day longer than it was.
+
+The wait now depends on what the answer said about the note. `parse/client.ts` reads the status off
+the reply and names it:
+
+| kind | what it means | ladder (minutes) |
+|---|---|---|
+| `note` | 400, 422 — the function read THIS text and refused it | 2, 10, 60, 360, 1440 |
+| `transient` | 5xx, 401 — the service, or a session it would not take | 2, 10, 30, **60** |
+| `throttled` | 429, 402 — a window or an entitlement | 10, 30, 120, 1440 |
+
+The hour cap is the whole point: a provider outage now costs at most an hour of staleness after it
+ends. Offline is still free and still counted as nothing (`FunctionsFetchError`), and an
+unrecognised status still falls back to `note`, which is the old behaviour and the one that spends
+the least when we are not sure. Nothing here touches the foreground — typing re-parses immediately
+whatever the backoff says, so no wait can leave a person looking at a line the app refuses to re-read.
+
+### Files
+
+`supabase/functions/parse-workout/prompt.ts` (lean schema, `STRICT_OUTPUT_SCHEMA`, null-free
+examples, PARSE_VERSION 7) · `supabase/functions/parse-workout/index.ts` (parallel preamble,
+`subjectFromJwt`, `loadVocabulary`, schema-aware retry) · `src/lib/parse/backoff.ts` +
+`src/lib/parse/backoff.test.ts` (failure kinds) · `src/lib/db/parse-backoff.ts` ·
+`src/lib/parse/client.ts` (`failureKind`) · `scripts/parse-eval.ts` (`normalizeItems`, so the
+harness scores the shape the app receives rather than the model's raw answer).
+
+### Gates
+
+`npm run typecheck` clean · `npm test` **954/954** · `npx expo lint --no-cache` **0 errors**
+(49 pre-existing warnings, unchanged count, none introduced) · `npx expo export --platform ios`
+pass. The three edge files were syntax-checked with esbuild; there is no Deno on this machine, so
+they were not type-checked against Deno's own libs.
+
+### The outage could not be read, so two things were changed so the next one can be
+
+Everything above about *why* the 502 happens is inference. The function logs are not reachable from
+this machine (the CLI at 2.98.2 has no `functions logs`, and the management token is in the
+keychain), and both API keys refuse, so the cause was narrowed rather than read. What the narrowing
+does establish: the response was **this function's own JSON error body**, not a platform boot error,
+which proves the import succeeded, the preamble passed, and the failure is inside `messages.create`.
+What the three AI functions share is the key, the model, `output_config.format`, and one more thing
+nobody had looked at.
+
+**The SDK was not pinned.** All three imported `npm:@anthropic-ai/sdk` with no version. Deno resolves
+an unpinned `npm:` specifier when an isolate cold-starts, so deployed code can move to a new major
+**without anyone deploying anything** — which is precisely the shape of "worked yesterday, dead
+today, repository unchanged". All three are now pinned to `0.111.0`, the version `package.json`
+resolves for the eval harness and therefore one known to accept the request shape these functions
+send.
+
+**And then it was tested, and it was not the cause.** With the owner's agreement, `explain-brief` and
+`explain-prediction` were deployed carrying **exactly one changed line each** — the pin, and nothing
+else; the S2 work sitting uncommitted beside it in the working tree was set aside for the deploy and
+restored afterwards, so the experiment had one variable. Before: `explain-brief` 502
+`explain_unavailable`. After (v5, 11 Sep 10:04 UTC): **502 `explain_unavailable`**, cold isolate and
+warm.
+
+That is the useful kind of negative result. It eliminates the one candidate cause that code in this
+repository could remove, and with the import already proven to succeed and the preamble already
+proven to pass, what is left is the provider refusing the call — the key, or the model id, and the
+model id (`claude-haiku-4-5`) is current and shared with a function that worked yesterday. **The
+outage is the key, and it is the owner's to clear.** The pin stays regardless: an unpinned dependency
+in deployed code is a standing hazard whether or not it caused this one.
+
+**Then the diagnostics were deployed, and the outage named itself.** With the owner's agreement
+`parse-workout` was deployed as **v14** carrying everything that is NOT model-facing — the parallel
+preamble, the pin, `describeCallFailure`, and the fan-out written earlier today — with `prompt.ts`
+byte-identical to HEAD (`PARSE_VERSION` still **6**, no lean schema). The very first call answered:
+
+```
+502 {"error":"parse_unavailable","reason":"provider_rejected_request"}
+```
+
+`provider_rejected_request` is HTTP **400** from the provider. That is the fact the whole day was
+missing, and together with one that was sitting in this file's own change log it closes the question
+entirely.
+
+**The same deployed code parsed notes successfully this morning.** The fan-out entry above is built
+on timings taken through the *deployed* `parse-workout` earlier on 11 September — 4.7 s for one
+exercise, 13.4 s for three, 21.9 s for six, with `parse_version: 6` read back off the response
+bodies. Those were real readings. Same code, same request shape, same model, same key; hours later,
+400. **A request-shape or SDK fault cannot appear spontaneously in unchanged code** — and the pin
+deploy tested the SDK half of that directly and changed nothing. An account-level spend cap crossed
+mid-day does exactly this, and Anthropic returns it as a 400 `invalid_request_error` whose message is
+*"You have reached your specified API usage limits"* — verbatim what this repository's own separate
+key returns.
+
+So it is no longer an inference: **nothing in the code is implicated, and no change to it can lift
+the cap.** The remaining two facts it settles: **The key authenticates** — a revoked or wrong key
+returns 401, which this function would have reported as `provider_auth`. And a 400
+`invalid_request_error` is exactly the shape of *"You have reached your specified API usage limits"*,
+which is what the repository's own key returns verbatim. The deployed function's log line carries the
+provider's message in full; one look at the dashboard closes it.
+
+The lean schema and `PARSE_VERSION 7` were deliberately held back: they have never been sent to a
+live model, and the §9.4 gate is not satisfied. The working tree was restored byte-identically after
+the deploy, so the repository still holds them, ready for the eval.
+
+**The failure said nothing.** `catch (_err)` turned every model failure into one opaque
+`parse_unavailable`, in the logs as much as on the wire — a spend limit, a revoked key, a rejected
+schema and a provider outage were indistinguishable, which is why today took inference instead of a
+look. `describeCallFailure` now logs the provider's status, error type and message (none of the
+three is user data — `raw_text` travels in the request and is never echoed in an API error, and the
+key is never in an error body; the message is capped at 300 characters anyway), and returns a short
+`reason` enum to the client: `provider_rate_limited`, `provider_auth`,
+`provider_rejected_request`, `provider_unreachable`, `provider_error`. `parse/client.ts` reads it off
+the response body and puts it in the dev log beside the status.
+
+One status stopped being flattened while it was there: a provider **429 or 529 is answered as 429**
+rather than 502, so `parse/backoff.ts` puts the note on the window-length `throttled` ladder instead
+of treating a ceiling as an outage. It also means `runCallWithRetry` no longer burns its one retry
+re-asking a provider that just said no.
+
+### A second eval provider, because a reading the app shows has to be scored
+
+`EVAL_VIA=local npm run eval` runs the corpus against `lib/demo-parse.ts`, the offline grammar the
+onboarding demo reads with — no key, no network, no cost, **p50 0 ms, p95 3 ms**, and it finishes in
+under a second. It scores **47 of 105**.
+
+That number is here because it is the honest answer to "could the app read the line itself while the
+model is still writing, or when the model cannot be reached at all?" It could, for about half the
+corpus, and the half it fails is mostly NAMING — `Benhc pres` stays `Benhc pres` instead of becoming
+Bench Press — rather than wrong loads or wrong set counts. Wiring that in as a visible reading is a
+product decision about what the app is allowed to assert, not a performance fix, so it was **not**
+done: `parse/estimate.ts` already draws the instant local pill and its header binds that path to
+"display garnish only, never writes to the database". The provider is left in place so the question
+can be answered with a measurement whenever the owner wants to ask it.
+
+### The pill stopped guessing and started reading
+
+The half of the owner's ask that is not about speed — *"da bo se vedno delal ne moteno"* — has a
+code-side answer that the outage made impossible to ignore: for the whole of 11 September a person
+writing a session saw whatever `parse/estimate.ts` could work out and nothing else, because the model
+answered nothing at all. That file is the instant local tonnage behind the toolbar pill, and it was
+still the `A×B` pairs regex it started as, even though `lib/demo-parse.ts` — a real line grammar that
+understands rep lists, `serije po`, spelled-out numbers and per-set effort — has been reading the
+onboarding demo since August.
+
+`estimateVolume` now asks the grammar first and keeps the pairs regex as its floor, so coverage can
+only grow. Scored against the corpus's own expectations, over the 22 cases that state enough to
+compute a tonnage: **10/22 within 2% before, 20/22 after — ten better, none worse.** What the file is
+allowed to do is unchanged, and its header still says it: a number for the pill, computed from the
+person's own words, naming nothing and writing nothing.
+
+Two real defects fell out of doing it, both in the shared grammar rather than in the estimate:
+
+- **A pound glued to its set notation was read as a kilogram.** The unit test was
+  `/\d\s*(?:lbs?|pounds?)\b/`, and in `225lbx5` the character after `lb` is the `x` of the set
+  notation — letter to letter, so no word boundary. The line read as kilograms and 225 lb was shown
+  back as **225 kg**. Invisible on kg lines, because there is nothing to convert; a silent 2.2x
+  everywhere else, including the onboarding demo. Found by `estimate.test.ts`'s existing pounds test
+  the moment the grammar was wired in.
+- **The classic plate numbers were not pounds.** The parser's own rule — *"95, 135, 185, 225, 275,
+  315, 365, 405 are pounds; every other unitless load is kilograms"* — was not in this grammar, so
+  `185x5x3` read as 185 kg and the pill reported **2,775 kg for a session that was 1,259**. That is
+  the app stating a load nobody lifted, which is what `estimate.test.ts` already had a test named
+  after. It now applies only when no unit is written anywhere in the segment: somebody who types
+  `135kg` means kilograms and said so.
+
+Four tests pin both readings, and the offline eval moved 47/105 to **48/105** on the way past.
+
+### What is measured, and what still is not
+
+**Measured on this machine, no API required:** the preamble saving (579 ms to 283 ms, from
+component timings that independently reproduce the 596 ms end-to-end figure), the output-format
+saving (2.12x fewer characters for identical readings across 102 notes), the offline grammar's
+accuracy (47/105) and its latency (p50 0 ms), and the system prompt's size (49,025 to 35,932
+characters, all 44 examples intact).
+
+**Not measured, because no key on this machine answers:** whether the model actually omits the
+fields now that it is allowed to — the schema's `required` list is the enforcement under constrained
+decoding, and the examples no longer teach the habit, but that is a mechanism argument, not a
+reading; whether Anthropic accepts a schema with optional properties at all (the retry with
+`STRICT_OUTPUT_SCHEMA` is what covers being wrong); and the parse-quality evaluation (CLAUDE.md §5,
+§9.4), which no one can run until a key answers.
+
+**None of this should be deployed until that evaluation runs.** The owner's three actions, in order:
+raise or clear the usage limit on the deployed key — **the parser is DOWN until then, and no code in
+this repository can change that** — then `npm run eval`, then `supabase functions deploy
+parse-workout`, which is also the deploy that finally ships the fan-out.
+
+---
+
+## 11 September 2026 — a build a trainer can actually open, and the one flag that makes it possible
+
+The owner: *"kaj morm storiti da lahko dam app na testflight da lahko en trener sproba in pove
+svoje mnenje"*. The answer turned out not to be about provisioning at all. Most of what
+`TESTFLIGHT_READINESS.md` (20–21 August) listed as blocking has since been done — the EAS project
+is linked (`app.json` → `extra.eas.projectId`), all four client variables plus the three Sentry
+build variables are registered in EAS for both `production` and `preview`, `ITSAppUsesNonExemptEncryption`
+is declared, and `SUPPORT_EMAIL` is a real mailbox. That file is stale in those four points and
+should be read with this entry beside it.
+
+### What a TestFlight build would actually have done
+
+Nothing. The tester would have reached the paywall and stopped there, and the chain that produces
+that is entirely inside this repository:
+
+1. `EXPO_PUBLIC_REVENUECAT_IOS_KEY` is a `test_` key. `env.ts` blanks it outside `__DEV__` on
+   purpose (§2 rule 5 — a test key must never grant a free entitlement in a shipped binary).
+2. `store.ts:51` therefore reports the store unconfigured.
+3. `state.ts` had no override that survives a release bundle, so the entitlement resolved to
+   `lapsed`.
+4. `index.tsx` sends a signed-out person to `/paywall-v2/plan`, and `plan.tsx:120` renders that
+   screen in its `unavailable` state — the CTA reads **"Prices unavailable"** and `DEV · SKIP` is
+   compiled out.
+
+So: onboarding works, and then the app refuses to open. Correct behaviour for a misconfigured
+binary, and useless as a thing to hand to a coach.
+
+### The beta build, and why it is allowed to exist
+
+`isBetaUnlocked()` (`lib/env.ts`) — build-time, like `isCoachModeOn`, inlined by Metro so every
+branch behind it is dead code in a normal release. Set in exactly one place: the new `testflight`
+profile in `eas.json`. Three surfaces read it:
+
+- **`billing/state.ts`** — `devOverride` became `entitlementOverride`, and a beta build resolves to
+  `entitled`. The two `__DEV__` overrides are unchanged and still cannot ship. The module's initial
+  decision is beta-aware too, so the first frame is never the read-only ledger.
+- **`app/index.tsx`** — a signed-out person goes to `/sign-in` with `next: 'home'` instead of the
+  paywall. The account is still required (`parse-workout` needs a JWT); this is the same
+  destination and the same parameter the paywall's own forward step uses.
+- **`(tabs)/you/index.tsx`** — the subscription group becomes ONE row, `Recore Pro · Beta · billing
+  off`, with no press target, and the footnote states that nothing can be bought, charged or
+  restored. The three real rows would each have lied in a different direction: a paywall with no
+  price, a Manage link to an Apple page listing nothing, and a Restore that answers "no
+  subscription" to someone who never bought one.
+
+This does not weaken §2 rule 5. That rule forbids shipping a paywall, price, trial clock or Restore
+promise the store cannot keep — a beta build makes none of them. No price is printed, no trial clock
+starts, and the one place that could have asserted "Active" says the opposite instead.
+
+### Files
+
+`src/lib/env.ts` (`isBetaUnlocked`), `src/lib/billing/state.ts` (`entitlementOverride`, beta-aware
+initial decision), `src/app/index.tsx`, `src/app/(tabs)/you/index.tsx`, `eas.json` (`build.testflight`,
+`submit.testflight`), `.env.example`.
+
+### Gates
+
+`npm run typecheck` **pass**. `npm test` **954/954 pass**. `npm run lint` **0 errors**, 49 warnings,
+all of them pre-existing and in files this change does not touch. `npx expo export --platform ios`
+with `EXPO_PUBLIC_BETA_UNLOCK=1` **pass** — a production-mode bundle, exported to a scratch directory
+so `dist/` was not rewritten.
+
+### Not verified
+
+The beta path was not run on the simulator or a device. The navigation it adds is the one the
+paywall's `DEV · SKIP` already performs — same route, same `next: 'home'`, same `session === null`
+guard in `_layout.tsx:384` — and `Redirect` replaces a `push`, which is why this is reasoning rather
+than a measurement. No build has been made: the only one on EAS is a `development-simulator` build
+from 27 July on SDK 54, and the tree is now SDK 57 / RN 0.86, so the first cloud build should be
+expected to fail once or twice on native configuration before it succeeds.
+
+### Still the owner's, and not code
+
+An active Apple Developer Program membership; an App Store Connect record for `com.recore.app`; the
+trainer added under Users and Access and then to TestFlight **internal** testing, which skips Beta
+App Review entirely. External testers would need the review, the test-information fields, and the
+hosted privacy URL (`docs/` is generated and ready; GitHub Pages is not confirmed to be serving it).

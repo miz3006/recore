@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -12,6 +12,16 @@ import { PrefSheet, prefLabel, type PrefId } from '@/components/profile/pref-she
 import { RecapSheet, recapRowValue } from '@/components/profile/recap-sheet';
 import { RecordStrip } from '@/components/profile/record-strip';
 import { Row, Section } from '@/components/settings-rows';
+import {
+  isCoach,
+  listClients,
+  myCoach,
+  revokeLink,
+  setCoachRole,
+  type MyCoach,
+} from '@/lib/coaching';
+import { unregisterForComments } from '@/lib/coaching/push';
+import { isBetaUnlocked, isCoachModeOn } from '@/lib/env';
 import type { IconName } from '@/components/icon';
 import { listAliasOverrides } from '@/lib/db/alias-overrides';
 import { listPlanDays } from '@/lib/db/plan';
@@ -33,8 +43,8 @@ import { buildWorkoutsCsv } from '@/lib/export-csv';
 import { buildExportJson } from '@/lib/export-json';
 import { shareExportFile } from '@/lib/export-share';
 import { getProfileTotals } from '@/lib/db/insights';
-import { getLoggedDayKeys } from '@/lib/db/workouts';
-import { markImported } from '@/lib/funnel';
+import { countUnsyncedSessions, getLoggedDayKeys } from '@/lib/db/workouts';
+import { getFunnelSnapshot, markImported } from '@/lib/funnel';
 import {
   keyLiftsLabel,
   labelFor,
@@ -115,6 +125,8 @@ type RowSpec = {
   chevron?: boolean;
   external?: boolean;
   disabled?: boolean;
+  /** A two-state fact about the account rather than a door — see `Row`. */
+  toggle?: { value: boolean; onChange: (next: boolean) => void; disabled?: boolean };
   onPress?: () => void;
   /** Words a person would type that the row does not print — see the note above. */
   keywords?: string;
@@ -128,6 +140,13 @@ type SectionSpec = {
   rows: RowSpec[];
 };
 
+/**
+ * Read once, at module scope: `isBetaUnlocked` is a build-time constant that
+ * Metro inlines, so this is a literal and every branch behind it is dead code
+ * the bundler drops out of a normal release build.
+ */
+const BETA_UNLOCKED = isBetaUnlocked();
+
 export default function You() {
   const router = useRouter();
   const userId = useSession((s) => s.userId);
@@ -138,6 +157,31 @@ export default function You() {
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [lapsed, setLapsed] = useState<boolean>(() => isDevLapsed());
+  /**
+   * COACHING (10 September 2026). Two independent facts, because one person can
+   * be both: how many clients they coach, and who coaches them. The spec calls
+   * that out as an edge case; modelling it as two unrelated pieces of state is
+   * what makes it stop being one.
+   *
+   * Both are null until the first answer arrives, and both stay null forever
+   * when `coachMode` is off — the queries are never sent.
+   */
+  const [clientCount, setClientCount] = useState<number | null>(null);
+  const [coach, setCoach] = useState<MyCoach | null>(null);
+  /**
+   * WHETHER THIS PERSON IS HERE TO COACH — a third, independent fact.
+   *
+   * It is not derivable from the other two. Someone can coach nobody yet and
+   * still be a coach, and someone with a coach is usually not one. Until it
+   * existed this screen offered every account BOTH ends of the relationship,
+   * which is the defect the owner reported on 10 September 2026: a client, one
+   * tap after typing somebody's code, was invited to invite clients of their
+   * own.
+   */
+  const [coachRole, setRole] = useState(false);
+  /** True while the switch is waiting on the server. */
+  const [roleBusy, setRoleBusy] = useState(false);
+
   /** What the system search field currently holds. Empty is the whole page. */
   const [query, setQuery] = useState('');
   /**
@@ -249,6 +293,7 @@ export default function You() {
     () => ({
       unit: prefLabel('unit'),
       rest: prefLabel('rest'),
+      restauto: prefLabel('restauto'),
       bar: prefLabel('bar'),
       language: prefLabel('language'),
       setreadings: prefLabel('setreadings'),
@@ -256,6 +301,22 @@ export default function You() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [settingsRevision],
   );
+
+  /**
+   * §9.3's alarm, made readable without a debugger (S4/S5, 10 Sep 2026): how
+   * many model answers the brief and prediction guards refused on this device.
+   *
+   * ZERO IS THE EXPECTED READING. A number that climbs means the prompt has
+   * drifted into inventing facts and the guard is the only thing catching it —
+   * which is precisely the failure that was invisible before the counters
+   * existed. Summed across both surfaces because the question this row answers
+   * is "is anything being refused at all", not "which one".
+   */
+  const guardRejections = useMemo(() => {
+    const f = getFunnelSnapshot();
+    return f.guard_rejected_brief + f.guard_rejected_prediction;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsRevision]);
 
   /** "Sundays 18:00", "Mondays 08:00", or "Off" — the DAY included, because the
    * v2 flow asks for it and `lib/recap.ts` schedules on it. */
@@ -326,6 +387,12 @@ export default function You() {
         setImportMessage('That file is not a Hevy or Strong CSV export.');
         return;
       }
+      if (outcome.status === 'too-large') {
+        setImportMessage(
+          `That file is over ${outcome.limitMb} MB — more than the import can read at once. Export a shorter date range and try again.`,
+        );
+        return;
+      }
       if (outcome.status === 'failed') {
         setImportMessage('Import failed — export a fresh CSV and try again.');
         return;
@@ -335,11 +402,16 @@ export default function You() {
       scheduleSync();
       // The split that divides every trial-window number (§2.1, PLAN D4).
       if (outcome.importedDays > 0) markImported();
+      // A row the ceiling dropped is SAID, not swallowed (S10): an import that
+      // quietly loses the tail of someone's history is a record they cannot
+      // trust.
+      const dropped =
+        outcome.droppedRows > 0 ? ` · ${outcome.droppedRows} rows past the limit were not read` : '';
       setImportMessage(
-        outcome.importedDays > 0
+        (outcome.importedDays > 0
           ? `Imported ${outcome.importedDays} workouts (${outcome.sets} sets)` +
-              (outcome.skippedDays > 0 ? ` · ${outcome.skippedDays} days already logged` : '')
-          : 'Nothing new to import — those days are already logged.',
+            (outcome.skippedDays > 0 ? ` · ${outcome.skippedDays} days already logged` : '')
+          : 'Nothing new to import — those days are already logged.') + dropped,
       );
     } finally {
       setBusy(null);
@@ -447,21 +519,39 @@ export default function You() {
    * `UIAlertController`, `destructive` on the verb and `cancel` on the way out,
    * so the app has one destructive voice (`note-surface.tsx` says the same).
    *
-   * The message is the honest one — the record is on the device and on the
-   * server, and signing out is not deletion. It does not try to talk anybody
-   * out of it (§20: never harder to leave than to arrive).
+   * THE MESSAGE USED TO BE FALSE, and it was false in the one direction that
+   * costs something (10 September 2026). It read "Your training stays on this
+   * device and on the server". It does not stay on the device: signing out
+   * re-scopes the local database to the pre-account id, and re-scoping to a
+   * different user WIPES every table — `ensureLocalUser` in `db/index.ts`, and
+   * that wipe is correct, because a device with nobody signed in should not be
+   * holding an account's training.
+   *
+   * What made it worth fixing rather than rewording is the second half. The
+   * wipe is only harmless while sync has already carried the record, and
+   * `dirty = 1` is exactly the set of rows for which it has not. Somebody who
+   * logged three sessions underground and signs out before the phone finds
+   * signal loses them, silently, having just been told they would not.
+   *
+   * So the alert says what is true, and when there is unsynced work it says how
+   * much and offers the way out. It still does not try to talk anybody out of
+   * signing out (§20: never harder to leave than to arrive) — naming a cost is
+   * not the same as arguing against the decision.
    */
   const handleSignOut = () => {
     if (busy) return;
     tap();
-    Alert.alert(
-      'Sign out?',
-      'Your training stays on this device and on the server. You will need to sign in again to reach it.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign out', style: 'destructive', onPress: () => void runSignOut() },
-      ],
-    );
+
+    const pending = userId ? countUnsyncedSessions(userId) : 0;
+    const message =
+      pending > 0
+        ? `${pending === 1 ? '1 session has' : `${pending} sessions have`} not reached the server yet. Signing out removes this device's copy, so ${pending === 1 ? 'it' : 'they'} would be lost. Reconnect first if you can.`
+        : 'Your training stays on the server and comes back when you sign in. The copy on this device is removed.';
+
+    Alert.alert('Sign out?', message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: () => void runSignOut() },
+    ]);
   };
 
   const runSignOut = async () => {
@@ -615,8 +705,254 @@ export default function You() {
    * the account state, then the things read once and never again, then the two
    * that cannot be undone.
    */
+  /**
+   * Coaching state, refreshed EVERY TIME You comes forward.
+   *
+   * It was a `useEffect` keyed on `userId`, with a comment claiming exactly the
+   * behaviour written above — and a plain effect cannot do it. This screen is a
+   * tab: it mounts once and stays mounted, in the background, for the life of
+   * the session (see the tab-switching note in `(tabs)/_layout.tsx`). So the
+   * effect ran once, at launch, and the two facts it reads were then frozen.
+   *
+   * That is the whole of the bug the owner hit on 10 September 2026: a client
+   * typed a valid code, `redeem_coach_invite` created the link, `join.tsx`
+   * popped back to here — and this screen still held the answer it had fetched
+   * before the link existed, so it went on offering "Join a coach" and named no
+   * coach anywhere. Nothing was wrong on the server; it was never asked again.
+   * The coach's half had the same shape: a client redeeming a code could not
+   * make the "Clients" row appear until the app was killed and relaunched.
+   *
+   * `useFocusEffect` is the fix and it is also the cheapest correct refresh
+   * this screen can have — two RPCs when a person navigates to You, never while
+   * they are logging. Still fire-and-forget, and still completely absent with
+   * the flag off: with `coachMode` false this returns before it touches the
+   * network, so a build without the feature makes no coaching request at all.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      if (!isCoachModeOn()) return;
+      let alive = true;
+      void (async () => {
+        const [clients, mine, role] = await Promise.all([
+          listClients(),
+          myCoach(),
+          userId ? isCoach(userId) : Promise.resolve(false),
+        ]);
+        if (!alive) return;
+        setClientCount(clients.length);
+        setCoach(mine);
+        setRole(role);
+      })();
+      return () => {
+        alive = false;
+      };
+      // FOCUS is the trigger, not a value; `userId` is in the list only because
+      // the body reads it. The account cannot change under a mounted You —
+      // `_layout.tsx` unmounts the whole `(tabs)` group through
+      // `Stack.Protected` when the session ends.
+    }, [userId]),
+  );
+
+  /**
+   * THE SWITCH. Optimistic, because a toggle that lags a finger reads as
+   * broken — and corrected from the server's own answer rather than from a
+   * guess, so the one refusal that matters arrives as a sentence instead of a
+   * silent snap-back.
+   */
+  const toggleCoachRole = useCallback((next: boolean) => {
+    setRoleBusy(true);
+    setRole(next);
+    void (async () => {
+      const result = await setCoachRole(next);
+      setRoleBusy(false);
+      if ('on' in result) {
+        setRole(result.on);
+        if (!result.on) setClientCount(0);
+        return;
+      }
+      setRole(!next);
+      Alert.alert(
+        result.error === 'still_coaching' ? 'You still coach people' : 'That did not work',
+        result.error === 'still_coaching'
+          ? 'Turning coaching off would take their sessions off your screen while you could still read them. Remove each client from the Clients list first.'
+          : 'Try again in a moment.',
+      );
+    })();
+  }, []);
+
   const sections = useMemo<SectionSpec[]>(() => {
     const out: SectionSpec[] = [
+      // ---------------------------------------------------------------------
+      // COACHING. Behind the build flag, and it draws NOTHING when the flag is
+      // off — not a disabled row, not an upsell. A feature that is not in this
+      // build should be invisible, not advertised.
+      //
+      // The two halves are independent on purpose (the spec's edge case): the
+      // coach half appears once there is a client, the client half once there
+      // is a coach, and a person holding both ends sees both.
+      // ---------------------------------------------------------------------
+      ...(isCoachModeOn()
+        ? [
+            {
+              key: 'coaching',
+              label: 'Coaching',
+              /**
+               * ONE SECTION, TWO SIDES, AND THEY ARE NOT SYMMETRICAL.
+               *
+               * The client side belongs to everybody: anyone may be given a
+               * code, and anyone who has used one needs to see who reads their
+               * training and how to stop it. The coach side belongs to people
+               * who say they coach — and until 10 September 2026 it belonged to
+               * everybody too, so a client was invited to invite clients. The
+               * switch at the bottom is the whole difference.
+               *
+               * The order follows that: what is being done TO you, then what
+               * you do for others, then the statement that puts you in the
+               * second group.
+               */
+              footnote: coach
+                ? 'Your coach can read the sessions you log and comment on them. They can never edit your record.'
+                : coachRole
+                  ? 'Coaching lets you hand out codes. You can read somebody’s training only after they enter one.'
+                  : 'Turn this on if you train other people. On its own it gives you access to nobody.',
+              rows: [
+                // --- the client's side ---------------------------------------
+                //
+                // WHO YOUR COACH IS, SAID PLAINLY. The only thing that named
+                // them used to be the `sub` line of a red "Remove access" row,
+                // which is a strange place to learn a link exists: the first
+                // sentence about the relationship was attached to the control
+                // that ends it. It is a reading now, not a control — no
+                // chevron, no action (design skill §Structure).
+                ...(coach
+                  ? [
+                      {
+                        key: 'your-coach',
+                        icon: 'person' as const,
+                        label: 'Your coach',
+                        value: coach.displayName ?? undefined,
+                        sub: coach.displayName ? undefined : 'They have not set a name in Recore.',
+                        chevron: false,
+                        keywords: 'coach trainer who linked connected',
+                      },
+                      {
+                        key: 'coach-comments',
+                        // A speech bubble — the same glyph the athlete's own
+                        // per-entry note wears, because it is the same kind of
+                        // thing: somebody's words about a lift.
+                        icon: 'note' as const,
+                        label: 'Comments from your coach',
+                        value: coach.unreadCount > 0 ? String(coach.unreadCount) : undefined,
+                        keywords: 'coach comments feedback replies thread unread',
+                        onPress: () => {
+                          tap();
+                          // The COACH's own two screens, with this person's own
+                          // id: `clientFeed` reads `workouts` by `user_id`, and
+                          // RLS lets an owner read their own rows, so one
+                          // implementation serves both ends of the link.
+                          router.push({
+                            pathname: '/you/coaching/client/[id]',
+                            params: { id: userId ?? '', name: coach.displayName ?? 'Coach' },
+                          });
+                        },
+                      },
+                      {
+                        key: 'remove-coach',
+                        icon: 'lock' as const,
+                        label: 'Remove access',
+                        danger: true,
+                        chevron: false,
+                        keywords: 'coach revoke remove unlink disconnect',
+                        onPress: () => {
+                          tap();
+                          Alert.alert(
+                            'Remove your coach?',
+                            'They will immediately stop being able to read your sessions. The comments already written stay in your record.',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Remove',
+                                style: 'destructive',
+                                onPress: () => {
+                                  void (async () => {
+                                    if (!(await revokeLink(coach.linkId))) return;
+                                    setCoach(null);
+                                    // Nothing can notify this device any more,
+                                    // so the token should not still be
+                                    // reachable — unless this person also
+                                    // coaches someone, in which case replies
+                                    // still arrive.
+                                    if (!clientCount && userId) {
+                                      void unregisterForComments(userId);
+                                    }
+                                  })();
+                                },
+                              },
+                            ],
+                          );
+                        },
+                      },
+                    ]
+                  : [
+                      {
+                        key: 'join',
+                        icon: 'plus' as const,
+                        label: 'Join a coach',
+                        keywords: 'coach join code enter invite trainer',
+                        onPress: () => {
+                          tap();
+                          router.push('/you/coaching/join');
+                        },
+                      },
+                    ]),
+
+                // --- the coach's side, which has to be claimed ----------------
+                ...(coachRole
+                  ? [
+                      {
+                        key: 'clients',
+                        icon: 'barbell' as const,
+                        label: 'Clients',
+                        // Shown at zero too. A coach who has just turned this
+                        // on and issued a code should find the roster where it
+                        // will be, not have it appear from nowhere later.
+                        value: String(clientCount ?? 0),
+                        keywords: 'coach clients athletes roster',
+                        onPress: () => {
+                          tap();
+                          router.push('/you/coaching/clients');
+                        },
+                      },
+                      {
+                        key: 'invite',
+                        icon: 'share' as const,
+                        label: 'Invite a client',
+                        keywords: 'coach invite code share athlete',
+                        onPress: () => {
+                          tap();
+                          router.push('/you/coaching/invite');
+                        },
+                      },
+                    ]
+                  : []),
+
+                // --- and the statement itself --------------------------------
+                {
+                  key: 'coach-role',
+                  icon: 'person' as const,
+                  label: 'I coach other people',
+                  keywords: 'coach trainer role enable turn on off pt personal',
+                  toggle: {
+                    value: coachRole,
+                    onChange: toggleCoachRole,
+                    disabled: roleBusy,
+                  },
+                },
+              ],
+            } as SectionSpec,
+          ]
+        : []),
+
       {
         key: 'about',
         label: 'About you',
@@ -734,6 +1070,22 @@ export default function You() {
             keywords: 'seconds minutes between sets countdown',
             onPress: () => openPref('rest'),
           },
+          // The rest timer starts itself when a set lands in the note (10 Sep
+          // 2026, `rest-controls.tsx`). It defaults ON and the bar says so the
+          // first time it happens, so this row is where somebody who does not
+          // want it comes to say so — and where somebody who liked it and then
+          // turned it off comes back.
+          {
+            key: 'restauto',
+            // `arrow.clockwise` — the row's whole meaning is "and it restarts
+            // on the next set". `sparkle` is Pro and parsing; a timer that
+            // follows the record is not magic, it is a repeat.
+            icon: 'refresh',
+            label: 'Start rest automatically',
+            value: prefs.restauto,
+            keywords: 'auto automatic rest timer set logged restart countdown',
+            onPress: () => openPref('restauto'),
+          },
           {
             key: 'bar',
             icon: 'barbell',
@@ -821,7 +1173,7 @@ export default function You() {
             keywords: 'shorthand abbreviation parser taught fix misread',
             onPress: () => {
               tap();
-              router.push('/aliases');
+              router.push('/you/aliases');
             },
           },
           {
@@ -842,7 +1194,7 @@ export default function You() {
           },
           // ONE ROW, and it opens an honest "not connected". A switch here would
           // be a promise the app cannot keep: there is no HealthKit code in the
-          // project (see `app/health.tsx`).
+          // project (see `app/(tabs)/you/health.tsx`).
           {
             key: 'health',
             icon: 'target',
@@ -852,7 +1204,7 @@ export default function You() {
             keywords: 'healthkit fitness activity rings sync',
             onPress: () => {
               tap();
-              router.push('/health');
+              router.push('/you/health');
             },
           },
         ],
@@ -865,41 +1217,61 @@ export default function You() {
       // so this group can say "renews 30 Aug" only when RevenueCat said so
       // (§2 rule 5). A hardcoded renewal date would be the exact billing claim
       // the invariant forbids.
+      //
+      // A BETA BUILD REPLACES ALL THREE ROWS WITH ONE STATEMENT. Its store is
+      // unconfigured by construction (`isBetaUnlocked`, `env.ts`), so the
+      // paywall would quote no price, Manage would open an Apple page listing
+      // nothing, and Restore would answer "no subscription" to a person who
+      // never bought one. Three controls that cannot do what they say is worse
+      // than one sentence that is true, and §2 forbids a dead control.
       {
         key: 'subscription',
         label: 'Subscription',
-        footnote: subscriptionMessage ?? 'Managed by your Apple Account. Cancel any time.',
-        footnoteActive: subscriptionMessage != null,
-        rows: [
-          {
-            key: 'pro',
-            icon: 'sparkle',
-            label: 'Recore Pro',
-            value: subscriptionValue,
-            sub: subscriptionSub,
-            keywords: 'plan price trial billing upgrade paywall',
-            onPress: () => {
-              tap();
-              router.push('/paywall-v2/plan');
-            },
-          },
-          {
-            key: 'manage',
-            icon: 'card',
-            label: 'Manage subscription',
-            external: true,
-            keywords: 'cancel change payment apple account billing',
-            onPress: handleManage,
-          },
-          {
-            key: 'restore',
-            icon: 'refresh',
-            label: busy === 'restore' ? 'Restoring…' : 'Restore purchases',
-            keywords: 'already paid transfer new phone receipt',
-            disabled: busy !== null,
-            onPress: () => void handleRestore(),
-          },
-        ],
+        footnote: BETA_UNLOCKED
+          ? 'No store is attached to this build. Nothing can be bought, charged or restored.'
+          : (subscriptionMessage ?? 'Managed by your Apple Account. Cancel any time.'),
+        footnoteActive: !BETA_UNLOCKED && subscriptionMessage != null,
+        rows: BETA_UNLOCKED
+          ? [
+              {
+                key: 'pro',
+                icon: 'sparkle',
+                label: 'Recore Pro',
+                value: 'Beta · billing off',
+                sub: 'Everything is open while this build is being tested',
+                keywords: 'plan price trial billing upgrade paywall beta testflight',
+              },
+            ]
+          : [
+              {
+                key: 'pro',
+                icon: 'sparkle',
+                label: 'Recore Pro',
+                value: subscriptionValue,
+                sub: subscriptionSub,
+                keywords: 'plan price trial billing upgrade paywall',
+                onPress: () => {
+                  tap();
+                  router.push('/paywall-v2/plan');
+                },
+              },
+              {
+                key: 'manage',
+                icon: 'card',
+                label: 'Manage subscription',
+                external: true,
+                keywords: 'cancel change payment apple account billing',
+                onPress: handleManage,
+              },
+              {
+                key: 'restore',
+                icon: 'refresh',
+                label: busy === 'restore' ? 'Restoring…' : 'Restore purchases',
+                keywords: 'already paid transfer new phone receipt',
+                disabled: busy !== null,
+                onPress: () => void handleRestore(),
+              },
+            ],
       },
       // SUPPORT — a real mailbox, the store listing, and what this build is.
       // The credo is the one line of belief the app is allowed: it is not a
@@ -1031,6 +1403,15 @@ export default function You() {
             onPress: handleFreshInstall,
           },
           {
+            key: 'guard-rejections',
+            icon: 'wrench',
+            label: 'Guard rejections',
+            sub: 'Model answers the brief and prediction guards refused on this device. Zero is the expected reading — anything else means the prompt is inventing facts.',
+            value: String(guardRejections),
+            warn: guardRejections > 0,
+            chevron: false,
+          },
+          {
             key: 'lapsed',
             icon: 'wrench',
             label: 'Simulate lapsed subscription',
@@ -1049,6 +1430,17 @@ export default function You() {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    // THE COACHING PAIR WAS MISSING FROM THIS LIST (10 September 2026), and it
+    // is the second half of the same bug `useFocusEffect` above fixes. Even
+    // once the two RPCs were being asked again, the page a person looked at
+    // was the memoised one built before the link existed — the state changed
+    // and the rows did not. Both halves had to be wrong for the symptom to be
+    // "absolutely nothing happens", and both were.
+    coach,
+    clientCount,
+    coachRole,
+    roleBusy,
+    toggleCoachRole,
     answers,
     prefs,
     recapValue,
@@ -1056,6 +1448,7 @@ export default function You() {
     aliasCount,
     busy,
     lapsed,
+    guardRejections,
     dataCaption,
     importMessage,
     exportMessage,
@@ -1127,6 +1520,7 @@ export default function You() {
           chevron={r.chevron}
           external={r.external}
           disabled={r.disabled}
+          toggle={r.toggle}
           divider={i > 0}
           onPress={r.onPress}
         />

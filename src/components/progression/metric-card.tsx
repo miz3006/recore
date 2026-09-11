@@ -3,7 +3,15 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Icon } from '@/components/icon';
 import { CountUp, Enter, PressScale } from '@/lib/motion/index';
 import { describeSeries, type MetricSeries } from '@/lib/progression-metrics';
-import { MAX_FONT_SCALE, color, moderateScale, radius, spacing, type } from '@/lib/theme';
+import {
+  FIXED_FONT_SCALE,
+  MAX_FONT_SCALE,
+  color,
+  moderateScale,
+  radius,
+  spacing,
+  type,
+} from '@/lib/theme';
 
 import { BareChart } from './bare-chart';
 
@@ -107,11 +115,19 @@ export function MetricCard({
             decimals={decimals}
             delay={delay}
             style={styles.value}
+            // The number sits in a row with its unit, so it needs a box the
+            // finished digits size — see `lib/motion/count.tsx`. Without it the
+            // "kg" drifted a third of the card away at accessibility text sizes.
+            sized
             // The card's own label speaks the whole thing; this must stay silent
             // or VoiceOver reads the number twice.
             accessibilityLabel=""
           />
-          <Text style={styles.unit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {/* THE UNIT SCALES WITH THE NUMBER IT BELONGS TO. At `MAX_FONT_SCALE`
+              it grew a step further than the reading beside it and was the
+              first thing pushed off the card's right edge — a number and its
+              unit are typographically two things but geometrically one. */}
+          <Text style={[styles.unit, styles.unitHold]} maxFontSizeMultiplier={FIXED_FONT_SCALE}>
             {series.unit}
           </Text>
         </View>
@@ -162,6 +178,11 @@ const styles = StyleSheet.create({
     gap: moderateScale(2),
     marginTop: spacing.sm,
   },
+  /** The unit is the last thing that may be given up, so it never shrinks and
+   * the reading yields first — a clipped "kg" is a card with no unit on it. */
+  unitHold: {
+    flexShrink: 0,
+  },
   value: {
     // 44, not the 48 of `heroNumber`: the reference's digits measure ~31 pt of
     // cap height, which is a 44 pt face at this weight.
@@ -169,6 +190,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: color.textSecondary,
     fontVariant: ['tabular-nums'],
+    // Belt to the clamp's braces: even inside the clamp a four-digit volume
+    // ("113,667") is wider than a card, and a row that cannot shrink pushes its
+    // neighbour out of the layout rather than wrapping.
+    flexShrink: 1,
   },
   unit: {
     fontSize: moderateScale(18),

@@ -36,8 +36,29 @@ export function detectFormat(headers: string[]): ImportFormat | null {
   return null;
 }
 
-export function mapCsv(rows: string[][], format: ImportFormat): ImportedDay[] {
-  if (rows.length < 2) return [];
+/**
+ * The most data rows one import may map (S10, security review 10 Sep 2026).
+ *
+ * `applyImport` writes the result in a SINGLE transaction, so this is the real
+ * ceiling on how much work one picked file can ask the database to do at once.
+ * Fifty thousand sets is more than a decade of hard training and still writes
+ * in well under a second; the number exists to bound a hostile or corrupt file,
+ * not to tell a real user they have trained too much.
+ *
+ * What is dropped is COUNTED AND REPORTED, never silently truncated — an import
+ * that quietly loses the tail of someone's history is exactly the kind of
+ * untrustworthy record CLAUDE.md §2 rule 1 exists to prevent.
+ */
+export const MAX_IMPORT_ROWS = 50_000;
+
+export interface MappedCsv {
+  days: ImportedDay[];
+  /** Data rows past `MAX_IMPORT_ROWS`, which the caller must tell the user about. */
+  droppedRows: number;
+}
+
+export function mapCsv(rows: string[][], format: ImportFormat): MappedCsv {
+  if (rows.length < 2) return { days: [], droppedRows: 0 };
   const headers = rows[0]!.map((h) => h.trim().toLowerCase());
   const col = (name: string) => headers.indexOf(name);
   const days = new Map<DayKey, Map<string, ImportedExercise>>();
@@ -50,6 +71,10 @@ export function mapCsv(rows: string[][], format: ImportFormat): ImportedDay[] {
     exercises.get(key)!.sets.push(set);
   };
 
+  // Sliced once, before either branch, so both formats obey the same ceiling.
+  const dataRows = rows.slice(1, 1 + MAX_IMPORT_ROWS);
+  const droppedRows = Math.max(0, rows.length - 1 - dataRows.length);
+
   if (format === 'hevy') {
     const cDate = col('start_time');
     const cName = col('exercise_title');
@@ -60,7 +85,7 @@ export function mapCsv(rows: string[][], format: ImportFormat): ImportedDay[] {
     const cDuration = col('duration_seconds');
     const cRpe = col('rpe');
 
-    for (const r of rows.slice(1)) {
+    for (const r of dataRows) {
       const day = dayOf(r[cDate]);
       const name = (r[cName] ?? '').trim();
       if (!day || !name) continue;
@@ -85,7 +110,7 @@ export function mapCsv(rows: string[][], format: ImportFormat): ImportedDay[] {
     const cSeconds = col('seconds');
     const cRpe = col('rpe');
 
-    for (const r of rows.slice(1)) {
+    for (const r of dataRows) {
       const day = dayOf(r[cDate]);
       const name = (r[cName] ?? '').trim();
       if (!day || !name) continue;
@@ -103,9 +128,12 @@ export function mapCsv(rows: string[][], format: ImportFormat): ImportedDay[] {
     }
   }
 
-  return [...days.entries()]
-    .map(([day, exercises]) => ({ day, exercises: [...exercises.values()] }))
-    .sort((a, b) => (a.day < b.day ? -1 : 1));
+  return {
+    days: [...days.entries()]
+      .map(([day, exercises]) => ({ day, exercises: [...exercises.values()] }))
+      .sort((a, b) => (a.day < b.day ? -1 : 1)),
+    droppedRows,
+  };
 }
 
 function hevyKind(raw: string | undefined): SetKind {

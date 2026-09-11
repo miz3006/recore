@@ -34,7 +34,7 @@
 // ---------------------------------------------------------------------------
 
 /** OWNER: a mailbox you actually read. App Review checks that support replies. */
-export const SUPPORT_EMAIL = 'support@recore.app';
+export const SUPPORT_EMAIL = 'edismizic14@gmail.com';
 /** OWNER: the entity that publishes Recore, as it should appear on an invoice. */
 export const PUBLISHER = 'Recore';
 /** OWNER: your jurisdiction. */
@@ -53,7 +53,7 @@ export const APPLE_STANDARD_EULA_URL =
 /** Where a subscription is actually cancelled. Named in both documents. */
 export const MANAGE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
 
-export const LAST_UPDATED = '21 August 2026';
+export const LAST_UPDATED = '10 September 2026';
 
 /**
  * Three documents, one route. `parsing` is not a legal document — it is the
@@ -177,6 +177,67 @@ const TERMS: LegalDoc = {
 
 // --- Privacy Policy --------------------------------------------------------------
 
+/**
+ * The coach-mode build flag, READ HERE rather than imported from `lib/env`.
+ *
+ * `lib/env.ts` is the one true home of this and everything else in this file
+ * would rather import than restate it — but this module is also compiled by
+ * `scripts/build-legal-html.ts` under plain `node`, where neither the `@/`
+ * alias nor `__DEV__` exists, and `lib/env` uses both. Importing it breaks
+ * `npm run build:legal`, which is the script that produces the two URLs App
+ * Store Connect requires. So the flag is read from the same environment
+ * variable, by the same rule, with this note as the join.
+ *
+ * It also means the hosted pages are generated with whatever environment the
+ * generator is run in — which is correct: build them with the release's env and
+ * the published policy matches the shipped app by construction.
+ */
+function isCoachModeOn(): boolean {
+  return process.env.EXPO_PUBLIC_COACH_MODE === '1';
+}
+
+/**
+ * WHAT A COACH CAN READ — present only in a build that HAS coaching.
+ *
+ * Conditional, and conditional on exactly the flag every coaching screen is
+ * already conditional on (`isCoachModeOn`, a build-time constant Metro inlines).
+ * The reason is the rule at the top of this file: the policy may never describe
+ * a fence the code does not hold, and it must not describe a FEATURE the build
+ * does not have either. A release with coaching off would otherwise tell every
+ * reader their training can be shared with another person, which is false and
+ * is the kind of false that makes someone close the app.
+ *
+ * Tying it to the flag also makes the opposite mistake impossible, which is the
+ * one that actually matters: the day a build turns coaching on, this section
+ * turns on with it. There is no separate step to forget.
+ *
+ * EVERY CLAIM BELOW IS A LINE OF SQL. Checked against
+ * `20260910140000_coaching.sql` and `20260910210000_coach_read_scope.sql`:
+ * SELECT is widened on `workouts`, `items`, `sets` and `exercises` to an ACTIVE
+ * coach and to nobody else; insert, update and delete keep their owner-only
+ * policies, which is the whole of "a coach never edits your record";
+ * `profiles_select` is back to `id = auth.uid()`, so the email address on that
+ * row is not readable by a coach; and the display name reaches them through
+ * `coach_client_overview()` / `my_coach()`, which return that column and no
+ * other. Your setup answers, bodyweight and height never leave the device at
+ * all — they live in the local key-value table and are not synced.
+ */
+const COACHING_SECTIONS: LegalSection[] = isCoachModeOn()
+  ? [
+      {
+        heading: 'If you link a coach',
+        body: [
+          'Nothing is shared with anybody until you type a coach’s invite code. Typing it is the consent — there is no other way for someone to attach themselves to your account, and you can have one coach at a time.',
+          'From then on, that coach can read, for each of your sessions: the text you typed, the movements, sets, reps and weights read out of it, how hard you rated the session, your check-in note about the session, and your note on a single exercise. They also see the name you chose and when you last trained.',
+          'They can write comments on a session, and you can write back. That is the whole of what they can do: a coach can never change, delete or add anything to your record, and Recore never lets them log on your behalf.',
+          'What they never see: your email address, your setup answers, your bodyweight or height, your subscription, or anything from any other coach.',
+          'Either of you can end the link at any time, from the app, without the other agreeing. Ending it stops all further access immediately. Comments already written stay readable to you — ending a link is not a way to erase what was said.',
+          'If you have a coach and notifications are on, the text of a new comment and the sender’s chosen name are handed to Expo’s push service so it can reach your phone. That is the only thing that leaves the server for this feature, and only at the moment a comment is written.',
+        ],
+      },
+    ]
+  : [];
+
 const PRIVACY: LegalDoc = {
   id: 'privacy',
   title: 'Privacy Policy',
@@ -200,7 +261,13 @@ const PRIVACY: LegalDoc = {
         '· Your setup answers: what you train for, how long you have trained, whether you train in a gym or for a sport, the days you usually train, your units, the movement you care about most, and — only if you chose to enter them — your bodyweight and height.',
         'Bodyweight and height are optional, they are asked once with their purpose stated, and leaving them empty changes nothing else in the app. Recore never turns them into a calorie target, a body score, or any kind of health or medical judgement.',
         'A check-in note — for a whole session or for one exercise in it — is your own record of how it felt. Recore never reads it as training data, never turns it into a number, a chart or a score, and never treats it as a health, medical or nutritional assessment. It may be shown back to you, in your own words, beside the exercise you wrote it about.',
-        'That is the whole list. Every row is scoped to your account at the database level, so no other user can read it, and the same scoping is mirrored on the device — signing in as a different account wipes the local copy first.',
+        // THE QUALIFIER AND THE SECTION IT POINTS AT MOVE TOGETHER. Written flat,
+        // this sentence contradicts coaching; written with the cross-reference
+        // unconditionally, a build without coaching points the reader at a
+        // section that is not on the page. Both halves read the one flag.
+        isCoachModeOn()
+          ? 'That is the whole list. Every row is scoped to your account at the database level, so no other user can read it unless you deliberately link a coach — see “If you link a coach” — and the same scoping is mirrored on the device: signing in as a different account wipes the local copy first.'
+          : 'That is the whole list. Every row is scoped to your account at the database level, so no other user can read it, and the same scoping is mirrored on the device — signing in as a different account wipes the local copy first.',
         'We do not collect your location, your contacts, your photos, your health records, or your device advertising identifier.',
       ],
     },
@@ -223,9 +290,19 @@ const PRIVACY: LegalDoc = {
         '· Apple — handles sign-in and every payment. Recore never sees your card.',
         '· RevenueCat — records which subscription you hold, so the app can tell whether it is active on any device you sign in on. It receives your Recore account identifier and the purchase details Apple returns. It never receives your notes, your training, your name or your email.',
         '· Sentry — receives a report when the app crashes, and nothing at any other time. It never receives your notes, your training, your name, your email or your account identifier.',
-        'There is no sixth. We do not sell or share personal data, and we do not disclose it for advertising or cross-app tracking.',
+        // Sixth only in a build that has coaching, and only for someone who has
+        // linked one: it is the push service that carries a coach's comment to
+        // the phone (`supabase/functions/notify-comment`). Named on the same
+        // flag as the section above, for the same reason.
+        ...(isCoachModeOn()
+          ? [
+              '· Expo — delivers the notification when your coach comments, and only then. It receives the comment’s text, the sender’s chosen name and your device’s push token. It never receives your training, your email or your account identifier.',
+            ]
+          : []),
+        `There is no ${isCoachModeOn() ? 'seventh' : 'sixth'}. We do not sell or share personal data, and we do not disclose it for advertising or cross-app tracking.`,
       ],
     },
+    ...COACHING_SECTIONS,
     {
       heading: 'Usage counters',
       body: [

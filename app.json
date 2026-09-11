@@ -55,7 +55,14 @@
         }
       ],
       "expo-video",
-      "@sentry/react-native"
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://de.sentry.io/",
+          "project": "react-native",
+          "organization": "recore-l3"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

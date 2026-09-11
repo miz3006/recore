@@ -23,7 +23,7 @@ import { AppButton } from '@/components/primitives';
 import { measureTourTarget } from '@/components/tour-targets';
 import { selection } from '@/lib/haptics';
 import { DUR, EASE } from '@/lib/motion';
-import { isTourDone, markTourDone } from '@/lib/prefs';
+import { isTourOwed, markTourDone } from '@/lib/prefs';
 import {
   caretOffset,
   inflate,
@@ -170,10 +170,18 @@ export function SpotlightTour({ topInset }: { topInset: number }) {
     hr.value = withTiming(hole.r, cfg);
   };
 
-  // Opens once, and only after the nav block has reported a height — the page
-  // hole starts under it, so `topInset === 0` would spotlight the header.
+  /**
+   * Opens once, and only after the nav block has reported a height — the page
+   * hole starts under it, so `topInset === 0` would spotlight the header.
+   *
+   * THE GATE IS "OWED", NOT "NOT YET DONE" (11 September 2026). It used to be
+   * `!isTourDone()`, i.e. the absence of a device-local flag, which is also the
+   * state of a returning athlete's brand-new phone. `isTourOwed` answers the
+   * question the owner actually asked — did this person just make a profile —
+   * and `prefs.ts` has the three ways the old reading got it wrong.
+   */
   useEffect(() => {
-    if (opened.current || topInset <= 0 || isTourDone()) return;
+    if (opened.current || topInset <= 0 || !isTourOwed()) return;
     const t = setTimeout(() => {
       void (async () => {
         if (opened.current) return;
@@ -209,6 +217,15 @@ export function SpotlightTour({ topInset }: { topInset: number }) {
           return;
         }
         opened.current = true;
+        /**
+         * SPENT ON SIGHT, not on completion. `finish` also calls this, and
+         * that used to be the ONLY caller — so force-quitting on step two, or
+         * anything else that took the app away mid-tour, left the flag unwritten
+         * and the whole walk-through replayed on the next launch. Being shown is
+         * what "shown once" means; `markTourDone` is idempotent, so the call in
+         * `finish` costs nothing and keeps that path honest on its own.
+         */
+        markTourDone();
         setHole(resolved[0].hole, true);
         setIndex(0);
         setSteps(resolved);

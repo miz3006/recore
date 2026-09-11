@@ -25,11 +25,12 @@ WebBrowser.maybeCompleteAuthSession();
  * is given the string to watch for, so a redirect that arrives one form and is
  * awaited in another is a browser that never closes.
  *
- * The same probe is what confirmed the allow-list is finally right: `recore://`
- * and `recore://auth-callback` survive, `exp://…` and a hostile
- * `https://evil.example.com` both fall back to the project's Site URL. So Expo
- * Go's redirect is still not allow-listed and a development build's is — which
- * is the environment this path is used in.
+ * The same probe reads the allow-list itself, and it has moved twice. Re-measured
+ * 10 September 2026: `recore://auth-callback`, `exp://127.0.0.1:**` and
+ * `exp://localhost:**` all survive; `exp://<lan-ip>:8081/--/auth-callback` and a
+ * hostile `https://evil.example.com` both fall back to the project's Site URL.
+ * So the loopback entry covers Expo Go in the simulator and nothing else — the
+ * LAN address Metro prints by default is exactly the value that fails.
  *
  * `auth-callback` is not a route and does not need to be: on iOS the redirect
  * is caught by `ASWebAuthenticationSession` before the URL ever reaches the
@@ -38,32 +39,51 @@ WebBrowser.maybeCompleteAuthSession();
 const redirectTo = makeRedirectUri({ path: 'auth-callback' }); // recore://auth-callback
 
 /**
- * THE ONE REDIRECT SUPABASE WILL HONOUR, AND A DEV-ONLY REFUSAL WHEN IT IS NOT.
+ * THE REDIRECTS SUPABASE WILL HONOUR, AND A DEV-ONLY REFUSAL WHEN THIS IS NOT ONE.
  *
- * Measured 9 September 2026: the project allow-lists `recore://**` and nothing
- * else. Expo Go does not resolve to that — it resolves to
- * `exp://<host>:8081/--/auth-callback` — and Supabase answers a redirect it has
- * not allow-listed by sending the browser to the project's **Site URL**
- * instead. That is `http://localhost:3000`, so the sign-in ends on *"Safari
- * cannot open the page because it could not connect to the server"*, several
- * screens after the last thing this code could have complained about.
+ * Supabase answers a redirect it has not allow-listed by sending the browser to
+ * the project's **Site URL** instead. That is `http://localhost:3000`, so the
+ * sign-in ends on *"Safari cannot open the page because it could not connect to
+ * the server"*, several screens after the last thing this code could have
+ * complained about — the person has by then chosen a Google account and typed a
+ * password, and the app has said nothing wrong. So the check happens BEFORE the
+ * browser opens, and it names the value it found.
  *
- * The person has by then chosen a Google account and typed a password, and the
- * app has said nothing wrong. So the check happens BEFORE the browser opens,
- * and it names the value it found. `__DEV__` only: a release build is a
- * standalone app, where the scheme is always the app's own.
+ * Two shapes pass, both measured against this project on 10 September 2026:
+ *
+ *  · `recore://**` — a development or release build, where the scheme is the
+ *    app's own. This is the ordinary case.
+ *  · `exp://127.0.0.1:**` and `exp://localhost:**` — Expo Go, but ONLY when
+ *    Metro is bound to loopback (`npx expo start --localhost`, iOS Simulator).
+ *    Expo Go is not structurally excluded from OAuth: `openAuthSessionAsync`
+ *    hands `exp` to `ASWebAuthenticationSession` and Expo Go registers that
+ *    scheme, so the PKCE exchange runs unchanged. It is the LAN address Metro
+ *    prints by default — `exp://192.168.x.x:8081` — that no allow-list entry
+ *    covers, and a phone on Wi-Fi cannot reach loopback, so a phone needs the
+ *    development build.
+ *
+ * `__DEV__` only: a release build is a standalone app and always the first case.
+ * The list is edited in the dashboard and has moved twice already — when this
+ * throws on a value that looks right, re-probe `/auth/v1/verify` before editing
+ * the rule (see the redirect note above).
  */
 const APP_SCHEME = Constants.expoConfig?.scheme;
 const APP_SCHEME_PREFIX = `${typeof APP_SCHEME === 'string' ? APP_SCHEME : 'recore'}://`;
 
+/** The loopback hosts the allow-list's `exp://` entries cover. A LAN IP is not one. */
+const LOOPBACK_EXP_REDIRECT = /^exp:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\//;
+
 function assertRedirectIsAllowListed(): void {
   if (!__DEV__) return;
   if (redirectTo.startsWith(APP_SCHEME_PREFIX)) return;
+  if (LOOPBACK_EXP_REDIRECT.test(redirectTo)) return;
   throw new Error(
-    `this runtime resolves the OAuth redirect to ${redirectTo}, and the Supabase ` +
-      `project only allow-lists ${APP_SCHEME_PREFIX}** — Google would finish on the ` +
-      `project's Site URL and Safari would report a dead server. Expo Go cannot ` +
-      `complete this flow; use a development build (npm run ios).`,
+    `this runtime resolves the OAuth redirect to ${redirectTo}, which the Supabase ` +
+      `project does not allow-list — it honours ${APP_SCHEME_PREFIX}** and loopback ` +
+      `exp://127.0.0.1:** / exp://localhost:** only, so Google would finish on the ` +
+      `project's Site URL and Safari would report a dead server. In Expo Go, restart ` +
+      `Metro on loopback (npx expo start --localhost) and run the iOS Simulator; on a ` +
+      `phone, use a development build (npm run ios).`,
   );
 }
 

@@ -6,8 +6,14 @@ import {
   upsertAliasOverrideFromRemote,
 } from '@/lib/db/alias-overrides';
 import { getDirtyCorrections, markCorrectionsClean } from '@/lib/db/corrections';
-import { getDirtyExercises, markExercisesClean, upsertExerciseFromRemote } from '@/lib/db/exercises';
-import { getDb, getMeta, setMeta } from '@/lib/db/index';
+import {
+  getDirtyExercises,
+  markExercisesClean,
+  mergeDuplicateExercises,
+  upsertExerciseFromRemote,
+} from '@/lib/db/exercises';
+import { getDb, getMeta, nowIso, setMeta } from '@/lib/db/index';
+import { mergeDuplicateWorkoutDays } from '@/lib/db/merge-days';
 import {
   clearPlanDeletes,
   deleteStalePlanDays,
@@ -39,6 +45,28 @@ import { supabase } from '@/lib/supabase';
  */
 const LAST_PULL_KEY = 'last_pull_at';
 const DEBOUNCE_MS = 4000;
+
+/**
+ * HOW MUCH ONE PASS MOVES, AND WHY A FULL BATCH BOOKS THE NEXT ONE.
+ *
+ * Both numbers are old; the re-queue is not (10 September 2026). A pass pushed
+ * at most 50 workouts and pulled at most 100, and then simply stopped —
+ * nothing scheduled the continuation. The next pass came only from a
+ * foreground, a keystroke's debounce, or a parse landing.
+ *
+ * That is invisible in ordinary use, where a person writes one day at a time
+ * and 50 is never reached. It is not invisible after `import/apply.ts`: a
+ * tracker export writes a year of history in one transaction, every row
+ * `dirty = 1`, and the account's backup then advanced FIFTY DAYS PER APP OPEN.
+ * Somebody who imported and then went to train had most of their history still
+ * only on the phone — which is the one state the sync loop exists to prevent,
+ * and it reported no error while it lasted.
+ *
+ * So a batch that comes back FULL means "there is more", and says so. The
+ * caps stay: they bound one pass's work, which is what they were for.
+ */
+const PUSH_BATCH = 50;
+const PULL_BATCH = 100;
 
 let syncing = false;
 let queued = false;
@@ -76,15 +104,39 @@ export async function syncNow(): Promise<void> {
   syncing = true;
 
   try {
-    await retryPendingParses(userId);
-    await pushWorkouts(userId);
+    if (await pushWorkouts(userId)) queued = true;
     await pushExercises(userId);
     // Overrides/corrections AFTER exercises + workouts: their FKs must exist.
     await pushAliasOverrides(userId);
     await pushCorrections(userId);
     await pushPredictions(userId);
     await pushPlanDays(userId);
-    await pullRemote(userId);
+
+    /**
+     * THE PULL COMES BEFORE THE PARSE, and it is not a preference.
+     *
+     * A parse resolves every reading against the LOCAL exercise catalogue, so
+     * a device that has not pulled one yet — a fresh install, a restored
+     * account, a wiped database — invents its own row for a movement the
+     * account already has, pushes it, and the account ends up with the same
+     * lift twice, its history split down the middle. Parsing after the pull
+     * closes that window; `mergeDuplicateExercises` inside the pull heals
+     * whatever slipped through it before.
+     *
+     * The pull is allowed to fail on its own without taking the parse with it:
+     * a reading is the app's core promise and must not wait on sync being
+     * healthy.
+     */
+    try {
+      if (await pullRemote(userId)) queued = true;
+    } catch (err) {
+      devLog('pull failed:', errorText(err));
+    }
+
+    await repairDuplicateDays(userId);
+
+    // Anything the parse writes is dirty; queue another pass to push it.
+    if ((await retryPendingParses(userId)) > 0) queued = true;
   } catch (err) {
     // The cause, not a guess at it. "(offline?)" was a question the log could
     // already have answered and usually printed nothing after.
@@ -98,6 +150,37 @@ export async function syncNow(): Promise<void> {
   }
 }
 
+/**
+ * ONE ACCOUNT, ONE DAY, ONE ROW — the one-off repair for days that already
+ * split. `db/merge-days.ts` explains the rules and
+ * `20260910191000_merge_duplicate_days.sql` is the identical pass on the
+ * server; `db/day-id.ts` is what stops new ones being made.
+ *
+ * Guarded by a meta key so it costs one round trip per account for ever rather
+ * than one per sync pass — and the key is written only after BOTH halves have
+ * run, so an offline attempt simply happens again on the next pass. Both halves
+ * are idempotent, which is what makes retrying free.
+ *
+ * A failure here is logged and dropped. It repairs history; it must never be
+ * the reason a workout does not sync.
+ */
+async function repairDuplicateDays(userId: string): Promise<void> {
+  const key = `day_merge_v1:${userId}`;
+  if (getMeta(key)) return;
+  try {
+    const { error } = await supabase.rpc('merge_duplicate_workout_days');
+    if (error) {
+      devLog('duplicate-day repair (remote) failed:', errorText(error));
+      return;
+    }
+    const local = mergeDuplicateWorkoutDays(getDb(), userId);
+    setMeta(key, nowIso());
+    if (local > 0) devLog(`folded ${local} duplicate workout row(s) into their day`);
+  } catch (err) {
+    devLog('duplicate-day repair failed:', errorText(err));
+  }
+}
+
 // --- push --------------------------------------------------------------------
 
 interface LocalWorkout {
@@ -107,17 +190,19 @@ interface LocalWorkout {
   raw_text: string;
   reflection: string | null;
   entry_notes: string | null;
+  session_effort: number | null;
   parse_version: number | null;
   created_at: string;
   updated_at: string;
   structure_dirty: number;
 }
 
-async function pushWorkouts(userId: string) {
+/** Returns true when the batch came back full — i.e. there is more to push. */
+async function pushWorkouts(userId: string): Promise<boolean> {
   const db = getDb();
   const rows = db.getAllSync<LocalWorkout>(
-    'SELECT * FROM workouts WHERE user_id = ? AND dirty = 1 LIMIT 50',
-    [userId],
+    'SELECT * FROM workouts WHERE user_id = ? AND dirty = 1 LIMIT ?',
+    [userId, PUSH_BATCH],
   );
 
   for (const w of rows) {
@@ -132,6 +217,10 @@ async function pushWorkouts(userId: string) {
       // The athlete's per-entry notes, as the JSON map the column stores. Same
       // row, same RLS, same cascade delete as the reflection beside it.
       entry_notes: w.entry_notes,
+      // The session's own CR-10 rating (`lib/session-effort.ts`). A number, so
+      // unlike the two notes above it needs no validation on the way back —
+      // `sessionEffortOf` rounds whatever arrives onto the offered scale.
+      session_effort: w.session_effort,
       parse_version: w.parse_version,
       created_at: w.created_at,
       updated_at: w.updated_at,
@@ -147,6 +236,8 @@ async function pushWorkouts(userId: string) {
       w.updated_at, // don't clear if the user typed again mid-push
     ]);
   }
+
+  return rows.length === PUSH_BATCH;
 }
 
 /** Items/sets are a projection — replace them wholesale for the workout. */
@@ -316,18 +407,79 @@ async function pushPlanDays(userId: string) {
 
 // --- pull --------------------------------------------------------------------
 
-async function pullRemote(userId: string) {
+/** Returns true when the workout page came back full — there is more to pull. */
+async function pullRemote(userId: string): Promise<boolean> {
   const db = getDb();
   const since = getMeta(LAST_PULL_KEY) ?? '1970-01-01T00:00:00.000Z';
+
+  /**
+   * THE CATALOGUE COMES FIRST, AND EVERYTHING ELSE DEPENDS ON IT.
+   *
+   * `items.exercise_id` and `alias_overrides.exercise_id` are FOREIGN KEYS and
+   * this database runs with `PRAGMA foreign_keys = ON` (`db/index.ts`). Pulling
+   * a workout's structure before the exercises it points at therefore does not
+   * degrade — it THROWS, `SQLITE_CONSTRAINT_FOREIGNKEY`, and takes the whole
+   * pull down with it. Every pass. On any device that did not create those
+   * items itself, which is every second device and every reinstall.
+   *
+   * Found 10 September 2026 by replaying this function's own SQL against a copy
+   * of a device database: `last_pull_at` had never been written, so nothing had
+   * ever been pulled — no workouts from the other device, no catalogue, no
+   * alias fixes, no ghosts. And with no catalogue, every parse invented a new
+   * exercise row and pushed it: thirty rows in the account for eight movements.
+   *
+   * So: exercises, then the shorthand that points at them, then the workouts
+   * and their structure.
+   */
+  /**
+   * EVERY PULL NAMES THE USER IT IS PULLING FOR. RLS IS THE SECOND LOCK, NEVER
+   * THE ONLY ONE (10 September 2026).
+   *
+   * Until today these queries carried no `user_id` filter at all: they asked
+   * for the whole table and let the row-level policies cut it down to the
+   * caller's own rows. That is correct only while "what the policy allows" and
+   * "what this device is allowed to store" are the same set — and the coaching
+   * link is precisely the feature that separates them. The moment a coach may
+   * SELECT a client's workouts, an unfiltered pull writes another person's raw
+   * text, reflections and per-entry notes into the coach's local SQLite, on
+   * every sync pass, silently, with no screen ever asking for it.
+   *
+   * So the filter is stated here, in the client, as well as in the policy. A
+   * widened policy can then never widen what lands on a device: the two locks
+   * fail independently, which is the only reason to have two.
+   *
+   * `exercises` is the one that is NOT `eq` — the global catalogue is
+   * `user_id is null` and every account legitimately reads it (see
+   * `exercises_select` in the initial migration), so its filter is "mine or
+   * global" rather than "mine".
+   */
+  const { data: exercises, error: exError } = await supabase
+    .from('exercises')
+    .select('id, user_id, canonical, aliases, modality, increment_kg')
+    .or(`user_id.eq.${userId},user_id.is.null`);
+  if (exError) throw exError;
+  for (const e of exercises ?? []) upsertExerciseFromRemote(e);
+  // Now that the account's own names are here, fold away any row this device
+  // invented for a movement that already had one (see the note in `syncNow`).
+  const merged = mergeDuplicateExercises(userId, new Set((exercises ?? []).map((e) => e.id)));
+  if (merged > 0) devLog(`merged ${merged} duplicate exercise row(s) after pull`);
+
+  const { data: overrides, error: ovError } = await supabase
+    .from('alias_overrides')
+    .select('user_id, alias, exercise_id, created_at')
+    .eq('user_id', userId);
+  if (ovError) throw ovError;
+  for (const o of overrides ?? []) upsertAliasOverrideFromRemote(o);
 
   const { data: workouts, error } = await supabase
     .from('workouts')
     .select(
-      'id, user_id, performed_at, raw_text, reflection, entry_notes, parse_version, created_at, updated_at',
+      'id, user_id, performed_at, raw_text, reflection, entry_notes, session_effort, parse_version, created_at, updated_at',
     )
+    .eq('user_id', userId)
     .gt('updated_at', since)
     .order('updated_at', { ascending: true })
-    .limit(100);
+    .limit(PULL_BATCH);
   if (error) throw error;
 
   let cursor = since;
@@ -341,15 +493,22 @@ async function pullRemote(userId: string) {
     if (local?.dirty === 1) continue; // local edits win
 
     db.runSync(
-      `INSERT INTO workouts (id, user_id, performed_at, raw_text, reflection, entry_notes, parse_version, created_at, updated_at, dirty, structure_dirty, needs_parse)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
+      `INSERT INTO workouts (id, user_id, performed_at, raw_text, reflection, entry_notes, session_effort, parse_version, created_at, updated_at, dirty, structure_dirty, needs_parse)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)
        ON CONFLICT(id) DO UPDATE SET
          performed_at = excluded.performed_at,
          raw_text = excluded.raw_text,
          reflection = excluded.reflection,
          entry_notes = excluded.entry_notes,
+         session_effort = excluded.session_effort,
          parse_version = excluded.parse_version,
-         updated_at = excluded.updated_at
+         updated_at = excluded.updated_at,
+         -- Text from another device is a DIFFERENT question, so whatever wait
+         -- this device's own failed readings earned does not apply to it.
+         -- See db/parse-backoff.ts (no backticks: this is inside a template
+         -- literal, and one would end the string here).
+         parse_attempts = 0,
+         parse_next_at = NULL
        WHERE workouts.dirty = 0`,
       [
         w.id,
@@ -361,6 +520,7 @@ async function pullRemote(userId: string) {
         // stored as it arrived and validated on every read, exactly like the
         // local column.
         typeof w.entry_notes === 'string' ? w.entry_notes : null,
+        typeof w.session_effort === 'number' ? w.session_effort : null,
         w.parse_version,
         w.created_at,
         w.updated_at,
@@ -373,25 +533,12 @@ async function pullRemote(userId: string) {
     await pullStructure(pulledIds);
   }
 
-  // Exercises: the whole visible catalog is small — pull it flat.
-  const { data: exercises, error: exError } = await supabase
-    .from('exercises')
-    .select('id, user_id, canonical, aliases, modality, increment_kg');
-  if (exError) throw exError;
-  for (const e of exercises ?? []) upsertExerciseFromRemote(e);
-
-  // Alias overrides: the user's shorthand map — small, pull it flat too.
-  const { data: overrides, error: ovError } = await supabase
-    .from('alias_overrides')
-    .select('user_id, alias, exercise_id, created_at');
-  if (ovError) throw ovError;
-  for (const o of overrides ?? []) upsertAliasOverrideFromRemote(o);
-
   // Predictions: the ghost window is two weeks (GHOST_MAX_AGE_DAYS) — pull
   // enough that a device that sat idle still shows the latest ghost.
   const { data: predictions, error: pError } = await supabase
     .from('predictions')
     .select('id, user_id, for_date, ghost_text, reason, created_at, accepted_at, outcome')
+    .eq('user_id', userId)
     .gte('for_date', new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10));
   if (pError) throw pError;
   for (const p of predictions ?? []) upsertPredictionFromRemote(p);
@@ -411,6 +558,8 @@ async function pullRemote(userId: string) {
   );
 
   setMeta(LAST_PULL_KEY, cursor);
+
+  return (workouts ?? []).length === PULL_BATCH;
 }
 
 async function pullStructure(workoutIds: string[]) {
@@ -467,10 +616,33 @@ export function setParseListener(listener: ((outcome: ParseOutcome) => void) | n
 }
 
 /** Retry parses that failed offline (CLAUDE.md §6 step 4). */
-async function retryPendingParses(userId: string) {
-  const pending = getWorkoutsNeedingParse(userId);
+/**
+ * The deferred-parse queue: at most `PARSE_BATCH` days per pass, newest first.
+ *
+ * **It carries on when a full batch succeeds** (10 Sep 2026). The batch cap
+ * exists so one sync pass cannot turn into a long series of model calls, but it
+ * used to mean the queue only ever drained at the rate the app happened to sync
+ * — and a device that pulled a history down has a queue tens of days long
+ * (`parse/rehydrate.ts`: 23 of 66 on a real account had no structure to rebuild
+ * from). Those days simply waited.
+ *
+ * Re-queueing is conditional on PROGRESS, not on the queue being non-empty: a
+ * batch where nothing landed is offline, signed out, or rate-limited, and
+ * asking again immediately would be a loop. One that fully succeeded has earned
+ * the next one.
+ */
+const PARSE_BATCH = 5;
+
+async function retryPendingParses(userId: string): Promise<number> {
+  const pending = getWorkoutsNeedingParse(userId, PARSE_BATCH);
+  let landed = 0;
   for (const w of pending) {
     const outcome = await parseWorkout(userId, w.id);
-    if (outcome) parseListener?.(outcome);
+    if (outcome) {
+      landed += 1;
+      parseListener?.(outcome);
+    }
   }
+  if (landed === PARSE_BATCH) scheduleSync();
+  return landed;
 }

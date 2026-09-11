@@ -7,10 +7,10 @@
  * ↑ = ↓ PR — just relocated. The note itself is never rewritten; the receipt
  * is a projection below it.
  */
-import { type GutterSignal, type LineSignal, type ParseResult } from './types.ts';
+import { type GutterSignal, type LineSignal, type ParsedItem, type ParseResult } from './types.ts';
 import {
   countedSets,
-  doneKeyFor,
+  makeDoneKeyer,
   parsedDistance,
   parsedVolume,
   setsLineText,
@@ -30,9 +30,33 @@ export interface ReceiptRow {
   /** The SAME sets, one per row, for the mini table under the exercise name.
    * `setText` stays the compact voice (previews, done keys, tight sheets). */
   table: SetTable;
+  /**
+   * The counted working sets as NUMBERS — the only place a receipt row carries
+   * anything unformatted, and it exists for one caller.
+   *
+   * The check-in asks how each lift felt, and since 10 September 2026 it asks
+   * only about the lifts where an answer would change the next prescription
+   * (`effortChangesPrescription`). That question is arithmetic over reps and
+   * load, and every other field on this row is a STRING built for a screen —
+   * `table.rows[].load` is `"100"`, `"bw"` or `""`. Re-parsing a rendered cell
+   * to recover the number it was made from is how a display bug becomes a
+   * wrong question, so the row carries the numbers it was built from instead.
+   *
+   * Warm-ups and drops are already out (they are not the session's work), and
+   * the shape is deliberately the engine's `WorkingSet`.
+   */
+  working: { reps: number | null; weight_kg: number | null; rir: number | null }[];
   /** Comparison vs the previous session (↑ = ↓ PR). Null = no history yet —
    * the signal column stays SILENT, not labeled. */
   signal: GutterSignal | null;
+  /**
+   * This card's identity in the composer's done checklist, already
+   * disambiguated when a note repeats a card (`makeDoneKeyer`). Computed here,
+   * once, so every screen that draws these rows keys off the same string —
+   * three of them used to rebuild it themselves and a repeated card gave them
+   * all the same answer.
+   */
+  doneKey: string;
 }
 
 export interface ReceiptData {
@@ -181,9 +205,15 @@ export function buildReceipt(
 
   const rows: ReceiptRow[] = [];
   const linesUsed = new Set<number>();
+  /** Numbered over EVERY item, including the ones that draw no row, so this
+   * agrees with `applyParseResult`'s own pass over the same list. */
+  const keyOf = makeDoneKeyer();
+  const performedItems: ParsedItem[] = [];
 
   for (const item of result.items) {
     const setText = setsLineText(item.sets);
+    const doneKey = keyOf(item.exercise, setText ?? '');
+    if (!undone.has(doneKey)) performedItems.push(item);
     if (!setText) continue;
 
     const first = !linesUsed.has(item.line);
@@ -194,20 +224,17 @@ export function buildReceipt(
       exercise: item.exercise,
       setText,
       table: setTableOf(item.sets),
+      working: item.sets
+        .filter((set) => set.kind !== 'warmup' && set.kind !== 'drop')
+        .map((set) => ({ reps: set.reps, weight_kg: set.weight_kg, rir: set.rir })),
       signal: first ? (signalByLine.get(item.line) ?? null) : null,
+      doneKey,
     });
   }
 
   // Totals count only PERFORMED work — "not done" cards stay above as rows but
   // never inflate the tonnage/sets (the same rule warm-ups follow).
-  const performed = undone.size
-    ? {
-        ...result,
-        items: result.items.filter(
-          (it) => !undone.has(doneKeyFor(it.exercise, setsLineText(it.sets) ?? '')),
-        ),
-      }
-    : result;
+  const performed = undone.size ? { ...result, items: performedItems } : result;
 
   return {
     rows,

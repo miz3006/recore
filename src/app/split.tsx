@@ -1,7 +1,7 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MonoTag } from '@/components/gutter-value';
 import { Icon } from '@/components/icon';
@@ -15,6 +15,7 @@ import {
 } from '@/lib/db/plan';
 import { tap, tapMedium } from '@/lib/haptics';
 import { maskHasWeekday, toggleWeekday, type ScheduleMode } from '@/lib/plan/resolve';
+import { PAPER_FIELD_CSS } from '@/lib/paper-field';
 import { getScheduleMode, setScheduleMode } from '@/lib/prefs';
 import {
   color,
@@ -99,30 +100,21 @@ export default function Split() {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
-      <View style={styles.nav}>
-        <PressableScale
-          onPress={() => {
-            tap();
-            router.back();
-          }}
-          haptic="none"
-          activeScale={0.9}
-          hitSlop={spacing.sm}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          style={styles.backBtn}>
-          <Icon name="chevron-back" size={moderateScale(16)} tint={color.textPrimary} />
-        </PressableScale>
-        <Text style={styles.navTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          Your split
-        </Text>
-        <View style={styles.backBtn} />
-      </View>
+    <>
+      {/* THE CHROME IS UIKIT'S (10 September 2026). This screen drew a row with
+          a bordered circle and a `headline` in the middle of it — a bar that
+          cannot collapse, cannot be Liquid Glass and gives the edge-swipe no
+          affordance. The preset lives in `_layout.tsx`; `headerBackTitle` is
+          there too, and says why the word is "Back" and not a tab's name. */}
+      <Stack.Screen options={{ title: 'Your split', headerLargeTitle: true }} />
 
+      {/* THE SCROLL VIEW IS THE SCREEN'S ROOT and paints the canvas itself,
+          which is what lets the title collapse — the measurement is in
+          `(tabs)/next/_layout.tsx`. */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxl }]}
+        contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}>
         <View style={styles.segments}>
           {(['rotation', 'weekday'] as const).map((m) => {
@@ -187,7 +179,7 @@ export default function Split() {
           </>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </>
   );
 }
 
@@ -282,32 +274,15 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: color.canvas },
-  nav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
-  },
-  backBtn: {
-    width: moderateScale(38),
-    height: moderateScale(38),
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: color.border,
-    backgroundColor: color.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navTitle: {
-    ...type.headline,
-    fontWeight: '700',
-    color: color.textPrimary,
-  },
-  scroll: { flex: 1 },
-  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  /**
+   * THE CANVAS IS THE SCROLL VIEW'S OWN BACKGROUND, and that is the whole
+   * reason this screen can have both a paper canvas and a collapsing title.
+   * `(tabs)/next/_layout.tsx` has the measurement.
+   */
+  scroll: { flex: 1, experimental_backgroundImage: PAPER_FIELD_CSS },
+  /** ONE GUTTER, `spacing.lg` — the system's large title hangs off its own
+   * inset. The top padding is UIKit's now. */
+  content: { paddingHorizontal: spacing.lg },
 
   segments: {
     flexDirection: 'row',

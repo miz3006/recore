@@ -6,8 +6,11 @@
 // them. Same security model as parse-workout: JWT verified, per-user rate
 // limit, size-limited input, structured output, nothing logged.
 
-import Anthropic from 'npm:@anthropic-ai/sdk';
+import Anthropic from 'npm:@anthropic-ai/sdk@0.111.0';
 import { createClient } from 'npm:@supabase/supabase-js@2';
+
+import { corsHeaders } from '../_shared/cors.ts';
+import { checkEntitlement, checkGlobalRate } from '../_shared/gate.ts';
 
 const RATE_LIMIT_MAX_CALLS = 30;
 const RATE_LIMIT_WINDOW_SECONDS = 600; // shared bump_parse_rate window
@@ -15,11 +18,6 @@ const RATE_LIMIT_WINDOW_SECONDS = 600; // shared bump_parse_rate window
 const MODEL =
   Deno.env.get('EXPLAIN_MODEL') ?? Deno.env.get('PARSE_MODEL') ?? 'claude-haiku-4-5';
 const SUPPORTS_EFFORT = !MODEL.includes('haiku');
-
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
 
 const OUTPUT_SCHEMA = {
   type: 'object',
@@ -45,20 +43,21 @@ Facts vocabulary: code is one of rir_surplus (they had reps in reserve → weigh
 Example (English notes): {"exercise":"Bench Press","code":"rir_surplus","weight_kg":97.5,"min_rir":2,"increment_kg":2.5,"next_weight_kg":100} with note "bench 3x8 97.5kg had 2 more in the tank" → {"reason":"Last time at 97.5 you said you had 2 in the tank. So 100."}
 Example (Slovenian notes): same facts with note "bench 97.5 sla bi se dva" → {"reason":"Zadnjič si pri 97,5 napisal, da bi šla še dva. Zato 100."}`;
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-  });
-}
-
 const FACT_KEYS = new Set([
   'exercise', 'code', 'weight_kg', 'new_weight_kg', 'increment_kg', 'min_rir',
   'rep_top', 'rep_bottom', 'next_weight_kg', 'next_reps', 'next_sets',
 ]);
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
+  // Per request, because the allow-list reflects the caller's own origin (S11).
+  const cors = corsHeaders(req);
+  const json = (body: unknown, status = 200): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
 
   // AUTH — identity from the verified JWT only.
@@ -113,6 +112,17 @@ Deno.serve(async (req) => {
   });
   if (rateError) return json({ error: 'rate_limit_unavailable' }, 500);
   if (!allowed) return json({ error: 'rate_limited' }, 429);
+
+  // GLOBAL CEILING (S2) — beside the per-user window above, which bounds ONE
+  // account and says nothing about N of them. Open signup made N cheap.
+  const globalGate = await checkGlobalRate(supabaseService);
+  if (!globalGate.ok) return json({ error: globalGate.error }, globalGate.status);
+
+  // ENTITLEMENT (S2) — server-side, because the client is the thing being
+  // metered. Off until the RevenueCat webhook writes profiles.entitled_until;
+  // see _shared/gate.ts for why that is recorded open rather than forced on.
+  const entitlement = await checkEntitlement(supabaseService, user.id);
+  if (!entitlement.ok) return json({ error: entitlement.error }, entitlement.status);
 
   const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') });
 

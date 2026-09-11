@@ -3,14 +3,7 @@ import { openDatabaseSync, type SQLiteDatabase } from 'expo-sqlite';
 
 import { devLog } from '@/lib/log';
 
-import {
-  MIGRATION_2_SQL,
-  MIGRATION_4_SQL,
-  MIGRATION_5_SQL,
-  MIGRATION_6_SQL,
-  SCHEMA_SQL,
-  SCHEMA_VERSION,
-} from './schema';
+import { ADDED_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION, WIPE_SQL } from './schema';
 
 /**
  * expo-sqlite is the on-device source of truth (CLAUDE.md §2). Everything here
@@ -21,32 +14,72 @@ let db: SQLiteDatabase | null = null;
 
 export function getDb(): SQLiteDatabase {
   if (!db) {
-    db = openDatabaseSync('recore.db');
-    migrate(db);
+    /**
+     * THE CONNECTION IS CACHED ONLY ONCE IT IS MIGRATED (10 September 2026).
+     *
+     * `db` used to be assigned before `migrate()` ran, so a migration that
+     * threw left an OPEN, UN-MIGRATED connection in the module — and every
+     * later call returned it happily, because the only thing that triggers a
+     * migration is opening. The app then ran for the rest of its life against
+     * a schema it had already decided was too old: usable for every query that
+     * predated the failure, fatal for every query that was the reason for it.
+     */
+    const opened = openDatabaseSync('recore.db');
+    migrate(opened);
+    db = opened;
   }
   return db;
 }
 
+/**
+ * Bring any database — fresh, current, or half-upgraded — to this bundle's
+ * schema. Runs on every open and is idempotent, which is the whole design:
+ * see `ADDED_COLUMNS` in `schema.ts` for why a version number is not allowed
+ * to decide what happens here.
+ */
 function migrate(database: SQLiteDatabase) {
   const row = database.getFirstSync<{ user_version: number }>('PRAGMA user_version');
   const current = row?.user_version ?? 0;
-  if (current < SCHEMA_VERSION) {
-    // Stepped ALTERs for tables that already exist (IF NOT EXISTS never adds
-    // columns), then the full script — its IF NOT EXISTS creates whatever a
-    // fresh OR upgrading install is missing.
-    if (current >= 1 && current < 2) database.execSync(MIGRATION_2_SQL);
-    // A fresh install (current === 0) gets the column from SCHEMA_SQL's CREATE;
-    // only an existing `workouts` table needs the ALTER.
-    if (current >= 1 && current < 4) database.execSync(MIGRATION_4_SQL);
-    if (current >= 1 && current < 5) database.execSync(MIGRATION_5_SQL);
-    if (current >= 1 && current < 6) database.execSync(MIGRATION_6_SQL);
-    database.execSync(SCHEMA_SQL);
-    database.execSync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
-    devLog('sqlite migrated to schema', SCHEMA_VERSION);
-  } else {
-    // Re-apply pragmas that don't persist across connections.
-    database.execSync('PRAGMA foreign_keys = ON;');
+
+  // Tables, indexes, and the two pragmas that do not persist across
+  // connections (`journal_mode`, `foreign_keys`) — every statement in there is
+  // `IF NOT EXISTS`, so this is a no-op on a current database and the pragmas
+  // now get re-applied on a MIGRATING connection too, which the old
+  // if/else missed entirely.
+  database.execSync(SCHEMA_SQL);
+
+  // Then the columns, by presence. A fresh install got them all from the
+  // CREATE above and adds nothing.
+  const added: string[] = [];
+  for (const { table, column, decl } of ADDED_COLUMNS) {
+    if (!hasTable(database, table) || hasColumn(database, table, column)) continue;
+    database.execSync(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl};`);
+    added.push(`${table}.${column}`);
   }
+
+  if (current !== SCHEMA_VERSION) {
+    database.execSync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+    devLog('sqlite migrated to schema', SCHEMA_VERSION, `from ${current}`);
+  }
+  // Said out loud even when the version claimed to be current, because that is
+  // exactly the case worth knowing about: the stamp lied and the repair worked.
+  if (added.length > 0) devLog('sqlite added missing columns', added.join(', '));
+}
+
+function hasTable(database: SQLiteDatabase, table: string): boolean {
+  const row = database.getFirstSync<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+    [table],
+  );
+  return row != null;
+}
+
+function hasColumn(database: SQLiteDatabase, table: string, column: string): boolean {
+  // `table_info` takes no bound parameter, and the names come from
+  // `ADDED_COLUMNS` in this repository — never from a device, an account or a
+  // parse — so there is nothing here for an interpolation to smuggle in.
+  const rows = database.getAllSync<{ name: string }>(`PRAGMA table_info(${table})`);
+  return rows.some((r) => r.name === column);
 }
 
 export function newId(): string {
@@ -151,9 +184,7 @@ export function ensureLocalUser(userId: string, claimFrom?: string) {
 
   const database = getDb();
   database.withTransactionSync(() => {
-    database.execSync(
-      'DELETE FROM parse_cache; DELETE FROM corrections; DELETE FROM alias_overrides; DELETE FROM sets; DELETE FROM items; DELETE FROM workouts; DELETE FROM predictions; DELETE FROM plan_days; DELETE FROM exercises; DELETE FROM meta;',
-    );
+    database.execSync(WIPE_SQL);
   });
   setMeta('user_id', userId);
   devLog('local db scoped to new user');

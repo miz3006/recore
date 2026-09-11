@@ -1,3 +1,5 @@
+import { sessionMinutes, type RatedSession } from '@/lib/session-effort';
+
 import { dayKeyFor, shiftDayKey, todayKey, type DayKey } from './dates';
 import { getDb } from './index';
 
@@ -70,4 +72,45 @@ export function getStatsSummary(userId: string): StatsSummary {
       : null;
 
   return { weeks, weekOverWeekPct, sessionsThisWeek: current.sessions };
+}
+
+/**
+ * Every session's rating and duration, for the Progress tab's weekly load
+ * (`lib/session-effort.ts`).
+ *
+ * ONE ROW PER SESSION, INCLUDING THE UNRATED ONES, and that is the whole point
+ * of the query. `weekIsComplete` refuses to total a week that has an unrated
+ * session in it, so the sessions with a null rating are exactly the rows the
+ * arithmetic needs to see. Selecting only the rated ones would hand the screen
+ * a set of weeks that all look complete.
+ *
+ * A session is what the log calls one — a workout row with text in it — the
+ * same definition `getStatsSummary` above and the brief's `sessions7` use.
+ *
+ * The duration is derived here rather than stored, from the row's own
+ * timestamps, and `sessionMinutes` throws out the spans that cannot be a
+ * session (under ten minutes, over six hours). A rated session with an
+ * unusable span therefore counts as UNRATED for this purpose, which is
+ * correct: without a duration there is no load, and a week holding one cannot
+ * be totalled either.
+ */
+export function getLoadSessions(userId: string): RatedSession[] {
+  return getDb()
+    .getAllSync<{
+      performed_at: string;
+      session_effort: number | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `SELECT performed_at, session_effort, created_at, updated_at
+       FROM workouts
+       WHERE user_id = ? AND trim(raw_text) <> ''
+       ORDER BY performed_at ASC`,
+      [userId],
+    )
+    .map((r) => ({
+      day: dayKeyFor(new Date(r.performed_at)),
+      rpe: r.session_effort,
+      minutes: sessionMinutes(r.created_at, r.updated_at),
+    }));
 }

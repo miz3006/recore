@@ -248,3 +248,66 @@ test('a stored answer is built from the item, with the unit as written', () => {
   assert.deepEqual(entry.reps, [5, 5, 4]);
   assert.ok(entry.weightKg && Math.abs(entry.weightKg - 102.06) < 0.05);
 });
+
+// ---------------------------------------------------------------------------
+// A WHOLE PAGE OF EVERYTHING (10 September 2026). The demo screen takes a
+// written session, not one line, and the modalities it can be handed —
+// strength, a hold, a carry, a run — each render differently in the receipt.
+// ---------------------------------------------------------------------------
+
+test('a mixed session reads as one card per movement, in the order written', () => {
+  const page = [
+    'Push A',
+    'bench 100kg 5,5,4 @8',
+    'cable fly 15 3x15',
+    'dips bw+20 3x10 / push ups 3x25',
+    'plank 3x60s',
+    'farmers carry 2x40m 32kg',
+    'run 5k 24:30',
+  ].join('\n');
+  const result = demoParseText(page);
+  assert.deepEqual(
+    result.items.map((i) => [i.exercise, i.line, i.modality]),
+    [
+      ['Bench press', 1, 'strength'],
+      ['Cable fly', 2, 'strength'],
+      ['Dips', 3, 'strength'],
+      ['Push ups', 3, 'strength'],
+      // A duration or a distance with no reps is 'cardio' here and nothing
+      // finer: telling a plank (a hold) from a bike (cardio) needs a dictionary
+      // of movements, which the funnel has no account to reach. The real
+      // parser, which does, answers 'hold' and 'carry' for these two.
+      ['Plank', 4, 'cardio'],
+      ['Farmers carry', 5, 'cardio'],
+      ['Run', 6, 'cardio'],
+    ],
+  );
+
+  const receipt = buildReceipt(result, []);
+  assert.deepEqual(
+    receipt.rows.map((r) => r.setText),
+    [
+      '100 kg × 5·5·4',
+      '15 kg × 15·15·15',
+      '20 kg × 10·10·10',
+      '25·25·25',
+      '3× 60 s',
+      // The carry keeps its distance and the run keeps its time — one metric
+      // per card used to be all the compact line could say.
+      '32 kg · 2× 40 m',
+      '5000 m · 24:30',
+    ],
+  );
+  // The tonnage counts the loaded reps and nothing else; the run's five
+  // kilometres are distance, not weight.
+  assert.equal(receipt.distanceM, 5080);
+  assert.equal(receipt.volume, 100 * 14 + 15 * 45 + 20 * 30);
+  // Every card has its own identity even when two of them read alike.
+  assert.equal(new Set(receipt.rows.map((r) => r.doneKey)).size, receipt.rows.length);
+});
+
+test('a page of prose and headers produces no cards at all', () => {
+  const page = ['Push day', 'felt tired today', '3 rounds:', '2 min rest', 'time 7:42'].join('\n');
+  assert.deepEqual(demoParseText(page).items, []);
+  assert.deepEqual(buildReceipt(demoParseText(page), []).rows, []);
+});

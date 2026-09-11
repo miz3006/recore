@@ -145,15 +145,33 @@ export default function SignIn() {
     try {
       await fn();
       // Hand the decision back to the dispatcher, which is the only thing that
-      // can see onboarding, session and entitlement at once. `dismissAll`
-      // first, or the funnel it walked through stays underneath and a back
-      // swipe from Today lands on the paywall.
+      // can see onboarding, session and entitlement at once. It has to UNWIND
+      // on the way, or the funnel this screen was reached through stays
+      // underneath and a back swipe from Today lands on the paywall.
       //
       // The development door always goes home: it has no purchase to resume,
       // and getting past this screen is the entire reason it was pressed.
+      //
+      // ONE `dismissTo`, NOT `dismissAll()` + `replace('/')` (10 September
+      // 2026). That pair is what printed "The action 'POP_TO_TOP' was not
+      // handled by any navigator" in development, and the reason is timing:
+      // `dismissAll` queues a RAW `POP_TO_TOP`, which expo-router dispatches
+      // when the routing queue FLUSHES — one render later — while
+      // `canDismiss()` answered from the state as it was at CALL time.
+      // Signing in is exactly the moment those two disagree. The session lands,
+      // the `Stack.Protected` guards in `app/_layout.tsx` flip in the same
+      // commit, `sign-in` is unregistered and `(tabs)` registered, and the root
+      // stack is rewritten under the queued action — which then arrived at a
+      // stack with nothing left to pop.
+      //
+      // `dismissTo` queues a ROUTER_LINK instead. expo-router resolves those
+      // against the LIVE tree at flush time and aims them at the navigator that
+      // actually owns `/`, so it pops back to the dispatcher when the funnel is
+      // still underneath and replaces the current screen with it when the guard
+      // has already taken the funnel away. Same destination either way, and no
+      // action that can go unhandled.
       if (next === 'home' || which === 'dev') {
-        if (router.canDismiss()) router.dismissAll();
-        router.replace('/');
+        router.dismissTo('/');
       }
     } catch (err) {
       if (!(err instanceof SignInCancelledError)) {

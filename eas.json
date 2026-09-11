@@ -35,9 +35,18 @@
       "env": {
         "EXPO_PUBLIC_ENV": "production"
       }
+    },
+    "testflight": {
+      "extends": "production",
+      "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_ENV": "testflight",
+        "EXPO_PUBLIC_BETA_UNLOCK": "1"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {},
+    "testflight": {}
   }
 }

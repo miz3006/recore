@@ -39,6 +39,7 @@ export type IconName =
   // --- a duration and a grouping needed one each. All Ionicons outline, same
   // --- stroke, so the group reads as one family down its left edge.
   | 'crosshair'
+  | 'person'
   | 'hourglass'
   | 'layers'
   | 'language'
@@ -62,6 +63,9 @@ export type IconName =
   // The settled card's ⋯ (entry-actions-sheet) and its Edit row.
   | 'ellipsis'
   | 'pencil'
+  // The undo pill under a deleted entry — the one mark in the app that means
+  // "put that back", so it is Apple's own turn-back arrow and nothing else.
+  | 'undo'
   // Clear a field's text — filled, because it is a control on top of an input
   // rather than a label beside one.
   | 'close'
@@ -114,6 +118,9 @@ const MAP: Record<IconName, Glyph> = {
   calendar: { set: 'ion', name: 'calendar-outline' },
   target: { set: 'ion', name: 'barbell-outline' },
   crosshair: { set: 'ion', name: 'locate-outline' },
+  // The other end of a coaching link. Outline like every other You row glyph;
+  // the same mark `tour-you` draws, because it names the same idea — a person.
+  person: { set: 'ion', name: 'person-outline' },
   hourglass: { set: 'ion', name: 'hourglass-outline' },
   layers: { set: 'ion', name: 'layers-outline' },
   language: { set: 'ion', name: 'language-outline' },
@@ -136,6 +143,7 @@ const MAP: Record<IconName, Glyph> = {
   pencil: { set: 'ion', name: 'pencil-outline' },
   wrench: { set: 'ion', name: 'construct-outline' },
   close: { set: 'ion', name: 'close-circle' },
+  undo: { set: 'ion', name: 'arrow-undo-outline' },
   'tour-write': { set: 'ion', name: 'create-outline' },
   'tour-checkin': { set: 'ion', name: 'checkmark-circle-outline' },
   'tour-next': { set: 'ion', name: 'arrow-forward' },
@@ -173,15 +181,51 @@ type Symbol = {
   name: ComponentProps<typeof SymbolView>['name'];
   /** Multiplier on the fitting box — see above. Defaults to 1. */
   box?: number;
+  /**
+   * Stroke weight, when this glyph wants one other than `SF_WEIGHT`.
+   *
+   * **`expo-symbols` builds every configuration at `UIFont.systemFontSize`
+   * (17 pt) and then aspect-fits the result into the box `size` asks for**
+   * (`SymbolView.swift`, `getSymbolConfig`). So a glyph drawn into a 20 pt box
+   * is a 17 pt symbol scaled up 18 % — strokes and all — and it lands about a
+   * half-step heavier than a symbol UIKit would draw at 20 pt natively.
+   *
+   * That is the whole reason a per-glyph override exists. UIKit puts `regular`
+   * in a bar button; on this path `regular` arrives looking like Apple's
+   * `medium`, which is exactly what a bar button should look like, while
+   * `medium` arrives a step too heavy for one.
+   */
+  weight?: ComponentProps<typeof SymbolView>['weight'];
+  /**
+   * The symbol's OPTICAL scale — Apple's `.small` / `.medium` / `.large`, which
+   * is a different axis from point size: it sets how much of its own box the
+   * glyph fills relative to text beside it. UIKit's bar buttons use `.large`,
+   * and it is the difference between a symbol that reads as a control and one
+   * that reads as a character in a sentence.
+   */
+  scale?: ComponentProps<typeof SymbolView>['scale'];
 };
 
 const SF: Partial<Record<IconName, Symbol>> = {
-  timer: { name: 'timer' },
-  mic: { name: 'mic' },
-  'mic-on': { name: 'mic.fill' },
+  // --- THE ACCESSORY BAR ----------------------------------------------------
+  //
+  // The three glyphs that float over the system keyboard, and the three with
+  // the least room for error: they sit one row above Apple's own keys, so the
+  // comparison is not a memory of what iOS looks like, it is on screen at the
+  // same moment. All three take UIKit's bar-button metrics — `regular` weight
+  // (which arrives at `medium`'s apparent weight on this render path, see
+  // `Symbol.weight`) at `.large` optical scale.
+  timer: { name: 'timer', weight: 'regular', scale: 'large' },
+  mic: { name: 'mic', weight: 'regular', scale: 'large' },
+  'mic-on': { name: 'mic.fill', weight: 'regular', scale: 'large' },
   // Apple's own "put the keyboard away" glyph — the one iOS itself puts in an
   // accessory bar, and the reason this button no longer needs the MCI set.
-  'keyboard-hide': { name: 'keyboard.chevron.compact.down', box: 1.2 },
+  'keyboard-hide': {
+    name: 'keyboard.chevron.compact.down',
+    box: 1.24,
+    weight: 'regular',
+    scale: 'large',
+  },
 
   // --- THE SETTINGS SURFACE (9 September 2026) -----------------------------
   //
@@ -233,6 +277,11 @@ const SF: Partial<Record<IconName, Symbol>> = {
   // why it takes a quiet grey rather than ink — the tint is the circle, and a
   // near-black disc is a much louder button than the one iOS puts on a sheet.
   close: { name: 'xmark.circle.fill' },
+
+  // Undo. `arrow.uturn.backward` is what iOS itself draws on the undo button in
+  // the Notes markup bar and in the keyboard's edit menu — the one place this
+  // app's reference and Apple's are literally the same control.
+  undo: { name: 'arrow.uturn.backward' },
 
   // --- THE FIRST-OPEN TOUR (9 September 2026) ------------------------------
   //
@@ -353,7 +402,8 @@ export function Icon({ name, size = 20, tint = color.textSecondary }: IconProps)
     <SymbolView
       name={sf.name}
       size={size * (sf.box ?? 1)}
-      weight={SF_WEIGHT}
+      weight={sf.weight ?? SF_WEIGHT}
+      scale={sf.scale}
       tintColor={tint}
       fallback={drawn}
     />

@@ -245,6 +245,19 @@ export const FLOW: readonly ScreenDef[] = [
   {
     step: 6,
     kind: 'demo',
+    /**
+     * THE HEADLINE IS NOT DRAWN ON THIS SCREEN (10 September 2026).
+     *
+     * It is kept because the flow's copy lives in one place and because
+     * removing it would hide the decision. Screen 6 became the Today page
+     * itself, and a page has one large title: **"Today"**, which is the whole
+     * claim the screen is making. "Try it." over it would be a second one.
+     *
+     * The subline is drawn, verbatim, in the slot Today's weekly line stands
+     * in — and it is earned away when the first line settles. See
+     * `DemoScreen.tsx`; the deviation from the spec's letter is recorded in
+     * `docs/implementation-status.md` for the owner to rule on.
+     */
     id: 'demo',
     headline: 'Try it.',
     subline: "Write one line, the way you'd write it in a notebook.",

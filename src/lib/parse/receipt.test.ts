@@ -166,9 +166,17 @@ test('set table: warm-ups and drops stay visible, labelled, and outside the numb
     set({ kind: 'drop', reps: 8, weight_kg: 60 }),
   ]);
   const table = setTableOf(bench.sets);
+  // The WORD carries the kind, in its own field — never the position column,
+  // and never tone alone (low-vision ruling, 9 Aug 2026). Exactly one of the
+  // two is filled per row, which is what makes the numbering readable.
   assert.deepEqual(
-    table.rows.map((r) => r.label),
-    ['warm', '1', '2', 'drop'],
+    table.rows.map((r) => [r.label, r.mark]),
+    [
+      ['', 'warm-up'],
+      ['1', null],
+      ['2', null],
+      ['', 'drop'],
+    ],
   );
   assert.deepEqual(
     table.rows.map((r) => r.counted),
@@ -220,13 +228,76 @@ test('set table: RIR and a second metric ride along as the row note', () => {
     set({ weight_kg: 40, distance_m: 20, duration_s: 60 }),
   ]);
   assert.ok(carry.hasNote);
+  // RIR is its own field — digits only, because the table draws the word "RIR"
+  // itself in its own face. The ride-along note holds ONLY a second
+  // measurement, so a weighted carry keeps its distance and its time.
   assert.deepEqual(
-    carry.rows.map((r) => [r.load, r.work, r.note]),
+    carry.rows.map((r) => [r.load, r.work, r.rir, r.note]),
     [
-      ['100', '8', 'RIR 2'],
-      ['40', '20 m', '1:00'],
+      ['100', '8', '2', ''],
+      ['40', '20 m', null, '1:00'],
     ],
   );
+});
+
+test('set table: a negative RIR survives — past failure is not at failure', () => {
+  // Clamping it to 0 would erase the difference between a set that ended at
+  // failure and one that took a forced rep past it (`types.ts`, MIN_RIR).
+  const rows = setTableOf([
+    set({ reps: 5, weight_kg: 100, rir: 0 }),
+    set({ reps: 3, weight_kg: 100, rir: -1 }),
+  ]).rows;
+  assert.deepEqual(
+    rows.map((r) => r.rir),
+    ['0', '-1'],
+  );
+});
+
+test('set table: AMRAP, myo and failure are counted AND keep their kind', () => {
+  // "push ups AMRAP 22" used to render as a plain numbered set of 22 — the
+  // parser read the word and the table dropped it on the floor.
+  const push = setTableOf([set({ kind: 'amrap', reps: 22 })]);
+  assert.deepEqual(
+    push.rows.map((r) => [r.label, r.mark, r.kindTag, r.counted]),
+    [['1', null, 'AMRAP', true]],
+  );
+  // …and one AMRAP set alone is now worth a table, because it says something
+  // the compact one-liner drops.
+  assert.ok(push.hasNote);
+
+  // "leg press 200kg 15 + myo 5,5,4" — myo reps are counted work that chains
+  // off the set above, so they are numbered AND indented.
+  const legPress = setTableOf([
+    set({ reps: 15, weight_kg: 200 }),
+    set({ kind: 'myo', reps: 5, weight_kg: 200, parent: 0 }),
+    set({ kind: 'myo', reps: 5, weight_kg: 200, parent: 0 }),
+  ]);
+  assert.deepEqual(
+    legPress.rows.map((r) => [r.label, r.kindTag, r.chained]),
+    [
+      ['1', null, false],
+      ['2', 'MYO', true],
+      ['3', 'MYO', true],
+    ],
+  );
+
+  assert.equal(setTableOf([set({ kind: 'failure', reps: 12, weight_kg: 15 })]).rows[0]!.kindTag, 'FAILURE');
+});
+
+test('set table: a drop chains off its parent, a warm-up does not', () => {
+  const rows = setTableOf([
+    set({ kind: 'warmup', reps: 10, weight_kg: 40 }),
+    set({ reps: 8, weight_kg: 80 }),
+    set({ kind: 'drop', reps: 8, weight_kg: 60, parent: 1 }),
+  ]).rows;
+  assert.deepEqual(
+    rows.map((r) => r.chained),
+    [false, false, true],
+  );
+  // An uncounted set is marked by its word and never also tagged — two names
+  // for one row is one name too many.
+  assert.equal(rows[0]!.kindTag, null);
+  assert.equal(rows[2]!.kindTag, null);
 });
 
 test('comparison signal attaches, echo-kind does not', () => {
@@ -379,8 +450,96 @@ test('a lift with nothing counted prints no last set at all', () => {
       exercise: 'Bench Press',
       setText: '40 kg × 10',
       table: setTableOf([set({ kind: 'warmup', reps: 10, weight_kg: 40 })]),
+      working: [],
       signal: null,
+      doneKey: 'Bench Press 40 kg × 10',
     }),
     null,
   );
+});
+
+// ---------------------------------------------------------------------------
+// A note that repeats itself — the circuit written out round by round, or the
+// same movement done twice at the same numbers.
+// ---------------------------------------------------------------------------
+
+test('two identical cards get two identities, not one', () => {
+  const rows = buildReceipt(
+    resultOf(
+      item('Plank', 0, [set({ duration_s: 60 })]),
+      item('Plank', 1, [set({ duration_s: 60 })]),
+      item('Plank', 2, [set({ duration_s: 60 })]),
+    ),
+    [],
+  ).rows;
+  assert.equal(new Set(rows.map((r) => r.doneKey)).size, 3);
+  // The FIRST keeps the plain key, so a check stored by an older build still
+  // finds its card.
+  assert.equal(rows[0]!.doneKey, doneKeyFor('Plank', '60 s'));
+  assert.equal(rows[1]!.doneKey, `${doneKeyFor('Plank', '60 s')} #2`);
+});
+
+test('un-checking one of two identical cards excludes only that one', () => {
+  // The defect: one key for both cards meant un-checking either dropped BOTH
+  // out of the tonnage — half a session missing because its twin was skipped.
+  const result = resultOf(
+    item('Push-up', 0, [set({ reps: 20, weight_kg: 10 })]),
+    item('Push-up', 1, [set({ reps: 20, weight_kg: 10 })]),
+  );
+  const both = buildReceipt(result, []);
+  assert.equal(both.totalSets, 2);
+  assert.equal(both.volume, 400);
+
+  const second = buildReceipt(result, [], new Set([both.rows[1]!.doneKey]));
+  // Both cards stay on the page — the record keeps what was written.
+  assert.equal(second.rows.length, 2);
+  // Only the un-checked one leaves the totals.
+  assert.equal(second.totalSets, 1);
+  assert.equal(second.volume, 200);
+
+  const first = buildReceipt(result, [], new Set([both.rows[0]!.doneKey]));
+  assert.equal(first.totalSets, 1);
+  assert.equal(first.volume, 200);
+});
+
+test('numbering counts identical readings, not items', () => {
+  // An item with no countable sets draws no row and has a key of its own ("Dip
+  // " with an empty reading), so it does not push the next real Dip to #3.
+  // `applyParseResult` walks the same list the same way, which is the whole
+  // point: both must name the same card the same thing.
+  const rows = buildReceipt(
+    resultOf(
+      item('Dip', 0, [set({ reps: 10 })]),
+      item('Dip', 1, []),
+      item('Dip', 2, [set({ reps: 10 })]),
+    ),
+    [],
+  ).rows;
+  assert.deepEqual(
+    rows.map((r) => r.doneKey),
+    [doneKeyFor('Dip', '10'), `${doneKeyFor('Dip', '10')} #2`],
+  );
+});
+
+test('a carry, a hold and a split keep every metric on the compact line', () => {
+  // The defect: the compact line answered with ONE fact and stopped, so a
+  // loaded carry read "32 kg" with no distance, a weighted plank read "10 kg"
+  // with no time, and a rowed 2 km read "2000 m" with no split — in each case
+  // the half the line was written for.
+  assert.equal(
+    setsLineText([
+      set({ distance_m: 40, weight_kg: 32 }),
+      set({ distance_m: 40, weight_kg: 32 }),
+    ]),
+    '32 kg · 2× 40 m',
+  );
+  assert.equal(setsLineText([set({ duration_s: 45, weight_kg: 10 })]), '10 kg · 45 s');
+  assert.equal(setsLineText([set({ distance_m: 2000, duration_s: 465 })]), '2000 m · 7:45');
+  // The shapes that already read well are untouched.
+  assert.equal(setsLineText([set({ duration_s: 60 }), set({ duration_s: 60 })]), '2× 60 s');
+  assert.equal(setsLineText([set({ distance_m: 5000 })]), '5000 m');
+  assert.equal(setsLineText([set({ reps: 10, weight_kg: 60 })]), '60 kg × 10');
+  // Nothing countable is still nothing.
+  assert.equal(setsLineText([]), null);
+  assert.equal(setsLineText([set({ kind: 'warmup', reps: 10, weight_kg: 40 })]), null);
 });

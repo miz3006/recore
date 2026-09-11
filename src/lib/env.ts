@@ -72,7 +72,51 @@ export const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN ?? '';
 /** Which build this is, for separating dev noise from TestFlight (`eas.json`). */
 export const APP_ENV = process.env.EXPO_PUBLIC_ENV ?? 'development';
 
+/**
+ * BETA UNLOCK — a build that hands the whole app to a tester with no store.
+ *
+ * It exists because of what a release build does WITHOUT billing, which is a
+ * dead end rather than a degraded experience: this file blanks a `test_` key
+ * outside `__DEV__`, `store.ts` then reports itself unconfigured, the
+ * entitlement resolves to `lapsed`, and `paywall-v2/plan` renders "Prices
+ * unavailable" with no way past it. That is the correct reading of a
+ * misconfigured binary — and it is also a TestFlight build nobody can evaluate,
+ * because the first screen after onboarding refuses to open.
+ *
+ * WHY THIS IS NOT A PAYWALL BYPASS IN DISGUISE. CLAUDE.md §2 rule 5 forbids
+ * shipping a paywall, trial clock, price or Restore promise the store cannot
+ * keep. A beta build promises NOTHING: the paywall screen is never dispatched
+ * to, no price is printed, no trial clock starts, Restore is not offered, and
+ * the You tab states plainly that billing is off. The invariant it would break
+ * is the opposite one — quoting an amount nothing can charge.
+ *
+ * BUILD-TIME, like `isCoachModeOn`, and for the same reason: `EXPO_PUBLIC_` is
+ * inlined by Metro at bundle time, so with the flag off every branch behind it
+ * is dead code the bundler can see and drop. It is set by the `testflight`
+ * profile in `eas.json` and by nothing else — the `production` profile must
+ * never carry it, or the build that goes on sale gives itself away for free.
+ */
+export function isBetaUnlocked(): boolean {
+  return process.env.EXPO_PUBLIC_BETA_UNLOCK === '1';
+}
+
 /** True once .env is filled in — the sign-in screen surfaces a hint if not. */
 export function isSupabaseConfigured(): boolean {
   return SUPABASE_URL.length > 0 && SUPABASE_ANON_KEY.length > 0;
+}
+
+/**
+ * COACH MODE — the coach ↔ client layer, off unless a build asks for it.
+ *
+ * It is a BUILD-TIME constant, not a stored preference, and that is the whole
+ * point: `prefs.ts` holds things a person chose, and this is not one of them.
+ * A release build must be able to ship with the feature provably absent — every
+ * screen unreachable, every query unsent — and a value read from the meta table
+ * could be flipped on a device. `EXPO_PUBLIC_` is inlined by Metro at bundle
+ * time, so with the flag off the branches are dead code the bundler can see.
+ *
+ * Default OFF. Set EXPO_PUBLIC_COACH_MODE=1 in .env to build with it.
+ */
+export function isCoachModeOn(): boolean {
+  return process.env.EXPO_PUBLIC_COACH_MODE === '1';
 }

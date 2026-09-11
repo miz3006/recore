@@ -17,3 +17,53 @@ verify_jwt = true
 # else (PLAN D1).
 [functions.delete-account]
 verify_jwt = true
+
+# notify-comment is called by a DATABASE WEBHOOK, not by a signed-in client, so
+# there is no user JWT to verify at the platform level. Its authentication is a
+# shared secret in `x-webhook-secret`, compared in constant time inside the
+# function, which fails CLOSED when the secret is unset. See the function's own
+# header for why it re-reads every fact instead of trusting the trigger payload.
+[functions.notify-comment]
+verify_jwt = false
+
+
+# ---------------------------------------------------------------------------
+# LOCAL DEVELOPMENT PORTS (10 September 2026).
+#
+# These are the ports `supabase start` binds on this machine and they have
+# NOTHING to do with the hosted project — they exist because the CLI's defaults
+# (54321-54327) are a single global range, so two Supabase projects checked out
+# side by side cannot both run. On this machine another project already holds
+# the default range, and `supabase start` failed with "Bind for 0.0.0.0:54322
+# failed: port is already allocated".
+#
+# The fix is to give Recore its own range rather than to stop the other stack:
+# a local database is a scratch database, and nobody's running work should have
+# to be killed to reset it.
+#
+# `supabase db reset` / `supabase start` read these. Nothing in the app does —
+# the client reads SUPABASE_URL from .env (src/lib/env.ts), so pointing the app
+# at the local stack means setting that to http://127.0.0.1:54521, not editing
+# anything here.
+# ---------------------------------------------------------------------------
+
+[api]
+port = 54521
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54522
+shadow_port = 54520
+major_version = 17
+
+[studio]
+port = 54523
+
+[inbucket]
+port = 54524
+
+[analytics]
+port = 54527
+

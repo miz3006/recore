@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { StyleSheet, TextInput, type StyleProp, type TextStyle } from 'react-native';
+import { StyleSheet, Text, TextInput, View, type StyleProp, type TextStyle } from 'react-native';
 import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
@@ -9,6 +9,8 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+
+import { FIXED_FONT_SCALE } from '@/lib/theme';
 
 import { count, REDUCED_FADE_MS } from './springs';
 
@@ -48,6 +50,33 @@ export function CountUp({
   delay = 0,
   style,
   accessibilityLabel,
+  /**
+   * THE CLAMP, AND IT DEFAULTS TO THE GEOMETRY ONE (10 September 2026).
+   *
+   * This component had **no clamp at all**, so the number scaled with the
+   * reader's text setting without limit. At `accessibility-extra-large` on the
+   * iOS 26.5 simulator that is roughly ×2.3, which took the progression card's
+   * 44 pt reading past 100 pt: "100.5 kg" rendered as "100." with the unit
+   * pushed off the right edge of the card. The number is the whole point of
+   * that screen and it was the one thing on it you could not read.
+   *
+   * `FIXED_FONT_SCALE` is the app's own answer for "text locked inside geometry"
+   * — a reading pinned into a card that cannot grow with it. Every caller is
+   * that case: the progression metric cards and the three onboarding screens
+   * that count a number up inside a fixed illustration band. A caller that ever
+   * has room to grow can pass `MAX_FONT_SCALE` explicitly.
+   */
+  maxFontSizeMultiplier = FIXED_FONT_SCALE,
+  /**
+   * OPT IN TO A BOX THE FINISHED NUMBER SIZES. Off by default, and that default
+   * is not timidity — `InsightScreen` renders this component as an INLINE CHILD
+   * OF A `<Text>`, and a `View` may not be nested inside a `Text` in React
+   * Native. A number set into a sentence must stay a bare node.
+   *
+   * Turn it on wherever the number sits in a ROW beside something else — a
+   * unit, a delta — which is the case the sizer exists for. See the render.
+   */
+  sized = false,
 }: {
   value: number;
   decimals?: number;
@@ -56,6 +85,8 @@ export function CountUp({
   delay?: number;
   style?: StyleProp<TextStyle>;
   accessibilityLabel?: string;
+  maxFontSizeMultiplier?: number;
+  sized?: boolean;
 }) {
   const reduced = useReducedMotion();
   const shown = useSharedValue(reduced ? value : 0);
@@ -84,7 +115,7 @@ export function CountUp({
     (decimals > 0 && decimalComma ? value.toFixed(decimals).replace('.', ',') : value.toFixed(decimals)) +
     suffix;
 
-  return (
+  const input = (
     <AnimatedTextInput
       editable={false}
       // The value is announced whole; VoiceOver never reads a counting number.
@@ -95,20 +126,83 @@ export function CountUp({
       underlineColorAndroid="transparent"
       scrollEnabled={false}
       pointerEvents="none"
-      style={[styles.base, style, fade]}
+      maxFontSizeMultiplier={maxFontSizeMultiplier}
+      style={sized ? [styles.base, styles.paint, style, fade] : [styles.base, style, fade]}
       animatedProps={animatedProps}
       defaultValue={reduced ? finalText : '0'}
     />
   );
+
+  if (!sized) return input;
+
+  return (
+    /**
+     * A `Text` SIZES THE BOX; THE `TextInput` ONLY PAINTS IN IT (10 Sep 2026).
+     *
+     * The number has to be a `TextInput`, because that is the one RN node whose
+     * string can be driven from a worklet (`animatedProps.text`) without a JS
+     * render per frame. It is also a node with **no intrinsic width**: it does
+     * not shrink-wrap its content the way a `Text` does, and the string arriving
+     * from the UI thread never triggers a re-layout at all. At the default text
+     * size the box happened to land close enough to the digits that nobody
+     * noticed. At `accessibility-extra-large` on the iOS 26.5 simulator it did
+     * not: the progression card's "kg" was pushed a third of the card to the
+     * right of "86" and sat below its baseline, because the box it was
+     * following was neither the width nor the height of the number inside it.
+     *
+     * So the layout is a real `Text` holding the FINAL string — which is known
+     * without waiting for the animation — and the counting input is laid over
+     * it. Three things fall out of that and all three are the point:
+     *   · the box is exactly as wide as the finished number, so a unit beside it
+     *     sits where a reader expects it whatever the text size;
+     *   · Yoga takes a `View`'s baseline from its first child, and the first
+     *     child is now a `Text`, so `alignItems: 'baseline'` finally means what
+     *     it says next to this component;
+     *   · the sizer carries the same clamp, so the two can never disagree.
+     *
+     * The sizer is invisible and hidden from VoiceOver — the input above it
+     * already announces the value whole.
+     */
+    <View style={styles.box}>
+      <Text
+        style={[styles.sizer, style]}
+        maxFontSizeMultiplier={maxFontSizeMultiplier}
+        accessible={false}
+        importantForAccessibility="no-hide-descendants">
+        {finalText}
+      </Text>
+      {input}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
+  /** Sized by the sizer, painted by the input. No padding of its own — the
+   * caller's style lands on the text, not on this. */
+  box: {
+    position: 'relative',
+  },
+  /** The finished number, drawn and then made invisible. `opacity` rather than
+   * `display: none`, because a hidden box measures nothing. */
+  sizer: {
+    opacity: 0,
+    fontVariant: ['tabular-nums'],
+  },
   base: {
     // A TextInput carries platform padding a Text does not. Strip it so the
     // number sits on the same baseline as the label beside it.
     padding: 0,
     margin: 0,
     fontVariant: ['tabular-nums'],
+  },
+  /** Over the sizer, edge to edge, so the counting digits land exactly where
+   * the finished ones will. */
+  paint: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
 });
 

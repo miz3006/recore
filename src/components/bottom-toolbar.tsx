@@ -4,18 +4,11 @@ import { Alert, Keyboard, StyleSheet, Text, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { markFirstWorkoutFinished } from '@/lib/funnel';
-import { success, tap, tapMedium } from '@/lib/haptics';
+import { tap, tapMedium } from '@/lib/haptics';
 import { refreshRecapNotification } from '@/lib/recap';
 import { estimateVolume, groupThousands } from '@/lib/parse/estimate';
 import { formatDistanceTotal } from '@/lib/parse/summarize';
-import {
-  getRestSeconds,
-  hasFinishedOnce,
-  markFinishedOnce,
-  REST_OPTIONS_S,
-  setRestSeconds,
-} from '@/lib/prefs';
-import { fmtClock, useRestTimer } from '@/lib/rest-timer';
+import { hasFinishedOnce, markFinishedOnce } from '@/lib/prefs';
 import { maybeAskForReview } from '@/lib/review';
 import {
   color,
@@ -33,9 +26,10 @@ import { startDictation, voiceAvailable, type DictationHandle } from '@/lib/voic
 import { useCurrentNote, useSession } from '@/state/session-store';
 
 import { GlassGroup, GlassPressable } from './glass';
-import { Icon, glyphTint } from './icon';
-import { PressableScale } from './motion';
+import { Icon } from './icon';
+import { FadeSwap, PressableScale } from './motion';
 import { revealReceipt } from './note-focus';
+import { ACCESSORY_GLYPH, RestBar, RestRing, useRestEngine } from './rest-controls';
 
 /**
  * The ACCESSORY BAR — rebuilt 28 July on the owner's reference: FLOATING GLASS
@@ -45,6 +39,11 @@ import { revealReceipt } from './note-focus';
  *
  *   [ 4 staged · 3 240 kg ]                          ← a glass pill, the number
  *   ( timer ) ( mic ) ( hide kb )            [ Finish ]
+ *
+ * …and while a rest is running, the top row is the rest instead:
+ *
+ *   [ 2:41  rest                        +30 s   Skip ]
+ *   ( ◔ )    ( mic ) ( hide kb )             [ Finish ]
  *
  * The material is `glass.tsx` — the system's Liquid Glass where it exists, the
  * app's warm paper everywhere else, and **no tint either way** for the same
@@ -66,23 +65,52 @@ import { revealReceipt } from './note-focus';
  * `GLASS_MERGE_DISTANCE` the timer, the mic and the hide-keyboard button stop
  * being three circles and become one piece of glass that stretches between them
  * — which is the truth about them: they are the three things that help you
- * write, and the rest timer growing a label ("rest 2:41") now visibly flows into
- * its neighbours instead of shoving them. The group replaced a raw
- * `GlassContainer`, which had no fallback of its own and would have kept
- * containing glass for a user who had turned transparency down.
+ * write. The group replaced a raw `GlassContainer`, which had no fallback of its
+ * own and would have kept containing glass for a user who had turned
+ * transparency down.
+ *
+ * The merge is also why **the three circles are now a fixed 44 pt each and
+ * always will be**: they are one object, and an object does not change shape
+ * because a clock started. That was the old timer chip's actual defect, and
+ * `rest-controls.tsx` has the whole story.
  *
  * Finish is deliberately outside both effects: it is solid brand with the app's
  * one coloured shadow, it is the committed action, and it may not soften into
  * the row it is meant to stand apart from.
  *
- * ## Colour is on the GLYPHS now, and on nothing else (v6, 20 Aug 2026)
+ * ## THE ROW IS MONOCHROME, AND COLOUR MEANS "SOMETHING IS HAPPENING"
+ * ## (owner, 10 September 2026 — "make them look more like native iOS icons")
  *
- * The design skill's §Structure: *"Accessory buttons are coloured glyphs in
- * white circles — the colour is on the glyph, never on the circle."* Each of
- * the three takes its own hue from `icon.tsx`'s one glyph→colour map — timer
- * orange, mic teal, hide-keyboard slate — so a glyph is the same colour here as
- * it is on a settings row, and a row of grey circles is now three things you
- * can tell apart before you read them.
+ * From 20 August the three glyphs each took their own hue from `icon.tsx`'s
+ * glyph→colour map — timer orange, mic teal, hide-keyboard slate — on the design
+ * skill's §Structure rule, *"accessory buttons are coloured glyphs in white
+ * circles"*. **At rest they are all ink now.** Three reasons, and the first is
+ * the owner's:
+ *
+ * 1. **No iOS bar is three colours.** Notes' markup bar, Mail's format bar,
+ *    Safari's toolbar: system accessory glyphs are one ink, and the tint is
+ *    reserved for the thing that is currently ON. A row of three hues is the
+ *    single loudest tell that a control was drawn by somebody other than Apple,
+ *    and it sits directly above the system keyboard, where the comparison is
+ *    literally one row away.
+ * 2. **It contradicted the merge.** The `GlassGroup` above exists to say *these
+ *    three are one instrument*. Three hues say *these three are three families*.
+ *    One of the two had to go, and the merge is the true statement.
+ * 3. **The repository had already decided this once.** `settings-rows.tsx`
+ *    overrode the same map to monochrome ink for the same reason (owner,
+ *    12 Aug): *"eleven different hues down the left edge read as eleven
+ *    categories that do not exist."* Three hues across three buttons that share
+ *    one job is the same sentence with smaller numbers.
+ *
+ * This is a SURFACE override, exactly as that one is: `GLYPH_TINT` is untouched
+ * and every other call site keeps its colour, because the map is keyed by the
+ * glyph and a tint is a property of the glyph, not of this row.
+ *
+ * **What colour now means here is state**, which is what it means on an iOS
+ * bar: the rest ring runs brand blue while it is counting, the timer glyph goes
+ * brand with it, and the mic inverts to solid ink while it listens. Nothing is
+ * tinted for being itself. Planned green and red are still not in this set and
+ * may never be added to it.
  *
  * ## The glyphs are SF SYMBOLS (owner, 20 Aug 2026)
  *
@@ -92,23 +120,33 @@ import { revealReceipt } from './note-focus';
  * knows the difference. The reason is the same one that makes SF Pro the app's
  * face: **the platform's own set already carries the optical sizing, weight
  * matching and alignment a third-party outline can only approximate**, and
- * these three sit at 18 pt on glass over the system keyboard, where a stroke
- * half a point off reads as a foreign control. The mic is the one that changes
+ * these three sit at `ACCESSORY_GLYPH` on glass over the system keyboard, where
+ * a stroke half a point off reads as a foreign control. The mic is the one that
+ * changes
  * state — it fills while it is listening, the same outline→filled contract the
  * ledger's note glyph already uses.
  *
- * This reverses "the mic is not blue, the timer is not purple" (28 July), and
- * only that. **The circles stay white and the record stays ink**: no fill is
- * tinted, no number beside them changes, and the streak is still a reading in
- * the top bar and never a flame (§5.1, §5.7 — this is the app reporting, and a
- * record does not wink). Brand blue, planned green and red are not in the
- * accessory set and may never be added to it.
+ * **The circles stay white and the record stays ink**: no fill is tinted, no
+ * number beside them changes, and the streak is still a reading in the top bar
+ * and never a flame (§5.1, §5.7 — this is the app reporting, and a record does
+ * not wink).
  *
  * THE STATUS PILL is the live count and tonnage ("4 staged · 3 240 kg"; parsed
  * volume once the background parse lands, an instant text estimate before
  * that), tapping through to Progress. The teaching tail ("— they count when you
  * finish") explains the record contract only until the first session is
  * finished, then retires for good.
+ *
+ * **It yields its row to a running rest** (10 Sep 2026). Only one of the two can
+ * have that slot and rest is the one that is time-critical: the tonnage is a
+ * number you can read at any moment of the session, and the rest is a number
+ * that is only true for the next two minutes. They cross with `FadeSwap`, which
+ * is the app's "a value updating once", so the exchange is legible rather than
+ * a flicker.
+ *
+ * THE REST TIMER is `rest-controls.tsx` — a ring that never changes the row's
+ * geometry, a bar with the reading and `+30 s` / `Skip`, and a rest that starts
+ * itself when a set lands in the note. That file carries the reasoning.
  *
  * THE MIC dictates: on-device speech (never a cloud API) streams interim text
  * straight into the note, so the parse pipeline just works. While recording,
@@ -140,7 +178,21 @@ import { revealReceipt } from './note-focus';
  * §15 says a button says exactly what happens, so it stays a labelled ink pill
  * rather than becoming a glyph like the reference's round icons.
  */
-export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
+export function BottomToolbar({
+  bottomInset = 0,
+  /**
+   * Whether the athlete is writing RIGHT NOW — the keyboard being up.
+   *
+   * The toolbar stays mounted at rest (hidden) so a running rest keeps counting
+   * when the keyboard closes, which means "mounted" is not the same as "in
+   * use". The automatic rest needs the difference: a background parse landing
+   * on a page nobody is looking at may not start a clock.
+   */
+  active = false,
+}: {
+  bottomInset?: number;
+  active?: boolean;
+}) {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
   const note = useCurrentNote();
@@ -148,6 +200,7 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
   const parsedSnapshot = useSession((s) => s.parsedSnapshot);
   const parsedVolume = useSession((s) => s.parsedVolume);
   const receipt = useSession((s) => s.receipt);
+  const selectedDay = useSession((s) => s.selectedDay);
   const userId = useSession((s) => s.userId);
   const workoutId = useSession((s) => s.workoutId);
   const openCheckIn = useSession((s) => s.openCheckIn);
@@ -163,6 +216,20 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
   const staged =
     note.trim().length > 0 && receipt ? new Set(receipt.rows.map((r) => r.exercise)).size : 0;
   const canFinish = staged > 0;
+
+  /**
+   * The rest timer's one owner — it ticks, it fires the completion haptic, and
+   * it starts the rest itself when a set lands in the note.
+   *
+   * The trigger is the parser's own counted-set total, which is the same number
+   * the receipt prints: nothing about the rest is guessed from the raw text,
+   * and nothing here writes to the note.
+   */
+  const rest = useRestEngine({
+    totalSets: receipt?.totalSets ?? 0,
+    dayKey: selectedDay,
+    active,
+  });
 
   const [recording, setRecording] = useState(false);
   // The record-contract tail teaches once; after a first finished session the
@@ -258,6 +325,12 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
     // A finished session changed this week's numbers — the pending §12.1 recap
     // notice re-computes so Sunday's text stays true. No-op while it is off.
     if (userId) void refreshRecapNotification(userId);
+    // THE SESSION IS OVER, SO THE REST IS OVER. A rest is the gap before the
+    // next set and Finish says there is no next set — leaving one counting (and
+    // a pocket alert pending) would have the app ring after training, about
+    // nothing. It matters most for the end-of-session dump, where a whole
+    // workout typed at once restarts the rest on every line it parses.
+    rest.onFinishSession();
     Keyboard.dismiss();
     revealReceipt(!reduceMotion);
 
@@ -312,30 +385,42 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
         ? 'nothing staged yet'
         : `${staged} staged${tonnage}${tail}`;
 
+  /** The rest owns row 1 whenever it has something to report. */
+  const resting = rest.mode !== 'idle';
+
   return (
     <View style={[styles.wrap, { paddingBottom: bottomInset }]}>
-      {status ? (
-        <GlassPressable
-          onPress={() => router.push('/progress')}
-          hitSlop={spacing.xs}
-          activeScale={0.98}
-          radius={radius.pill}
-          style={styles.statusPill}
-          contentStyle={styles.statusPillContent}
-          accessibilityLabel={`${status}. Open progress`}>
-          <Text
-            style={styles.statusText}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.8}
-            maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {status}
-          </Text>
-        </GlassPressable>
+      {/* ROW 1 — whichever of the two readings is the one that matters now.
+          `FadeSwap` keys on which, so the exchange is the app's one sanctioned
+          "a value updating once" rather than a pop. */}
+      {resting || status ? (
+        <FadeSwap swapKey={resting ? 'rest' : 'status'}>
+          {resting ? (
+            <RestBar engine={rest} />
+          ) : (
+            <GlassPressable
+              onPress={() => router.push('/progress')}
+              hitSlop={spacing.xs}
+              activeScale={0.98}
+              radius={radius.pill}
+              style={styles.statusPill}
+              contentStyle={styles.statusPillContent}
+              accessibilityLabel={`${status}. Open progress`}>
+              <Text
+                style={styles.statusText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+                maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {status}
+              </Text>
+            </GlassPressable>
+          )}
+        </FadeSwap>
       ) : null}
 
       <GlassGroup style={styles.row}>
-        <RestTimer />
+        <RestRing engine={rest} />
 
         <GlassPressable
           onPress={() => void handleMic()}
@@ -352,8 +437,8 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
               the pattern). */}
           <Icon
             name={recording ? 'mic-on' : 'mic'}
-            size={moderateScale(18)}
-            tint={recording ? color.onInk : glyphTint('mic')}
+            size={ACCESSORY_GLYPH}
+            tint={recording ? color.onInk : color.textPrimary}
           />
         </GlassPressable>
 
@@ -368,7 +453,7 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
           style={styles.round}
           contentStyle={styles.roundContent}
           accessibilityLabel="Hide keyboard">
-          <Icon name="keyboard-hide" size={moderateScale(18)} tint={glyphTint('keyboard-hide')} />
+          <Icon name="keyboard-hide" size={ACCESSORY_GLYPH} tint={color.textPrimary} />
         </GlassPressable>
 
         <PressableScale
@@ -391,109 +476,6 @@ export function BottomToolbar({ bottomInset = 0 }: { bottomInset?: number }) {
         </PressableScale>
       </GlassGroup>
     </View>
-  );
-}
-
-/**
- * The rest timer — the second most-quoted five-star feature in this category.
- * Tap to start (the chip becomes a live mono "rest 2:41"), tap again to stop.
- * Long-press while idle cycles the length (1:00 → 1:30 → 2:00 → 3:00, saved).
- * The last ten seconds firm up; the finish is a success haptic and the chip
- * inverting to paper — never an alarm, never lime.
- */
-const TIMER_TICK_MS = 250;
-const GO_FLASH_MS = 1800;
-
-/**
- * The chip still owns the timer: it ticks, it flashes, it fires the haptic.
- * Only the CLOCK is shared (`lib/rest-timer.ts`), so the resting pill can
- * report the same countdown instead of computing a second one.
- */
-function RestTimer() {
-  const endsAt = useRestTimer((s) => s.endsAt);
-  const remaining = useRestTimer((s) => s.remaining);
-  const startRest = useRestTimer((s) => s.start);
-  const stopRest = useRestTimer((s) => s.stop);
-  const tickRest = useRestTimer((s) => s.tick);
-  const [preview, setPreview] = useState<number | null>(null); // freshly-set length
-  const [go, setGo] = useState(false);
-
-  useEffect(() => {
-    if (endsAt === null) return;
-    const tick = () => {
-      const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
-      tickRest(left);
-      if (left <= 0) {
-        stopRest();
-        setGo(true);
-        success();
-        setTimeout(() => setGo(false), GO_FLASH_MS);
-      }
-    };
-    tick();
-    const t = setInterval(tick, TIMER_TICK_MS);
-    return () => clearInterval(t);
-  }, [endsAt, tickRest, stopRest]);
-
-  useEffect(() => {
-    if (preview === null) return;
-    const t = setTimeout(() => setPreview(null), 1200);
-    return () => clearTimeout(t);
-  }, [preview]);
-
-  const handlePress = () => {
-    tap();
-    setGo(false);
-    if (endsAt !== null) {
-      stopRest(); // stopped early — no judgment
-      return;
-    }
-    startRest(getRestSeconds());
-  };
-
-  const handleLongPress = () => {
-    if (endsAt !== null) return;
-    tapMedium();
-    const current = getRestSeconds();
-    const idx = REST_OPTIONS_S.indexOf(current as (typeof REST_OPTIONS_S)[number]);
-    const next = REST_OPTIONS_S[(idx + 1) % REST_OPTIONS_S.length]!;
-    setRestSeconds(next);
-    setPreview(next);
-  };
-
-  const running = endsAt !== null;
-  const lastTen = running && remaining <= 10;
-  const label = go
-    ? 'go'
-    : preview !== null
-      ? `rest ${fmtClock(preview)}`
-      : running
-        ? `rest ${fmtClock(remaining)}`
-        : null;
-
-  return (
-    <GlassPressable
-      onPress={handlePress}
-      onLongPress={handleLongPress}
-      haptic="none"
-      activeScale={0.92}
-      radius={ROUND / 2}
-      style={styles.round}
-      contentStyle={[styles.roundContent, label !== null && styles.roundLabelled]}
-      // Finished = the app spoke: solid ink, no glass. Running is still glass —
-      // a countdown is the control doing its job, not the app interrupting.
-      solidFill={go ? color.accent : undefined}
-      accessibilityLabel="Rest timer">
-      {label !== null ? (
-        <Text
-          style={[styles.roundText, lastTen && styles.roundTextFirm, go && styles.roundTextGo]}
-          maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {label}
-        </Text>
-      ) : (
-        <Icon name="timer" size={moderateScale(18)} tint={glyphTint('timer')} />
-      )}
-    </GlassPressable>
   );
 }
 
@@ -538,21 +520,6 @@ const styles = StyleSheet.create({
     minWidth: ROUND,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  roundLabelled: {
-    paddingHorizontal: spacing.md,
-  },
-  roundText: {
-    ...readingStyle('600'),
-    fontSize: type.caption.fontSize,
-    color: color.textSecondary,
-  },
-  roundTextFirm: {
-    fontWeight: '700',
-  },
-  roundTextGo: {
-    color: color.onInk,
-    fontWeight: '700',
   },
   finish: {
     marginLeft: 'auto',

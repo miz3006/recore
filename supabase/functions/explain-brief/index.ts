@@ -8,8 +8,11 @@
 // Same security model as parse-workout: JWT verified, per-user rate limit,
 // size-limited input, structured output, nothing logged.
 
-import Anthropic from 'npm:@anthropic-ai/sdk';
+import Anthropic from 'npm:@anthropic-ai/sdk@0.111.0';
 import { createClient } from 'npm:@supabase/supabase-js@2';
+
+import { corsHeaders } from '../_shared/cors.ts';
+import { checkEntitlement, checkGlobalRate } from '../_shared/gate.ts';
 
 // The prompt/schema live in prompt.ts so the owner-run §9.4 eval
 // (scripts/brief-eval.ts) exercises EXACTLY what deploys — the same
@@ -23,20 +26,16 @@ const MODEL =
   Deno.env.get('EXPLAIN_MODEL') ?? Deno.env.get('PARSE_MODEL') ?? 'claude-haiku-4-5';
 const SUPPORTS_EFFORT = !MODEL.includes('haiku');
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-  });
-}
-
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
+  // Per request, because the allow-list reflects the caller's own origin (S11).
+  const cors = corsHeaders(req);
+  const json = (body: unknown, status = 200): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
 
   // AUTH — identity from the verified JWT only.
@@ -78,6 +77,17 @@ Deno.serve(async (req) => {
   });
   if (rateError) return json({ error: 'rate_limit_unavailable' }, 500);
   if (!allowed) return json({ error: 'rate_limited' }, 429);
+
+  // GLOBAL CEILING (S2) — beside the per-user window above, which bounds ONE
+  // account and says nothing about N of them. Open signup made N cheap.
+  const globalGate = await checkGlobalRate(supabaseService);
+  if (!globalGate.ok) return json({ error: globalGate.error }, globalGate.status);
+
+  // ENTITLEMENT (S2) — server-side, because the client is the thing being
+  // metered. Off until the RevenueCat webhook writes profiles.entitled_until;
+  // see _shared/gate.ts for why that is recorded open rather than forced on.
+  const entitlement = await checkEntitlement(supabaseService, user.id);
+  if (!entitlement.ok) return json({ error: entitlement.error }, entitlement.status);
 
   const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') });
 

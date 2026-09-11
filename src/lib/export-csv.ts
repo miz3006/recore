@@ -1,3 +1,4 @@
+import { csvField, RISKY_LEAD } from './csv-field';
 import { dayKeyFor } from './db/dates';
 import { getDb } from './db/index';
 
@@ -9,9 +10,14 @@ import { getDb } from './db/index';
  */
 const HEADER = 'date,exercise,kind,reps,weight_kg,rir';
 
-function csvField(value: string): string {
-  return /[",\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
-}
+/**
+ * The escaping rule lives in `csv-field.ts` so it can be tested without
+ * dragging expo-sqlite into `node --test`. Re-exported here because this is the
+ * file that decides what a Recore CSV looks like: any field added to a row
+ * below has to route through `csvField`, and keeping `RISKY_LEAD` named in this
+ * file is what keeps that obligation visible from the format itself.
+ */
+export { csvField, RISKY_LEAD };
 
 export function buildWorkoutsCsv(userId: string): string | null {
   const rows = getDb().getAllSync<{

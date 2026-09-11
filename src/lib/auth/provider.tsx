@@ -112,34 +112,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      */
     if (state.loading) return;
 
-    if (userId) {
-      // Signing in ADOPTS what the funnel wrote instead of deleting it
-      // (owner, 4 September 2026). Two real accounts on one device still wipe:
-      // `claimFrom` names the pre-account scope and nothing else can match it.
-      ensureLocalUser(userId, LOCAL_USER_ID);
-      // The line they wrote on the demo screen becomes their first session —
-      // between scoping the database and hydrating the store, so Today opens on
-      // it instead of on an empty page (`lib/onboarding-seed.ts`).
-      seedOnboardingDemo(userId);
-      hydrate(userId);
-      // ONCE PER SESSION, here and nowhere else (product-direction §2). An
-      // entitlement check that runs mid-set or on a write would be a network
-      // call standing in front of a keystroke, which CLAUDE.md §2 invariant 1
-      // forbids outright. It also ATTACHES THE STORE TO THIS ACCOUNT (§2: the
-      // trial attaches to an account), which is why it takes the user id.
-      //
-      // Fire-and-forget on purpose: it resolves the cached decision
-      // synchronously inside, so nothing on screen waits for the network half.
+    // Signing in ADOPTS what the funnel wrote instead of deleting it
+    // (owner, 4 September 2026). Two real accounts on one device still wipe:
+    // `claimFrom` names the pre-account scope and nothing else can match it.
+    ensureLocalUser(userId, LOCAL_USER_ID);
+    // The line they wrote on the demo screen becomes their first session —
+    // between scoping the database and hydrating the store, so Today opens on
+    // it instead of on an empty page (`lib/onboarding-seed.ts`).
+    seedOnboardingDemo(userId);
+    hydrate(userId);
+    markFirstOpen();
+
+    /**
+     * THE STORE IS ATTACHED TO AN ACCOUNT OR TO NOTHING — never to the
+     * placeholder (10 September 2026).
+     *
+     * This effect used to read `if (userId) { … } else { … }`, and `userId` is
+     * `session?.user.id ?? LOCAL_USER_ID`. **The else branch could not run.**
+     * A constant is never falsy, so the signed-out path was dead code and two
+     * things it was written to do never happened: `releaseEntitlement()` and
+     * `reset()`.
+     *
+     * What ran instead is worse than what did not. `resolveEntitlement` calls
+     * `Purchases.logIn(userId)`, so every signed-out install on every device
+     * logged into RevenueCat as the SAME customer — the literal string
+     * `sim-verify-user`. RevenueCat treats a known app-user-id as one customer
+     * wherever it appears, so those installs share an entitlement: one purchase
+     * against that pseudo-customer is readable by all of them. And because the
+     * funnel deliberately shows the paywall BEFORE sign-in (see the header of
+     * `app/_layout.tsx`), `isAttachedToAccount()` answered true with no account
+     * behind it, which is precisely the anonymous receipt §2 forbids.
+     *
+     * So entitlement is now resolved only for a real session, and dropped when
+     * one ends. Prices are unaffected: `getOfferings` needs `configureStore()`
+     * and nothing else, so the paywall still shows real prices to somebody who
+     * has not signed in yet — it simply cannot charge them into a shared
+     * customer any more.
+     *
+     * Fire-and-forget on purpose: it resolves the cached decision synchronously
+     * inside, so nothing on screen waits for the network half. Once per session,
+     * here and nowhere else (product-direction §2) — an entitlement check on a
+     * write would be a network call standing in front of a keystroke, which
+     * CLAUDE.md §2 invariant 1 forbids outright.
+     */
+    if (signedIn) {
       void resolveEntitlement(userId);
-      markFirstOpen();
       // Local-first writes go on regardless; only the PUSH waits for an
       // account to push to.
-      if (signedIn) startSync(userId);
-      else stopSync();
+      startSync(userId);
     } else {
       stopSync();
-      // Detach the store customer too — otherwise the next account signed in on
-      // this device inherits the previous one's entitlement.
       void releaseEntitlement();
       reset();
     }

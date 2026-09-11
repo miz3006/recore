@@ -6,7 +6,7 @@ import { getDb, newId, nowIso } from '@/lib/db/index';
 import { getWorkoutById } from '@/lib/db/workouts';
 
 import { overlayCorrections } from '@/lib/parse/overlay';
-import { doneKeyFor, setsLineText } from '@/lib/parse/summarize';
+import { makeDoneKeyer, setsLineText } from '@/lib/parse/summarize';
 import { type LineSignal, type ParseResult, type ParsedItem } from '@/lib/parse/types';
 
 /**
@@ -32,8 +32,14 @@ function rebuildAndSignal(
 ): { signals: LineSignal[]; volume: number } {
   const db = getDb();
   const undone = loadUndoneKeys(workout.id);
-  const isUndone = (item: ParsedItem) =>
-    undone.size > 0 && undone.has(doneKeyFor(item.exercise, setsLineText(item.sets) ?? ''));
+  // The SAME numbering `buildReceipt` gives these items, so a note that repeats
+  // a card marks the one the user un-checked and not its twin.
+  const keyOf = makeDoneKeyer();
+  const undoneItems = new Set<ParsedItem>();
+  for (const item of result.items) {
+    if (undone.has(keyOf(item.exercise, setsLineText(item.sets) ?? ''))) undoneItems.add(item);
+  }
+  const isUndone = (item: ParsedItem) => undone.size > 0 && undoneItems.has(item);
 
   const exerciseIdByItem = new Map<ParsedItem, string>();
 

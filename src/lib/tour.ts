@@ -11,7 +11,10 @@
  * file must stay importable from node.
  *
  * Rules the component enforces with these definitions:
- *  - One shot: finishing OR skipping sets `pref_tour_done` and it never returns.
+ *  - One shot, and owed to ONE person: the funnel's end arms it (`armTour`),
+ *    putting it on screen spends it, and nothing else ever arms it again. The
+ *    old contract — "the absence of `pref_tour_done` means show it" — also
+ *    described a returning athlete's new phone; see `prefs.ts`.
  *  - A step whose target is not on screen is dropped, not shown pointing at
  *    nothing (§1.1 invariant 6).
  *  - The copy is §15's voice: sentence case, numbers specific, no "AI", no

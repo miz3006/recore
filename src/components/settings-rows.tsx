@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -16,7 +16,6 @@ import {
   color,
   hairline,
   ink,
-  lineFor,
   MAX_FONT_SCALE,
   moderateScale,
   radius,
@@ -188,6 +187,7 @@ export function Row({
   external = false,
   divider = false,
   disabled = false,
+  toggle,
   accessibilityLabel,
   onPress,
 }: {
@@ -208,6 +208,25 @@ export function Row({
   external?: boolean;
   divider?: boolean;
   disabled?: boolean;
+  /**
+   * A SYSTEM SWITCH, for a row that states a fact about the account rather than
+   * opening somewhere.
+   *
+   * The design system lists no toggle because until now nothing in this app was
+   * a two-state fact — every settings row either shows a value and opens a
+   * sheet, or performs an action. "I coach other people" is neither: it is on
+   * or off, it is reversible, and an Alert-driven row would hide both of those.
+   *
+   * It is UIKit's own control rather than a drawn one, for the same reason
+   * `(tabs)/you/_layout.tsx` gives back the navigation bar: the system draws
+   * its furniture better than we can. Only the track takes the brand — the
+   * colour is on the control, never on the row.
+   *
+   * A row with a switch is NOT tappable outside it, which is how every switch
+   * row in iOS Settings behaves; `onPress` and `toggle` are mutually exclusive
+   * in practice and the chevron is suppressed.
+   */
+  toggle?: { value: boolean; onChange: (next: boolean) => void; disabled?: boolean };
   accessibilityLabel?: string;
   onPress?: () => void;
 }) {
@@ -254,14 +273,23 @@ export function Row({
             ↗
           </Text>
         ) : null}
-        {chevron ? (
+        {toggle ? (
+          <Switch
+            value={toggle.value}
+            onValueChange={toggle.onChange}
+            disabled={toggle.disabled}
+            trackColor={{ true: color.brand, false: color.surfaceHigh }}
+            accessibilityLabel={accessibilityLabel ?? label}
+          />
+        ) : null}
+        {chevron && !toggle ? (
           <Icon name="chevron-forward" size={moderateScale(14)} tint={color.textMuted} />
         ) : null}
       </View>
     </>
   );
 
-  const row = !onPress ? (
+  const row = !onPress || toggle ? (
     <View style={styles.row}>{body}</View>
   ) : (
     <RowSurface
@@ -524,6 +552,12 @@ const styles = StyleSheet.create({
   // them reads as a web page in a wrapper before it reads as anything else.
   rowLabel: {
     ...type.body,
+    // NO FIXED LINE BOX (10 September 2026). `lineFor()` scales for the DEVICE,
+    // not for Dynamic Type, so at the ×1.5 cap the glyphs grow and the box does
+    // not — measured on the iOS 26.5 simulator at accessibility-extra-large,
+    // where this text lost its ascenders and descenders. The font's own metrics
+    // size the line instead, which is what a scaling label wants anyway.
+    lineHeight: undefined,
     color: color.textPrimary,
   },
   rowLabelBold: {
@@ -539,7 +573,12 @@ const styles = StyleSheet.create({
   // so it is `textSecondary`. `textMuted` is for what the eye may skip.
   rowSub: {
     ...type.caption,
-    lineHeight: lineFor(16),
+    // NO FIXED LINE BOX (10 September 2026). `lineFor()` scales for the DEVICE,
+    // not for Dynamic Type, so at the ×1.5 cap the glyphs grow and the box does
+    // not — measured on the iOS 26.5 simulator at accessibility-extra-large,
+    // where this text lost its ascenders and descenders. The font's own metrics
+    // size the line instead, which is what a scaling label wants anyway.
+    lineHeight: undefined,
     color: color.textSecondary,
     marginTop: 1,
   },
@@ -555,6 +594,12 @@ const styles = StyleSheet.create({
   rowValue: {
     flexShrink: 1,
     ...type.body,
+    // NO FIXED LINE BOX (10 September 2026). `lineFor()` scales for the DEVICE,
+    // not for Dynamic Type, so at the ×1.5 cap the glyphs grow and the box does
+    // not — measured on the iOS 26.5 simulator at accessibility-extra-large,
+    // where this text lost its ascenders and descenders. The font's own metrics
+    // size the line instead, which is what a scaling label wants anyway.
+    lineHeight: undefined,
     color: color.textSecondary,
     textAlign: 'right',
   },
@@ -562,6 +607,12 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     ...readingStyle('400'),
     fontSize: type.body.fontSize,
+    // NO FIXED LINE BOX (10 September 2026). `lineFor()` scales for the DEVICE,
+    // not for Dynamic Type, so at the ×1.5 cap the glyphs grow and the box does
+    // not — measured on the iOS 26.5 simulator at accessibility-extra-large,
+    // where this text lost its ascenders and descenders. The font's own metrics
+    // size the line instead, which is what a scaling label wants anyway.
+    lineHeight: undefined,
     color: color.textSecondary,
     textAlign: 'right',
   },
@@ -613,7 +664,12 @@ const styles = StyleSheet.create({
   },
   footnote: {
     ...type.footnote,
-    lineHeight: lineFor(16),
+    // NO FIXED LINE BOX (10 September 2026). `lineFor()` scales for the DEVICE,
+    // not for Dynamic Type, so at the ×1.5 cap the glyphs grow and the box does
+    // not — measured on the iOS 26.5 simulator at accessibility-extra-large,
+    // where this text lost its ascenders and descenders. The font's own metrics
+    // size the line instead, which is what a scaling label wants anyway.
+    lineHeight: undefined,
     color: color.textMuted,
     marginTop: spacing.sm,
   },

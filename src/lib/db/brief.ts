@@ -12,6 +12,7 @@ import type { GhostLine } from '@/lib/predict/data';
 import { DEFAULT_SMALLEST_PLATE_KG, roundToPlate } from '@/lib/predict/engine';
 import type { Move } from '@/lib/plan/prescribe';
 import { getSmallestPlateKg } from '@/lib/prefs';
+import { tagPattern, type TagPattern } from '@/lib/reflection';
 
 import { dayRangeIso, shiftDayKey, todayKey, type DayKey } from './dates';
 import { getDb } from './index';
@@ -43,6 +44,16 @@ import { getDb } from './index';
 /** How many recent lifts to examine for stalls and movement. Bounded on purpose:
  * this runs on open, and a briefing that scans a five-year history is a hitch. */
 const SCAN_LIFTS = 10;
+
+/**
+ * How many recent sessions the check-in chips are counted over.
+ *
+ * Five is roughly a fortnight for most people and short enough that the
+ * sentence is about NOW — "3 of your last 5" is something an athlete can still
+ * remember and check, which is the test every number on this screen has to
+ * pass. A longer window would find more patterns and mean less.
+ */
+const TAG_PATTERN_SESSIONS = 5;
 /** The window a mover has to have moved within. */
 const MOVER_WEEKS = 8;
 const MOVER_MIN_KG = 2.5;
@@ -162,6 +173,17 @@ export interface Brief {
    * the athlete's own words about lifts the coming session does not name.
    * Nothing is ever said twice. */
   notes: BriefNote[];
+  /**
+   * The one check-in chip the athlete has tapped repeatedly lately, as a plain
+   * tally (`lib/reflection.ts`, `tagPattern`). Null below two occurrences.
+   *
+   * It answers §9's "is there one recovery, energy, or reflection pattern the
+   * person themselves reported?" and it answers it as a COUNT. Nothing here
+   * may be joined to a load, a chart or an explanation: §9.1 forbids claiming
+   * causation from a reflection, and a tally that starts explaining a stall is
+   * exactly that claim wearing arithmetic.
+   */
+  tagPattern: TagPattern | null;
 }
 
 interface TopRow {
@@ -521,6 +543,7 @@ export function buildBrief(userId: string): Brief {
     prReach,
     sessions7: counts?.n7 ?? 0,
     sessions8w: counts?.n8w ?? 0,
+    tagPattern: tagPattern(recentReflections(userId, TAG_PATTERN_SESSIONS)),
     // Whatever the prescription rows did not already carry — capped, because a
     // wall of quotes is a diary, and this screen is a briefing.
     notes: recentNotes
@@ -528,6 +551,27 @@ export function buildBrief(userId: string): Brief {
       .slice(0, 3)
       .map((n) => ({ name: n.exercise, text: n.note, day: n.day })),
   };
+}
+
+/**
+ * The reflection column of the last N sessions, newest first — one entry per
+ * SESSION, null included.
+ *
+ * The nulls are the point. `tagPattern`'s denominator is sessions, not
+ * sessions-that-carry-a-note, so filtering them out here would quietly turn
+ * "3 of your last 5" into "3 of your last 3" — the same count over a window
+ * chosen to flatter it. A session counts the way the log counts one: a workout
+ * row with text in it.
+ */
+function recentReflections(userId: string, limit: number): (string | null)[] {
+  return getDb()
+    .getAllSync<{ reflection: string | null }>(
+      `SELECT reflection FROM workouts
+       WHERE user_id = ? AND trim(raw_text) <> ''
+       ORDER BY performed_at DESC LIMIT ?`,
+      [userId, limit],
+    )
+    .map((r) => r.reflection);
 }
 
 /** The heaviest counted set ever recorded for one lift, or null. */

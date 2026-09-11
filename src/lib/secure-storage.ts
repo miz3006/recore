@@ -15,8 +15,17 @@ const countKey = (key: string) => `${key}.n`;
 const chunkKey = (key: string, i: number) => `${key}.c${i}`;
 
 const OPTIONS: SecureStore.SecureStoreOptions = {
-  // Sessions must be readable by background token refresh after first unlock.
-  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+  // Sessions must be readable by background token refresh after first unlock —
+  // and MUST NOT LEAVE THIS DEVICE (S7, security review 10 Sep 2026). Without
+  // the _THIS_DEVICE_ONLY suffix the item is carried into encrypted backups and
+  // iCloud Keychain, so the Supabase refresh_token — a long-lived bearer
+  // credential — could be restored onto a different device. The device-only
+  // variant keeps the after-first-unlock behaviour that background refresh
+  // needs and drops only the syncing.
+  //
+  // Existing installs need no migration: the old item stays readable, and the
+  // next setItem rewrites it with the new attribute.
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
 };
 
 export const secureSessionStorage = {

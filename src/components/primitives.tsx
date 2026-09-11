@@ -206,7 +206,34 @@ export function Row({
   return (
     <PressableScale
       onPress={onPress}
-      activeScale={0.98}
+      /**
+       * A LIST ROW HIGHLIGHTS. IT DOES NOT SHRINK (10 September 2026).
+       *
+       * It shrank to 0.98 for a year, and a shrinking row is one of the
+       * clearest tells that a list was not built by the platform: no row in any
+       * app iOS ships changes size under a finger. They fill. The motion law
+       * says the same thing in one line — *"a background highlight (never
+       * scale) on list rows"* — and `PressableScale` has had the highlight
+       * built into it, unused, the whole time (`motion.tsx`, the `wash` prop:
+       * `surfaceHigh`, `radius.md`, continuous corners, opacity on the same
+       * timing the dip used).
+       *
+       * `activeScale={1}` is how the dip is turned off rather than deleted: the
+       * component computes `1 - activeScale`, so one means no movement, and the
+       * press timing, the retention offset and the minimum-visible hold all
+       * still run for the wash.
+       */
+      activeScale={1}
+      wash
+      washStyle={styles.rowWash}
+      /**
+       * AND THE ROW OWNS ITS HAPTIC. `PressableScale` ticks on press-OUT for a
+       * commit, which is what opening a lift is — so a caller that also called
+       * `tap()` in its own handler was firing two, on the same finger, one
+       * frame apart. Both call sites were doing exactly that (Progress and the
+       * lift library) and both have stopped.
+       */
+      haptic="light"
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityActions={actions}
@@ -557,6 +584,17 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     minHeight: moderateScale(68),
     paddingVertical: spacing.md,
+  },
+  /**
+   * THE PRESSED FILL, and it reaches past the words. The row carries no
+   * horizontal padding — it sits flush in the body's gutter — so a wash at the
+   * row's own bounds would stop against the first and last glyph and read as a
+   * highlighted sentence rather than a pressed row. Eight points either side is
+   * what an inset iOS list leaves, and it keeps the fill inside the gutter.
+   */
+  rowWash: {
+    left: -spacing.sm,
+    right: -spacing.sm,
   },
   rowText: {
     flex: 1,

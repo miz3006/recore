@@ -6,11 +6,13 @@ import { OptionRow } from '@/components/onboarding-v2/OptionRow';
 import {
   getBarWeightKg,
   getObLanguage,
+  getRestAutoStart,
   getRestSeconds,
   getWeightUnit,
   REST_OPTIONS_S,
   setBarWeightKg,
   setObLanguage,
+  setRestAutoStart,
   setRestSeconds,
   setWeightUnit,
   type ObLanguage,
@@ -59,7 +61,7 @@ import { useDisplay } from '@/state/display';
  * a `Row` there.
  */
 
-export type PrefId = 'unit' | 'rest' | 'bar' | 'language' | 'setreadings';
+export type PrefId = 'unit' | 'rest' | 'restauto' | 'bar' | 'language' | 'setreadings';
 
 /** Long enough for the row's fill to arrive, short enough not to read as a
  * wait — the same beat `AnswerSheet` uses, and for the same reason. */
@@ -95,10 +97,21 @@ const PREFS: Readonly<Record<PrefId, PrefDef>> = {
   },
   rest: {
     title: 'Rest timer',
-    subline: 'How long the timer runs when you start it after a set.',
+    subline: 'How long a rest runs — whether you start it or a set starts it.',
     options: REST_OPTIONS_S.map((s) => ({ id: String(s), label: restLabel(s) })),
     get: () => String(getRestSeconds()),
     set: (id) => setRestSeconds(Number(id)),
+  },
+  restauto: {
+    title: 'Start rest automatically',
+    subline:
+      'When a set lands in your note, the rest timer starts — and restarts on every set after it.',
+    options: [
+      { id: 'on', label: 'On', sub: 'The timer follows what you write' },
+      { id: 'off', label: 'Off', sub: 'Start it yourself from the bar' },
+    ],
+    get: () => (getRestAutoStart() ? 'on' : 'off'),
+    set: (id) => setRestAutoStart(id === 'on'),
   },
   bar: {
     title: 'Bar weight',

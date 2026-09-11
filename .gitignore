@@ -43,3 +43,23 @@ example
 # generated native folders
 /ios
 /android
+
+.env.local
+
+# BUILD ARCHIVES — never tracked (S1, security review 10 Sep 2026).
+#
+# `.env` is excluded above, and that exclusion was defeated once by zipping the
+# working tree and committing the archive: app.zip (64 MB) reached a PUBLIC
+# repository carrying .env, .env.example and a compiled Hermes bundle. The
+# specific file matters less than the mechanism — an archive smuggles past every
+# path-based rule in this file, so the extensions are excluded wholesale rather
+# than one name at a time.
+app.zip
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.ipa
+*.apk
+*.aab
+dist/

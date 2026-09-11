@@ -1,10 +1,12 @@
 import { getMeta, setMeta } from '@/lib/db/index';
 import { isSupabaseConfigured } from '@/lib/env';
+import { bumpGuardRejection } from '@/lib/funnel';
 import { devLog } from '@/lib/log';
 import { getObLanguage } from '@/lib/prefs';
 import { supabase } from '@/lib/supabase';
 
 import { sanitizeBriefSummary } from './brief-guard';
+import { nextAttemptAt } from './parse/backoff';
 
 /**
  * The model-written briefing summary (CLAUDE.md §8.5, owner ruling 29 Jul —
@@ -66,6 +68,50 @@ export function getCachedBriefSummary(paragraph: string, scope?: string): string
 let inflightSig: string | null = null;
 
 /**
+ * REWRITES THAT DID NOT LAND, AND WHEN THEY MAY BE ASKED FOR AGAIN.
+ *
+ * Same defect as S21 wearing different clothes, on a shipped screen. A rewrite
+ * that lands is cached under its signature, so it is asked for once. A rewrite
+ * that FAILS caches nothing — and `refineBriefSummary` is called from a
+ * `useEffect` keyed on the paragraph, so the next mount of Next, or the next
+ * opening of a lift sheet, asks again. Every time. Two ways to fail and both
+ * repeat for ever:
+ *
+ *  · the guard rejects the summary (a number the model invented), which is the
+ *    expensive one — the model ran, produced something unusable, and the same
+ *    question will most likely produce it again;
+ *  · the function answers 429 or 500.
+ *
+ * The exercise sheet makes it worse in the way that costs most: one cache slot
+ * per lift, so ten lifts that all fail the guard are ten calls, again on every
+ * open.
+ *
+ * The wait is the same rule the parser uses (`parse/backoff.ts`, pure and
+ * tested) so there is one answer in the codebase to "how soon may this ask
+ * again", not two.
+ *
+ * IN MEMORY, AND ONLY IN MEMORY — deliberately narrower than the parser's.
+ * The loop that costs real money is within one run of the app: open Next, go
+ * back, open Next. A cold start is a legitimate fresh try, the paragraph is
+ * recomposed from the record then anyway, and persisting this would mean a meta
+ * write on every guard rejection for a value whose whole job is to expire.
+ */
+const failedSigs = new Map<string, { attempts: number; nextAt: number }>();
+
+function recordRefineFailure(sig: string): void {
+  const attempts = (failedSigs.get(sig)?.attempts ?? 0) + 1;
+  failedSigs.set(sig, {
+    attempts,
+    nextAt: nextAttemptAt(attempts, new Date()).getTime(),
+  });
+}
+
+/** Exposed for the dev rows and for tests — how many rewrites are waiting. */
+export function pendingRefineBackoffs(): number {
+  return failedSigs.size;
+}
+
+/**
  * Fire-and-forget: rewrite the composed paragraph via the explain-brief edge
  * function, cache and deliver the result. No-ops when already cached, already
  * in flight, or offline/unconfigured. Never throws.
@@ -80,6 +126,9 @@ export function refineBriefSummary(
   const sig = signatureOf(paragraph, language, scope);
   if (inflightSig === sig) return;
   if (getCachedBriefSummary(paragraph, scope) != null) return;
+  // Asked for recently and refused — see `failedSigs`.
+  const failed = failedSigs.get(sig);
+  if (failed && failed.nextAt > Date.now()) return;
 
   inflightSig = sig;
   void (async () => {
@@ -87,10 +136,25 @@ export function refineBriefSummary(
       const { data, error } = await supabase.functions.invoke('explain-brief', {
         body: { paragraph, language },
       });
-      if (error || !data) return;
+      if (error || !data) {
+        // A REFUSAL COUNTS; BEING UNDERGROUND DOES NOT — the same line
+        // `parse/client.ts` draws. `FunctionsFetchError` is the request never
+        // leaving the phone, which costs nothing and is the ordinary state of a
+        // gym; anything else is the server having answered.
+        if ((error as { name?: string } | null)?.name !== 'FunctionsFetchError') {
+          recordRefineFailure(sig);
+        }
+        return;
+      }
       const summary = sanitizeBriefSummary((data as { summary?: unknown }).summary, paragraph);
-      if (!summary) return;
+      if (!summary) {
+        bumpGuardRejection('brief'); // §9.3 — a refusal nobody counts is a refusal nobody hears
+        // The costly failure: the model ran and wrote a number it was not given.
+        recordRefineFailure(sig);
+        return;
+      }
       setMeta(metaKeyFor(scope), JSON.stringify({ sig, text: summary }));
+      failedSigs.delete(sig);
       onLanded(summary);
     } catch {
       devLog('explain-brief unreachable; the composed paragraph stays');

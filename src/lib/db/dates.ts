@@ -63,9 +63,30 @@ const MONTHS_LONG = [
  * "sometime before now".
  */
 export function shortDayLabel(key: DayKey): string {
-  const [y, m, d] = key.split('-').map(Number);
-  const date = new Date(y!, m! - 1, d!);
-  return `${WEEKDAYS_SHORT[date.getDay()]} ${d} ${MONTHS_SHORT[(m ?? 1) - 1]}`;
+  const parts = partsOf(key);
+  if (!parts) return key;
+  const [y, m, d] = parts;
+  const date = new Date(y, m - 1, d);
+  return `${WEEKDAYS_SHORT[date.getDay()]} ${d} ${MONTHS_SHORT[m - 1]}`;
+}
+
+/**
+ * A day key's three numbers, or null when the string is not one.
+ *
+ * EVERY label below used to index its month table with whatever `Number()`
+ * returned, so a key that was not `YYYY-MM-DD` printed the word "undefined"
+ * into a sentence a person reads — "Heaviest 100 kg on undefined NaN
+ * undefined". A malformed key is not supposed to exist, and the app's own
+ * `dayKeyFor` cannot make one; a `performed_at` that arrived broken from sync
+ * or an import can (`new Date('nonsense')` gives "NaN-NaN-NaN"). Printing the
+ * raw key back says what is actually stored and cannot read as a defect in the
+ * training itself.
+ */
+function partsOf(key: DayKey): [number, number, number] | null {
+  const [y, m, d] = String(key).split('-').map(Number);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  return [y, m, d];
 }
 
 /**
@@ -78,8 +99,10 @@ export function shortDayLabel(key: DayKey): string {
  * competing for width that Dynamic Type will want back.
  */
 export function monthDayLabel(key: DayKey): string {
-  const [, m, d] = key.split('-').map(Number);
-  return `${d} ${MONTHS_SHORT[(m ?? 1) - 1]}`;
+  const parts = partsOf(key);
+  if (!parts) return key;
+  const [, m, d] = parts;
+  return `${d} ${MONTHS_SHORT[m - 1]}`;
 }
 
 /**
@@ -96,10 +119,12 @@ export function monthDayLabel(key: DayKey): string {
  * 2026 every day of 2026 is a field nobody reads.
  */
 export function longDayLabel(key: DayKey): string {
-  const [y, m, d] = key.split('-').map(Number);
-  const date = new Date(y!, m! - 1, d!);
+  const parts = partsOf(key);
+  if (!parts) return key;
+  const [y, m, d] = parts;
+  const date = new Date(y, m - 1, d);
   const year = y === new Date().getFullYear() ? '' : ` ${y}`;
-  return `${WEEKDAYS_LONG[date.getDay()]}, ${d} ${MONTHS_LONG[(m ?? 1) - 1]}${year}`;
+  return `${WEEKDAYS_LONG[date.getDay()]}, ${d} ${MONTHS_LONG[m - 1]}${year}`;
 }
 
 /** The stored performed_at instant for a day: local noon, expressed in UTC. */

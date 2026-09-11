@@ -27,6 +27,7 @@ const EMPTY: Brief = {
   sessions7: 0,
   sessions8w: 0,
   notes: [],
+  tagPattern: null,
 };
 
 const brief = (over: Partial<Brief>): Brief => ({ ...EMPTY, ...over });

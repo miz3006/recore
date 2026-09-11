@@ -45,3 +45,39 @@ export function sanitizeBriefSummary(candidate: unknown, sourceParagraph: string
   }
   return text;
 }
+
+/** A prediction reason is one short line, not a paragraph. */
+const MAX_REASON_CHARS = 200;
+
+/**
+ * The same gate for `explain-prediction` (S4, security review 10 Sep 2026).
+ *
+ * The prediction row prints a load the code computed and, beneath it, a
+ * sentence the model wrote. Before this existed the sentence was checked for
+ * type, length and newlines only — so a model answering "last time at 140 kg"
+ * to a 97.5 kg fact bundle had its invention written to the database and
+ * rendered under a figure a person reads as fact.
+ *
+ * The whitelist is built from the FACTS THAT WERE SENT plus the user's own
+ * quoted lines: those are the only numbers the model was given, so they are the
+ * only numbers it may return. Anything else fails the whole reason, and null
+ * means "keep the deterministic template sentence" — never an error state.
+ */
+export function sanitizePredictionReason(
+  candidate: unknown,
+  facts: Record<string, unknown>,
+  quotes: string[],
+): string | null {
+  if (typeof candidate !== 'string') return null;
+  const text = candidate.trim();
+  if (!text || text.length > MAX_REASON_CHARS) return null;
+  if (text.includes('\n')) return null; // one line, under a one-line figure
+  if (text.includes('!')) return null; // §15 — no cheering
+  if (/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u.test(text)) return null; // §5.7
+
+  const allowed = numbersOf([...Object.values(facts), ...quotes].join(' '));
+  for (const n of numbersOf(text)) {
+    if (!allowed.has(n)) return null; // an invented number kills the whole reason
+  }
+  return text;
+}

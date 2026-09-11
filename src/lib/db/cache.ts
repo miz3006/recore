@@ -1,6 +1,7 @@
 import { devLog } from '@/lib/log';
 
 import { getDb } from './index';
+import { clearAllParseBackoff } from './parse-backoff';
 
 /**
  * "Clear local cache" (You → Account).
@@ -39,6 +40,11 @@ export function clearParseCache(userId: string): number {
       [userId],
     );
     queued = result.changes ?? 0;
+    // A PERSON PRESSING THIS IS ASKING FOR ANOTHER GO, so any wait a failed
+    // reading earned is lifted with it (`db/parse-backoff.ts`). Without this
+    // the one repair a user can reach would appear to do nothing for up to a
+    // day on the very notes it exists to fix.
+    clearAllParseBackoff(userId);
   });
 
   devLog(`parse cache cleared — ${queued} workouts queued to re-read`);

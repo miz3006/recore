@@ -105,16 +105,47 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.xs,
     gap: moderateScale(2),
+    /**
+     * THE LABELS SIT ON ONE LINE, WHATEVER THE FIGURES DO (10 September 2026).
+     *
+     * The row stretches its cells to a common height, so the default TOP
+     * alignment hung each column from the top — and a figure that
+     * `adjustsFontSizeToFit` has shrunk occupies a shorter box, which left the
+     * three columns ragged. Hung from the bottom, the labels are a line and the
+     * figures sit the same gap above it, which is what makes three numbers read
+     * as one strip rather than as three unrelated readings.
+     */
+    justifyContent: 'flex-end',
   },
   value: {
     ...readingStyle('700'),
     fontSize: type.statNumber.fontSize,
-    lineHeight: type.statNumber.lineHeight,
+    /**
+     * NO `lineHeight` ON THIS ONE, AND IT IS THE WHOLE BUG (10 September 2026).
+     *
+     * `adjustsFontSizeToFit` and an explicit line height cannot both be
+     * honoured: UIKit is asked to fit glyphs into a box whose height is already
+     * pinned, gives up, and drops straight to `minimumFontScale`. Progress's
+     * hero reading learned this on 9 September and this file did not — measured
+     * at accessibility-extra-large on the iOS 26.5 simulator, where the three
+     * career numbers (52 · 339 · 113,667) did not render AT ALL and their
+     * labels were sliced to "Ses", "S" and "Kg l".
+     *
+     * Without it the font's own metrics size the line, `adjustsFontSizeToFit`
+     * gets a box it can actually work in, and a long number shrinks to fit its
+     * column instead of vanishing from it.
+     */
     letterSpacing: type.statNumber.letterSpacing,
     color: color.textPrimary,
   },
   label: {
     ...type.footnote,
+    // NO FIXED LINE BOX (10 September 2026). `lineFor()` scales for the DEVICE,
+    // not for Dynamic Type, so at the ×1.5 cap the glyphs grow and the box does
+    // not — measured on the iOS 26.5 simulator at accessibility-extra-large,
+    // where this text lost its ascenders and descenders. The font's own metrics
+    // size the line instead, which is what a scaling label wants anyway.
+    lineHeight: undefined,
     color: color.textSecondary,
   },
 });

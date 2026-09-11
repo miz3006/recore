@@ -101,6 +101,53 @@ export function effortToken(effort: Effort): string {
 }
 
 /**
+ * One counted working set, as the engine reads it. Declared here rather than
+ * imported from `predict/engine.ts` for the reason at the top of this file:
+ * both modules are zero-import so both run under plain `node --test`, and the
+ * shape is structural — `receipt.ts` hands the same object to both.
+ */
+export interface EffortSet {
+  reps: number | null;
+  weight_kg: number | null;
+  rir: number | null;
+}
+
+/**
+ * WOULD AN ANSWER ABOUT THIS LIFT CHANGE ANYTHING? (owner, 10 September 2026)
+ *
+ * The check-in used to ask about every lift that carried no RPE yet, so a
+ * six-lift session cost six decisions at the exact moment nobody wants to make
+ * one. Measured against the engine, a good share of those decisions were spent
+ * where the engine does not read RIR at all:
+ *
+ *  · **Bodyweight work** — pull-ups, dips, push-ups. `progressBodyweight` takes
+ *    `todaySets` and never looks at `rir`; it progresses reps and only reps.
+ *    Asking how hard the last set of chin-ups felt changed literally nothing.
+ *  · **Cardio, carries and holds** — a run or a plank has no engine branch at
+ *    all (`prescribeItem` repeats the last line as-is), so there is no number
+ *    for an answer to move.
+ *  · **A line with no reps** — nothing to progress from.
+ *
+ * What is left is the loaded strength work, and there every answer now lands:
+ * rir ≥ 2 adds weight (rule 2), rir 0 on a filled range HOLDS it (rule 1's
+ * exception, added the same day), and rir 0–1 in range chases a rep (rule 3).
+ *
+ * WHAT THIS DELIBERATELY DOES NOT MODEL. Rule 5 — two sessions stuck at the
+ * same weight — deloads before RIR is consulted, so an answer on a stalling
+ * lift is also inert. Detecting that needs two sessions of history, which is a
+ * database read, and this predicate is pure so the sheet can run it against a
+ * parse it holds in memory (offline, before anything is written). The cost is
+ * one occasionally-inert question on a stalled lift; the alternative was a
+ * check-in that could not open without a query.
+ */
+export function effortChangesPrescription(working: readonly EffortSet[]): boolean {
+  if (working.length === 0) return false;
+  const hasLoad = working.some((s) => s.weight_kg != null);
+  const hasReps = working.some((s) => s.reps != null);
+  return hasLoad && hasReps;
+}
+
+/**
  * Any RPE marker on the line, in either notation the parser accepts — the
  * app's own `rpe 8` and the `@8` a lifter types. Read-only: this is how the
  * sheet shows what is already there instead of asking twice.

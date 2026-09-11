@@ -3,6 +3,8 @@ import { test } from 'node:test';
 
 import {
   composeReflection,
+  MIN_TAG_PATTERN_COUNT,
+  tagPattern,
   isStorableReflection,
   MAX_REFLECTION_CHARS,
   normalizeReflection,
@@ -160,4 +162,53 @@ test('arming a chip costs the field its own room, and never the athlete words', 
   // app's words go, the person's stay.
   const long = 'b'.repeat(MAX_REFLECTION_CHARS);
   assert.equal(composeReflection(['Slept badly'], long), long);
+});
+
+test('a chip tapped twice in a window is a pattern; once is a day', () => {
+  const window = [
+    'Slept badly',
+    null,
+    'Slept badly',
+    'Felt strong',
+    null,
+  ];
+  assert.deepEqual(tagPattern(window), { tag: 'Slept badly', count: 2, of: 5 });
+  // One occurrence is a record, not an observation.
+  assert.equal(tagPattern(['Felt strong', null, null]), null);
+  assert.equal(MIN_TAG_PATTERN_COUNT, 2);
+});
+
+test('the denominator is SESSIONS, including the ones nobody marked', () => {
+  // Counting only the sessions that carry a note would turn "3 of your last 5"
+  // into "3 of your last 3" — the same count over a window chosen to flatter
+  // it.
+  const pattern = tagPattern(['Slept badly', null, null, 'Slept badly', null]);
+  assert.equal(pattern?.of, 5);
+  assert.equal(pattern?.count, 2);
+});
+
+test('the strongest tag wins, and a tie goes to the most recent', () => {
+  const both = ['Felt strong', 'Slept badly', 'Slept badly', 'Felt strong'];
+  // Two each — the one seen in the newest session is the live one.
+  assert.equal(tagPattern(both)?.tag, 'Felt strong');
+
+  const clear = ['Slept badly', 'Slept badly', 'Slept badly', 'Felt strong', 'Felt strong'];
+  assert.equal(tagPattern(clear)?.tag, 'Slept badly');
+  assert.equal(tagPattern(clear)?.count, 3);
+});
+
+test('prose is never mistaken for a chip', () => {
+  // A reflection whose first line is ordinary writing carries no tags, so it
+  // contributes nothing to any tally — the same rule `splitReflection` follows.
+  assert.equal(tagPattern(['legs felt heavy today', 'legs felt heavy today']), null);
+  // Chips plus prose still count as the chips they are.
+  assert.equal(
+    tagPattern(['Slept badly\n\nlegs heavy', 'Slept badly\n\nshoulder tight'])?.count,
+    2,
+  );
+});
+
+test('an empty window has no pattern', () => {
+  assert.equal(tagPattern([]), null);
+  assert.equal(tagPattern([null, null, null]), null);
 });

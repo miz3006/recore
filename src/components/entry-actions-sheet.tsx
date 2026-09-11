@@ -92,6 +92,7 @@ export function EntryActionsSheet({
   note = null,
   signal = null,
   alsoOnLine = NO_SIBLINGS,
+  only = null,
   onClose,
   onSelect,
 }: {
@@ -115,6 +116,19 @@ export function EntryActionsSheet({
    * again after.
    */
   alsoOnLine?: string[];
+  /**
+   * NARROW THE LIST TO THE DOORS THAT ACTUALLY OPEN.
+   *
+   * Null on Today, where all four lead somewhere. The onboarding demo passes
+   * `['fix', 'delete']`: it runs before there is an account, so there is no
+   * history to look up and nowhere to keep a note — and a menu row that does
+   * nothing when it is tapped is a worse lie than a menu that is shorter.
+   *
+   * It filters, it never reorders and it never adds: the four actions and the
+   * order they stand in are the 12 August ruling, and a subset of them still
+   * reads as the same menu.
+   */
+  only?: EntryAction[] | null;
   /** Request close with no action (backdrop, swipe). */
   onClose: () => void;
   /** The chosen action, delivered ONLY after the native modal is fully gone —
@@ -122,8 +136,13 @@ export function EntryActionsSheet({
   onSelect: (action: EntryAction) => void;
 }) {
   const pending = useRef<EntryAction | null>(null);
-  const rows = rowsFor(note !== null);
+  const rows = rowsFor(note !== null).filter((r) => !only || only.includes(r.action));
   const shared = alsoOnLine.length > 0;
+  const canDelete = !only || only.includes('delete');
+  /** The promise covers Fix and Note; with neither on the list there is nothing
+   * left for it to promise about, and a sentence about absent rows is copy
+   * invented to fill a shape. */
+  const promise = rows.some((r) => r.action === 'fix' || r.action === 'note');
 
   const choose = (action: EntryAction) => {
     tap();
@@ -181,40 +200,48 @@ export function EntryActionsSheet({
             invented to fill a shape is decoration. So the rows are four bare
             labels and the promise is stated once, for both actions it covers,
             in the air that separates them from Delete. */}
-        <Text style={styles.promise} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          Fixing and noting never change your written words.
-        </Text>
+        {promise ? (
+          <Text style={styles.promise} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            Fixing and noting never change your written words.
+          </Text>
+        ) : null}
 
         {/* Destructive last, under a rule that runs the FULL width. The inset
             hairline between the rows above means "another one of these", which
             is the one thing Delete is not — it needs air and a line the eye
             stops at, not the same separator as its safe neighbours. */}
-        <View style={styles.dangerRule} />
-        <PressableScale
-          onPress={() => choose('delete')}
-          haptic="none"
-          activeScale={0.98}
-          accessibilityRole="button"
-          accessibilityLabel={
-            shared
-              ? `Delete ${target?.exercise ?? 'this entry'} — also removes ${joinNames(alsoOnLine)}, written on the same line`
-              : `Delete ${target?.exercise ?? 'this entry'} from the note`
-          }
-          style={styles.row}>
-          <View style={styles.iconCol}>
-            <Icon name="trash" size={moderateScale(18)} tint={color.error} />
-          </View>
-          <View style={styles.rowBody}>
-            <Text style={[styles.rowLabel, styles.rowLabelDanger]} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              Delete entry
-            </Text>
-            {shared ? (
-              <Text style={styles.rowCaption} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {`written on one line with ${joinNames(alsoOnLine)} — all of it goes`}
-              </Text>
-            ) : null}
-          </View>
-        </PressableScale>
+        {canDelete ? (
+          <>
+            <View style={styles.dangerRule} />
+            <PressableScale
+              onPress={() => choose('delete')}
+              haptic="none"
+              activeScale={0.98}
+              accessibilityRole="button"
+              accessibilityLabel={
+                shared
+                  ? `Delete ${target?.exercise ?? 'this entry'} — also removes ${joinNames(alsoOnLine)}, written on the same line`
+                  : `Delete ${target?.exercise ?? 'this entry'} from the note`
+              }
+              style={styles.row}>
+              <View style={styles.iconCol}>
+                <Icon name="trash" size={moderateScale(18)} tint={color.error} />
+              </View>
+              <View style={styles.rowBody}>
+                <Text
+                  style={[styles.rowLabel, styles.rowLabelDanger]}
+                  maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  Delete entry
+                </Text>
+                {shared ? (
+                  <Text style={styles.rowCaption} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    {`written on one line with ${joinNames(alsoOnLine)} — all of it goes`}
+                  </Text>
+                ) : null}
+              </View>
+            </PressableScale>
+          </>
+        ) : null}
       </View>
     </BottomSheet>
   );

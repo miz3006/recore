@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
@@ -9,7 +9,7 @@ import { ExerciseSheet } from '@/components/exercise-sheet';
 import { SessionSheet } from '@/components/session-sheet';
 import { AuthProvider, useAuth } from '@/lib/auth/provider';
 import { initCrashReporting, wrapRoot } from '@/lib/crash';
-import { color, loadReadingFont, radius } from '@/lib/theme';
+import { color, loadReadingFont } from '@/lib/theme';
 
 // Hold the splash until the persisted session is restored from the Keychain —
 // the user never sees a sign-in flash when they're already signed in.
@@ -67,8 +67,66 @@ function RootLayout() {
  */
 export default wrapRoot(RootLayout);
 
+/**
+ * THE SYSTEM'S CHROME FOR EVERY PUSH ON THE ROOT STACK (10 September 2026).
+ *
+ * The four tab roots moved onto the system navigator on 9 September and each
+ * one gained the same three things: a title that COLLAPSES as the record
+ * travels under it, a bar that IS Liquid Glass on an iOS 26 SDK build, and a
+ * back control with the system's own edge-swipe affordance and the previous
+ * screen's name beside it. **The pushes off those tabs did not move**, so the
+ * app read as two apps: tap Progress and the chrome is UIKit's, tap a lift
+ * inside it and the chrome is a `Text` in a row with a chevron drawn beside it.
+ *
+ * This preset is that same recipe, once, for the root stack. Every option in it
+ * is load-bearing and the reasoning is written out in `(tabs)/next/_layout.tsx`
+ * — repeated here only where the ROOT stack differs:
+ *
+ * · NO `headerTransparent` and NO `headerStyle.backgroundColor`. The first
+ *   kills the large title outright; the second opts out of the material to
+ *   paint a cream slab. An unstyled bar on an iOS 26 SDK build already IS the
+ *   glass, and it hides itself at the top of a scroll so the canvas reads
+ *   straight through.
+ * · `contentStyle` TRANSPARENT, which is the root stack's departure from its
+ *   own default (`color.canvas`). The canvas is drawn by each screen's own
+ *   scroll view (`experimental_backgroundImage`, `lib/paper-field.ts`) for the
+ *   reason the tab layouts give: a `PaperField` hoisted beside the navigator
+ *   is covered by the navigator's opaque container, and one mounted inside the
+ *   screen as an `absoluteFill` sibling costs UIKit the scroll view it tracks,
+ *   so the title stops collapsing. Behind the transparent screen is the flat
+ *   `color.canvas` on the root view, which is what shows for the instant before
+ *   a screen mounts.
+ * · The back button keeps its DEFAULT display mode, so it names the screen
+ *   under it rather than drawing a bare "‹". A push is worth naming: it is the
+ *   one piece of wayfinding a hand-rolled chevron could never give. The screens
+ *   dressed here sit over the whole app rather than inside a tab, so each one
+ *   passes its own `headerBackTitle` — the view under them is the tab GROUP,
+ *   whose route name is `(tabs)` and which UIKit would print verbatim.
+ *
+ * Most of the app's pushes are NOT dressed here, because they are not on this
+ * stack: a detail reached from exactly one tab lives in that tab's own stack so
+ * the tab bar survives it, which is what every app iOS ships does.
+ */
+const pushHeader = {
+  headerShown: true,
+  contentStyle: { backgroundColor: 'transparent' },
+  headerLargeTitleShadowVisible: false,
+  headerShadowVisible: false,
+  // The one blue does every control job (design skill §Colour), and a bar
+  // button is a control.
+  headerTintColor: color.brand,
+  headerTitleStyle: { color: color.textPrimary },
+  headerLargeTitleStyle: { color: color.textPrimary },
+} as const;
+
+import * as Notifications from 'expo-notifications';
+
+import { targetOf } from '@/lib/coaching/push';
+import { isCoachModeOn } from '@/lib/env';
+
 function RootNavigator() {
   const { session, loading } = useAuth();
+  const router = useRouter();
   // The reading face, registered before the splash lifts so no number can
   // render in the fallback family and then reflow into the real one. A no-op
   // until the OTFs are bundled (see theme/typography.ts), and it never blocks:
@@ -82,6 +140,46 @@ function RootNavigator() {
   useEffect(() => {
     if (!loading && fontReady) void SplashScreen.hideAsync();
   }, [loading, fontReady]);
+
+  /**
+   * A TAPPED COMMENT NOTIFICATION LANDS ON ITS OWN THREAD (Phase 5).
+   *
+   * It is mounted at the root because a notification can be tapped from a cold
+   * start, from the background, and from any tab — none of which a screen-level
+   * listener would see. `getLastNotificationResponseAsync` covers the cold
+   * start: the tap happened before this component existed, so there is no event
+   * left to receive, only a record of one.
+   *
+   * `targetOf` VALIDATES the payload rather than casting it. What arrives here
+   * came off the network and is about to become a route, so a malformed
+   * `workoutId` must produce null and no navigation at all.
+   *
+   * The route it opens is the same one the coach uses. That is deliberate: a
+   * thread is a thread, the viewer is derived from the session, and the screen
+   * already labels the other party by name — so one screen serves both ends of
+   * the link instead of two that must be kept in step.
+   */
+  useEffect(() => {
+    if (!isCoachModeOn()) return;
+
+    const go = (response: Notifications.NotificationResponse | null) => {
+      if (!response) return;
+      const target = targetOf(response);
+      if (!target) return;
+      router.push({
+        pathname: '/you/coaching/workout/[id]',
+        params: {
+          id: target.workoutId,
+          ...(target.exerciseRef ? { openRef: target.exerciseRef } : { openWhole: '1' }),
+        },
+      });
+    };
+
+    // The cold-start case: the tap is already in the past.
+    void Notifications.getLastNotificationResponseAsync().then(go);
+    const sub = Notifications.addNotificationResponseReceivedListener(go);
+    return () => sub.remove();
+  }, []);
 
   if (loading) return null; // splash is still covering the window
 
@@ -120,8 +218,15 @@ function RootNavigator() {
         <Stack.Screen name="paywall" />
         {/* Terms / Privacy / How parsing works. OUTSIDE the guard on purpose:
             the paywall links to them and App Review taps them there, before any
-            account exists (PLAN A3). */}
-        <Stack.Screen name="legal" />
+            account exists (PLAN A3). The title is the DOCUMENT's, so the screen
+            sets it (`legal.tsx`); everything else about the bar is the preset.
+
+            `headerBackTitle` for the reason the preset gives: pushed from You,
+            the view underneath is the tab GROUP, and UIKit printed its route
+            name verbatim — the back control read "‹ (tabs)". It overrides the
+            doc-to-doc case too (Terms links to Privacy), which is a small loss
+            against a label that is never wrong. */}
+        <Stack.Screen name="legal" options={{ ...pushHeader, headerBackTitle: 'Back' }} />
 
         {/* The real app — only once an account exists. */}
         <Stack.Protected guard={signedIn}>
@@ -130,23 +235,43 @@ function RootNavigator() {
               writes into the account's own ledger, and reached only from the
               dispatcher, which decides who is offered it. */}
           <Stack.Screen name="import-start" />
-          <Stack.Screen name="split" />
-          <Stack.Screen name="plan-day" />
-          {/* Lifts left the tab bar to make room for Next (§4). It kept its
-              whole screen — search and all — and became a push, reachable from
-              Next and from Progress. */}
-          <Stack.Screen name="lifts" />
-          {/* Progression, level two: one lift's metric cards, pushed from the
-              tab root (28 Aug 2026). The root answers "what is moving?" across
-              lifts; this answers "what is this lift doing?" — which is how the
-              reference screens are reached, and why neither needs a selector. */}
-          <Stack.Screen name="lift/[key]" />
-          {/* Two pushes off You (12 Aug): the shorthands the parser has been
-              taught, and the honest state of Apple Health. Both behind the
-              guard — one reads the account's own learned rules, the other
-              talks about its training. */}
-          <Stack.Screen name="aliases" />
-          <Stack.Screen name="health" />
+          {/* THE PLAN EDITOR, and it stays on this stack for the same reason
+              the library could not pick a tab: it is reached from Next and from
+              You. It is also an app-level thing to be doing — you are changing
+              what the app will prescribe, not reading an answer one tab gave —
+              so a destination over the whole app is what it is. Hence
+              `headerBackTitle`: the view under it is the tab GROUP, whose route
+              name UIKit would otherwise print verbatim as "(tabs)". */}
+          <Stack.Screen name="split" options={{ ...pushHeader, headerBackTitle: 'Back' }} />
+          {/* AUTHORING ONE DAY IS A MODAL, not a push (10 September 2026).
+              It is a self-contained task with a commit — you name a day, write
+              its movements and Save — and the navigation laws give that shape a
+              modal with its own Cancel and Done rather than a chevron that
+              silently throws the typing away. It presents from `split`, which
+              is the only screen that opens it, and its two bar buttons are the
+              screen's own (`plan-day.tsx`). */}
+          <Stack.Screen name="plan-day" options={{ ...pushHeader, presentation: 'modal' }} />
+          {/* THE LIFT LIBRARY LEFT THIS STACK on 10 September 2026 for the
+              same reason the three below it did, plus one of its own. It is
+              reached from TWO tabs, so it could not simply move into one — it
+              is a component now (`components/lifts-screen.tsx`) with a
+              two-line route file in each stack. On iOS 26 the root-stack
+              version had also picked up the new BOTTOM-aligned search capsule,
+              because there was no tab bar under it, while Progress one tap
+              above kept the field at the top. Same API, same app, two
+              placements. */}
+          {/* PROGRESSION LEVEL TWO, READING CORRECTIONS AND APPLE HEALTH LEFT
+              THIS STACK on 10 September 2026, and the reason is the tab bar.
+              Each of them is pushed from exactly ONE tab — the lift's metric
+              cards from Progress, the other two from You — and a detail push
+              off a tab keeps the tab bar in every app iOS ships: Settings,
+              Mail, Music. Registered here they covered it, so tapping a row in
+              You took the whole navigation away and gave back a screen with no
+              way home but the chevron.
+              They now live in their tab's own stack
+              (`(tabs)/progress/lift/[key].tsx`, `(tabs)/you/aliases.tsx`,
+              `(tabs)/you/health.tsx`), which also gives the back control the
+              tab's real name instead of the group's. */}
           {/* The end-of-session check-in (§8.1), as a real UIKit form sheet.
               Behind the guard because it writes into the account's own record,
               and on the ROOT stack rather than inside `(tabs)` so the one push
@@ -170,6 +295,46 @@ function RootNavigator() {
               near-white the sheet has always been, and the thing that keeps
               UIKit's system grey and its translucent material off the
               canvas. */}
+          {/* The coaching comment thread, as a real form sheet. It sits on the
+              ROOT stack for the same reason `check-in` does, and the route file
+              explains what happened when it did not: inside the You tab's stack
+              the `formSheet` presentation was simply ignored and the thread
+              rendered full screen.
+
+              Behind the guard because it reads and writes another account's
+              conversation. Detents are FIXED here where check-in needs
+              `fitToContents` — the shapes are opposite, and `coach-thread.tsx`
+              says why. */}
+          <Stack.Screen
+            name="coach-thread"
+            options={{
+              presentation: 'formSheet',
+              /* `fitToContents`, NOT `[0.6, 1]` — and this was established the
+                 hard way TWICE in this repository.
+
+                 `check-in` recorded it first: with fixed detents every view
+                 inside reported height 0, so each drew from the sheet's top
+                 edge and the content stacked on itself. This thread reproduced
+                 it exactly on the iOS 26.5 simulator on 10 September 2026 —
+                 "COMMENTS ON / Bench Press" and the first message rendered on
+                 top of one another, at 0.6.
+
+                 So the direction is the same one that worked there: the content
+                 measures ITSELF (`comment-thread.tsx` caps its scroll rather
+                 than flexing) and UIKit sizes the sheet to it. It is also the
+                 better sheet — a two-message thread gets a short one and a long
+                 conversation a tall one, instead of both getting 60%.
+
+                 The cost is honest and worth stating: `fitToContents` is a
+                 SINGLE system-computed detent, so there is no dragging between
+                 two heights. Fixed detents remain unusable in this
+                 RN/iOS combination for any layout that expects a height handed
+                 down, and both surfaces in this app now say so. */
+              sheetAllowedDetents: 'fitToContents',
+              sheetGrabberVisible: true,
+              contentStyle: { backgroundColor: color.surface },
+            }}
+          />
           <Stack.Screen
             name="check-in"
             options={{

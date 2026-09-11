@@ -12,6 +12,7 @@ import {
   type TrainingStyle,
 } from '@/lib/onboarding';
 import type { ScheduleMode } from '@/lib/plan/resolve';
+import { armed, spent, tourIsOwed, tourWasShown, type TourFlags } from '@/lib/tour-gate';
 
 /**
  * User preferences from onboarding (product-direction §5), stored in the local
@@ -74,6 +75,8 @@ const KEYS = {
   coachRingDone: 'pref_coach_ring_done',
   composerHintDone: 'pref_composer_hint_done',
   tourDone: 'pref_tour_done',
+  /** Set at the END OF THE FUNNEL and nowhere else — see `armTour`. */
+  tourArmed: 'pref_tour_armed',
   // --- §5's new answers (step 2) ---
   experience: 'pref_experience',
   trainingStyle: 'pref_training_style',
@@ -89,14 +92,33 @@ const KEYS = {
   recapEnabled: 'pref_recap_enabled',
   recapHour: 'pref_recap_hour',
   recapDay: 'pref_recap_day',
+  // --- the rest timer (10 September 2026) ---
+  /** Whether a set landing in the note starts the rest timer by itself. */
+  restAutoStart: 'pref_rest_auto_start',
+  /** Whether the first automatic rest has explained itself yet. */
+  restAutoTaught: 'pref_rest_auto_taught',
 } as const;
 
 export function isOnboardingDone(): boolean {
   return getMeta(KEYS.onboardingDone) === '1';
 }
 
+/**
+ * The funnel reached its end on this device — which is the app's own definition
+ * of somebody having just made a profile, and the one `app/index.tsx` routes on.
+ *
+ * It ARMS THE WALK-THROUGH as well, because this is the only moment in the app
+ * at which the tour is owed to anyone (`armTour`). Both funnels call this —
+ * `commitV2Onboarding` for v2, `onboarding/[step].tsx` for the illustrated one —
+ * so hanging it here covers both without either needing to know the tour exists.
+ *
+ * A returning athlete signing in on a new phone never reaches this line: screen
+ * 1's "I already have an account" hands them straight to a session, and the
+ * dispatcher lets a signed-in user past without the funnel.
+ */
 export function markOnboardingDone() {
   setMeta(KEYS.onboardingDone, '1');
+  armTour();
 }
 
 /**
@@ -258,6 +280,45 @@ export function setRestSeconds(s: number) {
 export function getRestSeconds(): number {
   const n = Number.parseFloat(getMeta(KEYS.restSeconds) ?? '');
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_REST_S;
+}
+
+/**
+ * AUTOMATIC REST (10 September 2026) — the timer starts itself when a set
+ * lands in the note, and restarts on every set after it.
+ *
+ * It is the one thing every gym tracker worth copying does and Recore did not:
+ * Setgraph teaches it in onboarding in one sentence ("the timer restarts after
+ * every set you log"), Strong and Hevy default it on. A rest timer you have to
+ * remember to press is a rest timer that runs on maybe one set in five, which
+ * is the same as not having one.
+ *
+ * **It defaults ON**, and that is a deliberate default rather than an
+ * assumption: it costs nothing (no haptic, no motion, nothing that touches the
+ * keyboard or a keystroke — CLAUDE.md §2.1), the bar SAYS it happened the first
+ * time in words, and the switch is one row away in You › Training. A default
+ * that explains itself once and can be turned off is not a surprise.
+ *
+ * It never fabricates anything: the trigger is the parser's own counted-set
+ * total on the day's note, which is the same number the receipt prints.
+ */
+export function setRestAutoStart(on: boolean) {
+  setMeta(KEYS.restAutoStart, on ? '1' : '0');
+}
+
+export function getRestAutoStart(): boolean {
+  // Absent = never chosen = the default, which is on. Only an explicit '0'
+  // turns it off, so a wiped meta table comes back with the feature intact.
+  return getMeta(KEYS.restAutoStart) !== '0';
+}
+
+/** Has the first automatic rest already said what it was? Teaching copy is
+ * training wheels — it appears once, in the rest bar, and never again. */
+export function hasTaughtAutoRest(): boolean {
+  return getMeta(KEYS.restAutoTaught) === '1';
+}
+
+export function markTaughtAutoRest() {
+  setMeta(KEYS.restAutoTaught, '1');
 }
 
 // --- Onboarding (OB_01–OB_07) — additive keys; setup persists on device so a
@@ -459,14 +520,74 @@ export function hasLargeSetReadings(): boolean {
   return getMeta(KEYS.largeSetReadings) === '1';
 }
 
-/** Set when the first-open spotlight tour is finished OR skipped — either way
- * it was offered once and never returns (owner, 29 Jul). */
+/**
+ * THE TOUR IS OWED TO EXACTLY ONE PERSON: SOMEBODY WHO JUST MADE A PROFILE
+ * (owner, 11 September 2026 — *"pokaže samo prvič ko nekdo ustvari profil"*).
+ *
+ * It used to be owed to any device that could not prove otherwise. The gate was
+ * `!isTourDone()` — the ABSENCE of a flag in the local meta KV — and `meta` is
+ * device-local and wiped by `ensureLocalUser` whenever a different account signs
+ * in. So the tour ran for three people it was never written for:
+ *
+ *  · a returning athlete on a SECOND PHONE, or after a reinstall — their record
+ *    is years old and the device simply has no flag yet;
+ *  · anybody switching back to their own account after somebody else used the
+ *    app on that phone, because the switch wipes `meta`;
+ *  · and the same person again after any force-quit mid-tour, since the old
+ *    code only wrote the flag when the tour was FINISHED or skipped.
+ *
+ * Arming inverts it: nothing is owed unless something says it is, and the only
+ * thing that says so is the funnel reaching its end (`markOnboardingDone`,
+ * which both funnels call). `app/index.tsx` already draws this exact line for
+ * routing — *"signed in with no local onboarding flag is a returning user, not
+ * a new one"* — so this is that rule applied to the walk-through as well.
+ *
+ * `pref_*` on purpose, like every key here: `export-json.ts` carries every
+ * `pref_%` row, `account/delete.ts` drops the table, and the dev sandbox
+ * snapshots the same predicate — so the flag inherits §12 and the sandbox with
+ * no further work anywhere.
+ */
+export function armTour() {
+  writeTourFlags(armed(readTourFlags()));
+}
+
+/**
+ * Whether the walk-through is still owed. Note this is NOT `!isTourDone()`: a
+ * person who never created a profile on this device is owed nothing, and has no
+ * `tourDone` flag either — `tour-gate.ts` has the four lives that separates.
+ */
+export function isTourOwed(): boolean {
+  return tourIsOwed(readTourFlags());
+}
+
+/** The two rows, and the only place they are read or written. The RULE over
+ * them lives in `tour-gate.ts`, where it is testable without a database. */
+function readTourFlags(): TourFlags {
+  return { armed: getMeta(KEYS.tourArmed), done: getMeta(KEYS.tourDone) };
+}
+
+function writeTourFlags(f: TourFlags): void {
+  setMeta(KEYS.tourArmed, f.armed);
+  setMeta(KEYS.tourDone, f.done);
+}
+
+/**
+ * Spend it. Called the moment the tour is PUT ON SCREEN, not when it is
+ * finished — being shown is what "shown once" means, and the old contract
+ * (write the flag on finish/skip) replayed the whole thing for anybody who
+ * killed the app on step two.
+ *
+ * `tourDone` is still written beside the disarm: it is the historical record
+ * that this account was walked through, it is what `export-json` carries, and
+ * one key answering "was it offered" separately from "is it owed" is what let
+ * the absence of a flag mean two different things in the first place.
+ */
 export function markTourDone() {
-  setMeta(KEYS.tourDone, '1');
+  writeTourFlags(spent(readTourFlags()));
 }
 
 export function isTourDone(): boolean {
-  return getMeta(KEYS.tourDone) === '1';
+  return tourWasShown(readTourFlags());
 }
 
 // --- the §12.1 weekly recap -------------------------------------------------

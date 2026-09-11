@@ -66,6 +66,22 @@ export function Frame({
   /** Screens that own their own scrolling (a text field with a keyboard) opt
    * out of the frame's ScrollView. */
   scroll = true,
+  /**
+   * HAND THE WHOLE BODY OVER — no gutter, no top padding, no scroll view, and
+   * nothing pinned at the bottom.
+   *
+   * One screen asks for this and the reason is specific: screen 6 is Today,
+   * and Today is a page whose root IS its scroll view. It has to own the
+   * insets (`automaticallyAdjustKeyboardInsets`), its own left edge and its own
+   * bottom, because those three are what a note-taking page is. Everything the
+   * frame still gives it — the safe area, the back circle, the progress rail —
+   * is chrome ABOVE the page, which is exactly the arrangement Today has under
+   * the navigation bar.
+   *
+   * The headline block keeps the gutter when it is used at all, so a bleeding
+   * screen that still asks a question does not print it against the edge.
+   */
+  bleed = false,
   /** Lift the whole frame — content AND the pinned CTA — above the keyboard.
    * The frame does this rather than the screen, because the CTA lives here and
    * a screen cannot move a button it does not own. */
@@ -84,6 +100,7 @@ export function Frame({
   echo?: string | null;
   footerLink?: { label: string; onPress: () => void };
   scroll?: boolean;
+  bleed?: boolean;
   avoidKeyboard?: boolean;
   centred?: boolean;
   testID?: string;
@@ -102,9 +119,8 @@ export function Frame({
    */
   const [footerHeight, setFooterHeight] = useState(0);
 
-  const body = (
+  const heading = (
     <>
-      {above}
       {echo ? (
         <Enter index={0} from={8}>
           <View style={styles.echoRow}>
@@ -138,6 +154,13 @@ export function Frame({
           </Text>
         </Enter>
       ) : null}
+    </>
+  );
+
+  const body = (
+    <>
+      {above}
+      {bleed ? <View style={styles.bleedHead}>{heading}</View> : heading}
       {/* The gap belongs to the headline block. With no block there is nothing
           to be spaced away from, so the content starts at the top. */}
       <View style={headline || subline ? styles.content : styles.contentBare}>{children}</View>
@@ -182,7 +205,9 @@ export function Frame({
         )}
       </View>
 
-      {scroll ? (
+      {bleed ? (
+        <View style={styles.flex}>{body}</View>
+      ) : scroll ? (
         <ScrollView
           style={styles.flex}
           contentContainerStyle={[
@@ -302,6 +327,9 @@ const styles = StyleSheet.create({
   },
   backSpacer: { width: v2metrics.backButton, height: v2metrics.backButton },
   railSlot: { flex: 1, marginLeft: v2metrics.railGap, justifyContent: 'center' },
+  /** A bleeding screen's headline block keeps the flow's own left edge; the
+   * page below it is on its own. */
+  bleedHead: { paddingHorizontal: v2metrics.gutter },
   scrollBody: {
     paddingHorizontal: v2metrics.gutter,
     paddingTop: spacing.xxl,

@@ -7,6 +7,7 @@ import { Icon } from '@/components/icon';
 import { E1RM_ACTION_LABEL, E1RM_LABEL, E1rmSheet } from '@/components/e1rm-sheet';
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
 import { AppButton, Eyebrow, Row } from '@/components/primitives';
+import { WeekLoad } from '@/components/week-load';
 import { PeriodChart } from '@/components/progression/period-chart';
 import { lastDayPhrase } from '@/lib/day-phrase';
 import { monthDayLabel, shiftDayKey, todayKey } from '@/lib/db/dates';
@@ -33,6 +34,8 @@ import {
   type PeriodMetric,
   type WindowTotals,
 } from '@/lib/progress-summary';
+import { getLoadSessions } from '@/lib/db/stats';
+import { buildLoadWeeks, loadTrend } from '@/lib/session-effort';
 import {
   alpha,
   color,
@@ -254,6 +257,25 @@ export default function Progress() {
   const view = useMemo(() => buildOverview(rows, fromDay), [rows, fromDay]);
   const period = useMemo(() => buildPeriod(rows, today, RANGE_WEEKS), [rows, today]);
 
+  /**
+   * The week's training load, over the SAME buckets the hero chart uses
+   * (`buildLoadWeeks` takes `RANGE_WEEKS` and the same `today`), so the two
+   * read against each other instead of against different calendars.
+   *
+   * `getLoadSessions` returns every session including the unrated ones on
+   * purpose — `weekIsComplete` needs to see them to refuse a partial total.
+   * `everRated` is what keeps the section off a screen belonging to somebody
+   * who has never met the question.
+   */
+  /* eslint-disable react-hooks/exhaustive-deps */
+  const loadSessions = useMemo(() => (userId ? getLoadSessions(userId) : []), [userId, refresh]);
+  /* eslint-enable react-hooks/exhaustive-deps */
+  const load = useMemo(
+    () => loadTrend(buildLoadWeeks(loadSessions, today, RANGE_WEEKS)),
+    [loadSessions, today],
+  );
+  const everRated = useMemo(() => loadSessions.some((s) => s.rpe != null), [loadSessions]);
+
   const handleEmptyImport = async () => {
     if (importBusy || !userId) return;
     tap();
@@ -266,6 +288,13 @@ export default function Progress() {
         case 'done':
           if (outcome.importedDays > 0) markImported();
           markImportCompleted(rowCountBucket(outcome.sets));
+          // Silent on success, as before — EXCEPT when the row ceiling dropped
+          // something, which the person has to be told (S10).
+          if (outcome.droppedRows > 0) {
+            setImportMessage(
+              `Imported what fits — ${outcome.droppedRows} rows past the limit were not read. Export a shorter date range to bring in the rest.`,
+            );
+          }
           recachePredictionFromLatest(userId); // tomorrow's ghost reads the import
           hydrate(userId); // Today's store sees the history too
           setRefresh((n) => n + 1); // re-read → the list replaces this card
@@ -276,6 +305,11 @@ export default function Progress() {
         case 'invalid':
           setImportMessage(
             'That file is not a Hevy or Strong export. Look for the CSV the app emails you.',
+          );
+          return;
+        case 'too-large':
+          setImportMessage(
+            `That file is over ${outcome.limitMb} MB, which is more than the import can read at once. Export a shorter date range and try again.`,
           );
           return;
         default:
@@ -471,6 +505,9 @@ export default function Progress() {
           />
         </View>
 
+        {/* --- 1b. WHAT DID IT COST? ---------------------------------------- */}
+        <WeekLoad trend={load} everRated={everRated} />
+
         {/* --- 2. WHERE DOES IT GO? ----------------------------------------- */}
         {split.length > 1 ? (
           <View style={styles.section}>
@@ -564,10 +601,12 @@ export default function Progress() {
                       <View style={styles.sparkHole} />
                     )
                   }
-                  onPress={() => {
-                    tap();
-                    router.push({ pathname: '/lift/[key]', params: { key: l.key } });
-                  }}
+                  // No `tap()` here: `Row` ticks on press-out for the commit
+                  // (`primitives.tsx`), and a second one on the same finger is
+                  // the app talking over itself.
+                  onPress={() =>
+                    router.push({ pathname: '/progress/lift/[key]', params: { key: l.key } })
+                  }
                 />
               ))}
             </Stagger>
@@ -579,7 +618,7 @@ export default function Progress() {
           activeScale={0.98}
           onPress={() => {
             tap();
-            router.push('/lifts');
+            router.push('/progress/lifts');
           }}
           accessibilityRole="button"
           accessibilityLabel="All lifts"

@@ -57,6 +57,8 @@ const KEYS = {
   briefComposedShown: `${P}brief_composed_shown`,
   recapEnabled: `${P}recap_enabled`,
   recapDisabled: `${P}recap_disabled`,
+  guardRejectBrief: `${P}guard_reject_brief`,
+  guardRejectPrediction: `${P}guard_reject_prediction`,
 } as const;
 
 // --- primitives --------------------------------------------------------------
@@ -278,6 +280,23 @@ export function markRecapToggled(on: boolean) {
   bump(on ? KEYS.recapEnabled : KEYS.recapDisabled);
 }
 
+/**
+ * CLAUDE.md §4: "Guard rejections are counted and alarmed (§9.3)."
+ *
+ * A guard that silently returns null is a guard nobody can hear. If a prompt
+ * change made the model start inventing numbers, the guard would catch every
+ * one and the only visible symptom would be that the model's phrasing quietly
+ * stopped appearing — indistinguishable from being offline. These two counters
+ * are the alarm: a rejection rate that climbs off zero means the prompt drifted,
+ * and it says so before a user reports a wrong figure.
+ *
+ * A category and a count. Never the rejected text, which is exactly the text
+ * §7.3 forbids sending anywhere — and this counter never leaves the device.
+ */
+export function bumpGuardRejection(surface: 'brief' | 'prediction') {
+  bump(surface === 'brief' ? KEYS.guardRejectBrief : KEYS.guardRejectPrediction);
+}
+
 /** Adherence: how often the app showed a prescription vs how often it was met. */
 export function bumpAdherenceShown() {
   bump(KEYS.adherenceShown);
@@ -338,6 +357,9 @@ export interface FunnelSnapshot {
   brief_composed_shown: number;
   recap_enabled: number;
   recap_disabled: number;
+  /** §9.3's alarm: model answers the guard refused, by surface. Should stay 0. */
+  guard_rejected_brief: number;
+  guard_rejected_prediction: number;
 }
 
 /** Everything at once — carried in the JSON export, so the record is the user's. */
@@ -381,5 +403,7 @@ export function getFunnelSnapshot(): FunnelSnapshot {
     brief_composed_shown: readInt(KEYS.briefComposedShown),
     recap_enabled: readInt(KEYS.recapEnabled),
     recap_disabled: readInt(KEYS.recapDisabled),
+    guard_rejected_brief: readInt(KEYS.guardRejectBrief),
+    guard_rejected_prediction: readInt(KEYS.guardRejectPrediction),
   };
 }

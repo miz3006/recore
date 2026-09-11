@@ -1,4 +1,5 @@
 import { performedAtIso } from '@/lib/db/dates';
+import { dayWorkoutId } from '@/lib/db/day-id';
 import { resolveExercise } from '@/lib/db/exercises';
 import { getDb, newId, nowIso } from '@/lib/db/index';
 import { getWorkoutForDay } from '@/lib/db/workouts';
@@ -39,7 +40,11 @@ export function applyImport(userId: string, days: ImportedDay[]): ImportResult {
         continue;
       }
 
-      const workoutId = newId();
+      // The same derived id the composer writes (`day-id.ts`). The skip above
+      // already stops a second import on THIS device; deriving the id is what
+      // stops an import run on a second device from adding a rival row for a
+      // day the first one already filled.
+      const workoutId = dayWorkoutId(userId, day.day);
       db.runSync(
         `INSERT INTO workouts (id, user_id, performed_at, raw_text, parse_version, created_at, updated_at, dirty, structure_dirty, needs_parse)
          VALUES (?, ?, ?, ?, NULL, ?, ?, 1, 1, 0)`,

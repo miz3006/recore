@@ -23,21 +23,22 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { corsHeaders } from '../_shared/cors.ts';
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-  });
-}
+const RATE_LIMIT_MAX_CALLS = 30;
+const RATE_LIMIT_WINDOW_SECONDS = 600; // shared bump_parse_rate window
 
 Deno.serve(async (req) => {
+  // Per request, because the allow-list reflects the caller's own origin (S11).
+  const cors = corsHeaders(req);
+  const json = (body: unknown, status = 200): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS_HEADERS });
+    return new Response('ok', { headers: cors });
   }
   if (req.method !== 'POST') {
     return json({ error: 'method_not_allowed' }, 405);
@@ -61,6 +62,22 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
+
+  // RATE LIMIT (S12) — shares the per-user window with the three AI functions.
+  //
+  // The blast radius here is one row and it is the caller's own, so this is not
+  // about protecting other accounts. It is that this was a free authenticated
+  // endpoint doing real work with the service-role key, and every other
+  // function that does real work is metered. A person deleting their account
+  // does it once; a loop hitting it does not, and the deletion cascade is the
+  // most expensive statement in this schema.
+  const { data: allowed, error: rateError } = await supabaseService.rpc('bump_parse_rate', {
+    p_user: user.id,
+    p_max: RATE_LIMIT_MAX_CALLS,
+    p_window_seconds: RATE_LIMIT_WINDOW_SECONDS,
+  });
+  if (rateError) return json({ error: 'rate_limit_unavailable' }, 500);
+  if (!allowed) return json({ error: 'rate_limited' }, 429);
 
   const { error } = await supabaseService.auth.admin.deleteUser(user.id);
   if (error) {

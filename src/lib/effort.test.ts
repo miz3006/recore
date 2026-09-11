@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   EFFORT_CHOICE_LABEL,
   EFFORT_CHOICES,
+  effortChangesPrescription,
   effortChoiceOf,
   effortToken,
   readEffort,
@@ -134,4 +135,36 @@ test('a typed @8 lights "could do more" rather than nothing at all', () => {
   assert.equal(readEffort('bench 5x5 100kg @8'), 'moderate');
   assert.equal(effortChoiceOf('moderate'), 'easy');
   assert.equal(effortChoiceOf(null), null);
+});
+
+test('a loaded lift with reps is worth asking about', () => {
+  assert.equal(
+    effortChangesPrescription([
+      { reps: 8, weight_kg: 100, rir: null },
+      { reps: 7, weight_kg: 100, rir: null },
+    ]),
+    true,
+  );
+});
+
+test('bodyweight work is not — the engine progresses it on reps alone', () => {
+  // `progressBodyweight` takes the sets and never looks at `rir`. Asking how
+  // hard the last set of chin-ups felt changed literally nothing.
+  assert.equal(
+    effortChangesPrescription([
+      { reps: 10, weight_kg: null, rir: null },
+      { reps: 8, weight_kg: null, rir: null },
+    ]),
+    false,
+  );
+});
+
+test('a run, a carry and a hold are not — there is no engine branch to move', () => {
+  assert.equal(effortChangesPrescription([{ reps: null, weight_kg: null, rir: null }]), false);
+  // A loaded carry with no reps has nothing to progress from either.
+  assert.equal(effortChangesPrescription([{ reps: null, weight_kg: 40, rir: null }]), false);
+});
+
+test('a lift with no counted sets is never asked about', () => {
+  assert.equal(effortChangesPrescription([]), false);
 });

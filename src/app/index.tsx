@@ -2,6 +2,7 @@ import { Redirect } from 'expo-router';
 
 import { useAuth } from '@/lib/auth/provider';
 import { useEntitlement } from '@/lib/billing/state';
+import { isBetaUnlocked } from '@/lib/env';
 import { wantsImportFastPath } from '@/lib/onboarding';
 import {
   getFirstAction,
@@ -21,7 +22,9 @@ import { useV2 } from '@/state/onboarding-v2';
  *                                       where a killed app left off;
  *                                       [step].tsx clamps bad values)
  *   · onboarded, no session          → /paywall-v2/plan (finish it — sign-in
- *                                       is the paywall's forward step)
+ *                                       is the paywall's forward step); a beta
+ *                                       build has no paywall to show, so it
+ *                                       goes straight to /sign-in
  *   · entitled, tracker user, import
  *     never offered                  → /import-start (the §2.1 fast path)
  *   · otherwise                      → /today, inside the (tabs) group
@@ -84,7 +87,20 @@ export default function Dispatcher() {
    * same code — one `fetchOffer`, one `purchase`, one entitlement — so the swap
    * changes what the screen LOOKS like and nothing about what it promises.
    */
-  if (!session) return <Redirect href="/paywall-v2/plan" />;
+  if (!session) {
+    /**
+     * A BETA BUILD HAS NO PAYWALL TO SEND ANYONE TO (`isBetaUnlocked`, `env.ts`).
+     * Its store is unconfigured by construction, so `paywall-v2/plan` would
+     * render "Prices unavailable" and the funnel would simply stop there. The
+     * ACCOUNT is still required — `parse-workout` needs a JWT — so the gate
+     * becomes sign-in itself, which is where the paywall's forward step led
+     * anyway; `next: 'home'` is the same parameter the real CTA passes.
+     */
+    if (isBetaUnlocked()) {
+      return <Redirect href={{ pathname: '/sign-in', params: { next: 'home' } }} />;
+    }
+    return <Redirect href="/paywall-v2/plan" />;
+  }
 
   if (
     entitlement === 'entitled' &&

@@ -49,6 +49,9 @@ export function moveFor(reason: Reason): Move | null {
     case 'add_rep':
       return { kind: 'rep' };
     case 'hold':
+    // Filled the range with nothing in reserve: the engine kept the load on
+    // purpose, and "hold" is exactly what it did.
+    case 'at_limit':
       return { kind: 'hold' };
     case 'deload':
       return { kind: 'backoff', fromKg: reason.from, toKg: reason.to };
@@ -103,6 +106,8 @@ export function whyFor(reason: Reason): string | null {
   switch (reason.code) {
     case 'top_of_range':
       return `you filled every set of ${reason.top} at ${fmt(reason.weight)}`;
+    case 'at_limit':
+      return `every set of ${reason.top} at ${fmt(reason.weight)}, with nothing left`;
     case 'rir_surplus':
       return `${fmt(reason.minRir)} left in reserve at ${fmt(reason.weight)}`;
     case 'deload':

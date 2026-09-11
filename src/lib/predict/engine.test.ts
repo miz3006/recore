@@ -194,3 +194,71 @@ test('increment size flows through (lower body +5)', () => {
   });
   assert.equal(p.weightKg, 145);
 });
+
+test('"nothing left" stops the weight going up on a filled range', () => {
+  // The measured bug this rule exists for: the rep range is inferred from
+  // today's own work, so straight sets ALWAYS "fill the range" — and 3x8 at
+  // 100 prescribed 102.5 whether the athlete said they had three reps left or
+  // nothing at all. The check-in's most expensive question went unheard, and
+  // in the rir-0 case it contradicted the person outright.
+  const atLimit = progressStrength({
+    todaySets: [set(8, 100, 0), set(8, 100, 0), set(8, 100, 0)],
+    priorTops: [],
+    incrementKg: 2.5,
+  });
+  assert.equal(atLimit.weightKg, 100, 'the bar must not get heavier');
+  assert.equal(atLimit.reps, 8, 'and the reps stay where they were');
+  assert.equal(atLimit.reason.code, 'at_limit');
+});
+
+test('rir 1 on a filled range still loads up — only an empty tank blocks it', () => {
+  // "Just right" filled the range with something in reserve, which is exactly
+  // what double progression asks for. The block is the honest reading of the
+  // one answer that says there was nothing left.
+  const p = progressStrength({
+    todaySets: [set(8, 100, 1), set(8, 100, 1), set(8, 100, 1)],
+    priorTops: [],
+    incrementKg: 2.5,
+  });
+  assert.equal(p.weightKg, 102.5);
+  assert.equal(p.reason.code, 'top_of_range');
+});
+
+test('an unanswered filled range is unchanged by the rule', () => {
+  const p = progressStrength({
+    todaySets: [set(8, 100), set(8, 100), set(8, 100)],
+    priorTops: [],
+    incrementKg: 2.5,
+  });
+  assert.equal(p.weightKg, 102.5);
+  assert.equal(p.reason.code, 'top_of_range');
+});
+
+test('a stall still deloads even at rir 0 — rule 5 outranks the hold', () => {
+  // The deload is the engine acting on two flat sessions; "nothing left" is a
+  // reason to keep the load, not a reason to keep a load that is not working.
+  const p = progressStrength({
+    todaySets: [set(5, 120, 0), set(5, 120, 0)],
+    priorTops: [
+      { weight: 120, reps: 5 },
+      { weight: 120, reps: 5 },
+    ],
+    incrementKg: 2.5,
+  });
+  assert.equal(p.reason.code, 'deload');
+  assert.equal(p.weightKg, 107.5);
+});
+
+test('a set past failure holds the load too — rir -1 is not a reason to load up', () => {
+  // "NEGATIVE RIR is real and must survive" (the parser prompt): a forced rep
+  // is further past the limit than reaching failure, not less. This case is
+  // also what the device actually produces — the parser answered the app's own
+  // `rpe 10` token with rir -1, so an exact-zero test never fired.
+  const p = progressStrength({
+    todaySets: [set(8, 100, -1), set(8, 100, -1), set(8, 100, -1)],
+    priorTops: [],
+    incrementKg: 2.5,
+  });
+  assert.equal(p.weightKg, 100);
+  assert.equal(p.reason.code, 'at_limit');
+});

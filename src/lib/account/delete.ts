@@ -1,5 +1,6 @@
 import { signOut } from '@/lib/auth/sign-in';
 import { getDb, setMeta } from '@/lib/db/index';
+import { WIPE_SQL } from '@/lib/db/schema';
 import { devLog } from '@/lib/log';
 import { supabase } from '@/lib/supabase';
 
@@ -53,9 +54,9 @@ export async function deleteAccount(): Promise<DeleteAccountOutcome> {
   try {
     const db = getDb();
     db.withTransactionSync(() => {
-      db.execSync(
-        'DELETE FROM parse_cache; DELETE FROM corrections; DELETE FROM alias_overrides; DELETE FROM sets; DELETE FROM items; DELETE FROM workouts; DELETE FROM predictions; DELETE FROM plan_days; DELETE FROM exercises; DELETE FROM meta;',
-      );
+      // The one wipe, declared beside the tables it names (`db/schema.ts`), so
+      // this and `ensureLocalUser` cannot drift apart when a table is added.
+      db.execSync(WIPE_SQL);
     });
     // The account is gone; the next launch must run the funnel from the top.
     setMeta('user_id', null);

@@ -16,6 +16,7 @@ const empty: Brief = {
   sessions7: 0,
   sessions8w: 0,
   notes: [],
+  tagPattern: null,
 };
 
 const line = { name: 'Bench Press', value: '82.5 kg × 5·5·5', why: null };
@@ -152,6 +153,7 @@ test('a full brief keeps §9 order: week+next, stakes, moving, stuck, record, wa
     sessions7: 2,
     sessions8w: 14,
     notes: [],
+    tagPattern: null,
   });
   const order = [
     out.indexOf('2 sessions in the last seven days, and today reads as Push'),
@@ -214,4 +216,29 @@ test('a note NEVER reaches the paragraph a model is allowed to rewrite', () => {
   });
   assert.ok(!out.includes('shoulder'), 'a quoted note leaked into the composed paragraph');
   assert.ok(!out.includes('depth'), 'a quoted note leaked into the composed paragraph');
+});
+
+test('the check-in chips finally come back as a tally, and only as a tally', () => {
+  const out = briefProse({
+    ...empty,
+    sessions7: 3,
+    tagPattern: { tag: 'Slept badly', count: 3, of: 5 },
+  });
+  assert.match(out, /You marked "slept badly" after 3 of your last 5 sessions\./);
+});
+
+test('the tally never explains, prescribes or diagnoses', () => {
+  const out = briefProse({
+    ...empty,
+    sessions7: 3,
+    stalls: [{ canonical: 'Bench Press', weight: 100, sessions: 3, deloadTo: 90 }],
+    tagPattern: { tag: 'Slept badly', count: 3, of: 5 },
+  });
+  // §9.1: no causation from a reflection, no programme, no diagnosis.
+  assert.doesNotMatch(out, /because|caused|due to|explains|that is why/i);
+  assert.doesNotMatch(out, /you should|consider|take a rest week|deload week|recovery week/i);
+  assert.doesNotMatch(out, /overtrain|overreach|sleep deprivation|fatigued because/i);
+  // And the verb stays on what the app actually knows: which button was tapped.
+  assert.match(out, /You marked/);
+  assert.doesNotMatch(out, /You slept|Your sleep/i);
 });

@@ -613,5 +613,280 @@
       }
     ],
     "expect_item_count": 1
+  },
+  {
+    "name": "wide: push up variations are their own movements",
+    "input": "diamond push ups 3x20\narcher push ups 3x10 na roko\ndecline push ups 3x15\nexplosive push ups 4x8\none arm push up 3x5",
+    "expect": [
+      { "exercise": "Diamond Push-up", "exercise_match": "diamond", "line": 0, "sets": 3, "reps": 20 },
+      { "exercise": "Archer Push-up", "exercise_match": "archer", "line": 1, "sets": 3, "reps": 10 },
+      { "exercise": "Decline Push-up", "exercise_match": "decline", "line": 2, "sets": 3, "reps": 15 },
+      { "exercise": "Explosive Push-up", "exercise_match": "explosive|clap|plyo", "line": 3, "sets": 4, "reps": 8 },
+      { "exercise": "One Arm Push-up", "exercise_match": "one.?arm|single.?arm", "line": 4, "sets": 3, "reps": 5 }
+    ],
+    "expect_item_count": 5
+  },
+  {
+    "name": "wide: mixed English and Slovene in one line",
+    "input": "bench press 3 serije po 8 s 80kg\npočep 5x5 pri 120 kg\nzgibi 4 sets of 8",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "sets": 3, "reps": 8, "weight_kg": 80 },
+      { "exercise": "Squat", "line": 1, "sets": 5, "reps": 5, "weight_kg": 120 },
+      { "exercise": "Pull-up", "exercise_match": "pull.?up", "line": 2, "sets": 4, "reps": 8 }
+    ],
+    "expect_item_count": 3
+  },
+  {
+    "name": "wide: press variants are not all bench press",
+    "input": "close grip bench 80kg 3x8\ndecline bench 90kg 3x8\nfloor press 70kg 3x6\nlandmine press 30kg 3x10\npush press 60kg 5x3\nbehind the neck press 40kg 3x8",
+    "expect": [
+      { "exercise": "Close Grip Bench Press", "exercise_match": "close.?grip", "line": 0, "sets": 3, "reps": 8, "weight_kg": 80 },
+      { "exercise": "Decline Bench Press", "exercise_match": "decline", "line": 1, "sets": 3, "reps": 8, "weight_kg": 90 },
+      { "exercise": "Floor Press", "line": 2, "sets": 3, "reps": 6, "weight_kg": 70 },
+      { "exercise": "Landmine Press", "line": 3, "sets": 3, "reps": 10, "weight_kg": 30 },
+      { "exercise": "Push Press", "line": 4, "sets": 5, "reps": 3, "weight_kg": 60 },
+      { "exercise": "Behind The Neck Press", "exercise_match": "behind", "line": 5, "sets": 3, "reps": 8, "weight_kg": 40 }
+    ],
+    "expect_item_count": 6
+  },
+  {
+    "name": "wide: deadlift variants keep their qualifier",
+    "input": "sumo deadlift 180kg 3x3\nrdl 100kg 3x10\nstiff leg deadlift 90kg 3x8\nrack pull 200kg 2x5\ntrap bar deadlift 160kg 3x6",
+    "expect": [
+      { "exercise": "Sumo Deadlift", "line": 0, "sets": 3, "reps": 3, "weight_kg": 180 },
+      { "exercise": "Romanian Deadlift", "line": 1, "sets": 3, "reps": 10, "weight_kg": 100 },
+      { "exercise": "Stiff Leg Deadlift", "exercise_match": "stiff.?leg", "line": 2, "sets": 3, "reps": 8, "weight_kg": 90 },
+      { "exercise": "Rack Pull", "line": 3, "sets": 2, "reps": 5, "weight_kg": 200 },
+      { "exercise": "Trap Bar Deadlift", "exercise_match": "trap.?bar", "line": 4, "sets": 3, "reps": 6, "weight_kg": 160 }
+    ],
+    "expect_item_count": 5
+  },
+  {
+    "name": "wide: muscle ups, ring work and negatives",
+    "input": "muscle ups 5x3\nring muscle up 3x2\nmuscle up negatives 4x3\nring dips 3x8\nring rows 3x12",
+    "expect": [
+      { "exercise": "Muscle-up", "exercise_match": "muscle.?up", "line": 0, "sets": 5, "reps": 3, "weight_kg": null },
+      { "exercise": "Ring Muscle-up", "exercise_match": "muscle.?up", "line": 1, "sets": 3, "reps": 2 },
+      { "exercise": "Muscle-up Negative", "exercise_match": "muscle.?up|negative", "line": 2, "sets": 4, "reps": 3 },
+      { "exercise": "Ring Dip", "exercise_match": "dip", "line": 3, "sets": 3, "reps": 8 },
+      { "exercise": "Ring Row", "exercise_match": "row", "line": 4, "sets": 3, "reps": 12 }
+    ],
+    "expect_item_count": 5
+  },
+  {
+    "name": "wide: static holds are seconds, not reps",
+    "input": "front lever tuck 5x10s\nback lever 3x8s\nplanche lean 4x20s\nl sit 3x15s\nhuman flag 3x5s",
+    "expect": [
+      { "exercise": "Front Lever", "exercise_match": "front lever", "line": 0, "sets": 5, "duration_s": 10, "modality": "hold", "reps": null },
+      { "exercise": "Back Lever", "line": 1, "sets": 3, "duration_s": 8, "modality": "hold" },
+      { "exercise": "Planche Lean", "exercise_match": "planche", "line": 2, "sets": 4, "duration_s": 20, "modality": "hold" },
+      { "exercise": "L-sit", "exercise_match": "l.?sit", "line": 3, "sets": 3, "duration_s": 15, "modality": "hold" },
+      { "exercise": "Human Flag", "line": 4, "sets": 3, "duration_s": 5, "modality": "hold" }
+    ],
+    "expect_item_count": 5
+  },
+  {
+    "name": "wide: handstand work mixes holds and reps",
+    "input": "handstand hold 4x30s\nwall handstand 3x45 sec\nhandstand push ups 4x6\npike push ups 3x12\nwall walks 3x5",
+    "expect": [
+      { "exercise": "Handstand Hold", "exercise_match": "handstand", "line": 0, "sets": 4, "duration_s": 30, "modality": "hold" },
+      { "exercise": "Wall Handstand Hold", "exercise_match": "handstand", "line": 1, "sets": 3, "duration_s": 45 },
+      { "exercise": "Handstand Push-up", "exercise_match": "handstand push", "line": 2, "sets": 4, "reps": 6, "duration_s": null },
+      { "exercise": "Pike Push-up", "exercise_match": "pike", "line": 3, "sets": 3, "reps": 12 },
+      { "exercise": "Wall Walk", "exercise_match": "wall walk", "line": 4, "sets": 3, "reps": 5 }
+    ],
+    "expect_item_count": 5
+  },
+  {
+    "name": "wide: strongman carries and drags",
+    "input": "farmers carry 40m 2x50kg\nyoke walk 20m x3 180kg\nsandbag carry 30m x4 60kg\nsled drag 25m x5 100kg\ntire flips 10 reps",
+    "expect": [
+      { "exercise": "Farmer Carry", "exercise_match": "farmer", "line": 0, "distance_m": 40, "modality": "carry" },
+      { "exercise": "Yoke Walk", "exercise_match": "yoke", "line": 1, "sets": 3, "distance_m": 20, "weight_kg": 180 },
+      { "exercise": "Sandbag Carry", "exercise_match": "sandbag", "line": 2, "sets": 4, "distance_m": 30, "weight_kg": 60 },
+      { "exercise": "Sled Drag", "exercise_match": "sled", "line": 3, "sets": 5, "distance_m": 25, "weight_kg": 100 },
+      { "exercise": "Tire Flip", "exercise_match": "tire", "line": 4, "reps": 10 }
+    ]
+  },
+  {
+    "name": "wide: ergs and bikes",
+    "input": "row erg 5000m 20:15\nski erg 500m x4\nassault bike 10 min\necho bike 20 cal x5\nstair climber 15 min",
+    "expect": [
+      { "exercise": "Rowing", "exercise_match": "row", "line": 0, "distance_m": 5000, "duration_s": 1215, "modality": "cardio" },
+      { "exercise": "Ski Erg", "exercise_match": "ski", "line": 1, "sets": 4, "distance_m": 500 },
+      { "exercise": "Assault Bike", "exercise_match": "bike|cycling|air bike", "line": 2, "duration_s": 600 },
+      { "exercise": "Echo Bike", "exercise_match": "bike|cycling", "line": 3, "sets": 5 },
+      { "exercise": "Stair Climber", "exercise_match": "stair", "line": 4, "duration_s": 900 }
+    ]
+  },
+  {
+    "name": "wide: long runs with pace and time",
+    "input": "long run 21,1km 1:52:30\ntempo run 8km 32:00\nrecovery run 5k 29:15",
+    "expect": [
+      { "exercise": "Run", "line": 0, "distance_m": 21100, "duration_s": 6750, "modality": "cardio" },
+      { "exercise": "Tempo Run", "exercise_match": "run", "line": 1, "distance_m": 8000, "duration_s": 1920 },
+      { "exercise": "Recovery Run", "exercise_match": "run", "line": 2, "distance_m": 5000, "duration_s": 1755 }
+    ]
+  },
+  {
+    "name": "wide: cable and machine isolation with stack numbers",
+    "input": "cable fly 15 3x15\nface pull 25 3x20\nrope pushdown 30 4x12\nleg extension 60 3x15\nlying leg curl 45 3x12\npec deck 50 3x15",
+    "expect": [
+      { "exercise": "Cable Fly", "exercise_match": "cable (fly|crossover)", "line": 0, "sets": 3, "reps": 15, "weight_kg": 15 },
+      { "exercise": "Face Pull", "line": 1, "sets": 3, "reps": 20, "weight_kg": 25 },
+      { "exercise": "Triceps Pushdown", "exercise_match": "pushdown|rope", "line": 2, "sets": 4, "reps": 12, "weight_kg": 30 },
+      { "exercise": "Leg Extension", "line": 3, "sets": 3, "reps": 15, "weight_kg": 60 },
+      { "exercise": "Lying Leg Curl", "exercise_match": "leg curl", "line": 4, "sets": 3, "reps": 12, "weight_kg": 45 },
+      { "exercise": "Pec Deck", "exercise_match": "pec deck|chest fly", "line": 5, "sets": 3, "reps": 15, "weight_kg": 50 }
+    ],
+    "expect_item_count": 6
+  },
+  {
+    "name": "wide: weighted calisthenics and assistance",
+    "input": "weighted pull ups bw+20 4x5\nweighted dips bw+25kg 3x8\nassisted pull ups bw-15 3x10\nband assisted muscle up 3x3",
+    "expect": [
+      { "exercise": "Pull-up", "exercise_match": "pull.?up", "line": 0, "sets": 4, "reps": 5, "weight_kg": 20 },
+      { "exercise": "Dip", "exercise_match": "dip", "line": 1, "sets": 3, "reps": 8, "weight_kg": 25 },
+      { "exercise": "Assisted Pull-up", "exercise_match": "pull.?up", "line": 2, "sets": 3, "reps": 10, "weight_kg": null },
+      { "exercise": "Muscle-up", "exercise_match": "muscle.?up", "line": 3, "sets": 3, "reps": 3 }
+    ],
+    "expect_item_count": 4
+  },
+  {
+    "name": "wide: pounds written with the hash sign",
+    "input": "bench 225# 3x5\nsquat 315# 1x3\ndeadlift 405# x1",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "sets": 3, "reps": 5, "weight_kg": 102.1, "weight_tolerance": 0.6 },
+      { "exercise": "Squat", "line": 1, "reps": 3, "weight_kg": 142.9, "weight_tolerance": 0.6 },
+      { "exercise": "Deadlift", "line": 2, "reps": 1, "weight_kg": 183.7, "weight_tolerance": 0.6 }
+    ],
+    "expect_item_count": 3
+  },
+  {
+    "name": "wide: a set written weight-at-reps with the at sign",
+    "input": "bench 5 @ 100kg\nsquat 3 @ 140kg\ndeadlift 1 @ 180kg",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "reps": 5, "weight_kg": 100 },
+      { "exercise": "Squat", "line": 1, "reps": 3, "weight_kg": 140 },
+      { "exercise": "Deadlift", "line": 2, "reps": 1, "weight_kg": 180 }
+    ],
+    "expect_item_count": 3
+  },
+  {
+    "name": "wide: crossfit metcon with a time cap",
+    "input": "AMRAP 12 min:\n10 thrusters 40kg\n8 burpees over the bar\n12 kb swings 24kg",
+    "expect": [
+      { "exercise": "Thruster", "line": 1, "reps": 10, "weight_kg": 40 },
+      { "exercise": "Burpee", "exercise_match": "burpee", "line": 2, "reps": 8 },
+      { "exercise": "Kettlebell Swing", "exercise_match": "swing", "line": 3, "reps": 12, "weight_kg": 24 }
+    ]
+  },
+  {
+    "name": "wide: bar brothers style circuit with rounds",
+    "input": "3 rounds:\npull ups x8\ndips x12\npush ups x20\nsquats x30",
+    "expect": [
+      { "exercise": "Pull-up", "exercise_match": "pull.?up", "line": 1, "sets": 3, "reps": 8, "group_shared_with": "Dip" },
+      { "exercise": "Dip", "exercise_match": "^dip", "line": 2, "sets": 3, "reps": 12 },
+      { "exercise": "Push-up", "exercise_match": "push.?up", "line": 3, "sets": 3, "reps": 20 },
+      { "exercise": "Squat", "line": 4, "sets": 3, "reps": 30, "weight_kg": null }
+    ],
+    "expect_item_count": 4
+  },
+  {
+    "name": "wide: several exercises on one line separated by slashes",
+    "input": "bench 80kg 3x8 / rows 60kg 3x10 / curls 15kg 3x12",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "sets": 3, "reps": 8, "weight_kg": 80 },
+      { "exercise": "Barbell Row", "exercise_match": "row", "line": 0, "sets": 3, "reps": 10, "weight_kg": 60 },
+      { "exercise": "Biceps Curl", "exercise_match": "curl", "line": 0, "sets": 3, "reps": 12, "weight_kg": 15 }
+    ],
+    "expect_item_count": 3
+  },
+  {
+    "name": "wide: twenty lines in one note keep their line indexes",
+    "input": "bench 80kg 3x8\nsquat 120kg 3x5\ndeadlift 150kg 1x5\nohp 45kg 3x8\nrows 70kg 3x10\npull ups 3x10\ndips 3x12\ncurls 15kg 3x12\npushdown 30 3x15\nlateral raise 8kg 3x20\nleg press 200kg 3x12\nleg curl 40 3x12\ncalf raise 60kg 4x15\nplank 3x60s\nrun 3km 15:00\nkb swing 24kg 3x20\nface pull 20 3x20\nhip thrust 100kg 3x10\nlunges 20kg 3x12\nab wheel 3x10",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "sets": 3 },
+      { "exercise": "Plank", "line": 13, "sets": 3, "duration_s": 60 },
+      { "exercise": "Run", "line": 14, "distance_m": 3000, "duration_s": 900 },
+      { "exercise": "Ab Wheel Rollout", "exercise_match": "ab wheel|rollout", "line": 19, "sets": 3, "reps": 10 }
+    ],
+    "expect_item_count": 20
+  },
+  {
+    "name": "wide: the same movement three times in one note stays three items",
+    "input": "bench 60kg 2x10\nbench 80kg 3x5\nbench 100kg 1x3",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0 }
+    ],
+    "expect_item_count": 3
+  },
+  {
+    "name": "wide: typos and missing spaces still read",
+    "input": "benhc pres 80kg 3x8\nsqaut 100kg 5x5\ndeadlfit 140kgx5\nlatpulldown 60 3x12",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "sets": 3, "reps": 8, "weight_kg": 80 },
+      { "exercise": "Squat", "line": 1, "sets": 5, "reps": 5, "weight_kg": 100 },
+      { "exercise": "Deadlift", "line": 2, "reps": 5, "weight_kg": 140 },
+      { "exercise": "Lat Pulldown", "line": 3, "sets": 3, "reps": 12, "weight_kg": 60 }
+    ],
+    "expect_item_count": 4
+  },
+  {
+    "name": "wide: ALL CAPS and shouty punctuation",
+    "input": "BENCH 100KG 3X5!!!\nSQUAT 140KG 5X5\nPULL UPS BW 4X10",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "sets": 3, "reps": 5, "weight_kg": 100 },
+      { "exercise": "Squat", "line": 1, "sets": 5, "reps": 5, "weight_kg": 140 },
+      { "exercise": "Pull-up", "exercise_match": "pull.?up", "line": 2, "sets": 4, "reps": 10, "weight_kg": null }
+    ],
+    "expect_item_count": 3
+  },
+  {
+    "name": "wide: bullets, dashes and emoji around the numbers",
+    "input": "• bench – 80kg x8\n- squat — 120kg x5\n> ohp 40kg x10 💪\n* rows 60kg x12",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "reps": 8, "weight_kg": 80 },
+      { "exercise": "Squat", "line": 1, "reps": 5, "weight_kg": 120 },
+      { "exercise": "Overhead Press", "line": 2, "reps": 10, "weight_kg": 40 },
+      { "exercise": "Barbell Row", "exercise_match": "row", "line": 3, "reps": 12, "weight_kg": 60 }
+    ],
+    "expect_item_count": 4
+  },
+  {
+    "name": "wide: rep ranges and RM notation",
+    "input": "bench 3x8-10 70kg\nsquat 5RM 150kg\ndeadlift 1RM test 200kg\nohp 3x10-12 35kg",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "sets": 3, "reps": 8, "weight_kg": 70 },
+      { "exercise": "Squat", "line": 1, "weight_kg": 150 },
+      { "exercise": "Deadlift", "line": 2, "weight_kg": 200 },
+      { "exercise": "Overhead Press", "line": 3, "sets": 3, "reps": 10, "weight_kg": 35 }
+    ],
+    "expect_item_count": 4
+  },
+  {
+    "name": "wide: tempo and band notation are not reps",
+    "input": "squat 100kg 3x8 tempo 30X1\nrdl 80kg 3x10 3-1-3\nband pull aparts 3x20 red band\nbench 80kg 3x3 + chains",
+    "expect": [
+      { "exercise": "Squat", "line": 0, "sets": 3, "reps": 8, "weight_kg": 100 },
+      { "exercise": "Romanian Deadlift", "line": 1, "sets": 3, "reps": 10, "weight_kg": 80 },
+      { "exercise": "Band Pull Apart", "exercise_match": "band pull", "line": 2, "sets": 3, "reps": 20 },
+      { "exercise": "Bench Press", "line": 3, "sets": 3, "reps": 3, "weight_kg": 80 }
+    ],
+    "expect_item_count": 4
+  },
+  {
+    "name": "wide: a body weight measurement is not an exercise",
+    "input": "teža 78,4kg zjutraj\nbench 90kg 3x8\nspal 7h",
+    "expect": [
+      { "exercise": "Bench Press", "line": 1, "sets": 3, "reps": 8, "weight_kg": 90 }
+    ],
+    "expect_item_count": 1
+  },
+  {
+    "name": "wide: a note that is only junk produces nothing",
+    "input": "asdkjhaskjdh\n?????\n...\n42",
+    "expect": [],
+    "expect_item_count": 0
   }
 ]

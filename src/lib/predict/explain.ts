@@ -1,6 +1,8 @@
+import { sanitizePredictionReason } from '@/lib/brief-guard';
 import { upsertPrediction } from '@/lib/db/predictions';
 import { type DayKey } from '@/lib/db/dates';
 import { isSupabaseConfigured } from '@/lib/env';
+import { bumpGuardRejection } from '@/lib/funnel';
 import { devLog } from '@/lib/log';
 import { supabase } from '@/lib/supabase';
 
@@ -26,13 +28,21 @@ export async function refinePredictionReason(
     });
     if (error || !data) return;
 
-    // Untrusted until checked: one plain string, sane length, or nothing.
-    const reason = (data as { reason?: unknown }).reason;
-    if (typeof reason !== 'string') return;
-    const trimmed = reason.trim().slice(0, 200);
-    if (!trimmed || trimmed.includes('\n')) return;
+    // Untrusted until checked (CLAUDE.md §4). Type and length were never the
+    // risk — the number was: this sentence prints under a load the code
+    // computed, so every figure in it must come from the facts we sent or from
+    // the user's own quoted lines. Rejected → the template sentence stays.
+    const reason = sanitizePredictionReason(
+      (data as { reason?: unknown }).reason,
+      draft.explain.facts,
+      draft.explain.quotes,
+    );
+    if (!reason) {
+      bumpGuardRejection('prediction'); // §9.3 — counted, so prompt drift is visible
+      return;
+    }
 
-    upsertPrediction(userId, forDate, draft.ghostText, trimmed);
+    upsertPrediction(userId, forDate, draft.ghostText, reason);
   } catch {
     devLog('explain-prediction unreachable; template reason stays');
   }

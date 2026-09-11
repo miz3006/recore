@@ -21,7 +21,9 @@ import { computePlanStrip, type PlanStrip } from '@/lib/db/strip';
 import { setEffortOnLine, type Effort } from '@/lib/effort';
 import { readEntryNote, type EntryNotes } from '@/lib/entry-note';
 import { markEntryNoteAdded } from '@/lib/funnel';
+import { removeLine, restoreLine } from '@/lib/note-lines';
 import { getParseCache, reapplyDoneState } from '@/lib/parse/apply';
+import { hydrateFromStructure, warmRecentReadings } from '@/lib/parse/rehydrate';
 import { parseWorkout, type ParseOutcome } from '@/lib/parse/client';
 import { applyCorrection, getFixTarget, type FixTarget } from '@/lib/parse/correct';
 import { buildReceipt, type ReceiptData } from '@/lib/parse/receipt';
@@ -177,8 +179,36 @@ interface SessionState {
   /** Toggle a composer card between DONE and "recorded, not done yet". The
    * card never leaves the note — only its check state flips. */
   toggleDone: (key: string) => void;
-  /** Remove a physical line from the note (delete an entry). */
-  deleteNoteLine: (line: number) => void;
+  /**
+   * Remove a physical line from the note (delete an entry). `label` is the
+   * entry's name, purely so the undo can say WHAT it would bring back.
+   */
+  deleteNoteLine: (line: number, label?: string | null) => void;
+  /**
+   * THE LAST DELETED LINE, for as long as it is still offered back.
+   *
+   * Until 11 September 2026 a delete was the one edit in Recore with nothing
+   * behind it: `deleteNoteLine` spliced `raw_text`, which IS the record, and
+   * the app's whole answer was a confirmation dialog that said so out loud.
+   * Two places in `note-surface.tsx` had already written "on a line with no
+   * undo behind it" into their comments as the reason they had to be made
+   * scarier. This is that undo.
+   *
+   * It holds the line's TEXT, not its reading — the reading is a projection
+   * that rebuilds itself, so putting the words back puts the entry, its sets,
+   * its effort token and its check state back with them.
+   *
+   * `day` is what stops it being a footgun: an undo offered for yesterday's
+   * line must never splice into today's note, and the pill outlives a swipe
+   * unless something says otherwise. `id` rises on every delete so the pill can
+   * tell "a second delete" from "the same one re-rendered" and restart its
+   * window.
+   */
+  lastDelete: { line: number; text: string; label: string | null; day: DayKey; id: number } | null;
+  /** Put the deleted line back where it was. A no-op with nothing to restore. */
+  undoDelete: () => void;
+  /** Withdraw the offer — the window closed, or the athlete moved on. */
+  clearUndo: () => void;
   /** Rewrite one line's words from the correction sheet — see the action. */
   replaceNoteLine: (line: number, text: string) => void;
   /**
@@ -228,6 +258,10 @@ interface SessionState {
 
 const PARSE_DEBOUNCE_MS = 900;
 let parseTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Rises on every delete, so `lastDelete` is a NEW offer even when the second
+ * delete happens to name the same line and the same words as the first. */
+let undoToken = 0;
 
 // A transient parse failure (offline blip, server rate limit) retries with
 // backoff while the user is still looking at the workout — a silent failure
@@ -314,6 +348,24 @@ function loadDay(userId: string, day: DayKey) {
   let receipt: ReceiptData | null = null;
 
   if (workout) {
+    /**
+     * REBUILD THE READING BEFORE READING IT, if this day has none.
+     *
+     * `parse_cache` is a LOCAL table and `items`/`sets` are not — they sync. So
+     * a day pulled down from the server arrives with its whole structure and no
+     * cache, and this function, which reads nothing but the cache, used to
+     * render it as raw unparsed lines. On a real account that was 65 days out
+     * of 66 (`parse/rehydrate.ts` has the measurement).
+     *
+     * The rebuild is local, synchronous and refuses to guess: it only runs when
+     * the note is unchanged since the structure was written, and only when the
+     * line mapping is forced rather than inferred. When it declines, the day
+     * falls through exactly as before and the warm pass queues it for a real
+     * parse. Nothing here can block or slow a day that already has its cache —
+     * the first thing the rebuild does is notice one.
+     */
+    hydrateFromStructure(userId, workout.id);
+
     const cache = getParseCache(workout.id);
     if (cache) {
       try {
@@ -417,10 +469,32 @@ export const useSession = create<SessionState>((set, get) => ({
   ghostDismissed: false,
   planStrip: null,
   plannedSession: null,
+  lastDelete: null,
 
   hydrate: (userId) => {
     dumpStartedAt = null;
     const today = todayKey();
+    /**
+     * THE RECENT DAYS ARE READY BEFORE THEY ARE ASKED FOR (10 Sep 2026).
+     *
+     * `loadDay` can rebuild a day on demand, but it runs on the day-swipe path,
+     * where a few tens of milliseconds is a dropped frame. Doing the last two
+     * weeks here means the swipe reads a cache that is already sitting there.
+     *
+     * It also queues the days that CANNOT be rebuilt because they have no
+     * structure at all — those have never been parsed anywhere, and before this
+     * nothing ever asked for them: `pullRemote` writes `needs_parse = 0` and
+     * `runParse` is only ever reached by typing. They stayed unreadable for
+     * ever, which is the other half of the same bug.
+     */
+    // Guarded at the call site as well as inside: `hydrate` is the app's first
+    // action after sign-in, and nothing in a repair path may stand between a
+    // person and their record.
+    try {
+      warmRecentReadings(userId);
+    } catch {
+      // Every day falls back to the parser, which is where they were anyway.
+    }
     const prediction = getPredictionForOpen(userId, today);
     set({
       userId,
@@ -434,6 +508,7 @@ export const useSession = create<SessionState>((set, get) => ({
       ghostDismissed: false,
       planStrip: computePlanStrip(userId, today),
       plannedSession: loadPlannedSession(today),
+      lastDelete: null,
     });
   },
 
@@ -470,6 +545,7 @@ export const useSession = create<SessionState>((set, get) => ({
       ghostDismissed: false,
       planStrip: null,
       plannedSession: null,
+      lastDelete: null,
     });
   },
 
@@ -487,6 +563,10 @@ export const useSession = create<SessionState>((set, get) => ({
       noteTarget: null,
       planStrip: computePlanStrip(userId, day),
       plannedSession: loadPlannedSession(day),
+      // The undo travels with the day it belongs to. `undoDelete` would refuse
+      // to splice across the boundary anyway; withdrawing the offer here is so
+      // the pill never stands on a day where tapping it does nothing.
+      lastDelete: null,
     });
   },
 
@@ -645,13 +725,46 @@ export const useSession = create<SessionState>((set, get) => ({
     scheduleSync();
   },
 
-  deleteNoteLine: (line) => {
-    const { note } = get();
-    const lines = note.split('\n');
-    if (line < 0 || line >= lines.length) return;
-    lines.splice(line, 1);
-    set({ editingLine: null, sheetExercise: null, sheetLine: null });
-    get().setNote(lines.join('\n'));
+  deleteNoteLine: (line, label = null) => {
+    const { note, selectedDay } = get();
+    const cut = removeLine(note, line);
+    if (!cut) return;
+    set({
+      editingLine: null,
+      sheetExercise: null,
+      sheetLine: null,
+      // Remembered BEFORE the write, so the offer is already standing by the
+      // time the record re-renders without the entry in it.
+      lastDelete: { line: cut.line, text: cut.text, label, day: selectedDay, id: ++undoToken },
+    });
+    get().setNote(cut.note);
+  },
+
+  /**
+   * PUT IT BACK — through `setNote`, like a keystroke, because that is the only
+   * path into the record (§3).
+   *
+   * Nothing here re-applies a parse, a check state or an effort token: the
+   * restored TEXT is read again by the debounced parse `setNote` fires, and the
+   * reading it produces is the reading the line had. That is the same reason
+   * "Edit my words instead" needs no separate re-parse path.
+   *
+   * It REFUSES ACROSS A DAY BOUNDARY rather than clamping like `restoreLine`
+   * does, because the two failures are not the same size: restoring at the
+   * wrong index costs a position inside a session the athlete is looking at,
+   * while restoring into the wrong DAY writes a lift into a session that never
+   * happened — a fabricated record, which §3 does not allow at any price.
+   */
+  undoDelete: () => {
+    const { lastDelete, note, selectedDay } = get();
+    if (!lastDelete) return;
+    set({ lastDelete: null });
+    if (lastDelete.day !== selectedDay) return;
+    get().setNote(restoreLine(note, lastDelete.line, lastDelete.text));
+  },
+
+  clearUndo: () => {
+    if (get().lastDelete) set({ lastDelete: null });
   },
 
   /**

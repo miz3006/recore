@@ -106,6 +106,13 @@ export default function ImportStart() {
             `That file is not a ${appName} export. Look for the CSV ${appName} emails you, or skip and do it later from You.`,
           );
           return;
+        case 'too-large':
+          // Truthful about WHY: this is a real export, just a bigger one than
+          // the import can hold in memory at once.
+          setMessage(
+            `That file is over ${outcome.limitMb} MB, which is more than the import can read at once. Export a shorter date range, or skip and do it later from You.`,
+          );
+          return;
         default:
           setMessage('That file could not be read. You can try again or skip and do it later.');
       }

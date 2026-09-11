@@ -8,7 +8,8 @@
  *
  * Algorithm:
  *   1. Hit the TOP of the rep range on ALL working sets → add weight, drop
- *      reps to the bottom of the range.
+ *      reps to the bottom of the range — UNLESS the athlete was at or past
+ *      failure (rir ≤ 0), in which case the load is held (see the rule).
  *   2. RIR ≥ 2 extracted from the text → too easy: add weight now.
  *   3. RIR 0–1 and reps in range → keep weight, chase one more rep.
  *   4. Didn't reach the bottom of the range → keep weight (fatigued).
@@ -84,6 +85,7 @@ export type Reason =
   | { code: 'hold'; weight: number; bottom: number }
   | { code: 'add_rep'; weight: number; minRir: number | null }
   | { code: 'top_of_range'; weight: number; increment: number; top: number; bottom: number }
+  | { code: 'at_limit'; weight: number; top: number }
   | { code: 'rir_surplus'; weight: number; increment: number; minRir: number }
   | { code: 'deload'; from: number; to: number };
 
@@ -157,6 +159,44 @@ export function progressStrength(h: StrengthHistory): Prescription {
   // 1. Every working set filled the top of the range → load up, reps to bottom.
   const allAtTop = reps.length === setsCount && reps.every((r) => r >= top) && setsCount > 0;
   if (allAtTop && maxReps != null) {
+    /**
+     * UNLESS THERE WAS NOTHING LEFT (owner, 10 September 2026).
+     *
+     * The rep range is INFERRED from today's own work (`repRange`: top = the
+     * session's max reps), so for the commonest way anyone logs — straight
+     * sets, equal reps — "every set filled the top of the range" is true by
+     * construction. Measured before the fix: 3×8 at 100 prescribed 102.5 × 6
+     * for rir 0, rir 3 AND no answer alike. The athlete tapped "Nothing left"
+     * on the check-in and the app added two and a half kilos anyway.
+     *
+     * That made the sheet's most expensive question — one decision per lift —
+     * unheard in the majority case, and worse than unheard: it CONTRADICTED
+     * the person. `effort.ts` already states the principle this restores —
+     * *"when the app is unsure it keeps the load; it never talks itself into a
+     * heavier bar"* — and someone who just reported rir 0 is not unsure.
+     *
+     * THE TEST IS rir ≤ 0, NOT rir === 0, and the difference is not pedantry.
+     * A set taken PAST failure is rir −1 or lower (`prompt.ts`: "NEGATIVE RIR
+     * is real and must survive"), and someone who needed a forced rep has even
+     * less business being handed a heavier bar than someone who merely reached
+     * failure. `=== 0` also happened to be provably wrong on the device: the
+     * parser answered the app's own `rpe 10` token with **rir −1** on 10
+     * September 2026, so the exact-zero test never fired for the one answer it
+     * was written for, and Next went on prescribing +2.5 after "Nothing left".
+     * The bound is the semantics; matching the parser is a bonus.
+     *
+     * Rir 1 ("Just right") still loads up: they filled the range with something
+     * in reserve, which is exactly what double progression asks for. The block
+     * is the honest reading of the answers that say the tank was empty.
+     */
+    if (minRir != null && minRir <= 0) {
+      return {
+        sets: setsCount,
+        reps: top,
+        weightKg: topWeight,
+        reason: { code: 'at_limit', weight: topWeight, top },
+      };
+    }
     const w = roundToPlate(topWeight + h.incrementKg, plate);
     return {
       sets: setsCount,

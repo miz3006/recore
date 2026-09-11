@@ -12,12 +12,12 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { getLastSessionPrefill } from '@/lib/db/last-set';
-import { getReflection } from '@/lib/db/workouts';
+import { getReflection, getSessionEffort } from '@/lib/db/workouts';
 import { readEntryNote } from '@/lib/entry-note';
 import { tap, tapMedium } from '@/lib/haptics';
 import { DUR, SPRING } from '@/lib/motion';
+import { appendRepeatSet } from '@/lib/parse/next-set';
 import { namesMatch, typedNameOf, type ReceiptRow } from '@/lib/parse/receipt';
-import { doneKeyFor } from '@/lib/parse/summarize';
 import { PAPER_FIELD_CSS } from '@/lib/paper-field';
 import {
   COMPOSER_HINT_SESSIONS,
@@ -27,7 +27,8 @@ import {
   markCoachRingDone,
   markComposerHintDone,
 } from '@/lib/prefs';
-import { reflectionTagLine, splitReflection } from '@/lib/reflection';
+import { splitReflection } from '@/lib/reflection';
+import { SESSION_EFFORT_LABEL, sessionEffortOf } from '@/lib/session-effort';
 import {
   color,
   FIXED_FONT_SCALE,
@@ -39,11 +40,19 @@ import {
   spacing,
   TAB_BAR_CLEARANCE,
 } from '@/lib/theme';
+// The navigation bar's live height, straight from the native stack — how tall
+// UIKit is drawing the bar for THIS screen right now, large title and status
+// bar included. `expo-router` vendors react-navigation rather than depending on
+// it, so this is where the hook lives; it is typed, so a path that ever moves
+// fails the typecheck rather than the page.
+import { useHeaderHeight } from 'expo-router/build/react-navigation/elements';
+
 import { useCurrentNote, useSession } from '@/state/session-store';
 
+import { CheckInNote } from './check-in-note';
 import { DaySwipe } from './day-swipe';
 import { EntryActionsSheet, joinNames, type EntryAction } from './entry-actions-sheet';
-import { comparisonOf, PrLabel, ReadingLine, ReadingMark, ReadingSweep } from './gutter-value';
+import { comparisonOf, PrLabel, ReadingLine, ReadingMark } from './gutter-value';
 import { Icon } from './icon';
 import { PressableScale } from './motion';
 import { BODY_PADDING_H, BODY_PADDING_TOP } from './note-metrics';
@@ -93,7 +102,7 @@ export const NEXT_PLACEHOLDER = 'Next exercise…';
  * "Triceps Pushdown"), echo their original word beside the card (X4) — the
  * auto-fix stays visible and tappable to correct, never a silent rename. Only
  * for a single-exercise line (a run-on line has no one typed name). */
-function aliasEchoOf(rawLine: string, canonical: string): string | null {
+export function aliasEchoOf(rawLine: string, canonical: string): string | null {
   const typed = typedNameOf(rawLine);
   return typed && !namesMatch(typed, canonical) ? typed : null;
 }
@@ -132,6 +141,8 @@ export function NoteSurface({
   const checkInOpen = useSession((s) => s.checkInOpen);
   const userId = useSession((s) => s.userId);
   const workoutId = useSession((s) => s.workoutId);
+  // Which day the page is showing — the reset below returns to the top of it.
+  const selectedDay = useSession((s) => s.selectedDay);
   const reduceMotion = useReducedMotion();
   // Shared with the resting pill, so the two can never disagree about whether
   // the athlete is still training (`lib/session-activity.ts`).
@@ -180,10 +191,22 @@ export function NoteSurface({
    * itself (`alsoOnLine`) and again here.
    *
    * And it never asked. `deleteNoteLine` splices out of `note`, which is
-   * `raw_text`, which is the record, and there is no undo stack behind it —
-   * while the far gentler "Remove reading" in the fix sheet, which deletes
-   * nothing the athlete wrote, already stops to ask. Same Alert shape as that
-   * one, so the app has one destructive voice.
+   * `raw_text`, which is the record — while the far gentler "Remove reading" in
+   * the fix sheet, which deletes nothing the athlete wrote, already stops to
+   * ask. Same Alert shape as that one, so the app has one destructive voice.
+   *
+   * **THERE IS AN UNDO BEHIND IT NOW (11 September 2026)**, and this paragraph
+   * used to end "and there is no undo stack behind it" as the second half of
+   * the argument for asking. `undo-delete.tsx` closes that, so the dialog's
+   * last sentence — "This cannot be undone." — stopped being true and was
+   * replaced rather than kept: a warning that overstates what it is warning
+   * about is the kind of copy §2 exists to prevent, and it teaches the athlete
+   * to distrust the next warning too.
+   *
+   * The dialog itself stays, because it still does the one thing the undo
+   * cannot: it NAMES THE SIBLINGS that go with a run-on line before they go.
+   * For a line holding a single entry it is now pure friction on a reversible
+   * action, and dropping it there is the owner's call, not this file's.
    *
    * It runs from `onSelect`, i.e. after the sheet's native modal is gone. An
    * alert is a presentation like any other, and UIKit will refuse it over a
@@ -200,14 +223,17 @@ export function NoteSurface({
         ? `“${entry.exercise}” shares one written line with ${joinNames(entry.alsoOnLine)}, so all of them go.`
         : `The line you wrote for “${entry.exercise}” is removed from this session.`
       : 'The line you wrote is removed from this session.';
-    Alert.alert(entry ? 'Delete this entry?' : 'Delete this line?', `${what} This cannot be undone.`, [
+    Alert.alert(entry ? 'Delete this entry?' : 'Delete this line?', `${what} Undo is offered straight after.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
           tapMedium();
-          deleteNoteLine(line);
+          // The entry's name travels with the delete so the undo pill can say
+          // WHAT it would bring back. A line with several entries on it has no
+          // one name, and the pill falls back to naming the line.
+          deleteNoteLine(line, entry && entry.alsoOnLine.length === 0 ? entry.exercise : null);
         },
       },
     ]);
@@ -300,6 +326,65 @@ export function NoteSurface({
     if (contentH.current > viewH.current + 1) noteScrollRef.current?.scrollToEnd({ animated });
   };
 
+  /**
+   * A NEW DAY OPENS AT THE TOP OF ITS PAGE (owner, 10 September 2026).
+   *
+   * One scroll view holds every day — swiping does not push a screen, it swaps
+   * the content underneath — so the offset the last day was left at survived
+   * into the next one. Swipe back from a page you had scrolled and yesterday
+   * arrived already scrolled past its own first lift, with the title collapsed
+   * and nothing on screen to explain why. Reaching yesterday is the commonest
+   * thing a lifter does after writing a session up late, and it landed them
+   * mid-page.
+   *
+   * WHY THE TOP IS NOT `y: 0`. `contentInsetAdjustmentBehavior="automatic"`
+   * leaves the large title's space as an *adjusted* content inset, so the page
+   * rests at a NEGATIVE offset — `y: 0` puts the dateline behind the navigation
+   * bar, which is the same wrong place reached a different way (photographed on
+   * the iOS 26.5 simulator). UIKit owns that inset and never hands it to
+   * JavaScript: `contentInset` on a scroll event is the raw prop, which is zero
+   * here, and `scrollTo` clamps a negative y against that same zero — hence
+   * `scrollToOverflowEnabled` on the scroll view, which is not overflow so much
+   * as permission to reach the top.
+   *
+   * So the resting offset is MEASURED, not assumed. The content has no top
+   * padding, so the first pixel of the page sits at window y = −contentOffset;
+   * taken once while the page is still untouched, that y IS the offset the top
+   * rests at — whatever the navigation bar, the status bar and Dynamic Type
+   * make of it. A reading outside a sane range is refused and the reset falls
+   * back to `0`, because a page one bar too low is a great deal better than a
+   * page thrown into empty space.
+   */
+  const headerHeight = useHeaderHeight();
+  const restOffset = useRef(0);
+  useEffect(() => {
+    // The tallest the bar has been is the bar with its large title out, which
+    // is the state the page rests in. Written from an effect, never during a
+    // render: the React Compiler is on (`app.json` experiments) and a
+    // render-phase ref write is exactly what it is allowed to reorder.
+    if (-headerHeight < restOffset.current) restOffset.current = -headerHeight;
+  }, [headerHeight]);
+
+  const shownDay = useRef(selectedDay);
+  useEffect(() => {
+    if (shownDay.current === selectedDay) return;
+    shownDay.current = selectedDay;
+    // Not animated: the swipe is already carrying one page out and the next one
+    // in, and a scroll animation under that reads as a second, slower gesture
+    // nobody made.
+    //
+    // TWICE, one frame apart, and the second one is not superstition. Arriving
+    // at the top brings the large title back out, which grows the adjusted
+    // inset by exactly the title's height — and UIKit keeps the CONTENT still
+    // while that happens by moving the offset the same distance, so the page
+    // ends up that far below its own top (measured: asked for −168, landed at
+    // −220). The bar has settled a frame later, and the identical instruction
+    // then means what it says.
+    const toTop = () => noteScrollRef.current?.scrollTo({ y: restOffset.current, animated: false });
+    toTop();
+    requestAnimationFrame(toTop);
+  }, [selectedDay]);
+
   const settleActive = (line: string) => {
     // The committed line settles above; a fresh empty line becomes the input.
     setNote([...lines.slice(0, activeIndex), line, ''].join('\n'));
@@ -363,8 +448,10 @@ export function NoteSurface({
           onChange={(t) => setLineText(i, t)}
           onDone={stopEditLine}
           // The SAME `deleteNoteLine`, so the same confirm — a bare one-tap
-          // Delete beside an autofocused field, on a line with no undo behind
-          // it, was the more accidental of the two doors, not the safer one.
+          // Delete beside an autofocused field was the more accidental of the
+          // two doors, not the safer one. (It used to read "on a line with no
+          // undo behind it"; there is one now — `undo-delete.tsx` — which is
+          // why the dialog's copy no longer claims otherwise.)
           onDelete={() => confirmDeleteLine(i, null)}
           // "Fix reading" repairs the PARSE of this line (wrong name, wrong
           // numbers) without touching the written words — only offered while
@@ -387,8 +474,28 @@ export function NoteSurface({
       const alias = rows.length === 1 ? aliasEchoOf(raw, rows[0]!.exercise) : null;
       settledCards += rows.length;
       rows.forEach((row, j) => {
-        const key = doneKeyFor(row.exercise, row.setText);
+        const key = row.doneKey;
         const cardKey = `${i}:${j}:${row.exercise}`;
+        const line = i;
+        /**
+         * "One more set", and the two guards that decide whether it may exist.
+         *
+         * ONE EXERCISE PER LINE. A superset shares a physical line ("incline
+         * bench 3x10 60kg, ss flyes 3x12"), and appending to that line would
+         * put the flyes' set after the bench's words with nothing saying which
+         * it belongs to. There is no honest place to write it, so the control
+         * is not offered — the composer still is.
+         *
+         * SOMETHING TO REPEAT. Rep-based work only; a run or a hold returns
+         * null from the helper and the row simply does not appear.
+         *
+         * The unit is `kg` because the record IS in kg — the table right above
+         * this control heads its load column "KG", and a line that appended
+         * pounds under a kilogram header would be the record disagreeing with
+         * itself on one card.
+         */
+        const nextLine =
+          rows.length === 1 ? appendRepeatSet(raw.trim(), row.working, 'kg') : null;
         pushBlock(
           <ExerciseCard
             key={cardKey}
@@ -429,6 +536,19 @@ export function NoteSurface({
               Keyboard.dismiss(); // the sheet brings its own inputs
               openFixSheet(row.line); // tap the echoed word → correct the reading
             }}
+            onAddSet={
+              nextLine
+                ? () => {
+                    tap();
+                    // The words land in `raw_text` — the record — and the line
+                    // opens straight away, because the set just done is usually
+                    // the last one with a digit changed. A re-parse follows the
+                    // edit exactly as it does for anything else typed here.
+                    setLineText(line, nextLine);
+                    startEditLine(line);
+                  }
+                : null
+            }
           />,
         );
       });
@@ -499,22 +619,45 @@ export function NoteSurface({
    * The check-in used to be write-only from this page: you answered it once,
    * the prompt row vanished, and your words lived on in a column no screen
    * printed. §8.1 calls a reflection part of the record, and a record you
-   * cannot re-read is a form you filled in — so the day now prints it under
-   * the lifts it is about: the chosen tags on one quiet line, the prose under
-   * them, both a step smaller than a lift because they ANNOTATE the session
-   * rather than report a number.
+   * cannot re-read is a form you filled in — so the day prints it under the
+   * lifts it is about.
+   *
+   * WHAT IS ASSEMBLED HERE is everything the sheet stores about the session as
+   * a whole — the rating (`session_effort`), the armed chips and the typed
+   * words — and `check-in-note.tsx` decides how the three are drawn. This hook
+   * reads; that file designs.
    *
    * Read on the same beat as the prompt it replaces — the check-in writes it,
    * so closing that sheet (or changing day) is what makes this current.
    */
   const reflection = useMemo(() => {
     const stored = workoutId ? getReflection(workoutId) : null;
-    if (!stored || stored.trim().length === 0) return null;
-    const { tags, text } = splitReflection(stored);
-    return { tags: reflectionTagLine(tags), text };
+    /**
+     * THE SESSION'S RATING READS BACK ON THE SAME BLOCK (10 September 2026).
+     *
+     * It is the third thing the check-in carries and it arrived with the same
+     * problem the chips had in August: written once, printed nowhere. A word,
+     * not the stored CR-10 number — see `CheckInNote`.
+     */
+    const effort = workoutId ? sessionEffortOf(getSessionEffort(workoutId)) : null;
+    const rating = effort ? SESSION_EFFORT_LABEL[effort] : null;
+    const words = stored && stored.trim().length > 0 ? splitReflection(stored) : null;
+    if (!rating && !words) return null;
+    // The tags stay an ARRAY here: `CheckInNote` prints them as the chips they
+    // were tapped as, and joining them into "a · b" first would throw away the
+    // one thing that makes them readable as answers.
+    return { rating, tags: words?.tags ?? [], text: words?.text ?? '' };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workoutId, checkInOpen, receipt]);
-  const showReflectionRow = settledCards > 0 && !sessionActive && reflection === null;
+  /**
+   * The invitation below the line is about WORDS, so a session that was rated
+   * and not written about still gets it. Gating on `reflection === null` would
+   * have taken the prompt away the moment somebody tapped "Hard" and left —
+   * the one session where they most obviously have not written anything yet.
+   */
+  const wroteSomething =
+    (reflection?.tags.length ?? 0) > 0 || (reflection?.text.length ?? 0) > 0;
+  const showReflectionRow = settledCards > 0 && !sessionActive && !wroteSomething;
 
   return (
     <>
@@ -526,6 +669,10 @@ export function NoteSurface({
         button or content inside it now. */}
     <ScrollView
       ref={noteScrollRef}
+      /* Lets `scrollTo` reach the page's real top: the resting offset is
+         negative and RN clamps a negative y to zero without this. See the
+         day-change reset above. */
+      scrollToOverflowEnabled
       style={styles.body}
       contentContainerStyle={styles.content}
       // `automatic` hands the insets to the system: the large title's height,
@@ -580,35 +727,19 @@ export function NoteSurface({
             the page that shows it and there is still exactly one place the
             words are written. */}
         {reflection ? (
-          <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(220)}>
-            <PressableScale
-              onPress={() => {
-                tap();
-                Keyboard.dismiss(); // the check-in brings its own field
-                openCheckIn();
-              }}
-              haptic="none"
-              activeScale={ROW_SCALE}
-              wash
-              washStyle={styles.rowWash}
-              accessibilityRole="button"
-              accessibilityLabel={`Your note about this session: ${[reflection.tags, reflection.text]
-                .filter((part) => part.length > 0)
-                .join('. ')}`}
-              accessibilityHint="Opens the check-in to edit it"
-              style={styles.reflectNote}>
-              {reflection.tags.length > 0 ? (
-                <Text style={styles.reflectTags} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {reflection.tags}
-                </Text>
-              ) : null}
-              {reflection.text.length > 0 ? (
-                <Text style={styles.reflectBody} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {reflection.text}
-                </Text>
-              ) : null}
-            </PressableScale>
-          </Animated.View>
+          <CheckInNote
+            rating={reflection.rating}
+            tags={reflection.tags}
+            text={reflection.text}
+            railWidth={RAIL_W}
+            railGap={RAIL_GAP}
+            reduceMotion={reduceMotion}
+            onPress={() => {
+              tap();
+              Keyboard.dismiss(); // the check-in brings its own field
+              openCheckIn();
+            }}
+          />
         ) : null}
 
         {/* WHAT IS SETTLED AND WHAT IS BEING WRITTEN are separated by AIR, not
@@ -618,115 +749,26 @@ export function NoteSurface({
             record-to-record gap, and the largest space on the page is the one
             that says "everything above this is written down". */}
 
-        {/* The active line — where you write. A hollow marker until it settles;
-            on a blank canvas there is no marker AND no rail at all, because a
-            checklist ring with nothing to check is a control pretending to be
-            one — and the empty page should open exactly like a new note in
-            Apple Notes: the cursor at the top-left of the page, on the body's
-            own margin, with nothing indenting it (owner, 12 Aug 2026).
-
-            The rail arrives with the first card, and `layout` glides the line
-            into its indentation instead of snapping — the same beat in which
-            the canvas becomes the ledger. */}
-        <Animated.View
-          style={[
-            styles.activeRow,
-            blocks.length > 0 && styles.activeRowAfterRecord,
-            canvas && styles.activeRowCanvas,
-          ]}
-          layout={reduceMotion ? undefined : LinearTransition.duration(DUR.slow)}>
-          {canvas ? null : (
-            <View style={styles.rail}>
-              <View style={styles.railHollow} />
-            </View>
-          )}
-          <Animated.View
-            style={styles.activeBody}
-            layout={reduceMotion ? undefined : LinearTransition.duration(DUR.slow)}>
-            <NoteInput
-              inputRef={noteInputRef}
-              value={activeValue}
-              onChangeText={setActive}
-              onSubmitEditing={commit}
-              /**
-               * NO SCROLL ON FOCUS. It was here to compensate for the
-               * `KeyboardAvoidingView` that used to wrap this page; with
-               * `automaticallyAdjustKeyboardInsets` the scroll view brings its
-               * own first responder into view, on the UI thread, which is the
-               * whole reason that prop replaced the wrapper.
-               */
-              placeholder={empty ? PLACEHOLDER : NEXT_PLACEHOLDER}
-            />
-            {/* Live read-out of what you're typing — the parse, before you commit. */}
-            {activeRows && activeRows.length ? (
-              <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(180)}>
-                {activeRows.map((row, j) => (
-                  <View key={`ar:${j}`} style={styles.previewRow}>
-                    <Text style={styles.previewName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                      {row.exercise}
-                    </Text>
-                    <Text style={styles.previewValue} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                      {row.setText}
-                    </Text>
-                  </View>
-                ))}
-                <Text style={styles.previewHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  {activeRows.length > 1
-                    ? `return to add ${activeRows.length} exercises`
-                    : 'return to add'}
-                </Text>
-              </Animated.View>
-            ) : lastPrefill ? (
-              // Last session's real sets — a dim record read to accept verbatim
-              // (tap or return) or overwrite by typing your own numbers.
-              <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(180)}>
-                <PressableScale
-                  onPress={acceptPrefill}
-                  haptic="none"
-                  hitSlop={spacing.xs}
-                  activeScale={ROW_SCALE}
-                  wash
-                  washStyle={styles.rowWash}
-                  style={styles.prefillRow}>
-                  <Text
-                    style={styles.prefillReading}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                    {lastPrefill.reading}
-                  </Text>
-                </PressableScale>
-                <Text style={styles.previewHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  last session · return to log the same
-                </Text>
-              </Animated.View>
-            ) : activePending ? (
-              // THE COMPOSER'S VALUE COLUMN. There are no committed words here
-              // for a light to pass under — the line is still in the field
-              // above, and moving anything under a cursor mid-sentence is the
-              // one thing §14 rules out outright. So the working mark waits in
-              // the column the live read-out prints its value in, and the
-              // answer takes its place without moving.
-              //
-              // The BLUE LINE joins it (9 September 2026) and does not break
-              // that rule, because it is under the FIELD rather than under the
-              // cursor: nothing the athlete has written moves, is dimmed, or is
-              // crossed. It is the same mark the settled row wears while it is
-              // being read, so the working state looks the same wherever the
-              // athlete happens to be looking.
-              <Animated.View
-                entering={reduceMotion ? undefined : FadeIn.duration(180)}
-                accessibilityRole="progressbar"
-                accessibilityLabel="reading, in progress">
-                <View style={styles.composerLine}>
-                  <ReadingLine />
-                </View>
-                <View style={styles.previewPending}>
-                  <ReadingMark />
-                </View>
-              </Animated.View>
-            ) : null}
-          </Animated.View>
-        </Animated.View>
+        {/* THE ACTIVE LINE — where you write, and the one line of teaching
+            under it. `Composer` is the whole of it, and it is a shared
+            component for the same reason `NoteInput` and `ExerciseCard` are:
+            the onboarding demo has to BE the composer, not resemble it. */}
+        <Composer
+          inputRef={noteInputRef}
+          value={activeValue}
+          onChangeText={setActive}
+          onSubmitEditing={commit}
+          placeholder={empty ? PLACEHOLDER : NEXT_PLACEHOLDER}
+          canvas={canvas}
+          afterRecord={blocks.length > 0}
+          rows={activeRows}
+          pending={activePending}
+          prefill={
+            lastPrefill ? { reading: lastPrefill.reading, onAccept: acceptPrefill } : null
+          }
+          hint={canvas && showComposerHint ? COMPOSER_HINT : null}
+          reduceMotion={reduceMotion}
+        />
 
         {/* The first-session hint — the FIRST SESSION card's step two, live.
             One muted line while there is a settled card the user has never
@@ -769,19 +811,6 @@ export function NoteSurface({
                 Add a note about this session
               </Text>
             </PressableScale>
-          </Animated.View>
-        ) : null}
-
-        {/* The one line of teaching on the canvas, and it is EARNED AWAY: it
-            shows while the athlete has fewer than three sessions and then
-            never again (`pref_composer_hint_done`). An example of the thing
-            being asked for beats an explanation of it — and after three
-            sessions an example is just a sentence in the way. */}
-        {canvas && showComposerHint ? (
-          <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(240)}>
-            <Text style={styles.canvasHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              like “bench 3x8 60, felt easy”
-            </Text>
           </Animated.View>
         ) : null}
 
@@ -837,6 +866,18 @@ export function NoteInput({
   onFocus,
   placeholder,
   autoFocus = false,
+  /**
+   * Hand the bar over the keyboard to UIKIT (10 September 2026).
+   *
+   * With a `nativeID` here and an `InputAccessoryView` carrying the same one,
+   * iOS attaches the bar to the keyboard itself — which means the keyboard
+   * frame every listener and every scroll view sees INCLUDES it, and the line
+   * being written is scrolled clear of it by the system rather than by
+   * arithmetic. Today still tracks its toolbar by hand and pays for it with a
+   * `bottom: keyboardHeight` and a clearance constant; the onboarding demo does
+   * not, and this prop is the difference. Unset changes nothing.
+   */
+  inputAccessoryViewID,
   testID,
 }: {
   inputRef?: React.Ref<TextInput>;
@@ -846,6 +887,7 @@ export function NoteInput({
   onFocus?: () => void;
   placeholder: string;
   autoFocus?: boolean;
+  inputAccessoryViewID?: string;
   testID?: string;
 }) {
   return (
@@ -867,10 +909,236 @@ export function NoteInput({
       autoCorrect={false}
       spellCheck={false}
       autoFocus={autoFocus}
+      inputAccessoryViewID={inputAccessoryViewID}
       allowFontScaling
       maxFontSizeMultiplier={MAX_FONT_SCALE}
       testID={testID}
     />
+  );
+}
+
+/** Today's own line of teaching on an empty page, exported so the demo asks in
+ * the same words and the two can never drift apart. */
+export const COMPOSER_HINT = 'like “bench 3x8 60, felt easy”';
+
+/**
+ * THE LINE BEING WRITTEN. One definition, used by Today and by the onboarding
+ * demo (10 September 2026).
+ *
+ * Extracted for exactly the reason `NoteInput` and `ExerciseCard` were, and the
+ * owner's sentence about the demo screen is the whole argument: *"Anything that
+ * makes it behave differently from Today is a bug."* The field alone was never
+ * the composer — the composer is the field PLUS the rail that arrives with the
+ * first card, the live read-out of the line being typed, the blue line under it
+ * while it is read, and the one example sentence on an empty page. A demo that
+ * imported the field and rebuilt the other four would have looked right on the
+ * day it was written and drifted from then on.
+ *
+ * Every value arrives as a prop and nothing is read from `session-store`, so
+ * the same component serves a page backed by SQLite and a page backed by
+ * nothing at all.
+ */
+export function Composer({
+  inputRef,
+  value,
+  onChangeText,
+  onSubmitEditing,
+  placeholder,
+  /** Nothing has been read on this page yet — no rail and no marker, and the
+   * cursor opens on the body's own margin like a new note in Apple Notes. */
+  canvas,
+  /** There is a record above this line, so it takes the page's largest gap —
+   * the one boundary that means "everything above this is written down". */
+  afterRecord,
+  /** The live read-out of what is in the field right now: the parse, before it
+   * is committed. Null while there is nothing to say about it. */
+  rows,
+  /** The line is being read — the blue line under the field and the working
+   * mark in the value column. */
+  pending,
+  /** Last session's real sets, offered for the exercise being named (Today
+   * only: it takes a history to read one from). */
+  prefill,
+  /** One example sentence under the line, on an empty page. */
+  hint,
+  /** Makes that sentence the tap target that writes itself into the line. */
+  onHintPress,
+  /** The `nativeID` of an `InputAccessoryView` to hang on the keyboard — see
+   * `NoteInput`. */
+  inputAccessoryViewID,
+  reduceMotion,
+}: {
+  inputRef?: React.Ref<TextInput>;
+  value: string;
+  onChangeText: (text: string) => void;
+  onSubmitEditing: () => void;
+  placeholder: string;
+  canvas: boolean;
+  afterRecord: boolean;
+  rows: { exercise: string; setText: string }[] | null;
+  pending: boolean;
+  prefill: { reading: string; onAccept: () => void } | null;
+  hint?: string | null;
+  onHintPress?: (() => void) | null;
+  inputAccessoryViewID?: string;
+  reduceMotion: boolean;
+}) {
+  return (
+    <>
+      {/* The active line — where you write. A hollow marker until it settles;
+          on a blank canvas there is no marker AND no rail at all, because a
+          checklist ring with nothing to check is a control pretending to be
+          one — and the empty page should open exactly like a new note in
+          Apple Notes: the cursor at the top-left of the page, on the body's
+          own margin, with nothing indenting it (owner, 12 Aug 2026).
+
+          The rail arrives with the first card, and `layout` glides the line
+          into its indentation instead of snapping — the same beat in which
+          the canvas becomes the ledger. */}
+      <Animated.View
+        style={[
+          styles.activeRow,
+          afterRecord && styles.activeRowAfterRecord,
+          canvas && styles.activeRowCanvas,
+        ]}
+        layout={reduceMotion ? undefined : LinearTransition.duration(DUR.slow)}>
+        {canvas ? null : (
+          <View style={styles.rail}>
+            <View style={styles.railHollow} />
+          </View>
+        )}
+        <Animated.View
+          style={styles.activeBody}
+          layout={reduceMotion ? undefined : LinearTransition.duration(DUR.slow)}>
+          <NoteInput
+            inputRef={inputRef}
+            value={value}
+            onChangeText={onChangeText}
+            onSubmitEditing={onSubmitEditing}
+            /**
+             * NO SCROLL ON FOCUS. It was here to compensate for the
+             * `KeyboardAvoidingView` that used to wrap this page; with
+             * `automaticallyAdjustKeyboardInsets` the scroll view brings its
+             * own first responder into view, on the UI thread, which is the
+             * whole reason that prop replaced the wrapper.
+             */
+            placeholder={placeholder}
+            inputAccessoryViewID={inputAccessoryViewID}
+          />
+          {/* Live read-out of what you're typing — the parse, before you commit. */}
+          {rows && rows.length ? (
+            <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(180)}>
+              {rows.map((row, j) => (
+                <View key={`ar:${j}`} style={styles.previewRow}>
+                  <Text style={styles.previewName} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    {row.exercise}
+                  </Text>
+                  <Text style={styles.previewValue} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                    {row.setText}
+                  </Text>
+                </View>
+              ))}
+              <Text style={styles.previewHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {rows.length > 1
+                  ? `return to add ${rows.length} exercises`
+                  : 'return to add'}
+              </Text>
+            </Animated.View>
+          ) : prefill ? (
+            // Last session's real sets — a dim record read to accept verbatim
+            // (tap or return) or overwrite by typing your own numbers.
+            <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(180)}>
+              <PressableScale
+                onPress={prefill.onAccept}
+                haptic="none"
+                hitSlop={spacing.xs}
+                activeScale={ROW_SCALE}
+                wash
+                washStyle={styles.rowWash}
+                style={styles.prefillRow}>
+                <Text
+                  style={styles.prefillReading}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  {prefill.reading}
+                </Text>
+              </PressableScale>
+              <Text style={styles.previewHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                last session · return to log the same
+              </Text>
+            </Animated.View>
+          ) : pending ? (
+            // THE COMPOSER'S VALUE COLUMN. There are no committed words here
+            // for a light to pass under — the line is still in the field
+            // above, and moving anything under a cursor mid-sentence is the
+            // one thing §14 rules out outright. So the working mark waits in
+            // the column the live read-out prints its value in, and the
+            // answer takes its place without moving.
+            //
+            // The BLUE LINE joins it (9 September 2026) and does not break
+            // that rule, because it is under the FIELD rather than under the
+            // cursor: nothing the athlete has written moves, is dimmed, or is
+            // crossed. It is the same mark the settled row wears while it is
+            // being read, so the working state looks the same wherever the
+            // athlete happens to be looking.
+            <Animated.View
+              entering={reduceMotion ? undefined : FadeIn.duration(180)}
+              accessibilityRole="progressbar"
+              accessibilityLabel="reading, in progress">
+              <View style={styles.composerLine}>
+                <ReadingLine />
+              </View>
+              <View style={styles.previewPending}>
+                <ReadingMark />
+              </View>
+            </Animated.View>
+          ) : null}
+        </Animated.View>
+      </Animated.View>
+
+      {/* THE ONE LINE OF TEACHING, under the line it is teaching.
+          On Today it is EARNED AWAY — it shows while the athlete has fewer than
+          three sessions and then never again (`pref_composer_hint_done`),
+          because an example of the thing being asked for beats an explanation
+          of it, and after three sessions an example is just a sentence in the
+          way. In the onboarding demo it is always on: nobody there has a
+          session yet.
+
+          It renders here rather than after the coach hint and the reflection
+          row, which is where Today's JSX used to put it, and the order is
+          unchanged in practice: this line needs an EMPTY canvas and both of
+          those need a settled card, so no two of the three are ever on screen
+          at the same time.
+
+          `onHintPress` makes the sentence the tap target as well as the
+          example — the demo's "use this example", on the line that already
+          names one, rather than a second control standing beside it. Today
+          passes none: an athlete on their third session does not need the app
+          to type for them. */}
+      {hint ? (
+        <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(240)}>
+          {onHintPress ? (
+            <PressableScale
+              onPress={onHintPress}
+              haptic="none"
+              activeScale={ROW_SCALE}
+              wash
+              washStyle={styles.rowWash}
+              hitSlop={spacing.xs}
+              accessibilityRole="button"
+              accessibilityLabel={`Write this example for me: ${hint}`}>
+              <Text style={styles.canvasHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {hint}
+              </Text>
+            </PressableScale>
+          ) : (
+            <Text style={styles.canvasHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {hint}
+            </Text>
+          )}
+        </Animated.View>
+      ) : null}
+    </>
   );
 }
 
@@ -903,6 +1171,7 @@ export function ExerciseCard({
   onActions,
   onToggleWords,
   onFix,
+  onAddSet,
 }: {
   row: ReceiptRow;
   order: number;
@@ -924,6 +1193,13 @@ export function ExerciseCard({
   onToggleWords: () => void;
   /** Open the correction sheet for this line (the alias echo's own tap). */
   onFix: () => void;
+  /**
+   * Write one more set of this exercise onto its own line — the set-by-set
+   * logger's shortcut (`lib/parse/next-set.ts`). Null when there is nothing to
+   * repeat or nowhere safe to put it, and the control is then not drawn at all
+   * rather than drawn dead.
+   */
+  onAddSet: (() => void) | null;
 }) {
   const isPr = row.signal?.kind === 'pr';
   const sub = comparisonOf(row.signal);
@@ -1040,6 +1316,37 @@ export function ExerciseCard({
             {`“${note}”`}
           </Text>
         ) : null}
+        {/* ONE MORE SET, ON THE LINE THIS EXERCISE ALREADY OWNS (owner, 10
+            September 2026).
+
+            The page assumes a session arrives as a sentence; a large number of
+            people write a set, rest, and write the next one. For them every set
+            meant typing the exercise name again, and the record filled up with
+            three "pull ups" cards that were really one exercise. This appends
+            the last working set to the line and opens it for editing, so the
+            common case — same load, fewer reps — is one tap and one digit.
+
+            Quiet on purpose: `textSecondary` at caption size, the same voice
+            the check-in prompt uses further down the page. The record is bare
+            rows on paper (design skill §Structure) and a blue link on every
+            card would turn a page of readings into a page of buttons. It is
+            still a 44 pt target and it still washes when pressed. */}
+        {onAddSet ? (
+          <PressableScale
+            onPress={onAddSet}
+            haptic="none"
+            activeScale={0.96}
+            wash
+            washStyle={styles.btnWash}
+            accessibilityRole="button"
+            accessibilityLabel={`Add another set of ${row.exercise}, same as the last one`}
+            accessibilityHint="Writes it onto this line and opens it for editing"
+            style={styles.addSetRow}>
+            <Text style={styles.addSetText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              + set
+            </Text>
+          </PressableScale>
+        ) : null}
       </PressableScale>
     </Animated.View>
   );
@@ -1141,7 +1448,7 @@ function AnimatedCheck({ done, reduceMotion }: { done: boolean; reduceMotion: bo
  * to drop the line. Return or tapping away saves. "Fix reading" hands the line
  * to the correction sheet instead — for when the WORDS are right and the
  * reading is wrong. */
-function EditRow({
+export function EditRow({
   value,
   onChange,
   onDone,
@@ -1238,7 +1545,7 @@ function EditRow({
  * only: a raw line is not a resolved name yet, and the parse is what promotes
  * it.
  */
-function PendingCard({
+export function PendingCard({
   text,
   order,
   reduceMotion,
@@ -1266,11 +1573,6 @@ function PendingCard({
         washStyle={styles.rowWash}
         accessibilityLabel={`${text} — reading`}
         style={styles.card}>
-        {/* The light crosses the WHOLE row, rail to ⋯ column, behind every
-            other child — it is drawn first so the words always paint over it,
-            and it is absolutely placed so the row measures as if it were not
-            there. */}
-        <ReadingSweep order={order} />
         <View style={styles.rail}>
           <View style={styles.railHollow} />
         </View>
@@ -1282,23 +1584,36 @@ function PendingCard({
             its status (owner, 29 August 2026). The slot keeps the column's
             width and the gap before it, so the mark's x is unchanged: it still
             lands exactly where the ⋯ will. */}
+        {/* THE WORDS AND THEIR OWN LINE, in one column (10 September 2026).
+            The blue line used to cross the whole card at its foot, which is a
+            rule between two records — the one thing §Structure forbids on this
+            page. Here it is a child of the text column, so the words size it:
+            it starts where they start, ends where they end, and cannot be read
+            as a divider because it does not reach where one would be. */}
         <View style={styles.pendingHead}>
-          <Text
-            style={styles.pendingText}
-            numberOfLines={2}
-            maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {text}
-          </Text>
+          <View style={styles.pendingBody}>
+            <Text
+              style={styles.pendingText}
+              numberOfLines={2}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {text}
+            </Text>
+            {/* Inside the WORDS' column, not the row's: it has to stop where
+                the text stops, or it runs on under the ⋯ and is a rule again. */}
+            <ReadingLine flow order={order} />
+          </View>
           {/* Dots in the ⋯ column, or the word when motion is off — one hook
               decides, so this row can never end up silent. */}
-          <ReadingMark />
+          <View style={styles.pendingMark}>
+            <ReadingMark />
+          </View>
         </View>
       </PressableScale>
     </Animated.View>
   );
 }
 
-function NoteCard({ text, onPress }: { text: string; onPress: () => void }) {
+export function NoteCard({ text, onPress }: { text: string; onPress: () => void }) {
   return (
     <PressableScale
       onPress={onPress}
@@ -1336,6 +1651,8 @@ function NoteCard({ text, onPress }: { text: string; onPress: () => void }) {
  * Apple Notes' own checklist indent to within a point).
  */
 const MARK = moderateScale(22);
+/** The pending line's own text box — see `pendingText`. */
+const PENDING_LINE = lineFor(22);
 const RAIL_W = MARK;
 /** Ring → text. It absorbed the 12 pt the rail gave back, so the text did not
  * move when the ring did. */
@@ -1520,10 +1837,18 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(13),
     color: color.textSecondary,
   },
+  /**
+   * The one-line reading a single set keeps instead of a table.
+   *
+   * It is the SAME FACT a table row holds, so since 11 September 2026 it is
+   * printed with the same authority: the record's ink at the reading size the
+   * table uses, not a 14 pt grey aside. A card with one set was the smallest
+   * type on the page and the hardest thing on it to read.
+   */
   exValue: {
-    ...readingStyle('400'),
-    fontSize: moderateScale(14),
-    color: color.textSecondary,
+    ...readingStyle('500'),
+    fontSize: moderateScale(16),
+    color: color.textPrimary,
   },
   // The written face of the card, over the interpreted one.
   wordsLayer: {
@@ -1550,6 +1875,20 @@ const styles = StyleSheet.create({
   // The athlete's own words under their entry. Prose, so it leaves the mono
   // voice the readings speak in — this is the one line on the card that Recore
   // did not compute.
+  /** The one control that lives INSIDE a record row. It keeps the 44 pt target
+   * with `minHeight`, never a fixed `height` (design skill §Typography), so it
+   * grows with the reader's text instead of cropping it. */
+  addSetRow: {
+    marginTop: spacing.xs,
+    minHeight: HIT,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
+  addSetText: {
+    fontSize: moderateScale(13),
+    fontWeight: '600',
+    color: color.textSecondary,
+  },
   exNote: {
     marginTop: 2,
     fontSize: moderateScale(13),
@@ -1601,18 +1940,40 @@ const styles = StyleSheet.create({
     // — the same edge the settled card's glyph sits on.
     flex: 1,
     fontSize: moderateScale(17),
+    // SPELLED OUT because something now has to match it (10 Sep 2026). The ⋯
+    // column is aligned to the WORDS' optical centre (owner, 29 Aug), and the
+    // words' column grew a line under them, so `alignItems: 'center'` on the
+    // row would centre the mark on text-plus-line instead. A stated line box is
+    // a number both can use, and the design system asks for one anyway.
+    lineHeight: PENDING_LINE,
     fontWeight: '600',
     letterSpacing: -0.2,
     color: color.textSecondary,
+  },
+  /** The ⋯ column, one text line tall and centred inside it — so the dots sit
+   * on the words' own centre whatever is stacked below them. */
+  pendingMark: {
+    height: PENDING_LINE,
+    justifyContent: 'center',
   },
   /** The words' row, and the only row this card has: the line on the left,
    * whatever the app has to say about it hard against the right, and the ⋯
    * column's own slot at the end. `alignItems: 'center'` is the whole point —
    * every mark on this row centres on the line's own height. */
+  /** The words' own column, and the reason the line is the width it is: the
+   * text and the line that says it is being read, stacked, taking the flex the
+   * text used to take on its own. Everything to the right of it — the ⋯ column
+   * — stays outside, so the line stops where the words do. */
+  pendingBody: {
+    flex: 1,
+  },
+  /** The pending row: the words' column, then the ⋯ column. `alignItems`
+   * centres the mark on the WORDS rather than on the column, which is now
+   * taller than they are — the line lives under them. */
   pendingHead: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
   },
   proseText: {
@@ -1763,30 +2124,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: color.textSecondary,
   },
-  // The answer to that prompt, once it exists — same indentation as the row
-  // that asked, a step smaller than a lift. Both lines are `textSecondary`:
-  // they carry the athlete's own information, and muted is for what the eye
-  // may skip (design skill §Colour).
-  reflectNote: {
-    marginLeft: RAIL_W + RAIL_GAP,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-    minHeight: HIT,
-    justifyContent: 'center',
-    gap: 2,
-  },
-  reflectTags: {
-    // The chips the athlete armed, in their canonical order — a label line
-    // over the words, weighted so the two read as two things.
-    fontSize: moderateScale(11.5),
-    fontWeight: '600',
-    color: color.textSecondary,
-  },
-  reflectBody: {
-    fontSize: moderateScale(13),
-    lineHeight: lineFor(18),
-    color: color.textSecondary,
-  },
+  // The answer to that prompt, once it exists, is `check-in-note.tsx` — a
+  // quoted block in the record's own rail column. Its styles live with it.
   coachHint: {
     // Aligned with the card text, past the check column — the hint talks about
     // the marks, so it sits in their own indentation.

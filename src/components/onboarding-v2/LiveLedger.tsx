@@ -6,7 +6,6 @@ import { ExerciseCard } from '@/components/note-surface';
 import { demoParseText } from '@/lib/demo-parse';
 import { READING_STEP_MS } from '@/lib/motion/index';
 import { buildReceipt, type ReceiptRow } from '@/lib/parse/receipt';
-import { doneKeyFor } from '@/lib/parse/summarize';
 import { MAX_FONT_SCALE, readingStyle, spacing, type } from '@/lib/theme';
 
 import { v2color } from './tokens';
@@ -114,9 +113,12 @@ export function LiveLedger({
       ) : null}
 
       {rows.slice(0, shown).map((row, i) => {
-        const key = doneKeyFor(row.exercise, row.setText);
+        const key = row.doneKey;
         return (
           <ExerciseCard
+            // The demo ledger is a scripted replay, not a page anyone writes on:
+            // there is no line to append a set to and nothing to re-parse.
+            onAddSet={null}
             key={key}
             row={row}
             order={i}

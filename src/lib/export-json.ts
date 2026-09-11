@@ -59,11 +59,12 @@ export function buildExportJson(userId: string): string {
     performed_at: string;
     raw_text: string;
     reflection: string | null;
+    session_effort: number | null;
     entry_notes: string | null;
     created_at: string;
     updated_at: string;
   }>(
-    `SELECT id, performed_at, raw_text, reflection, entry_notes, created_at, updated_at
+    `SELECT id, performed_at, raw_text, reflection, entry_notes, session_effort, created_at, updated_at
      FROM workouts WHERE user_id = ? AND trim(raw_text) <> '' ORDER BY performed_at ASC`,
     [userId],
   );
@@ -107,7 +108,7 @@ export function buildExportJson(userId: string): string {
     app: 'Recore',
     schema: EXPORT_SCHEMA,
     exported_at: new Date().toISOString(),
-    note: 'raw_text is what you typed and is the record. Everything under "items" was read out of it and can be rebuilt from it. "reflection" is your own note about how the session went, and "entry_notes" are your notes on individual exercises — neither is ever parsed and neither changes a number.',
+    note: 'raw_text is what you typed and is the record. Everything under "items" was read out of it and can be rebuilt from it. "reflection" is your own note about how the session went, "entry_notes" are your notes on individual exercises, and "session_effort" is how hard you said the whole session was, on a 0-10 scale — none of the three is ever parsed and none of them changes a number.',
     workouts: workouts.map((w) => ({
       date: dayKeyFor(new Date(w.performed_at)),
       performed_at: w.performed_at,
@@ -116,6 +117,10 @@ export function buildExportJson(userId: string): string {
       // drops it when there is none, so a skipped check-in leaves no key
       // rather than a null someone has to interpret.
       ...(w.reflection ? { reflection: w.reflection } : {}),
+      // The session's own rating, on the 0–10 scale it was answered on, so the
+      // export means something without this app to read it (§12: the export is
+      // complete and ungated).
+      ...(w.session_effort != null ? { session_effort: w.session_effort } : {}),
       // §12: per-entry notes are the athlete's words too, so they leave with
       // the export. Decoded rather than dumped as a JSON string, so the file
       // reads as a record — and a session with none leaves no key at all.

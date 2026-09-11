@@ -438,6 +438,9 @@ function pickBest(all: Candidate[]): Candidate | null {
     deload: 4,
     rir_surplus: 3,
     top_of_range: 2,
+    // Same rank as the branch it replaces: filling the range is the fact, and
+    // whether the load moved is what the sentence goes on to say.
+    at_limit: 2,
     add_rep: 1,
     hold: 0,
     repeat: 0,
@@ -464,6 +467,8 @@ function sentenceFor(best: Candidate): string | null {
       return `Last time at ${fmt(r.weight)} you had ${fmt(r.minRir)} in reserve. So +${fmt(r.increment)}.`;
     case 'top_of_range':
       return `You filled every set of ${r.top} at ${fmt(r.weight)}. Up ${fmt(r.increment)}, back to ${r.bottom}s.`;
+    case 'at_limit':
+      return `You filled every set of ${r.top} at ${fmt(r.weight)} with nothing left. Same weight again.`;
     case 'add_rep':
       // Only worth a sentence when the text said it was hard (RIR 0–1).
       return r.minRir != null && r.weight > 0

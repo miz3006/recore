@@ -40,7 +40,6 @@ import { remoteDemoParse } from '@/lib/demo-parse-remote';
 import { success } from '@/lib/haptics';
 import { DUR, SPRING } from '@/lib/motion';
 import { buildReceipt, namesMatch, typedNameOf, type ReceiptRow } from '@/lib/parse/receipt';
-import { doneKeyFor } from '@/lib/parse/summarize';
 import type { ParseResult } from '@/lib/parse/types';
 import {
   alpha,
@@ -434,7 +433,7 @@ export function DemoToday({
                 // the line; a run-on line has no single typed name.
                 const alias = rows.length === 1 ? aliasEchoOf(raw, rows[0]!.exercise) : null;
                 return rows.map((row, j) => {
-                  const key = doneKeyFor(row.exercise, row.setText);
+                  const key = row.doneKey;
                   return (
                     <Animated.View
                       key={`${i}:${j}:${row.exercise}`}

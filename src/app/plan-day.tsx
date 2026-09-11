@@ -1,7 +1,9 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
+  Pressable,
   Platform,
   ScrollView,
   StyleSheet,
@@ -9,9 +11,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Icon } from '@/components/icon';
 import { PressableScale } from '@/components/motion';
 import { findExerciseByName } from '@/lib/db/exercises';
 import { addPlanDay, deletePlanDay, getPlanDay, updatePlanDay } from '@/lib/db/plan';
@@ -36,6 +37,22 @@ import { useSession } from '@/state/session-store';
  * row is created here — findExerciseByName is read-only). Targets are optional;
  * the engine supplies the loads. Saves to plan_days.raw_text — raw_text stays
  * the source of truth, exactly like a workout note.
+ *
+ * ## IT IS A MODAL NOW, WITH CANCEL AND SAVE (10 September 2026)
+ *
+ * It was a push wearing its own bar: a bordered circle drawn with
+ * `chevron-back`, a `Text` in the middle, and a `Save` label on the right. Two
+ * things were wrong with that beyond the chrome. A chevron says "you are one
+ * level deeper in the same thing", and this is not that — it is a self-contained
+ * piece of authoring with a commit at the end, which the navigation laws give a
+ * modal with its own Cancel and Done. And the chevron **discarded typing
+ * without asking**: the one case the laws say a modal must intercept.
+ *
+ * So: `presentation: 'modal'` (registered in `_layout.tsx`), the two bar buttons
+ * are real `headerLeft` / `headerRight` items, and Cancel asks before throwing
+ * away work. Save stays disabled until the day has a name, which is the same
+ * rule it always had — now stated by the control being dim rather than by a tap
+ * doing nothing.
  */
 interface PreviewRow {
   typed: string;
@@ -66,12 +83,44 @@ export default function PlanDayEditor() {
 
   const canSave = label.trim().length > 0;
 
+  /** Whether there is work a dismissal would throw away. A new day is dirty the
+   * moment anything is typed; an edited one only once it differs from what is
+   * stored — reopening a day and closing it again must not accuse the user of
+   * having changed something. */
+  const dirty = editId
+    ? label !== (existing?.label ?? '') || movements !== (existing?.raw_text ?? '')
+    : label.trim().length > 0 || movements.trim().length > 0;
+
   const handleSave = () => {
     if (!userId || !canSave) return;
     tapMedium();
     if (editId && existing) updatePlanDay(editId, { label, rawText: movements });
     else addPlanDay(userId, label, movements);
     router.back();
+  };
+
+  /**
+   * THE ONE PLACE BACK IS ALLOWED TO ASK (navigation law 4: unsaved work in a
+   * modal). Nothing is written until Save, so leaving with typing in the fields
+   * is a real loss and a silent one — this is the sentence that makes it a
+   * choice. With nothing typed it closes straight away, because a confirmation
+   * over an empty form is the dialog everybody learns to dismiss without
+   * reading.
+   */
+  const handleCancel = () => {
+    tap();
+    if (!dirty) {
+      router.back();
+      return;
+    }
+    Alert.alert(
+      editId ? 'Discard your changes?' : 'Discard this day?',
+      'What you have written here has not been saved.',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+      ],
+    );
   };
 
   const handleDelete = () => {
@@ -82,42 +131,41 @@ export default function PlanDayEditor() {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
+    <>
+      <Stack.Screen
+        options={{
+          title: editId ? 'Edit day' : 'New day',
+          // A modal's title is inline — a large title belongs to a page you
+          // scroll, and this is a form you fill.
+          //
+          // THE BAR IS PAINTED, and this is the one screen where naming a
+          // header background is right rather than an opt-out of Liquid Glass.
+          // Glass is the material of chrome floating over content that moves
+          // under it; a modal is a card that covers the app, its bar has
+          // nothing live behind it, and left unpainted it rendered as a hard
+          // white strip over the warm form. `surface` is what the app's other
+          // real sheet is painted (the check-in form sheet, `_layout.tsx`), so
+          // the two read as the same material.
+          headerStyle: { backgroundColor: color.surface },
+          contentStyle: { backgroundColor: color.surface },
+          headerLeft: () => (
+            <BarButton label="Cancel" onPress={handleCancel} accessibilityLabel="Cancel" />
+          ),
+          headerRight: () => (
+            <BarButton
+              label="Save"
+              bold
+              disabled={!canSave}
+              onPress={handleSave}
+              accessibilityLabel="Save"
+            />
+          ),
+        }}
+      />
+
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.nav}>
-          <PressableScale
-            onPress={() => {
-              tap();
-              router.back();
-            }}
-            haptic="none"
-            activeScale={0.9}
-            hitSlop={spacing.sm}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            style={styles.backBtn}>
-            <Icon name="chevron-back" size={moderateScale(16)} tint={color.textPrimary} />
-          </PressableScale>
-          <Text style={styles.navTitle} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {editId ? 'Edit day' : 'New day'}
-          </Text>
-          <PressableScale
-            onPress={handleSave}
-            disabled={!canSave}
-            haptic="none"
-            activeScale={0.92}
-            hitSlop={spacing.sm}
-            accessibilityRole="button"
-            accessibilityLabel="Save">
-            <Text
-              style={[styles.save, !canSave && styles.saveDisabled]}
-              maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              Save
-            </Text>
-          </PressableScale>
-        </View>
 
         <ScrollView
           style={styles.scroll}
@@ -203,30 +251,75 @@ export default function PlanDayEditor() {
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </>
+  );
+}
+
+/**
+ * A NAVIGATION-BAR BUTTON, and deliberately a plain label rather than one of
+ * the app's pills. UIKit's own bar buttons are text at `headline`, tinted with
+ * the bar's tint, and Done/Save is the one that comes back bold — copying that
+ * is what makes a modal read as the system's. It is a `Pressable` and not a
+ * `PressableScale` for the same reason: a bar button dims, it does not shrink
+ * (motion laws — press feedback on a bar button is opacity).
+ */
+function BarButton({
+  label,
+  onPress,
+  disabled = false,
+  bold = false,
+  accessibilityLabel,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  bold?: boolean;
+  accessibilityLabel: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      hitSlop={spacing.md}
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      accessibilityLabel={accessibilityLabel}>
+      {({ pressed }) => (
+        <Text
+          style={[
+            styles.barButton,
+            bold ? styles.barButtonBold : null,
+            disabled ? styles.barButtonOff : null,
+            pressed && !disabled ? styles.barButtonPressed : null,
+          ]}
+          maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {label}
+        </Text>
+      )}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: color.canvas },
+  /** NO PAPER FIELD HERE. The canvas is the app's page; this is a card ON that
+   * page, and the design system paints a sheet `surface` — one flat warm
+   * near-white, bar included, set on the route so the header and the form
+   * cannot disagree. */
   flex: { flex: 1 },
-  nav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
+  barButton: {
+    ...type.body,
+    color: color.brand,
   },
-  backBtn: {
-    width: moderateScale(38),
-    height: moderateScale(38),
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: color.border,
-    backgroundColor: color.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
+  barButtonBold: {
+    fontWeight: '600',
+  },
+  /** A disabled bar button is dim, not hidden: it says Save exists and what it
+   * is waiting for (a name) rather than appearing once the form is valid. */
+  barButtonOff: {
+    color: color.textMuted,
+  },
+  barButtonPressed: {
+    opacity: 0.4,
   },
   navTitle: {
     ...type.headline,
@@ -237,7 +330,7 @@ const styles = StyleSheet.create({
   saveDisabled: { color: color.textMuted, fontWeight: '600' },
 
   scroll: { flex: 1 },
-  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
 
   caption: {
     ...readingStyle('500'),
@@ -255,6 +348,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1.5,
     borderBottomColor: color.border,
     paddingBottom: spacing.sm,
+    // MIN-HEIGHT, NOT HEIGHT (design skill §Typography). A single-line iOS
+    // `TextInput` takes its intrinsic height from the font's ascent and leaves
+    // the descenders to the box — at 22 pt/700 the underline landed on the
+    // baseline and cut the "pp" out of "Upper". Verified on the iOS 26.5
+    // simulator, 10 September 2026.
+    minHeight: moderateScale(38),
   },
   movesInput: {
     minHeight: moderateScale(150),

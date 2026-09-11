@@ -16,6 +16,7 @@ import { StreakSheet } from '@/components/streak-sheet';
 import { TodayBarButton, TodayDateline } from '@/components/today-header';
 import { TrialReminderSheet } from '@/components/trial-reminder-sheet';
 import { TrialStartedSheet } from '@/components/trial-started-sheet';
+import { UndoDelete } from '@/components/undo-delete';
 import { useEntitlement } from '@/lib/billing/state';
 import { refreshRecapNotification } from '@/lib/recap';
 import { color, NAV_BAR_HEIGHT, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
@@ -64,6 +65,11 @@ export default function Today() {
    * has to sit on top of, now that it floats rather than sitting in a column
    * under the page. */
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  /** How tall the accessory row is drawing right now — what the undo pill has
+   * to clear to sit ABOVE it rather than behind it. Measured rather than
+   * derived: the row is one or two shapes depending on whether a rest is
+   * running, and a constant here would be wrong half the time. */
+  const [toolbarHeight, setToolbarHeight] = useState(0);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [streakOpen, setStreakOpen] = useState(false);
   // Resolved once per session in AuthProvider and cached (§12.2) — reading it
@@ -188,9 +194,23 @@ export default function Today() {
           timer keeps counting instead of resetting when the keyboard closes. */}
       <View
         style={[styles.toolbar, { bottom: keyboardHeight }, keyboardOpen ? null : styles.hidden]}
+        onLayout={(e) => setToolbarHeight(e.nativeEvent.layout.height)}
         pointerEvents="box-none">
-        <BottomToolbar bottomInset={bottomInset} />
+        {/* `active` is the difference between MOUNTED and IN USE: the toolbar
+            stays mounted at rest so a running rest keeps counting, and the
+            automatic rest timer may only start while somebody is actually
+            writing. */}
+        <BottomToolbar bottomInset={bottomInset} active={keyboardOpen} />
       </View>
+
+      {/* UNDO, for the delete that used to be final (11 September 2026). It
+          floats above whatever currently owns the bottom of the screen: the
+          accessory row while the keyboard is up, the tab bar at rest. The
+          component itself is silent unless a line has just been deleted, so
+          this costs an unbroken day nothing. */}
+      <UndoDelete
+        bottom={keyboardOpen ? keyboardHeight + toolbarHeight + spacing.sm : bottomInset}
+      />
 
       {/* The day's own calendar, opened from the bar button. It used to hang
           off the day pill inside `top-bar.tsx`; with the button living in a

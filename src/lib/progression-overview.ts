@@ -7,7 +7,7 @@ import type { LiftSession } from './progression.ts';
  *
  * The rebuilt tab is two screens. This module feeds the root: every lift in the
  * window as a scannable row, and the lifts grouped by **what the person trains
- * together**. Level two (`app/lift/[key].tsx`) is the metric-card stack for one
+ * together**. Level two (`app/(tabs)/progress/lift/[key].tsx`) is the metric-card stack for one
  * lift, and it needs none of this.
  *
  * ## The groups are the user's own split, not an anatomy chart

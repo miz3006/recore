@@ -9,6 +9,7 @@ import {
   markTrialStarted,
 } from '@/lib/funnel';
 
+import { isBetaUnlocked } from '@/lib/env';
 import { devLog } from '@/lib/log';
 
 import { cancelTrialNotification } from './notifications';
@@ -133,7 +134,15 @@ function recordTrialFrom(snapshot: EntitlementSnapshot) {
 
 export type { Entitlement, LapseReason };
 
-let decision: EntitlementDecision = { entitlement: 'lapsed', reason: 'unverified', fromCache: false };
+/**
+ * The reading before anything has been asked. `unverified` lapsed is the honest
+ * default — except in a beta build, where there is nothing to verify against
+ * and the first frame would otherwise be the read-only ledger for the instant
+ * before `resolveEntitlement` runs.
+ */
+let decision: EntitlementDecision = isBetaUnlocked()
+  ? { entitlement: 'entitled', reason: null, fromCache: true }
+  : { entitlement: 'lapsed', reason: 'unverified', fromCache: false };
 const listeners = new Set<() => void>();
 
 function notify() {
@@ -162,27 +171,38 @@ function applyDecision(next: EntitlementDecision) {
 }
 
 /**
- * The two development overrides, and the reason each one is safe.
+ * The three overrides, and the reason each one is safe.
  *
- * `__DEV__` is false in every release bundle, so neither of these can ship. In
- * a release build with no key the entitlement resolves to `lapsed` — which is
- * the correct reading of a misconfigured binary, not a bug.
+ * Two are `__DEV__`-only and cannot ship at all; the third ships only into a
+ * build that asked for it by name. In an ordinary release build with no key the
+ * entitlement resolves to `lapsed` — the correct reading of a misconfigured
+ * binary, not a bug — and that is still what happens here.
  *
- *  · **No key at all → entitled.** A development machine without a RevenueCat
- *    key has no store to ask, and a hard paywall against a store that does not
- *    exist would make the whole app unreachable to the next person working on
- *    it. This is the one place the old "assume entitled" behaviour survives,
- *    and it now survives only where there is provably nothing to assume about.
- *  · **The lapsed toggle → lapsed.** It outranks everything, including a real
- *    store answer, because `read-only-ledger.tsx` is otherwise unreachable
- *    until a sandbox subscription can expire, and an unreachable screen rots.
+ *  · **The lapsed toggle → lapsed** (`__DEV__`). It outranks everything,
+ *    including a real store answer, because `read-only-ledger.tsx` is otherwise
+ *    unreachable until a sandbox subscription can expire, and an unreachable
+ *    screen rots. It is checked first so a beta build can still be inspected in
+ *    development from the lapsed side.
+ *  · **A beta build → entitled** (`isBetaUnlocked`, `env.ts`). The one override
+ *    that survives a release bundle, and the reason it is allowed to: a beta
+ *    build never renders the paywall, never prints a price and never starts a
+ *    trial clock, so there is no promise for the missing store to break. Read
+ *    the full argument at its definition — it is a §2 rule 5 question, and the
+ *    answer only holds while the surfaces above stay silent about money.
+ *  · **No key at all → entitled** (`__DEV__`). A development machine without a
+ *    RevenueCat key has no store to ask, and a hard paywall against a store
+ *    that does not exist would make the whole app unreachable to the next
+ *    person working on it. This is where the old "assume entitled" behaviour
+ *    survives, and only where there is provably nothing to assume about.
  */
-function devOverride(): EntitlementDecision | null {
-  if (!__DEV__) return null;
-  if (getMeta(KEYS.devLapsed) === '1') {
+function entitlementOverride(): EntitlementDecision | null {
+  if (__DEV__ && getMeta(KEYS.devLapsed) === '1') {
     return { entitlement: 'lapsed', reason: 'expired', fromCache: true };
   }
-  if (!isStoreConfigured()) {
+  if (isBetaUnlocked()) {
+    return { entitlement: 'entitled', reason: null, fromCache: true };
+  }
+  if (__DEV__ && !isStoreConfigured()) {
     return { entitlement: 'entitled', reason: null, fromCache: true };
   }
   return null;
@@ -194,7 +214,7 @@ function devOverride(): EntitlementDecision | null {
  * instead of flashing the wrong one while a request is in flight.
  */
 function decideFromCache(nowMs: number) {
-  const override = devOverride();
+  const override = entitlementOverride();
   if (override) {
     applyDecision(override);
     return;
@@ -210,7 +230,7 @@ function decideFromCache(nowMs: number) {
  */
 function applyFreshSnapshot(snapshot: EntitlementSnapshot) {
   writeSnapshot(snapshot);
-  const override = devOverride();
+  const override = entitlementOverride();
   applyDecision(override ?? decideEntitlement(snapshot, snapshot, Date.now()));
 }
 
@@ -254,9 +274,9 @@ export async function resolveEntitlement(userId: string): Promise<void> {
 
   const fresh = await fetchEntitlement();
   if (fresh) writeSnapshot(fresh);
-  const override = devOverride();
+  const override = entitlementOverride();
   if (override) {
-    applyDecision(override); // the dev toggle outranks even a real store answer
+    applyDecision(override); // an override outranks even a real store answer
     return;
   }
   applyDecision(decideEntitlement(fresh, readSnapshot(), Date.now()));

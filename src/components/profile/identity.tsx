@@ -228,13 +228,29 @@ const styles = StyleSheet.create({
   },
   name: {
     ...type.title2,
+    // NO FIXED LINE BOX (10 September 2026). `lineFor()` scales for the DEVICE,
+    // not for Dynamic Type, so at the ×1.5 cap the glyphs grow and the box does
+    // not — measured on the iOS 26.5 simulator at accessibility-extra-large,
+    // where this text lost its ascenders and descenders. The font's own metrics
+    // size the line instead, which is what a scaling label wants anyway.
+    lineHeight: undefined,
     color: color.textPrimary,
   },
   /** One dry fact, or nothing — see the note above. */
   sub: {
     ...type.subhead,
+    // NO FIXED LINE BOX (10 September 2026). `lineFor()` scales for the DEVICE,
+    // not for Dynamic Type, so at the ×1.5 cap the glyphs grow and the box does
+    // not — measured on the iOS 26.5 simulator at accessibility-extra-large,
+    // where this text lost its ascenders and descenders. The font's own metrics
+    // size the line instead, which is what a scaling label wants anyway.
+    lineHeight: undefined,
     color: color.textSecondary,
-    marginTop: -spacing.xs,
+    // The pull-up closes the gap a 27 pt line box left under the name. With the
+    // box gone the name sits on its own metrics, so the sub only needs a hair
+    // less than the default — a full -4 at accessibility sizes drove it into
+    // the name's descenders.
+    marginTop: -1,
   },
   // The field keeps the name's exact type so the swap moves nothing. The rule
   // under it is the only thing that says "this is editable now".

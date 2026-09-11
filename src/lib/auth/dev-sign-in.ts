@@ -43,26 +43,43 @@ import { supabase } from '@/lib/supabase';
  *
  * ## How it gets a session without a provider
  *
- * The project has email signups enabled with `mailer_autoconfirm` on
- * (`/auth/v1/settings`), so a `signUp` returns a session in the same response —
- * there is no confirmation link to click. The account below is created the
- * first time this is used and signed into every time after. It is an ordinary
- * user of the project: the same RLS, the same tables, its own training data.
+ * It signs in with a password, against an account that must already exist. The
+ * credential comes from the developer's own untracked `.env`; there is none in
+ * this file and none compiled into any bundle.
  *
- * **It is a shared, hardcoded credential and that is deliberate**, because the
- * alternative is a per-developer secret in a file somebody eventually commits.
- * It grants access to nothing but this development project's own dev account.
- * Do not point it at production, and do not put a real person's address here.
+ * ## What changed on 10 September 2026, and why (S3)
+ *
+ * This file used to hold the credential as two literals — `dev@recore.invalid`
+ * and its password — with a comment saying "do not point it at production".
+ * There is only one Supabase project, `.env` and `.env.example` both named it,
+ * and so it WAS production. The `__DEV__` guard below protects the app bundle
+ * and nothing else: the credential itself worked against the public
+ * `/auth/v1/token` endpoint from any shell, in a public repository.
+ *
+ * Two things follow from that, and both are done here:
+ *
+ *  · **The literals are gone.** The address and password are read from
+ *    `EXPO_PUBLIC_DEV_EMAIL` / `EXPO_PUBLIC_DEV_PASSWORD`, absent by default.
+ *    With neither set this function throws a sentence explaining what to add,
+ *    which is the correct behaviour for a door nobody has been given a key to.
+ *  · **The `signUp` fallback is gone.** It created the account for whoever
+ *    asked first — so the credential did not merely open a door, it built one.
+ *    The door can now open an account that exists and can never create one.
+ *
+ * `EXPO_PUBLIC_` is required for the value to reach the client bundle at all
+ * (Expo strips everything else), and it means exactly what it says: whatever
+ * you put here ends up readable in any build you produce with it set. Set it
+ * only in a local `.env`, only against a development project, and never for a
+ * build you hand to anyone.
  */
 
-/** The development account. Not a person, and not reachable by email. */
-const DEV_EMAIL = 'dev@recore.invalid';
-/** A dev-project credential, kept here rather than in a developer's shell so
- * every machine opens the same account. It protects nothing real. */
-const DEV_PASSWORD = 'recore-development-only';
+/** The development account, from the developer's own `.env`. Empty by default. */
+const DEV_EMAIL = (process.env.EXPO_PUBLIC_DEV_EMAIL ?? '').trim();
+const DEV_SECRET = (process.env.EXPO_PUBLIC_DEV_PASSWORD ?? '').trim();
 
 /**
- * Sign in as the development account, creating it on first use.
+ * Sign in as the development account. The account must already exist —
+ * creating one is not this function's job any more (S3).
  *
  * Throws with a readable reason on any failure — the caller shows it, and in a
  * development build that sentence is the whole point of the function.
@@ -70,30 +87,21 @@ const DEV_PASSWORD = 'recore-development-only';
 export async function signInAsDeveloper(): Promise<void> {
   if (!__DEV__) throw new Error('the development sign-in is not available in this build');
 
-  const existing = await supabase.auth.signInWithPassword({
-    email: DEV_EMAIL,
-    password: DEV_PASSWORD,
-  });
-  if (!existing.error) {
-    devLog('signed in as the development account');
-    return;
-  }
-
-  // First use on this project: the account does not exist yet. Any other
-  // failure is real and is reported rather than papered over with a signup.
-  if (existing.error.code !== 'invalid_credentials') throw existing.error;
-
-  devLog('development account not found — creating it');
-  const created = await supabase.auth.signUp({ email: DEV_EMAIL, password: DEV_PASSWORD });
-  if (created.error) throw created.error;
-
-  // With `mailer_autoconfirm` on, the session arrives with the signup. Without
-  // it, Supabase is waiting on a confirmation link that will never be opened —
-  // say so, because the alternative is a button that silently does nothing.
-  if (!created.data.session) {
+  if (!DEV_EMAIL || !DEV_SECRET) {
     throw new Error(
-      'the account was created but no session came back — the project requires email confirmation, so turn on "Confirm email" → off, or enable anonymous sign-ins',
+      'no development account configured — set EXPO_PUBLIC_DEV_EMAIL and EXPO_PUBLIC_DEV_PASSWORD in your local .env, against a development project, and restart Metro',
     );
   }
-  devLog('development account created and signed in');
+
+  const existing = await supabase.auth.signInWithPassword({
+    email: DEV_EMAIL,
+    password: DEV_SECRET,
+  });
+  if (existing.error) {
+    // Including "no such account". Creating it here is what made a hardcoded
+    // credential in a public repository into an open door.
+    throw existing.error;
+  }
+
+  devLog('signed in as the development account');
 }
