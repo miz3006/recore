@@ -510,6 +510,29 @@ Deno.serve(async (req) => {
   // data; the cached system prompt carries all instructions.
   const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY') });
 
+  /**
+   * THE TOKEN LEDGER (14 Sep 2026, owner's ask). Bumped the moment a response
+   * arrives — a refusal or an unparseable answer was still paid for — and
+   * written as ONE row per request into `ai_usage` (RLS on, no policies; the
+   * service role writes, the owner reads). Best-effort on purpose: a failed
+   * insert is logged and the parse answers exactly as it would have.
+   */
+  const spent = { calls: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+  const recordSpend = async () => {
+    if (spent.calls === 0) return;
+    const { error } = await supabaseService.from('ai_usage').insert({
+      user_id: user.id,
+      fn: 'parse-workout',
+      model: MODEL,
+      calls: spent.calls,
+      input_tokens: spent.input,
+      output_tokens: spent.output,
+      cache_write_tokens: spent.cacheWrite,
+      cache_read_tokens: spent.cacheRead,
+    });
+    if (error) console.error(`ai_usage insert failed · ${error.message}`);
+  };
+
   /** A failure that already knows what the client should be told. */
   class CallFailure extends Error {
     constructor(readonly payload: { error: string; status: number; reason?: string }) {
@@ -614,6 +637,12 @@ Deno.serve(async (req) => {
       throw new CallFailure(describeCallFailure(err));
     }
 
+    spent.calls += 1;
+    spent.input += response.usage.input_tokens;
+    spent.output += response.usage.output_tokens;
+    spent.cacheWrite += response.usage.cache_creation_input_tokens ?? 0;
+    spent.cacheRead += response.usage.cache_read_input_tokens ?? 0;
+
     if (response.stop_reason === 'refusal') {
       throw new CallFailure({ error: 'parse_refused', status: 422 });
     }
@@ -680,6 +709,7 @@ Deno.serve(async (req) => {
       err instanceof CallFailure
         ? err.payload
         : { error: 'parse_unavailable', status: 502, reason: 'unknown' };
+    await recordSpend();
     return json({ error: payload.error, reason: payload.reason }, payload.status);
   }
 
@@ -693,5 +723,6 @@ Deno.serve(async (req) => {
   // reading onto this answer must know the answer was narrowed. An older
   // deployment ignores `only_lines` and never says it, so a newer client sees a
   // whole-note reading and uses it whole instead of printing every line twice.
+  await recordSpend();
   return json({ items, partial: onlyLines !== null, parse_version: PARSE_VERSION });
 });

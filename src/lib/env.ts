@@ -106,6 +106,29 @@ export function isSupabaseConfigured(): boolean {
 }
 
 /**
+ * AI REWRITES — the explain-brief / explain-prediction upgrade layer, off
+ * unless a build asks for it.
+ *
+ * Every sentence these functions touch is composed deterministically first and
+ * rendered instantly (§8.5); the model only ever REWRITES that copy. So a build
+ * with this off loses no facts and no screen — the composed copy, which always
+ * renders first anyway, is simply the final copy. What it gains is a hard
+ * guarantee that Next, the lift sheet and the prediction line spend no AI
+ * tokens: the only model call left in the app is the parser.
+ *
+ * BUILD-TIME, like `isCoachModeOn`, and for the same reason: `EXPO_PUBLIC_` is
+ * inlined by Metro at bundle time, so with the flag off the invoke branches are
+ * dead code the bundler can see, and nothing on a device can turn them back on.
+ *
+ * Default OFF (owner's ruling, 14 Sep 2026 — the TestFlight round should test
+ * writing, parsing and progression without spending rewrite tokens for every
+ * tester). Set EXPO_PUBLIC_AI_REWRITE=1 in .env to build with it back on.
+ */
+export function isAiRewriteOn(): boolean {
+  return process.env.EXPO_PUBLIC_AI_REWRITE === '1';
+}
+
+/**
  * COACH MODE — the coach ↔ client layer, off unless a build asks for it.
  *
  * It is a BUILD-TIME constant, not a stored preference, and that is the whole

@@ -1,5 +1,5 @@
 import { getMeta, setMeta } from '@/lib/db/index';
-import { isSupabaseConfigured } from '@/lib/env';
+import { isAiRewriteOn, isSupabaseConfigured } from '@/lib/env';
 import { bumpGuardRejection } from '@/lib/funnel';
 import { devLog } from '@/lib/log';
 import { getObLanguage } from '@/lib/prefs';
@@ -121,7 +121,9 @@ export function refineBriefSummary(
   onLanded: (summary: string) => void,
   scope?: string,
 ): void {
-  if (!paragraph || !isSupabaseConfigured()) return;
+  // Rewrites are a build-time choice (env.ts): off means the composed
+  // paragraph IS the final copy, and this function costs nothing.
+  if (!isAiRewriteOn() || !paragraph || !isSupabaseConfigured()) return;
   const language = languagePref();
   const sig = signatureOf(paragraph, language, scope);
   if (inflightSig === sig) return;

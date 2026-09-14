@@ -1,7 +1,7 @@
 import { sanitizePredictionReason } from '@/lib/brief-guard';
 import { upsertPrediction } from '@/lib/db/predictions';
 import { type DayKey } from '@/lib/db/dates';
-import { isSupabaseConfigured } from '@/lib/env';
+import { isAiRewriteOn, isSupabaseConfigured } from '@/lib/env';
 import { bumpGuardRejection } from '@/lib/funnel';
 import { devLog } from '@/lib/log';
 import { supabase } from '@/lib/supabase';
@@ -20,7 +20,9 @@ export async function refinePredictionReason(
   forDate: DayKey,
   draft: PredictionDraft,
 ): Promise<void> {
-  if (!draft.explain || !isSupabaseConfigured()) return;
+  // Same build-time gate as explain-brief (env.ts): off means the template
+  // sentence, already cached, is the final one.
+  if (!isAiRewriteOn() || !draft.explain || !isSupabaseConfigured()) return;
 
   try {
     const { data, error } = await supabase.functions.invoke('explain-prediction', {

@@ -9180,3 +9180,159 @@ An active Apple Developer Program membership; an App Store Connect record for `c
 trainer added under Users and Access and then to TestFlight **internal** testing, which skips Beta
 App Review entirely. External testers would need the review, the test-information fields, and the
 hosted privacy URL (`docs/` is generated and ready; GitHub Pages is not confirmed to be serving it).
+
+## 14 September 2026 — the rewrites become a build-time choice, and the TestFlight round stops buying tokens
+
+The owner: *"zapri uporabo next; trenutno bi sam rad imel parsanje, progresijo itd. — da mi ne
+uporablja tokenov pri Nextu, to bom mogoče potem kasneje odklenil."* Scope confirmed in the same
+conversation: only the AI calls close; the Next tab itself stays, deterministic.
+
+### What actually spends tokens, and where it was gated
+
+Exactly three edge functions call the model. `parse-workout` is the product and stays. The other
+two are the §8.5 rewrite layer, reached from exactly two client modules:
+
+- `src/lib/brief-explain.ts` → `explain-brief` — Next's briefing paragraph and, per-lift, the
+  exercise sheet's summary (`refineBriefSummary`, both call sites);
+- `src/lib/predict/explain.ts` → `explain-prediction` — the prediction reason's background
+  upgrade (`refinePredictionReason`, fired from `predict/cache.ts`).
+
+Both modules now return before invoking anything unless `isAiRewriteOn()` (new, `lib/env.ts`)
+reads true. The flag is `EXPO_PUBLIC_AI_REWRITE=1`, build-time like `isCoachModeOn` and
+`isBetaUnlocked` and for the same reason: Metro inlines it, the invoke branches become dead code,
+and nothing on a device can turn them back on. `eas.json` sets it in no profile, so the
+`testflight` build ships with rewrites provably absent. Turning them back on later is one line in
+`.env` (or a profile) and a rebuild — no code change.
+
+### Why this costs no screen
+
+Every sentence the rewrite layer touches was already composed deterministically first and rendered
+instantly — that was §8.5's whole packaging. With the flag off, the composed paragraph, the
+lift-sheet prose and the template prediction reason are simply the final copy instead of the
+first copy. Cached rewrites from an earlier build would still render (they were guarded when
+cached and cost nothing now); fresh installs never see one.
+
+### Files
+
+`src/lib/env.ts` (`isAiRewriteOn`), `src/lib/brief-explain.ts` (gate in `refineBriefSummary`),
+`src/lib/predict/explain.ts` (gate in `refinePredictionReason`), `.env.example`.
+
+### Gates
+
+`npm run typecheck` **pass**. `npm test` **958/958 pass**. `npm run lint` **0 errors**, 49
+warnings, all pre-existing. `npx expo export --platform ios` **pass** (scratch output directory,
+`dist/` untouched).
+
+### Not verified
+
+Not run on the simulator: the off-path is an early `return` before any network call, identical in
+shape to the existing offline path (`isSupabaseConfigured()` false), which every affected screen
+already survives. The §9.4 evaluation is not required — no prompt, schema or guard changed; the
+model is simply not asked.
+
+## 14 September 2026 — two rows leave "Your record" for the TestFlight round, and the beta build stops offering a rating it cannot collect
+
+The owner: *"zaenkrat iz You umakni Session types in Reading corrections, in preglej še vse
+drugo, če je treba kaj pripraviti."* Parked, not deleted — the ruling is "for now".
+
+### What moved
+
+- **"Session types" row** — gone from You. The screen it opened (`/split` → `/plan-day`) is
+  untouched and still has its primary door: Next's own header pushes `/split`
+  (`(tabs)/next/index.tsx:484`), which is where renaming a day is adjacent to seeing it used.
+- **"Reading corrections" row** — gone from You, and this one's screen (`/you/aliases`) now has
+  NO door: it keeps compiling, its data keeps accruing (corrections still land from the fix flow
+  and still teach the parser — none of that lived on this screen), it just cannot be opened until
+  the row returns. Recorded here so a future agent does not read the orphan as dead code and
+  delete it.
+- With the rows went their feeds, so the tab stops paying for values nobody prints: the
+  `splitValue` and `aliasCount` memos, the `fixRevision` subscription (its only reader was
+  `aliasCount`), and the `listPlanDays` / `listAliasOverrides` imports.
+
+### The review that was asked for, and the one thing it found
+
+The rest of You was walked row by row against the beta build: Development is `__DEV__`-only and
+compiles out; Subscription collapses to the one honest "Beta · billing off" row; Apple Health
+opens an honest not-connected page; support mail and the legal pages are real; the About row
+prints the real version. One defect: **"Rate Recore" rendered in a beta build**, and TestFlight
+suppresses `SKStoreReviewController` while the App Store listing does not exist yet — a tap would
+do nothing, silently, which is the dead control §2 forbids. The row is now absent when
+`BETA_UNLOCKED`, the same way the three subscription controls already are.
+
+### Files
+
+`src/app/(tabs)/you/index.tsx` only.
+
+### Gates
+
+`npm run typecheck` **pass**. `npm test` **958/958 pass**. `npm run lint` **0 errors**, 49
+warnings, all pre-existing. `npx expo export --platform ios` **pass** (scratch output directory).
+
+### Not verified
+
+Not walked on the simulator. The removals are list-spec deletions on a screen that renders from
+data; the search index shrinks with the list by construction (`matchesQuery` reads the same
+specs). "Push pull legs" as a query still lands — the About-you "Split" row carries those words.
+
+## 14 September 2026 — the token ledger: which tester spent what, before the TestFlight round starts
+
+The owner: *"kako bi lahko testiral, koliko bodo v tem testnem obdobju porabili tokenov … dej to
+naredi."* With the rewrite layer off (earlier today), `parse-workout` is the only model call in
+the app — and it never read the provider's `usage` block, so per-tester spend was invisible: the
+Anthropic Console totals a key, not a person.
+
+### What was added
+
+- **`public.ai_usage`** (migration `20260914090000`) — one row per parse REQUEST: user, function,
+  model, how many calls the fan-out became, and input/output/cache-write/cache-read tokens kept
+  as four columns because they bill at four different rates. Same posture as `parse_rate_limits`:
+  RLS on, NO policies — the service role writes, the owner reads in the dashboard. The owner's
+  per-tester-per-day query is in the migration's header comment.
+- **`parse-workout`** bumps a `spent` accumulator the moment each response arrives — a refusal or
+  an answer that fails validation was still paid for — and flushes ONE `ai_usage` insert per
+  request, on the success path and on the fan-out's failure path alike. Best-effort by
+  construction: a failed insert is one `console.error` and the parse answers exactly as it would
+  have. No prompt, schema or guard moved, so §9.4 is not owed.
+
+### Deployed, and the half that is not
+
+`supabase functions deploy parse-workout` ran from this tree (bundle accepted, so the edit
+compiles). **The migration is NOT applied**: `supabase db push` was blocked by the session's
+permission layer, correctly — it is the owner's command. Until the owner runs it, the deployed
+function's insert fails, is logged, and costs nothing; the moment the table exists the ledger
+starts filling. The push also carries the three migrations found pending earlier today
+(`redeem_rate_limit` S17, `coach_read_scope` S18/S19, `merge_days_structure`) — checked: none of
+the four executes anything on apply, they only define.
+
+### Files
+
+`supabase/migrations/20260914090000_ai_usage.sql`, `supabase/functions/parse-workout/index.ts`.
+
+### Gates
+
+`npm run typecheck` **pass**. `npm test` **958/958 pass**. `npm run lint` **0 errors**, 49
+pre-existing warnings. (No `src/` change in this pass; the iOS export from earlier today stands.)
+
+### Correction (same day, later): the "no drift" reading above was contaminated
+
+The drift check downloaded the deployed functions twice; the FIRST attempt, mis-invoked with
+`--workdir` pointing at the repository, silently overwrote the repo's own function files with the
+deployed copies. The diff that followed compared the download to itself and read "identical" —
+the same shape of lie as the cached-bundle hour in the memory notes. `git status` caught it
+before commit. What is actually true, established from `git diff` against HEAD after restoring
+the files:
+
+- **The drift is real and DOCUMENTED-INTENTIONAL for `parse-workout`**: deployed v14 carries the
+  V6 prompt on purpose — PARSE_VERSION 7 (the lean schema) sits in the repo awaiting the §9.4
+  owner-run eval (see "the parser was not slow" entry, 11 Sep). Today's ledger deploy (v15) was
+  made from the pre-restore working tree, i.e. **v14 + the ledger, prompt untouched** — by
+  accident, exactly right. The repo now carries HEAD (V7-ready) + the ledger, so when the owner
+  runs the eval and deploys, the ledger travels with it.
+- **`delete-account` drift is real and NOT intentional**: the deployed v4 (10 Sep) predates the
+  S11 per-request CORS allow-list and the rate-limit bump in HEAD. Redeploying it from HEAD was
+  blocked by the session's permission layer — the owner should run
+  `supabase functions deploy delete-account`.
+- **`explain-brief` / `explain-prediction`** also lag HEAD (deployed 11 Sep with only the npm
+  pin, the S2 work deliberately set aside during the outage). Left as they are: the client no
+  longer calls either (the rewrite flag is off), and their HEAD versions include prompt-adjacent
+  changes that fall under §9.4.

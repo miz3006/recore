@@ -23,8 +23,6 @@ import {
 import { unregisterForComments } from '@/lib/coaching/push';
 import { isBetaUnlocked, isCoachModeOn } from '@/lib/env';
 import type { IconName } from '@/components/icon';
-import { listAliasOverrides } from '@/lib/db/alias-overrides';
-import { listPlanDays } from '@/lib/db/plan';
 import { clearParseCache } from '@/lib/db/cache';
 import { contactSupport, SUPPORT_EMAIL } from '@/lib/support';
 import { deleteAccount } from '@/lib/account/delete';
@@ -151,8 +149,6 @@ export default function You() {
   const router = useRouter();
   const userId = useSession((s) => s.userId);
   const hydrate = useSession((s) => s.hydrate);
-  // Bumped by every landed correction — the shorthand count follows it.
-  const fixRevision = useSession((s) => s.fixRevision);
   const [busy, setBusy] = useState<null | 'import' | 'signout' | 'delete' | 'restore'>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
@@ -353,27 +349,6 @@ export default function You() {
   };
 
   const noteSettingChanged = () => setSettingsRevision((n) => n + 1);
-
-  /** How many shorthands the parser has been taught — the count on the
-   * "Reading corrections" row. Re-read on every landed correction. */
-  const aliasCount = useMemo(
-    () => (userId ? listAliasOverrides(userId).length : 0),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [userId, fixRevision],
-  );
-
-  /**
-   * The session types, named — "Push, Pull, Legs". Read from the split's own
-   * days, because that is what a session type IS here; there is no second
-   * list to keep in step. Silent when no split exists rather than showing a
-   * zero, and truncated to three names so the row cannot outgrow its line.
-   */
-  const splitValue = useMemo(() => {
-    if (!userId) return 'Not set';
-    const labels = listPlanDays(userId).map((d) => d.label.trim()).filter(Boolean);
-    if (labels.length === 0) return 'Not set';
-    return labels.length > 3 ? `${labels.slice(0, 3).join(', ')} +${labels.length - 3}` : labels.join(', ');
-  }, [userId]);
 
   const handleImport = async () => {
     if (busy || !userId) return;
@@ -1152,30 +1127,11 @@ export default function You() {
         footnote: dataCaption,
         footnoteActive: importMessage != null || exportMessage != null,
         rows: [
-          // Session types = the split's own days, which is where they are
-          // named, renamed and deleted (`/split` → `/plan-day`).
-          {
-            key: 'sessiontypes',
-            icon: 'calendar',
-            label: 'Session types',
-            value: splitValue,
-            keywords: 'day names push pull legs rename plan',
-            onPress: () => {
-              tap();
-              router.push('/split');
-            },
-          },
-          {
-            key: 'aliases',
-            icon: 'wrench',
-            label: 'Reading corrections',
-            value: aliasCount === 1 ? '1 shorthand' : `${aliasCount} shorthands`,
-            keywords: 'shorthand abbreviation parser taught fix misread',
-            onPress: () => {
-              tap();
-              router.push('/you/aliases');
-            },
-          },
+          // "Session types" and "Reading corrections" left this group on
+          // 14 Sep 2026 (owner's ruling — parked for the TestFlight round, not
+          // deleted). Session types are still edited from Next's own header
+          // (`/split`); the aliases screen (`/you/aliases`) keeps working and
+          // keeps its data, it just has no door until the row returns.
           {
             key: 'import',
             icon: 'upload',
@@ -1291,8 +1247,11 @@ export default function You() {
           },
           // Not the §16.3 prompt: a labelled thing the user chose to tap. It
           // spends none of the three system asks unless iOS actually draws the
-          // sheet, and the row is absent when there is no door at all.
-          ...(canRateApp()
+          // sheet, and the row is absent when there is no door at all. A beta
+          // build has no door BY CONSTRUCTION — TestFlight suppresses the
+          // review sheet and no store listing exists yet — so the row would be
+          // a control that silently does nothing (§2 forbids a dead control).
+          ...(!BETA_UNLOCKED && canRateApp()
             ? [
                 {
                   key: 'rate',
@@ -1444,8 +1403,6 @@ export default function You() {
     answers,
     prefs,
     recapValue,
-    splitValue,
-    aliasCount,
     busy,
     lapsed,
     guardRejections,
