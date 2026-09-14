@@ -9336,3 +9336,22 @@ the files:
   pin, the S2 work deliberately set aside during the outage). Left as they are: the client no
   longer calls either (the rewrite flag is off), and their HEAD versions include prompt-adjacent
   changes that fall under §9.4.
+
+## 14 September 2026 — the first TestFlight build exists
+
+`eas build --profile testflight` succeeded on the first attempt (buildNumber 3 — 2 was burned by
+a non-interactive credential probe, and Apple never saw either), and `eas submit` uploaded it:
+App Store Connect app record **6791513523**, processing as of this writing. What the binary
+carries is the day's three entries above: rewrites off behind `EXPO_PUBLIC_AI_REWRITE`, the
+trimmed You tab, the token ledger (server side: `parse-workout` v15, `ai_usage` applied). The
+owner also deployed `delete-account` v5, closing the S11 drift named in the correction above.
+
+Along the way the build prompt installed **expo-updates** and wired EAS Update
+(`runtimeVersion: appVersion`, `updates.url`) — committed as `0e72821` after deduplicating the
+`RECORD_AUDIO` permission that `eas update:configure` doubled in `app.json`. JS-only fixes can
+now reach testers without a rebuild, on the shared `production` channel — publish deliberately.
+
+Owner-side remainder, none of it code: wait for Apple's processing mail, add internal testers
+(Users and Access → TestFlight internal group; no Beta App Review), and watch the first
+`ai_usage` rows arrive. The V7 prompt still awaits the §9.4 owner-run eval before anyone
+deploys it.
