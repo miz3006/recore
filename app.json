@@ -74,6 +74,12 @@
         "projectId": "cf4674e8-a097-4d6c-8464-22070ba683ed"
       }
     },
-    "owner": "miz16"
+    "owner": "miz16",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/cf4674e8-a097-4d6c-8464-22070ba683ed"
+    }
   }
 }
