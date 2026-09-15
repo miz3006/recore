@@ -3,7 +3,7 @@ import { currentStreak } from '../streak';
 import { dayKeyFor, dayRangeIso, performedAtIso, type DayKey } from './dates';
 import { dayWorkoutId } from './day-id';
 import { getDb, nowIso } from './index';
-import { clearParseBackoff } from './parse-backoff';
+import { holdParseForWriting } from './parse-backoff';
 
 export interface WorkoutRow {
   id: string;
@@ -87,13 +87,13 @@ export function saveRawText(userId: string, day: DayKey, rawText: string): strin
       'UPDATE workouts SET raw_text = ?, updated_at = ?, dirty = 1, needs_parse = ? WHERE id = ?',
       [rawText, now, rawText.trim().length > 0 ? 1 : 0, existing.id],
     );
-    // DIFFERENT WORDS, DIFFERENT QUESTION. A note that failed to read has a
-    // wait on it (`db/parse-backoff.ts`), and rewriting the line is how a
-    // person fixes exactly that — so the wait earned by the old text must not
-    // be served by the new one. Only on a real change: re-saving identical text
-    // is not a new question, and clearing on it would restore the every-open
-    // retry this backoff exists to stop.
-    if (existing.raw_text !== rawText) clearParseBackoff(existing.id);
+    // DIFFERENT WORDS, DIFFERENT QUESTION — and a question still being TYPED
+    // (15 Sep 2026). Rewriting the line still forgives any failure backoff the
+    // old text earned, but instead of making the note immediately eligible it
+    // parks it on the writing hold: the deferred queue must not read over the
+    // athlete's shoulder, and the "done" checkmark (or the hold expiring) is
+    // what asks. Only on a real change, as before.
+    if (existing.raw_text !== rawText) holdParseForWriting(existing.id);
     return existing.id;
   }
 
@@ -119,6 +119,8 @@ export function saveRawText(userId: string, day: DayKey, rawText: string): strin
     'UPDATE workouts SET raw_text = ?, updated_at = ?, dirty = 1, needs_parse = ? WHERE id = ?',
     [rawText, now, rawText.trim().length > 0 ? 1 : 0, id],
   );
+  // A brand-new note is a note being written — same hold as the update branch.
+  holdParseForWriting(id);
   return id;
 }
 

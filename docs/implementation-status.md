@@ -9426,3 +9426,59 @@ in the beta round.
 
 Same tree as this morning's entry (`0446ab1`): typecheck **pass**, tests **958/958**, lint
 **0 errors**. The two changes here are configuration (`eas.json`) and this file.
+
+## 15 September 2026, evening — the parse waits for the checkmark
+
+The owner, after pasting a whole push session and then fighting the editor: *"da ne parsa dokler
+ne kliknem desno eno kljukico kot done, zato da lahko vmes napišemo vsak set posebej in potem
+šele damo kot parser."* Two things were true at once: the 900 ms debounce re-asked the model on
+every typing pause (the exact cost shape the S21/S26 notes fight), and the deferred-parse queue
+(`retryPendingParses`) would have kept doing it behind any client-side gate, because every
+keystroke sets `needs_parse = 1`.
+
+### The model now
+
+- **Typing only writes.** `setNote` no longer schedules a parse; `saveRawText` parks the note on
+  a ten-minute **writing hold** — the same `parse_next_at` column the failure backoff uses, so
+  the deferred queue skips a note that is being written with no schema change and no new column
+  (a new synced column is the S-class sync breaker the memory notes warn about). An ABANDONED
+  note self-heals: the hold expires and the sync loop reads it, so nobody's session stays
+  silently unread because they never found the checkmark.
+- **The checkmark is the question.** The accessory row's third circle — the way down — is now a
+  bare checkmark: keyboard down AND `requestParse`, the one foreground door to the model. It
+  never goes dead: with nothing new to read it still closes the keyboard and spends nothing
+  (`parsedSnapshot === note` guard).
+- **Deliberate taps still read immediately**, because their features are the reading: the
+  correction sheet's "Edit my words", delete + its undo, the effort chips, checklist set taps,
+  the accepted ghost, and `checkGhostLine` all follow their `setNote` with `requestParse()`.
+  Each was already one debounced call per tap before; the count is unchanged.
+- **Costs fall out of typing entirely.** A live-logged session used to be roughly one model call
+  per pause; it is now one per checkmark (plus the taps above). The status pill keeps its live
+  volume from the local estimator, which never left.
+
+### Trade-off, stated
+
+The automatic rest timer starts from the parser's counted-set total, so during live logging it
+now starts on ✓ (or a checklist tap), not on every typed line. That is the owner's stated
+preference: writing is not interrupted, and the ✓ is the natural end of a set anyway.
+
+### The pasted-blob complaint, answered without touching raw text
+
+The pasted push session WAS one long line — the parser read several exercises out of it (items
+share a `line` index by design), so the cards looked right while the editor showed the blob.
+Recore does not rewrite the athlete's words (§3), so the fix is the workflow the owner asked
+for: with parsing gated, the blob can be broken into lines by hand without the model re-reading
+every pause, then confirmed once with ✓.
+
+### Files
+
+`src/lib/db/parse-backoff.ts` (`WRITING_HOLD_MS`, `holdParseForWriting`), `src/lib/db/workouts.ts`
+(hold on both write branches), `src/state/session-store.ts` (`requestParse`, debounce removed,
+seven deliberate call sites), `src/components/bottom-toolbar.tsx` (Done checkmark),
+`src/components/icon.tsx` (`check`).
+
+### Gates
+
+`npm run typecheck` **pass**. `npm test` **958/958 pass**. `npm run lint` **0 errors**, 49
+pre-existing warnings. `npx expo export --platform ios` **pass**. Delivered to the TestFlight
+build over EAS Update with the beta env carried by hand (see the B5 entry above).

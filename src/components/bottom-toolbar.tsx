@@ -197,6 +197,7 @@ export function BottomToolbar({
   const reduceMotion = useReducedMotion();
   const note = useCurrentNote();
   const setNote = useSession((s) => s.setNote);
+  const requestParse = useSession((s) => s.requestParse);
   const parsedSnapshot = useSession((s) => s.parsedSnapshot);
   const parsedVolume = useSession((s) => s.parsedVolume);
   const receipt = useSession((s) => s.receipt);
@@ -300,8 +301,17 @@ export function BottomToolbar({
    * haptic (§5.6). Dictation deliberately keeps running: it never needed the
    * keyboard.
    */
-  const handleHideKeyboard = () => {
+  /**
+   * DONE (15 Sep 2026, owner's ruling) — the way down grew the meaning it
+   * always implied. Typing no longer parses (`session-store.ts`, the writing
+   * hold); this checkmark is the athlete saying "read it now": keyboard down
+   * AND the one foreground parse. When nothing changed since the last reading
+   * it is still the way down — `requestParse` no-ops — so the control is
+   * never dead, it just spends nothing.
+   */
+  const handleDone = () => {
     tap();
+    requestParse();
     Keyboard.dismiss();
   };
 
@@ -444,16 +454,18 @@ export function BottomToolbar({
 
         {/* The last of the three, and the row no longer has a member that
             comes and goes (the plan button did) — so nothing here ever moves
-            under the thumb mid-session. */}
+            under the thumb mid-session. Since 15 Sep it is a checkmark, not a
+            chevron: down is still what it does, "done" is what it means, and
+            the parse rides on it. */}
         <GlassPressable
-          onPress={handleHideKeyboard}
+          onPress={handleDone}
           haptic="none"
           activeScale={0.92}
           radius={ROUND / 2}
           style={styles.round}
           contentStyle={styles.roundContent}
-          accessibilityLabel="Hide keyboard">
-          <Icon name="keyboard-hide" size={ACCESSORY_GLYPH} tint={color.textPrimary} />
+          accessibilityLabel="Done. Reads your note and hides the keyboard">
+          <Icon name="check" size={ACCESSORY_GLYPH} tint={color.textPrimary} />
         </GlassPressable>
 
         <PressableScale

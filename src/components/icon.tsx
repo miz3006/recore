@@ -69,6 +69,8 @@ export type IconName =
   // Clear a field's text — filled, because it is a control on top of an input
   // rather than a label beside one.
   | 'close'
+  // The accessory row's DONE — a bare checkmark: "read my note now".
+  | 'check'
   // --- The first-open tour's five cards (9 September 2026). The last three
   // --- are the SF Symbols `(tabs)/_layout.tsx` puts in the bar, spelled the
   // --- same way, so the card shows the exact mark it is about to spotlight.
@@ -143,6 +145,7 @@ const MAP: Record<IconName, Glyph> = {
   pencil: { set: 'ion', name: 'pencil-outline' },
   wrench: { set: 'ion', name: 'construct-outline' },
   close: { set: 'ion', name: 'close-circle' },
+  check: { set: 'ion', name: 'checkmark' },
   undo: { set: 'ion', name: 'arrow-undo-outline' },
   'tour-write': { set: 'ion', name: 'create-outline' },
   'tour-checkin': { set: 'ion', name: 'checkmark-circle-outline' },
@@ -294,6 +297,7 @@ const SF: Partial<Record<IconName, Symbol>> = {
   // These three are copied from `(tabs)/_layout.tsx` and must not drift from
   // it; the two write glyphs are Apple's own compose and confirm marks.
   'tour-write': { name: 'square.and.pencil' },
+  check: { name: 'checkmark' },
   'tour-checkin': { name: 'checkmark.circle' },
   'tour-next': { name: 'arrow.forward' },
   'tour-progress': { name: 'chart.xyaxis.line', box: 1.1 },

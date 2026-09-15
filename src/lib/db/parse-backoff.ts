@@ -61,6 +61,30 @@ export function recordParseFailure(workoutId: string, kind: ParseFailureKind = '
   ]);
 }
 
+/**
+ * THE WRITING HOLD (15 Sep 2026, owner's ruling: the note parses when the
+ * athlete says it is done, not while they are mid-sentence).
+ *
+ * Every keystroke parks the note ten minutes out on the SAME column the
+ * failure backoff uses, so the deferred-parse queue (`getWorkoutsNeedingParse`)
+ * leaves a note that is being written alone — and a note that is ABANDONED
+ * mid-write still reads itself when the hold expires, so nobody's session
+ * stays silently unread because they never found the checkmark. The
+ * foreground "done" tap (`requestParse` in the session store) clears the hold
+ * and asks immediately.
+ *
+ * Attempts reset with it for the same reason `clearParseBackoff` resets them:
+ * changed words are a different question.
+ */
+export const WRITING_HOLD_MS = 10 * 60_000;
+
+export function holdParseForWriting(workoutId: string): void {
+  getDb().runSync('UPDATE workouts SET parse_attempts = 0, parse_next_at = ? WHERE id = ?', [
+    new Date(Date.now() + WRITING_HOLD_MS).toISOString(),
+    workoutId,
+  ]);
+}
+
 /** A reading landed, or the words changed — this note is eligible again now. */
 export function clearParseBackoff(workoutId: string): void {
   getDb().runSync('UPDATE workouts SET parse_attempts = 0, parse_next_at = NULL WHERE id = ?', [

@@ -28,6 +28,7 @@ import { parseWorkout, type ParseOutcome } from '@/lib/parse/client';
 import { applyCorrection, getFixTarget, type FixTarget } from '@/lib/parse/correct';
 import { buildReceipt, type ReceiptData } from '@/lib/parse/receipt';
 import { validateParseResult, type LineSignal, type ParsedSet } from '@/lib/parse/types';
+import { clearParseBackoff } from '@/lib/db/parse-backoff';
 import { scheduleSync, setParseListener } from '@/lib/sync/index';
 
 /**
@@ -167,6 +168,10 @@ interface SessionState {
   reset: () => void;
   selectDay: (day: DayKey) => void;
   setNote: (text: string) => void;
+  /** The DONE tap (15 Sep 2026): read the note NOW. Typing never parses any
+   * more — it only writes and extends the writing hold — so this is the one
+   * foreground door to the model. No-ops when there is nothing new to read. */
+  requestParse: () => void;
   startFromGhost: () => void;
   /** Strong-style check-off: commit ONE prescribed line into the note. */
   checkGhostLine: (lineText: string) => void;
@@ -256,8 +261,6 @@ interface SessionState {
   finishSession: () => void;
 }
 
-const PARSE_DEBOUNCE_MS = 900;
-let parseTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Rises on every delete, so `lastDelete` is a NEW offer even when the second
  * delete happens to name the same line and the same words as the first. */
@@ -436,7 +439,11 @@ function applyPlannedEdit(
 
   savePlannedSession(selectedDay, next.session);
   set({ plannedSession: next.session });
-  if (next.note !== note) get().setNote(next.note);
+  if (next.note !== note) {
+    get().setNote(next.note);
+    // A checklist tap is a finished statement, not typing — read it now.
+    get().requestParse();
+  }
 }
 
 export const useSession = create<SessionState>((set, get) => ({
@@ -513,7 +520,6 @@ export const useSession = create<SessionState>((set, get) => ({
   },
 
   reset: () => {
-    if (parseTimer) clearTimeout(parseTimer);
     clearParseRetry();
     dumpStartedAt = null;
     set({
@@ -552,7 +558,6 @@ export const useSession = create<SessionState>((set, get) => ({
   selectDay: (day) => {
     const { userId, selectedDay } = get();
     if (!userId || day === selectedDay) return;
-    if (parseTimer) clearTimeout(parseTimer);
     clearParseRetry();
     dumpStartedAt = null;
     set({
@@ -604,12 +609,27 @@ export const useSession = create<SessionState>((set, get) => ({
       }
     }
 
-    // 2. Fire the background parse after the typing pause; push in background.
-    // A fresh keystroke supersedes any failure-retry chain in flight.
-    if (parseTimer) clearTimeout(parseTimer);
+    // 2. NO PARSE ON A KEYSTROKE (15 Sep 2026, owner's ruling). Writing only
+    // writes: `saveRawText` parked the note on the writing hold, so neither
+    // the foreground nor the deferred queue reads a sentence still being
+    // typed. The DONE checkmark (`requestParse`) is what asks — and a fresh
+    // keystroke still supersedes any failure-retry chain in flight, because
+    // the text it was retrying no longer exists.
     clearParseRetry();
-    parseTimer = setTimeout(() => void runParse(workoutId), PARSE_DEBOUNCE_MS);
     scheduleSync();
+  },
+
+  requestParse: () => {
+    const { userId, workoutId, note, parsedSnapshot } = get();
+    if (!userId || !workoutId) return;
+    if (note.trim().length === 0) return;
+    // Nothing new to read — the tap still closes the keyboard, it just does
+    // not spend a model call re-asking an answered question.
+    if (parsedSnapshot === note) return;
+    // The hold is over: this text IS the question now.
+    clearParseBackoff(workoutId);
+    clearParseRetry();
+    void runParse(workoutId);
   },
 
   startFromGhost: () => {
@@ -621,12 +641,8 @@ export const useSession = create<SessionState>((set, get) => ({
     // STARTING — that's live-logging territory, not an end-of-training dump.
     dumpStartedAt = null;
     set({ ghostDismissed: true });
-    // Parse the accepted prescription right away — no need to wait for typing.
-    const workoutId = get().workoutId;
-    if (workoutId) {
-      if (parseTimer) clearTimeout(parseTimer);
-      void runParse(workoutId);
-    }
+    // An accepted prescription is a deliberate tap, not typing — read it now.
+    get().requestParse();
   },
 
   /** Tap the circle on a planned line: the prescription becomes real typed
@@ -644,6 +660,9 @@ export const useSession = create<SessionState>((set, get) => ({
     get().setNote(base.length > 0 ? `${base}\n${lineText}` : lineText);
     // Checking off the plan is live-logging, never an end-of-training dump.
     dumpStartedAt = null;
+    // A tapped line is done the moment it lands — the volt check needs the
+    // reading, and the tap is the athlete saying so.
+    get().requestParse();
   },
 
   dismissGhost: () => set({ ghostDismissed: true }),
@@ -738,6 +757,9 @@ export const useSession = create<SessionState>((set, get) => ({
       lastDelete: { line: cut.line, text: cut.text, label, day: selectedDay, id: ++undoToken },
     });
     get().setNote(cut.note);
+    // Deleting is deliberate: without a fresh reading the cards would keep
+    // printing an entry the words no longer contain.
+    get().requestParse();
   },
 
   /**
@@ -761,6 +783,7 @@ export const useSession = create<SessionState>((set, get) => ({
     set({ lastDelete: null });
     if (lastDelete.day !== selectedDay) return;
     get().setNote(restoreLine(note, lastDelete.line, lastDelete.text));
+    get().requestParse();
   },
 
   clearUndo: () => {
@@ -790,6 +813,9 @@ export const useSession = create<SessionState>((set, get) => ({
     lines[line] = next;
     set({ fixTarget: null });
     get().setNote(lines.join('\n'));
+    // Rewriting the words inside the correction sheet is the fix itself —
+    // the athlete is waiting to see the reading change.
+    get().requestParse();
   },
 
   setLineEffort: (line, effort) => {
@@ -799,9 +825,10 @@ export const useSession = create<SessionState>((set, get) => ({
     const next = setEffortOnLine(lines[line]!, effort);
     if (next === lines[line]) return;
     lines[line] = next;
-    // Straight through setNote: SQLite in the same tick, then the debounced
-    // parse reads the marker like any other word the user typed.
+    // Straight through setNote: SQLite in the same tick — and read now, so
+    // the engine gets the RIR while the sheet is still on screen.
     get().setNote(lines.join('\n'));
+    get().requestParse();
   },
 
   openEntryNote: (target) => set({ noteTarget: target }),
