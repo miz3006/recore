@@ -13,7 +13,8 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "Recore transcribes your dictation on-device to log your workout.",
-        "NSMicrophoneUsageDescription": "Recore uses the microphone so you can dictate your workout."
+        "NSMicrophoneUsageDescription": "Recore uses the microphone so you can dictate your workout.",
+        "NSPhotoLibraryUsageDescription": "Recore only reads a photo or video you explicitly choose to share with it — it never browses your library."
       }
     },
     "android": {
