@@ -104,12 +104,24 @@ export default function OnboardingV2Step() {
    * They are not a new person — their record is in their account — so the
    * funnel stands aside and the dispatcher decides where they belong.
    *
-   * `isOnboardingDone()` is the guard that keeps a REPLAY working: an entitled
-   * subscriber walking the flow again from You is signed in the whole time, and
-   * throwing them out on the first frame would make that row useless.
+   * ARRIVED is the whole test, and it is measured against the mount (15 Sep
+   * 2026). The effect used to fire on `session !== null` alone, which cannot
+   * tell "signed in just now, on this screen" from "was signed in all along
+   * and walked in on purpose" — and the second one is exactly what You's
+   * "Run setup again" row is. For anyone whose device lacks the local done
+   * flag while their account is live — a reinstall (the Keychain keeps the
+   * Supabase session across app deletion; the SQLite flag does not), or an
+   * account switch that re-scoped the local DB — the row pushed screen 1 and
+   * this effect bounced it to Today on the first frame. The owner hit it on
+   * the first TestFlight build. A session already present at mount means the
+   * visit is deliberate; only the null → session transition means "carry them
+   * out". (`isOnboardingDone()` is kept as the older guard for the same
+   * replay when the flag IS set — harmless beside the new one.)
    */
+  const sessionAtMount = useRef(session !== null);
   useEffect(() => {
     if (dev || session === null) return;
+    if (sessionAtMount.current) return;
     if (isOnboardingDone()) return;
     router.replace('/');
   }, [dev, router, session]);

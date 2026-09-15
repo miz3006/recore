@@ -9355,3 +9355,35 @@ Owner-side remainder, none of it code: wait for Apple's processing mail, add int
 (Users and Access → TestFlight internal group; no Beta App Review), and watch the first
 `ai_usage` rows arrive. The V7 prompt still awaits the §9.4 owner-run eval before anyone
 deploys it.
+
+## 15 September 2026 — the replay row bounced off its own escape hatch, and why the owner's TestFlight skipped onboarding
+
+The owner, on the first TestFlight install: *"ne dela run setup again — ko kliknem me da na
+Today, in ni mi prikazal onboardinga."* One root state explains both symptoms, and it is specific
+to that phone: **the Supabase session lives in the iOS Keychain, which survives deleting the
+app; the onboarding-done flag lives in the local SQLite meta, which does not.** A phone that
+carried an earlier build therefore opens the TestFlight install already signed in with no local
+done flag.
+
+- **Why onboarding never showed**: the dispatcher reads that state as a returning user — its own
+  comment names the account-switch wipe as the case — and sends them to Today. Correct for a
+  returning user, surprising for the owner. A tester on a fresh phone has no Keychain session,
+  so the funnel shows normally; nothing was changed here.
+- **Why the replay row bounced**: `[step].tsx`'s "the account arrived while the funnel was on
+  screen" effect fired on `session !== null` alone, which cannot tell a mid-funnel sign-in from
+  a deliberate signed-in entry — and You's "Run setup again" is the second one. With the done
+  flag false, screen 1 mounted and was replaced with `/` on the first frame. **Fixed**: the
+  effect now keys on the null → session TRANSITION (a `sessionAtMount` ref); a session already
+  present at mount means the visit is deliberate and the funnel stays. The mid-funnel sign-in
+  path is unchanged, and finishing a replay commits the done flag, repairing the device.
+
+Also today, before this: the parser outage on the same build was diagnosed end-to-end — Apple's
+ITMS-90683 rejection (NSPhotoLibraryUsageDescription owed to PHAsset references in
+ExpoFileSystem/ExpoVideo, verified against the IPA's binaries), then `provider_auth` from the
+deployed Anthropic key (dead key; the .env key proved live and the owner rotated the secret).
+`parse-workout` answers 200 from a direct probe and the first `ai_usage` row exists.
+
+### Gates
+
+`npm run typecheck` **pass**. `npm test` **958/958 pass**. `npm run lint` **0 errors**, 49
+pre-existing warnings. Delivered to the TestFlight build over EAS Update (JS-only change).
