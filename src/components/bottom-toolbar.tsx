@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Keyboard, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Keyboard, StyleSheet, Text, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { markFirstWorkoutFinished } from '@/lib/funnel';
@@ -198,6 +198,7 @@ export function BottomToolbar({
   const note = useCurrentNote();
   const setNote = useSession((s) => s.setNote);
   const requestParse = useSession((s) => s.requestParse);
+  const parsing = useSession((s) => s.parsing);
   const parsedSnapshot = useSession((s) => s.parsedSnapshot);
   const parsedVolume = useSession((s) => s.parsedVolume);
   const receipt = useSession((s) => s.receipt);
@@ -301,18 +302,20 @@ export function BottomToolbar({
    * haptic (§5.6). Dictation deliberately keeps running: it never needed the
    * keyboard.
    */
+  const handleHideKeyboard = () => {
+    tap();
+    Keyboard.dismiss();
+  };
+
   /**
-   * DONE (15 Sep 2026, owner's ruling) — the way down grew the meaning it
-   * always implied. Typing no longer parses (`session-store.ts`, the writing
-   * hold); this checkmark is the athlete saying "read it now": keyboard down
-   * AND the one foreground parse. When nothing changed since the last reading
-   * it is still the way down — `requestParse` no-ops — so the control is
-   * never dead, it just spends nothing.
+   * READ MY NOTE (15 Sep 2026, owner's ruling — second pass). The first cut
+   * folded this into the way-down circle; the owner wanted the way down BACK
+   * and the parse to be its own control, beside the parser's status line
+   * where its result lands. Keyboard stays up: reading is not leaving.
    */
-  const handleDone = () => {
+  const handleParse = () => {
     tap();
     requestParse();
-    Keyboard.dismiss();
   };
 
   // Finish = settle the eye on the ledger: keyboard down, receipt in view.
@@ -404,7 +407,9 @@ export function BottomToolbar({
           `FadeSwap` keys on which, so the exchange is the app's one sanctioned
           "a value updating once" rather than a pop. */}
       {resting || status ? (
-        <FadeSwap swapKey={resting ? 'rest' : 'status'}>
+        <View style={styles.statusRow}>
+          <View style={styles.statusRowBody}>
+            <FadeSwap swapKey={resting ? 'rest' : 'status'}>
           {resting ? (
             <RestBar engine={rest} />
           ) : (
@@ -426,7 +431,32 @@ export function BottomToolbar({
               </Text>
             </GlassPressable>
           )}
-        </FadeSwap>
+            </FadeSwap>
+          </View>
+          {/* THE CHECK — the one thing that starts the parser (15 Sep 2026,
+              owner's ruling: typing never parses, and neither does a timer).
+              It sits beside the status line because that line is where its
+              answer lands, and it EXISTS only while there is unread text —
+              absent otherwise, so it can never be a dead control; while the
+              question is in flight it is the spinner, and `requestParse`
+              refuses a second call anyway. */}
+          {note.trim().length > 0 && parsedSnapshot !== note ? (
+            <GlassPressable
+              onPress={handleParse}
+              haptic="none"
+              activeScale={0.92}
+              radius={ROUND / 2}
+              style={styles.round}
+              contentStyle={styles.roundContent}
+              accessibilityLabel={parsing ? 'Reading your note' : 'Read my note'}>
+              {parsing ? (
+                <ActivityIndicator size="small" color={color.accent} />
+              ) : (
+                <Icon name="check" size={ACCESSORY_GLYPH} tint={color.accent} />
+              )}
+            </GlassPressable>
+          ) : null}
+        </View>
       ) : null}
 
       <GlassGroup style={styles.row}>
@@ -454,18 +484,16 @@ export function BottomToolbar({
 
         {/* The last of the three, and the row no longer has a member that
             comes and goes (the plan button did) — so nothing here ever moves
-            under the thumb mid-session. Since 15 Sep it is a checkmark, not a
-            chevron: down is still what it does, "done" is what it means, and
-            the parse rides on it. */}
+            under the thumb mid-session. */}
         <GlassPressable
-          onPress={handleDone}
+          onPress={handleHideKeyboard}
           haptic="none"
           activeScale={0.92}
           radius={ROUND / 2}
           style={styles.round}
           contentStyle={styles.roundContent}
-          accessibilityLabel="Done. Reads your note and hides the keyboard">
-          <Icon name="check" size={ACCESSORY_GLYPH} tint={color.textPrimary} />
+          accessibilityLabel="Hide keyboard">
+          <Icon name="keyboard-hide" size={ACCESSORY_GLYPH} tint={color.textPrimary} />
         </GlassPressable>
 
         <PressableScale
@@ -523,6 +551,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  statusRowBody: {
+    flex: 1,
   },
   round: {
     minWidth: ROUND,

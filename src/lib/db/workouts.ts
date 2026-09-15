@@ -91,8 +91,8 @@ export function saveRawText(userId: string, day: DayKey, rawText: string): strin
     // (15 Sep 2026). Rewriting the line still forgives any failure backoff the
     // old text earned, but instead of making the note immediately eligible it
     // parks it on the writing hold: the deferred queue must not read over the
-    // athlete's shoulder, and the "done" checkmark (or the hold expiring) is
-    // what asks. Only on a real change, as before.
+    // athlete's shoulder, and only the athlete asking (`requestParse`) lifts
+    // the hold — it has no timer. Only on a real change, as before.
     if (existing.raw_text !== rawText) holdParseForWriting(existing.id);
     return existing.id;
   }

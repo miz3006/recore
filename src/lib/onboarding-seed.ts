@@ -1,5 +1,6 @@
 import { todayKey } from '@/lib/db/dates';
 import { getMeta, setMeta } from '@/lib/db/index';
+import { clearParseBackoff } from '@/lib/db/parse-backoff';
 import { getWorkoutForDay, saveRawText } from '@/lib/db/workouts';
 import { devLog } from '@/lib/log';
 import { useOnboardingAnswers } from '@/state/onboarding';
@@ -97,6 +98,10 @@ export function seedOnboardingDemo(userId: string): void {
     }
 
     const workoutId = saveRawText(userId, day, text);
+    // `saveRawText` parks a note on the writing hold, because its normal
+    // caller is a keystroke. Nobody is typing here — this line should be in
+    // the deferred queue right now, which is what the comment above promises.
+    clearParseBackoff(workoutId);
     setMeta(originKey(workoutId), 'onboarding_demo');
     setMeta(SEEDED_KEY, workoutId);
     devLog('seeded the onboarding demo line as the first session');

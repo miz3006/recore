@@ -620,8 +620,11 @@ export const useSession = create<SessionState>((set, get) => ({
   },
 
   requestParse: () => {
-    const { userId, workoutId, note, parsedSnapshot } = get();
+    const { userId, workoutId, note, parsedSnapshot, parsing } = get();
     if (!userId || !workoutId) return;
+    // One question at a time: the check control shows a spinner while a parse
+    // is in flight, and a second tap must not stack a second model call.
+    if (parsing) return;
     if (note.trim().length === 0) return;
     // Nothing new to read — the tap still closes the keyboard, it just does
     // not spend a model call re-asking an answered question.

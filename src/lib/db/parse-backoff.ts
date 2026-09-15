@@ -62,25 +62,33 @@ export function recordParseFailure(workoutId: string, kind: ParseFailureKind = '
 }
 
 /**
- * THE WRITING HOLD (15 Sep 2026, owner's ruling: the note parses when the
- * athlete says it is done, not while they are mid-sentence).
+ * THE WRITING HOLD (15 Sep 2026, owner's ruling — twice). First ruling: the
+ * note parses when the athlete says it is done, not while they are
+ * mid-sentence. Second, same day, after seeing it run: **not on a timer
+ * either** — "naj sploh ne začne delati parser dokler nekdo ne klikne gor".
+ * So the hold does not expire. A typed note is read when, and only when,
+ * something the athlete did asks for it: the check control, a checklist tap,
+ * a correction, a delete — every one of them lands in `requestParse`, which
+ * clears this hold.
  *
- * Every keystroke parks the note ten minutes out on the SAME column the
- * failure backoff uses, so the deferred-parse queue (`getWorkoutsNeedingParse`)
- * leaves a note that is being written alone — and a note that is ABANDONED
- * mid-write still reads itself when the hold expires, so nobody's session
- * stays silently unread because they never found the checkmark. The
- * foreground "done" tap (`requestParse` in the session store) clears the hold
- * and asks immediately.
+ * It parks the note on the SAME column the failure backoff uses
+ * (`parse_next_at`), so the deferred queue (`getWorkoutsNeedingParse`) skips
+ * it with no schema change — a new synced column is the sync breaker the
+ * memory notes warn about. `needs_parse` stays 1 the whole time, because that
+ * flag means "the structure does not belong to this text" and rehydrate
+ * (`parse/rehydrate.ts`) refuses stale rebuilds on exactly that reading.
+ *
+ * The one writer that WANTS the old queue behaviour — the onboarding seed —
+ * says so itself by clearing the hold after it writes.
  *
  * Attempts reset with it for the same reason `clearParseBackoff` resets them:
  * changed words are a different question.
  */
-export const WRITING_HOLD_MS = 10 * 60_000;
+const WRITING_HOLD_UNTIL = '9999-12-31T00:00:00.000Z';
 
 export function holdParseForWriting(workoutId: string): void {
   getDb().runSync('UPDATE workouts SET parse_attempts = 0, parse_next_at = ? WHERE id = ?', [
-    new Date(Date.now() + WRITING_HOLD_MS).toISOString(),
+    WRITING_HOLD_UNTIL,
     workoutId,
   ]);
 }

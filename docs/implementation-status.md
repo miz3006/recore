@@ -9511,3 +9511,34 @@ checkmark either way.
 `npm run typecheck` **pass**. `npm test` **958/958 pass**. `npm run lint` **0 errors**, 49
 pre-existing warnings. `npx expo export --platform ios` **pass**. Shipped over EAS Update with
 the beta env carried by hand (B5 rule).
+
+## 15 September 2026, later still — the check moves beside the status line, and the hold loses its timer
+
+The owner, on the first cut of parse-on-demand: the way down must come back, the check belongs
+"desno od parserja v isti vrstici", and the parser must not start **at all** until it is tapped
+— not after ten minutes either. Three changes, all in the same files as the morning's entry:
+
+- **The accessory row is what it was**: rest ring, dictation, the chevron that hides the
+  keyboard. The way down carries no side effects again.
+- **The check lives at the right end of row 1**, beside the status line — the place its answer
+  lands. It exists only while there is unread text (`parsedSnapshot !== note`), so it is never a
+  dead control; while the question is in flight it is the spinner, and `requestParse` now
+  refuses a second call while one is running (the in-flight guard the parse-latency memory note
+  said was missing). The keyboard stays up: reading is not leaving.
+- **The writing hold no longer expires.** `holdParseForWriting` parks the note at a sentinel
+  far-future `parse_next_at`; only `requestParse` (the check, a checklist tap, a correction, a
+  delete, the accepted ghost) lifts it. `needs_parse` stays 1 throughout — that flag means "the
+  structure does not belong to this text", and `rehydrate.ts` refuses stale rebuilds on exactly
+  that reading, which is why the flag could not be repurposed as the gate. The onboarding seed,
+  the one writer that wants the old queue behaviour, now clears the hold itself.
+
+**Stated consequence, owner's choice:** a typed note that never gets a tap is never parsed —
+no reading, no receipt, absent from volume and progression until the day is reopened and the
+check tapped. The check standing beside the status line whenever unread text exists is the
+affordance that carries that rule.
+
+### Gates
+
+`npm run typecheck` **pass**. `npm test` **958/958 pass**. `npm run lint` **0 errors**, 49
+pre-existing warnings. `npx expo export --platform ios` **pass**. Shipped over EAS Update with
+the beta env carried by hand (B5 rule).
