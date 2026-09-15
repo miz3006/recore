@@ -879,6 +879,7 @@ export function NoteInput({
    */
   inputAccessoryViewID,
   testID,
+  multiline = false,
 }: {
   inputRef?: React.Ref<TextInput>;
   value: string;
@@ -889,12 +890,16 @@ export function NoteInput({
   autoFocus?: boolean;
   inputAccessoryViewID?: string;
   testID?: string;
+  /** The composer sets this — see its paste note. A single-line field is kept
+   * for every other caller. */
+  multiline?: boolean;
 }) {
   return (
     <TextInput
       ref={inputRef}
       style={styles.input}
       value={value}
+      multiline={multiline}
       onChangeText={onChangeText}
       onSubmitEditing={onSubmitEditing}
       onFocus={onFocus}
@@ -1013,7 +1018,35 @@ export function Composer({
           <NoteInput
             inputRef={inputRef}
             value={value}
-            onChangeText={onChangeText}
+            /**
+             * MULTILINE, WITH RETURN HANDLED BY HAND (15 Sep 2026). The field
+             * looks and acts single-line, but a single-line UITextField
+             * FLATTENS a multi-line paste — the owner pasted a whole session
+             * and every affordance that works on physical lines (edit,
+             * delete, fix) then opened the entire note as one line; the
+             * exercise cards masked it because the parser reads several
+             * exercises out of one line by design. Multiline keeps the pasted
+             * newlines, `setActive` writes them into the note verbatim, and
+             * the note re-derives into real lines.
+             *
+             * The return key therefore arrives as a trailing "\n" instead of
+             * `onSubmitEditing`, and it MUST keep meaning commit — the bare-
+             * name prefill accept rides on it — so exactly that shape is
+             * turned back into a submit here. A "\n" anywhere else is a
+             * paste (or a mid-line return, which splits the line — the same
+             * thing a paste does) and passes through as text.
+             */
+            multiline
+            onChangeText={(raw) => {
+              // Windows/Notes clipboards carry \r\n; one newline spelling
+              // before anything downstream splits on "\n".
+              const text = raw.replace(/\r\n?/g, '\n');
+              if (text === `${value}\n`) {
+                onSubmitEditing();
+                return;
+              }
+              onChangeText(text);
+            }}
             onSubmitEditing={onSubmitEditing}
             /**
              * NO SCROLL ON FOCUS. It was here to compensate for the

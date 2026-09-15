@@ -9482,3 +9482,32 @@ seven deliberate call sites), `src/components/bottom-toolbar.tsx` (Done checkmar
 `npm run typecheck` **pass**. `npm test` **958/958 pass**. `npm run lint` **0 errors**, 49
 pre-existing warnings. `npx expo export --platform ios` **pass**. Delivered to the TestFlight
 build over EAS Update with the beta env carried by hand (see the B5 entry above).
+
+## 15 September 2026, night — the paste that lost its lines
+
+The owner, with the checkmark change not yet applied on the phone and a sharper description:
+paste a whole session, it "arranges nicely", but tapping one exercise (dips) to change it opens
+**the entire note as one line**. The cards were telling a prettier story than the record: the
+composer's field was a single-line `UITextField`, and iOS FLATTENS a multi-line paste into one
+line before JS ever sees it. The parser reads several exercises out of one physical line by
+design (`items` share a `line` index), so the cards looked right — while edit, delete and
+fix-reading, which all operate on physical lines, each had exactly one line to offer: all of it.
+
+**Fix, in the composer and nowhere else** (`note-surface.tsx`): the field is `multiline` now, so
+a paste keeps its newlines and `setActive` writes them into the note verbatim — real lines, real
+per-line affordances. The return key consequently arrives as a trailing `"\n"` instead of
+`onSubmitEditing`, and exactly that shape is converted back into the commit (the bare-name
+prefill accept rides on it); any other `"\n"` is a paste, or a mid-line return that splits the
+line — the same thing a paste does. Clipboard `\r\n` is normalised to `"\n"` on the way in. The
+onboarding demo gets the identical behaviour for free — it renders this same `Composer`, which
+is the whole reason the component is shared.
+
+Raw text already flattened by an earlier paste stays as written (§3 — the record is not
+rewritten); re-pasting or splitting it by hand now works, with the parse waiting for the
+checkmark either way.
+
+### Gates
+
+`npm run typecheck` **pass**. `npm test` **958/958 pass**. `npm run lint` **0 errors**, 49
+pre-existing warnings. `npx expo export --platform ios` **pass**. Shipped over EAS Update with
+the beta env carried by hand (B5 rule).
