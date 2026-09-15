@@ -110,7 +110,7 @@ export function onlyLinesInstruction(chunk: number[], lines: string[]): string {
   return (
     ` Answer ONLY for the line(s) quoted here, and give each item exactly the line index shown:\n` +
     `<answer_lines>\n${quoted}\n</answer_lines>\n` +
-    `Every other line is CONTEXT, not output: read it for meaning, never answer for it. Anything above that governs these lines still governs them — a rounds or circuit header multiplying their sets, a load or rep scheme stated once for the block, an exercise whose sets continue onto them. If a quoted line does not itself record an exercise — a date, a header, a rounds line, a remark — return an empty items list rather than the exercises it introduces.`
+    `Every other line is CONTEXT, not output: read it for meaning, never answer for it. Anything above that governs these lines still governs them — a rounds or circuit header multiplying their sets, a load or rep scheme stated once for the block, an exercise named above it that a quoted line of bare set notation continues: answer that line as its OWN item carrying the continued exercise's name, at the quoted index. If a quoted line records no work at all — a date, a header, a rounds line, a remark, an exercise name with no set facts — return an empty items list rather than the exercises it introduces.`
   );
 }
 

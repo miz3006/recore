@@ -83,3 +83,21 @@ test('a one-letter alias never anchors anything', () => {
   reanchorLines(result, 'bench 3x8 80kg\nsquat 5x5 140kg');
   assert.deepEqual(linesOf(result), [1]);
 });
+
+test('a continuation item keeps its bare-notation line as claimed', () => {
+  // Set-by-set logging (PARSE_VERSION 8): "120 10" under "bench press 120 12"
+  // is its own item on its own line. That line cannot contain the exercise's
+  // name, so containment is unprovable — the model's anchor is trusted, and a
+  // "fix" that dragged it back onto line 0 would stack two items on one line
+  // while the written line below looked unread.
+  const result: ParseResult = {
+    items: [
+      item('Bench Press', 0, ['bench press']),
+      item('Bench Press', 1),
+      item('Bench Press', 2),
+    ],
+    parse_version: 8,
+  };
+  reanchorLines(result, 'bench press 120 12\n120 10\n115 8');
+  assert.deepEqual(linesOf(result), [0, 1, 2]);
+});

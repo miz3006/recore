@@ -9542,3 +9542,88 @@ affordance that carries that rule.
 `npm run typecheck` **pass**. `npm test` **958/958 pass**. `npm run lint` **0 errors**, 49
 pre-existing warnings. `npx expo export --platform ios` **pass**. Shipped over EAS Update with
 the beta env carried by hand (B5 rule).
+
+## 15 September 2026, still later — the reading learns to say what is missing, and a bare line becomes its own entry
+
+The owner's full statement of the checkmark model arrived after the morning's entries shipped:
+**typing is editing, the checkmark is the question, and the parser must distinguish valid,
+incomplete, ambiguous and unrecognisable input rather than guess.** The Write → Confirm →
+Interpret → Record loop itself was already live (the three entries above); what was missing was
+everything the loop now makes possible — a deliberate answer is allowed to say "this line did
+not state enough", and two of the UI's states were still telling yesterday's story.
+
+### Incomplete and ambiguous input — named, never filled (`lib/parse/gaps.ts`)
+
+A new pure module classifies what a reading is provably missing. Nothing in it asks the model,
+nothing it produces is written into the record, and its confidence bar is explicit: a gap is
+only named when it is provable from the page.
+
+- **`bench 120` → "? reps · add reps"** (amber, on the card): a counted set carrying a load and
+  no work is missing its reps on ANY movement. The card renders "120 kg" exactly as read, the
+  amber line names the gap, and the card's ordinary tap already opens the line to fix it.
+- **`bench 12` → "? kg · add weight"**: only on the barbell/machine lifts that cannot be done
+  unloaded (`LOADED_LIFTS`, keyed by `nameKey`). "pull ups 3x8" is a complete record of
+  bodyweight work and stays silent — a wrong warning costs more trust than a missing one.
+- **`Bench Press` alone → "no sets yet · not counted"**; **`Bench Press 120` that produced no
+  reading → "sets not read · not counted"**; **orphan `120 10` → "no exercise named · not
+  counted"** — all three on the NoteCard, amber, replacing the misleading neutral "kept as a
+  note" for lines that are training, not prose. Ordinary prose keeps its old quiet sentence.
+  "Known exercise" is `canonicalName` (offline anchors) OR the athlete's own record
+  (`getLastSessionPrefill`), computed once per parse off the snapshot — never on a keystroke.
+
+Amber is `color.warning` (§Colour: the word carries the meaning, the colour marks it); nothing
+red, nothing blocking, the written words untouched throughout.
+
+### Continuation lines are their own items — PARSE_VERSION 8
+
+The set-by-set logger writes `Bench Press 120 12` ✓, then `120 10` ✓, then `115 8` ✓. Under v7
+the model folded the bare lines' sets into the line-0 item ("the item keeps the FIRST line's
+index"), which made the ledger LIE: the bench card showed all the sets while the lines they
+were written on rendered "kept as a note · not counted". Everything in this app is
+line-oriented — edit, delete, undo, signals, fix-reading all operate on physical lines — and
+the merged item was the one structure that wasn't.
+
+v8 (`supabase/functions/parse-workout/prompt.ts`): a bare set-notation line is a SEPARATE item
+— same canonical exercise, `aliases_seen: []`, its OWN line index. `120 10` reads like
+`120x10`; a bare rep count (`x8`, `8/7/6`) continues at the exercise's last stated weight (a
+list broken across lines means what the one-line list means); blank lines don't break the
+chain; numbers with no exercise above produce NOTHING. Incomplete lines are codified the same
+way: a load with no reps stays a repless set, a name with no numbers stays no item — the model
+never completes a line. Examples 45–47 added, example 14 updated, the WxR-pairs rule now covers
+slash-separated bare pairs (`120 12 / 120 10 / 115 8`), and the fan-out's per-chunk instruction
+answers a quoted bare line as its own item. Client side: `anchor.ts` trusts a claimed anchor on
+a bare-notation line (containment is unprovable there — "fixing" it re-stacked the items),
+`incremental.ts` re-reads the continuation run just below any change (renaming the bench line
+changes what every `120 10` under it is a set OF), and `rehydrate`'s forced line-mapping now
+actually works for set-by-set notes (one group per line again).
+
+**Deploy order matters and is not done:** `CLIENT_PARSE_VERSION = 8` refuses v7 caches, so the
+edge function must deploy BEFORE any OTA carrying this client — a v8 client against the v7
+function re-parses on every checkmark and never accepts the answer into its cache. And per §9.4
+the prompt change requires the owner-run evaluation first: **this change is NOT fully verified
+until `npm run eval` has passed on the enlarged corpus** (four v8 cases added:
+continuation items, slash pairs, incomplete lines, orphan numbers — the local engine's floors
+still hold at 105/109 read, 100/109 count-right).
+
+### Two states stopped claiming work that isn't happening
+
+With parsing gated on the checkmark, "unread" is usually an IDLE state — but the composer's
+beam (`activePending`) and the settled `PendingCard` both still showed the reading animation
+whenever text was unread, parse running or not: a permanent "reading…" under text nobody had
+asked to read. Both now gate on `parsing`. An unconfirmed line is the athlete's text at rest —
+hollow ring, no beam, no dots, VoiceOver "not read yet" — and the beam returns only while the
+question is genuinely in flight. The onboarding demo's `PendingCard` keeps the beam by default
+(`reading = true`); its pending moment really is a read.
+
+### Files
+
+`src/lib/parse/gaps.ts` (+ tests), `types.ts` (v8), `anchor.ts`, `incremental.ts`,
+`src/components/note-surface.tsx` (gap hint on `ExerciseCard`, amber NoteCard metas, honest
+idle states), `supabase/functions/parse-workout/prompt.ts` + `fanout.ts`,
+`scripts/parse-eval-cases.json`, `src/lib/demo-read.test.ts` (floors re-stated).
+
+### Gates
+
+`npm run typecheck` **pass**. `npm test` **968/968 pass** (958 + 10 new). `npm run lint`
+**0 errors**, 49 pre-existing warnings. `npx expo export --platform ios` **pass**. NOT shipped
+over EAS Update: blocked behind the §9.4 eval and the edge-function deploy, in that order.

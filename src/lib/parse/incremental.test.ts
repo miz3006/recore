@@ -43,9 +43,10 @@ describe('planParse', () => {
     );
   });
 
-  it('a bare set typed under an exercise re-reads that exercise, not the line', () => {
-    // "80x8" on its own line belongs to the bench press above it — the model
-    // answers with an item anchored at line 0, so line 0 must be in the ask.
+  it('a bare set typed under an exercise re-reads that exercise too', () => {
+    // "80x8" on its own line continues the bench press above it (its item
+    // carries that name and, for a bare rep count, its stated weight), so the
+    // named line is re-asked alongside it — never spliced around.
     const p = partial(planParse('bench press 80x8', [item('Bench Press', 0)], 'bench press 80x8\n80x8'));
     assert.ok(p.lines.includes(0));
     assert.deepEqual(p.keep, []);
@@ -137,5 +138,45 @@ describe('mergeItems', () => {
       merged.map((i) => i.exercise),
       ['Fresh', 'Kept'],
     );
+  });
+});
+
+describe('continuation lines below a change (PARSE_VERSION 8)', () => {
+  it('editing a named line re-reads the bare lines that continue it', () => {
+    // Renaming "bench press 120 12" changes what every bare line under it is
+    // a set OF — the cached continuation items must not be spliced back.
+    const OLD = 'bench press 120 12\n120 10\n115 8';
+    const CACHED = [item('Bench Press', 0), item('Bench Press', 1), item('Bench Press', 2)];
+    const p = partial(planParse(OLD, CACHED, 'squat 120 12\n120 10\n115 8'));
+    assert.deepEqual(p.lines, [0, 1, 2]);
+    assert.deepEqual(p.keep, []);
+  });
+
+  it('a continuation run deeper in the note keeps its cached reading', () => {
+    // The change is above the squat; the squat and its continuation line are
+    // untouched context — asking about them again would be paying for an
+    // answer the cache already holds.
+    const OLD = 'bench press 100x8\nsquat 140x5\n140x5';
+    const CACHED = [item('Bench Press', 0), item('Squat', 1), item('Squat', 2)];
+    const p = partial(planParse(OLD, CACHED, 'bench press 105x8\nsquat 140x5\n140x5'));
+    assert.deepEqual(p.lines, [0]);
+    assert.deepEqual(
+      p.keep.map((i) => [i.exercise, i.line]),
+      [
+        ['Squat', 1],
+        ['Squat', 2],
+      ],
+    );
+  });
+
+  it('a blank line does not end a continuation run', () => {
+    // People air out set-by-set blocks: the bare "140x5" beyond the blank
+    // line still continues whatever the edited squat line now says, so it is
+    // re-read too — and the blank line itself is never asked for.
+    const OLD = 'bench press 100x8\nsquat 140x5\n\n140x5';
+    const CACHED = [item('Bench Press', 0), item('Squat', 1), item('Squat', 3)];
+    const p = partial(planParse(OLD, CACHED, 'bench press 100x8\nsquat 145x5\n\n140x5'));
+    assert.deepEqual(p.lines, [0, 1, 3]);
+    assert.deepEqual(p.keep, []);
   });
 });

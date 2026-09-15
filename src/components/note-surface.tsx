@@ -13,9 +13,11 @@ import Animated, {
 
 import { getLastSessionPrefill } from '@/lib/db/last-set';
 import { getReflection, getSessionEffort } from '@/lib/db/workouts';
+import { canonicalName } from '@/lib/demo-read';
 import { readEntryNote } from '@/lib/entry-note';
 import { tap, tapMedium } from '@/lib/haptics';
 import { DUR, SPRING } from '@/lib/motion';
+import { gapOfTable, gapOfUnreadLine, type ReadingGap, type UnreadLineGap } from '@/lib/parse/gaps';
 import { appendRepeatSet } from '@/lib/parse/next-set';
 import { namesMatch, typedNameOf, type ReceiptRow } from '@/lib/parse/receipt';
 import { PAPER_FIELD_CSS } from '@/lib/paper-field';
@@ -288,6 +290,33 @@ export function NoteSurface({
   // an edited line goes back to "reading" until the next result lands.
   const parsedFresh = (i: number) => parsedSnapshot !== null && lines[i] === snapshotLines[i];
 
+  /**
+   * WHAT A LINE WITH NO READING IS MISSING (15 September 2026) — computed once
+   * per parse, off the SNAPSHOT, so the SQLite lookup behind `knownExercise`
+   * never runs on a keystroke. A line only wears its entry while it still
+   * matches the snapshot (`parsedFresh`), which is exactly when the diagnosis
+   * is still about the text on screen. `lib/parse/gaps.ts` carries the rules
+   * and the confidence bar; the one thing added here is the database's answer
+   * to "is this a name this athlete's record knows".
+   */
+  const unreadGapByLine = useMemo(() => {
+    const m = new Map<number, UnreadLineGap>();
+    if (parsedSnapshot === null) return m;
+    const known = (line: string): boolean => {
+      const name = typedNameOf(line) || line.trim().toLowerCase();
+      if (name.length < 3) return false;
+      if (canonicalName(name) !== null) return true;
+      if (!userId) return false;
+      return getLastSessionPrefill(userId, name, workoutId) !== null;
+    };
+    snapshotLines.forEach((raw, i) => {
+      if (raw.trim().length === 0 || rowsByLine.has(i)) return;
+      const gap = gapOfUnreadLine(raw, known(raw));
+      if (gap) m.set(i, gap);
+    });
+    return m;
+  }, [parsedSnapshot, snapshotLines, rowsByLine, userId, workoutId]);
+
   const focusInput = () => noteInputRef.current?.focus();
 
   const setActive = (text: string) => setNote([...lines.slice(0, activeIndex), text].join('\n'));
@@ -502,6 +531,7 @@ export function NoteSurface({
             row={row}
             order={i}
             done={!undone[key]}
+            gap={gapOfTable(row.exercise, row.table)}
             alias={alias}
             note={readEntryNote(entryNotes, row.exercise)}
             rawLine={raw.trim()}
@@ -558,7 +588,12 @@ export function NoteSurface({
         <PendingCard
           key={`p:${i}`}
           text={raw.trim()}
-          order={pendingOrder++}
+          // The beam and the dots claim WORK, and work only happens while a
+          // parse is genuinely in flight. A settled line waiting for the
+          // checkmark is not being read — it is the athlete's text, at rest,
+          // and it stays visually untouched until they ask (15 Sep 2026).
+          reading={parsing}
+          order={parsing ? pendingOrder++ : 0}
           reduceMotion={reduceMotion}
           onPress={() => {
             tap();
@@ -572,6 +607,7 @@ export function NoteSurface({
         <NoteCard
           key={`n:${i}`}
           text={raw.trim()}
+          gap={unreadGapByLine.get(i) ?? null}
           onPress={() => {
             tap();
             startEditLine(line);
@@ -583,7 +619,11 @@ export function NoteSurface({
 
   // The live read-out of the line you're typing right now.
   const activeRows = parsedFresh(activeIndex) ? (rowsByLine.get(activeIndex) ?? null) : null;
-  const activePending = activeValue.trim().length > 0 && (parsing || !parsedFresh(activeIndex));
+  // The composer's working mark exists only while a parse is genuinely in
+  // flight. Typing is not parsing (15 Sep 2026): an unconfirmed line shows
+  // nothing under the field — the raw text is the whole statement until the
+  // checkmark asks for its reading.
+  const activePending = parsing && activeValue.trim().length > 0 && !parsedFresh(activeIndex);
   const empty = note.trim().length === 0;
 
   // The end-of-session prompt: work on the record, the session no longer live,
@@ -1194,6 +1234,7 @@ export function ExerciseCard({
   row,
   order,
   done,
+  gap = null,
   alias,
   note,
   rawLine,
@@ -1209,6 +1250,15 @@ export function ExerciseCard({
   row: ReceiptRow;
   order: number;
   done: boolean;
+  /**
+   * What this reading is provably missing (`lib/parse/gaps.ts`) — "bench 120"
+   * has a load and no reps, and the record must say so rather than stand as a
+   * complete-looking card the totals quietly skip. Amber, because it is an
+   * input problem and not an error; absent for every complete reading, which
+   * is nearly all of them. The parser never fills the gap (§3) — this line is
+   * how the athlete finds it, and the card's ordinary tap-to-edit is the fix.
+   */
+  gap?: ReadingGap | null;
   /** The user's original word when the parser auto-corrected it (X4). */
   alias: string | null;
   /** The athlete's own remark about this entry, or null. */
@@ -1336,6 +1386,19 @@ export function ExerciseCard({
             </Text>
           )}
         </WordsFlip>
+        {gap ? (
+          // The word carries the meaning and the amber only marks it (design
+          // skill §Colour) — and it names the fix, because the card's own tap
+          // already opens the line for exactly that edit.
+          <Text
+            style={styles.gapHint}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}
+            accessibilityLabel={
+              gap === 'reps' ? 'Reps missing — tap to add them' : 'Weight missing — tap to add it'
+            }>
+            {gap === 'reps' ? '? reps · add reps' : '? kg · add weight'}
+          </Text>
+        ) : null}
         {sub ? (
           <Text style={styles.exSub} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {sub}
@@ -1580,11 +1643,21 @@ export function EditRow({
  */
 export function PendingCard({
   text,
+  reading = true,
   order,
   reduceMotion,
   onPress,
 }: {
   text: string;
+  /**
+   * Is a parse genuinely in flight? The beam and the dots claim WORK, and
+   * since the checkmark ruling (15 Sep 2026) an unread line usually sits with
+   * no parse running — the athlete simply has not asked yet. Then the card is
+   * the words at rest: same shape, same hollow ring, nothing moving and
+   * nothing claiming to read. Defaulted true for the onboarding demo, whose
+   * pending moment really is a read in progress.
+   */
+  reading?: boolean;
   /** Rank among the lines being read — the beam's stagger. */
   order: number;
   reduceMotion: boolean;
@@ -1604,7 +1677,7 @@ export function PendingCard({
         activeScale={ROW_SCALE}
         wash
         washStyle={styles.rowWash}
-        accessibilityLabel={`${text} — reading`}
+        accessibilityLabel={reading ? `${text} — reading` : `${text} — not read yet`}
         style={styles.card}>
         <View style={styles.rail}>
           <View style={styles.railHollow} />
@@ -1633,20 +1706,42 @@ export function PendingCard({
             </Text>
             {/* Inside the WORDS' column, not the row's: it has to stop where
                 the text stops, or it runs on under the ⋯ and is a rule again. */}
-            <ReadingLine flow order={order} />
+            {reading ? <ReadingLine flow order={order} /> : null}
           </View>
           {/* Dots in the ⋯ column, or the word when motion is off — one hook
-              decides, so this row can never end up silent. */}
-          <View style={styles.pendingMark}>
-            <ReadingMark />
-          </View>
+              decides, so this row can never end up silent. The column keeps
+              its slot either way, so a parse starting moves nothing. */}
+          <View style={styles.pendingMark}>{reading ? <ReadingMark /> : null}</View>
         </View>
       </PressableScale>
     </Animated.View>
   );
 }
 
-export function NoteCard({ text, onPress }: { text: string; onPress: () => void }) {
+/**
+ * What the meta line under an unread line says, by what the line is missing
+ * (`lib/parse/gaps.ts`). Prose keeps its old quiet sentence; the three GAP
+ * states are amber, because each names an input problem the athlete can fix
+ * with the tap this card already answers — and each is a statement, not an
+ * alarm: the words above it are untouched and nothing was invented from them.
+ */
+const NOTE_META: Record<UnreadLineGap, string> = {
+  'no-exercise': 'no exercise named · not counted',
+  'no-sets': 'no sets yet · not counted',
+  unread: 'sets not read · not counted',
+};
+
+export function NoteCard({
+  text,
+  gap = null,
+  onPress,
+}: {
+  text: string;
+  /** Why this line has no reading, when that is a fixable gap rather than
+   * ordinary prose. Null = a note, kept as ever. */
+  gap?: UnreadLineGap | null;
+  onPress: () => void;
+}) {
   return (
     <PressableScale
       onPress={onPress}
@@ -1660,8 +1755,10 @@ export function NoteCard({ text, onPress }: { text: string; onPress: () => void 
         <Text style={styles.proseText} numberOfLines={3} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           {text}
         </Text>
-        <Text style={styles.proseMeta} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          kept as a note · not counted
+        <Text
+          style={[styles.proseMeta, gap ? styles.proseMetaWarn : null]}
+          maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {gap ? NOTE_META[gap] : 'kept as a note · not counted'}
         </Text>
       </View>
     </PressableScale>
@@ -1905,6 +2002,15 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(11.5),
     color: color.textSecondary,
   },
+  /** The missing half of an incomplete reading — "? reps · add reps". The
+   * reading voice at the comparison line's size, in `warning` amber: an input
+   * gap, marked and named, on the card whose tap already fixes it. */
+  gapHint: {
+    marginTop: 2,
+    ...readingStyle('500'),
+    fontSize: moderateScale(11.5),
+    color: color.warning,
+  },
   // The athlete's own words under their entry. Prose, so it leaves the mono
   // voice the readings speak in — this is the one line on the card that Recore
   // did not compute.
@@ -2017,6 +2123,11 @@ const styles = StyleSheet.create({
   proseMeta: {
     fontSize: moderateScale(12),
     color: color.textSecondary,
+  },
+  /** An input gap is amber (`warning`) — a problem with the line, never an
+   * error state; the word beside it carries the meaning (§Colour). */
+  proseMetaWarn: {
+    color: color.warning,
   },
 
   // The active input line.

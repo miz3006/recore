@@ -9,9 +9,11 @@ import { readWrittenLine } from './demo-read.ts';
  * THE OFFLINE READING ENGINE, SCORED AGAINST THE REAL PARSER'S OWN CORPUS.
  *
  * `scripts/parse-eval-cases.json` is what the edge function is evaluated with —
- * 105 notes of how people actually write, English and Slovene, collected for
+ * 109 notes of how people actually write, English and Slovene, collected for
  * the model (79 of them until 10 September 2026, when a wide sweep across gym,
- * street-workout and hybrid training added 26 more). The demo screen cannot call that function (no account exists on the
+ * street-workout and hybrid training added 26 more; 15 September added four
+ * for PARSE_VERSION 8's continuation and incomplete lines). The demo screen
+ * cannot call that function (no account exists on the
  * fourth screen of a funnel), so it reads with `demo-read.ts` — and the only
  * way "it reads well now" survives the next change is if it is a NUMBER in a
  * test rather than a claim in a commit message.
@@ -19,10 +21,10 @@ import { readWrittenLine } from './demo-read.ts';
  * Two floors, both deliberately below where the engine sits today, so an
  * ordinary refactor does not fail the suite and a regression does:
  *
- *  · it must READ at least 98 of the 105 notes (it reads 102 — the three it
- *    does not are two voice-dictated word-number lines and one note that is
- *    pure junk and is SUPPOSED to read as nothing);
- *  · and it must get the exercise COUNT right on at least 94 (it gets 98).
+ *  · it must READ at least 98 of the 109 notes (it reads 105 — the four it
+ *    does not are two voice-dictated word-number lines and two notes that are
+ *    junk or orphan numbers and are SUPPOSED to read as nothing);
+ *  · and it must get the exercise COUNT right on at least 94 (it gets 100).
  *
  * The count floor was 60 of 79 until 10 September 2026, when a sweep of ~260
  * written lines across gym, street-workout and hybrid training turned up twelve
@@ -36,7 +38,11 @@ import { readWrittenLine } from './demo-read.ts';
  * grouping, and the canonical exercise NAMES — those come from the app's
  * exercise table, which the funnel has no access to before an account. Each is
  * a model's job or a database's, and pretending otherwise here would trade a
- * missed read for a wrong one.
+ * missed read for a wrong one. The v8 cross-line rules join that list:
+ * continuation lines ("120 10" under a bench line) and incomplete lines
+ * ("bench 120", weight only) need the whole note and a judgement about what
+ * is missing — this engine reads one line at a time and refuses them, which
+ * the pill's estimate and the demo card both survive.
  */
 const CASES: EvalCase[] = JSON.parse(
   readFileSync(path.join(import.meta.dirname, '..', '..', 'scripts', 'parse-eval-cases.json'), 'utf8'),

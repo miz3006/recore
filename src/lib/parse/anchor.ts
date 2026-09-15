@@ -1,5 +1,6 @@
 // Relative + .ts extension: this file is bundled by Metro AND run under
 // `node --test`, which cannot resolve the `@/` alias or an extensionless path.
+import { bareNotationLine } from './gaps.ts';
 import type { ParseResult } from './types.ts';
 
 /**
@@ -14,6 +15,14 @@ import type { ParseResult } from './types.ts';
  * aliases (or the canonical name), scan the note for the first line that does
  * and reassign. Items that match nowhere keep their claimed line — the
  * blank-line guard in the note surface hides them rather than mislabeling.
+ *
+ * A CONTINUATION LINE IS EXEMPT from the containment test (PARSE_VERSION 8):
+ * a set-by-set logger's "120 10" under "bench 120 12" is its own item on its
+ * own line, and that line CANNOT contain the exercise's name — it is bare set
+ * notation, which is the whole reason the model bound it upward. Containment
+ * is unprovable there, so the model's anchor is trusted as claimed; "fixing"
+ * it would drag the continuation back onto the named line and stack two items
+ * where one line is.
  *
  * THE SEARCH MOVES FORWARD WITH THE NOTE. Items arrive in reading order, so a
  * line already spoken for by an earlier item cannot be the answer for a later
@@ -41,7 +50,11 @@ export function reanchorLines(result: ParseResult, rawText: string): void {
     previousTokens = identity;
 
     const claimed = lines[item.line];
-    if (claimed !== undefined && item.line >= floor && matches(claimed, tokens)) {
+    if (
+      claimed !== undefined &&
+      item.line >= floor &&
+      (matches(claimed, tokens) || bareNotationLine(claimed))
+    ) {
       cursor = Math.max(cursor, item.line);
       continue;
     }

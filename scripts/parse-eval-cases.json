@@ -888,5 +888,45 @@
     "input": "asdkjhaskjdh\n?????\n...\n42",
     "expect": [],
     "expect_item_count": 0
+  },
+  {
+    "name": "v8: set-by-set continuation lines are their own items",
+    "input": "bench press 120 12\n120 10\n115 8\nx8",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "sets": 1, "reps": 12, "weight_kg": 120 },
+      { "exercise": "Bench Press", "line": 1, "sets": 1, "reps": 10, "weight_kg": 120 },
+      { "exercise": "Bench Press", "line": 2, "sets": 1, "reps": 8, "weight_kg": 115 },
+      { "exercise": "Bench Press", "line": 3, "sets": 1, "reps": 8, "weight_kg": 115 }
+    ],
+    "expect_item_count": 4
+  },
+  {
+    "name": "v8: whole exercise as slash-separated bare pairs",
+    "input": "Bench Press 120 12 / 120 10 / 115 8",
+    "expect": [
+      {
+        "exercise": "Bench Press",
+        "line": 0,
+        "sets": 3,
+        "reps_in_order": [12, 10, 8],
+        "weights_in_order": [120, 120, 115]
+      }
+    ],
+    "expect_item_count": 1
+  },
+  {
+    "name": "v8: an incomplete line is read as written, never completed",
+    "input": "bench 120\nohp 12",
+    "expect": [
+      { "exercise": "Bench Press", "line": 0, "sets": 1, "reps_in_order": [null], "weight_kg": 120 },
+      { "exercise": "Overhead Press", "line": 1, "sets": 1, "reps": 12, "weight_kg": null }
+    ],
+    "expect_item_count": 2
+  },
+  {
+    "name": "v8: orphan numbers and a bare name record nothing",
+    "input": "120 10\nbench press",
+    "expect": [],
+    "expect_item_count": 0
   }
 ]

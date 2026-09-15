@@ -1,5 +1,6 @@
 // Relative + .ts extension: this file is bundled by Metro AND run under
 // `node --test`, which cannot resolve the `@/` alias or an extensionless path.
+import { bareNotationLine } from './gaps.ts';
 import { type ParsedItem } from './types.ts';
 
 /**
@@ -51,17 +52,22 @@ import { type ParsedItem } from './types.ts';
  *
  * ## The one cross-line fact the plan has to respect
  *
- * The prompt's line rule: *"If an exercise's sets continue on later lines, the
- * item keeps the FIRST line's index."* So a line does not necessarily belong to
- * an item anchored ON it — a bare "80x8" typed under "bench press" belongs to
- * the bench press above. Two consequences, both handled below:
+ * The prompt's continuation rule (PARSE_VERSION 8): a bare set-notation line
+ * ("80x8", "120 10") typed under "bench press" is its OWN item on its OWN
+ * line, carrying the exercise named above it. The line owns its item, but its
+ * MEANING still hangs off its neighbours — which exercise it continues, and
+ * which stated weight a bare rep count inherits. Three consequences, all
+ * handled below:
  *
- *  - a changed line is expanded to the ANCHOR of the cached item that owns it,
- *    because that anchor is the item the model will answer with; and
+ *  - a changed line is expanded to the ANCHOR of the cached item that owns it
+ *    (with per-line items this is normally the line itself; anchors from a
+ *    pre-v8 cache can still sit above);
  *  - the block immediately BEFORE the change is always re-read, because a line
- *    added or removed at its edge may be a set joining or leaving it. That
- *    costs one extra item and is the difference between a reading that follows
- *    the note and one that quietly keeps a set the athlete deleted.
+ *    added or removed at its edge may be a set joining or leaving it; and
+ *  - every bare continuation line BELOW a changed line is re-read too, because
+ *    renaming "bench 120 12" to "squat 120 12" changes what every "120 10"
+ *    under it is a set OF — a cached continuation item would keep saying
+ *    "Bench Press" about a squat.
  */
 
 export interface ParsePlan {
@@ -161,6 +167,22 @@ export function planParse(oldText: string, oldItems: ParsedItem[], newText: stri
   if (head > 0) {
     const owner = ownerAnchor(anchors, head - 1);
     if (owner !== null) targets.add(owner);
+  }
+
+  // 4. Bare continuation lines just BELOW the change, until the next line
+  //    that names an exercise. A continuation item carries the exercise named
+  //    above it and inherits its stated weight, so a change above can change
+  //    its whole reading — renaming "bench 120 12" to "squat 120 12" changes
+  //    what every "120 10" under it is a set OF, and splicing the cached item
+  //    back in would keep the old exercise's name on the new exercise's sets.
+  //    Runs deeper in the note keep their context and their cached reading.
+  //    Blank lines do not end a run (people air out set-by-set blocks) — they
+  //    are skipped, never asked for.
+  for (let i = newEnd; i < newLines.length; i += 1) {
+    const text = newLines[i]!;
+    if (text.trim().length === 0) continue;
+    if (!bareNotationLine(text)) break;
+    targets.add(i);
   }
 
   if (targets.size > MAX_PARTIAL_LINES) return FULL;

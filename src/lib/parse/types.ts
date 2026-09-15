@@ -57,8 +57,15 @@ export const MAX_RAW_TEXT_CHARS = 4000;
  * raw_text ONLY (not version), so without this a note the user already typed
  * would keep serving its OLD cached parse after a deploy — the new prompt would
  * be invisible. A cache produced by an older version is re-parsed, not served.
+ *
+ * 8 = per-line continuation items + incomplete lines read as written (the
+ * checkmark-parse work, 15 September 2026). 7 was never a client bump: that
+ * prompt change (absent-instead-of-null fields) produced byte-identical client
+ * JSON. DEPLOY ORDER MATTERS: ship the edge function before this client — a
+ * v8 client against a v7 function re-parses on every checkmark and never
+ * accepts the answer into its cache.
  */
-export const CLIENT_PARSE_VERSION = 6;
+export const CLIENT_PARSE_VERSION = 8;
 
 const SET_KIND_SET = new Set<string>(SET_KINDS);
 const MODALITY_SET = new Set<string>(MODALITIES);
