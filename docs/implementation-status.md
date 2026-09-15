@@ -40,7 +40,8 @@ promise in product-direction §2/§6. None of them is a TODO.
 
 | # | Blocker | Where | Why it blocks |
 |---|---|---|---|
-| — | **None open.** B4, the last one, was cleared on 11 Aug 2026; the row below had gone stale and was corrected on 20 Aug during the conversion pass (re-checked in code, not in this document). | | |
+| B5 | **The `production` update channel carries BETA-UNLOCKED bundles** (15 Sep 2026). TestFlight build 1.0.0 (5) was built on channel `production`; the OTA fixes published for it are compiled with `EXPO_PUBLIC_BETA_UNLOCK=1`. A store build with the same `runtimeVersion` (`appVersion` policy, still `1.0.0`) and the same channel would download that bundle and unlock itself for free — §2 rule 5, in the worst direction. | `eas.json` (channels), EAS branch `production` | Before ANY store submission: future TestFlight builds already moved to channel `testflight` (15 Sep); the `production` branch must then be cleared or overwritten with a non-beta bundle, and the store build verified to resolve `isBetaUnlocked() === false` after applying updates. |
+| — | B4, the last previous one, was cleared on 11 Aug 2026; the row below had gone stale and was corrected on 20 Aug during the conversion pass (re-checked in code, not in this document). | | |
 
 ### Cleared by steps 1–3
 
@@ -9387,3 +9388,41 @@ deployed Anthropic key (dead key; the .env key proved live and the owner rotated
 
 `npm run typecheck` **pass**. `npm test` **958/958 pass**. `npm run lint` **0 errors**, 49
 pre-existing warnings. Delivered to the TestFlight build over EAS Update (JS-only change).
+
+## 15 September 2026, later — the OTA fix un-beta'd the beta build, and the read-only ledger walked in
+
+The owner's screenshot: Today wearing READ-ONLY, the lapsed card ("Recore could not confirm your
+subscription…"), Restore and Manage on a build whose whole premise is that billing is off. The
+replay fix published over EAS Update earlier today caused it: **`eas update` compiles with the
+EAS *environment*'s variables, and `EXPO_PUBLIC_BETA_UNLOCK=1` never lived there — it lives in
+the `testflight` BUILD PROFILE's `env`, which only `eas build` reads.** So the update shipped a
+bundle where `isBetaUnlocked()` inlined to false, the entitlement override vanished, the blanked
+`test_` store key read as unconfigured, and the decision fell to lapsed/unverified. The binary
+was right; the JS delivered onto it was from a different world.
+
+Fixed in three moves:
+
+1. **Republished the same commit with the flag in the export env** (`EXPO_PUBLIC_BETA_UNLOCK=1
+   eas update --channel production …`). The phone recovers on the next two launches.
+2. **Future TestFlight builds get their own update channel** — `eas.json` `testflight` profile
+   now says `channel: "testflight"` — so a beta-compiled bundle can never again be the "latest"
+   that a store build on `production` would fetch.
+3. **The landmine that remains is registered as release blocker B5** (top of this file): build
+   1.0.0 (5) is hardwired to channel `production`, so until testers move to a channel-split
+   build, beta bundles keep landing there — and the branch must be cleaned before any store
+   submission.
+
+The rule this writes for every future OTA to a beta build: **an `eas update` for the TestFlight
+round must carry the profile's env by hand** — `EXPO_PUBLIC_BETA_UNLOCK=1 EXPO_PUBLIC_ENV=testflight`
+on the command line — because no environment stores it, deliberately (`.env.example` says why it
+belongs in no `.env`, and the same argument keeps it out of the shared EAS environments).
+
+Noted, not fixed here: on the lapsed ledger the large "Today" title draws over the card's first
+lines (visible in the owner's screenshot). Real-subscription builds can reach that screen, so it
+is a real defect of `read-only.tsx`/the lapsed surface — logged for the billing pass, invisible
+in the beta round.
+
+### Gates
+
+Same tree as this morning's entry (`0446ab1`): typecheck **pass**, tests **958/958**, lint
+**0 errors**. The two changes here are configuration (`eas.json`) and this file.

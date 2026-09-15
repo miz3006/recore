@@ -42,7 +42,8 @@
       "env": {
         "EXPO_PUBLIC_ENV": "testflight",
         "EXPO_PUBLIC_BETA_UNLOCK": "1"
-      }
+      },
+      "channel": "testflight"
     }
   },
   "submit": {
