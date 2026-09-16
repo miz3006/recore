@@ -138,7 +138,16 @@ export function isAiRewriteOn(): boolean {
  * could be flipped on a device. `EXPO_PUBLIC_` is inlined by Metro at bundle
  * time, so with the flag off the branches are dead code the bundler can see.
  *
- * Default OFF. Set EXPO_PUBLIC_COACH_MODE=1 in .env to build with it.
+ * Default OFF, and ON for the beta (16 Sep 2026, owner's ruling): the
+ * `testflight` profile in `eas.json` sets it, the EAS `preview` environment
+ * sets it so an OTA to that channel does not drop it, and `production` sets it
+ * in neither place. Set EXPO_PUBLIC_COACH_MODE=1 in .env to build with it
+ * locally.
+ *
+ * TURNING IT ON TURNS THE DISCLOSURE ON WITH IT. `lib/legal.ts` gates the
+ * privacy policy's coaching paragraphs on this same constant, so a build that
+ * has the feature says so and a build that does not, does not. That coupling is
+ * the point — do not route around it.
  */
 export function isCoachModeOn(): boolean {
   return process.env.EXPO_PUBLIC_COACH_MODE === '1';

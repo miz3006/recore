@@ -757,177 +757,6 @@ export default function You() {
 
   const sections = useMemo<SectionSpec[]>(() => {
     const out: SectionSpec[] = [
-      // ---------------------------------------------------------------------
-      // COACHING. Behind the build flag, and it draws NOTHING when the flag is
-      // off — not a disabled row, not an upsell. A feature that is not in this
-      // build should be invisible, not advertised.
-      //
-      // The two halves are independent on purpose (the spec's edge case): the
-      // coach half appears once there is a client, the client half once there
-      // is a coach, and a person holding both ends sees both.
-      // ---------------------------------------------------------------------
-      ...(isCoachModeOn()
-        ? [
-            {
-              key: 'coaching',
-              label: 'Coaching',
-              /**
-               * ONE SECTION, TWO SIDES, AND THEY ARE NOT SYMMETRICAL.
-               *
-               * The client side belongs to everybody: anyone may be given a
-               * code, and anyone who has used one needs to see who reads their
-               * training and how to stop it. The coach side belongs to people
-               * who say they coach — and until 10 September 2026 it belonged to
-               * everybody too, so a client was invited to invite clients. The
-               * switch at the bottom is the whole difference.
-               *
-               * The order follows that: what is being done TO you, then what
-               * you do for others, then the statement that puts you in the
-               * second group.
-               */
-              footnote: coach
-                ? 'Your coach can read the sessions you log and comment on them. They can never edit your record.'
-                : coachRole
-                  ? 'Coaching lets you hand out codes. You can read somebody’s training only after they enter one.'
-                  : 'Turn this on if you train other people. On its own it gives you access to nobody.',
-              rows: [
-                // --- the client's side ---------------------------------------
-                //
-                // WHO YOUR COACH IS, SAID PLAINLY. The only thing that named
-                // them used to be the `sub` line of a red "Remove access" row,
-                // which is a strange place to learn a link exists: the first
-                // sentence about the relationship was attached to the control
-                // that ends it. It is a reading now, not a control — no
-                // chevron, no action (design skill §Structure).
-                ...(coach
-                  ? [
-                      {
-                        key: 'your-coach',
-                        icon: 'person' as const,
-                        label: 'Your coach',
-                        value: coach.displayName ?? undefined,
-                        sub: coach.displayName ? undefined : 'They have not set a name in Recore.',
-                        chevron: false,
-                        keywords: 'coach trainer who linked connected',
-                      },
-                      {
-                        key: 'coach-comments',
-                        // A speech bubble — the same glyph the athlete's own
-                        // per-entry note wears, because it is the same kind of
-                        // thing: somebody's words about a lift.
-                        icon: 'note' as const,
-                        label: 'Comments from your coach',
-                        value: coach.unreadCount > 0 ? String(coach.unreadCount) : undefined,
-                        keywords: 'coach comments feedback replies thread unread',
-                        onPress: () => {
-                          tap();
-                          // The COACH's own two screens, with this person's own
-                          // id: `clientFeed` reads `workouts` by `user_id`, and
-                          // RLS lets an owner read their own rows, so one
-                          // implementation serves both ends of the link.
-                          router.push({
-                            pathname: '/you/coaching/client/[id]',
-                            params: { id: userId ?? '', name: coach.displayName ?? 'Coach' },
-                          });
-                        },
-                      },
-                      {
-                        key: 'remove-coach',
-                        icon: 'lock' as const,
-                        label: 'Remove access',
-                        danger: true,
-                        chevron: false,
-                        keywords: 'coach revoke remove unlink disconnect',
-                        onPress: () => {
-                          tap();
-                          Alert.alert(
-                            'Remove your coach?',
-                            'They will immediately stop being able to read your sessions. The comments already written stay in your record.',
-                            [
-                              { text: 'Cancel', style: 'cancel' },
-                              {
-                                text: 'Remove',
-                                style: 'destructive',
-                                onPress: () => {
-                                  void (async () => {
-                                    if (!(await revokeLink(coach.linkId))) return;
-                                    setCoach(null);
-                                    // Nothing can notify this device any more,
-                                    // so the token should not still be
-                                    // reachable — unless this person also
-                                    // coaches someone, in which case replies
-                                    // still arrive.
-                                    if (!clientCount && userId) {
-                                      void unregisterForComments(userId);
-                                    }
-                                  })();
-                                },
-                              },
-                            ],
-                          );
-                        },
-                      },
-                    ]
-                  : [
-                      {
-                        key: 'join',
-                        icon: 'plus' as const,
-                        label: 'Join a coach',
-                        keywords: 'coach join code enter invite trainer',
-                        onPress: () => {
-                          tap();
-                          router.push('/you/coaching/join');
-                        },
-                      },
-                    ]),
-
-                // --- the coach's side, which has to be claimed ----------------
-                ...(coachRole
-                  ? [
-                      {
-                        key: 'clients',
-                        icon: 'barbell' as const,
-                        label: 'Clients',
-                        // Shown at zero too. A coach who has just turned this
-                        // on and issued a code should find the roster where it
-                        // will be, not have it appear from nowhere later.
-                        value: String(clientCount ?? 0),
-                        keywords: 'coach clients athletes roster',
-                        onPress: () => {
-                          tap();
-                          router.push('/you/coaching/clients');
-                        },
-                      },
-                      {
-                        key: 'invite',
-                        icon: 'share' as const,
-                        label: 'Invite a client',
-                        keywords: 'coach invite code share athlete',
-                        onPress: () => {
-                          tap();
-                          router.push('/you/coaching/invite');
-                        },
-                      },
-                    ]
-                  : []),
-
-                // --- and the statement itself --------------------------------
-                {
-                  key: 'coach-role',
-                  icon: 'person' as const,
-                  label: 'I coach other people',
-                  keywords: 'coach trainer role enable turn on off pt personal',
-                  toggle: {
-                    value: coachRole,
-                    onChange: toggleCoachRole,
-                    disabled: roleBusy,
-                  },
-                },
-              ],
-            } as SectionSpec,
-          ]
-        : []),
-
       {
         key: 'about',
         label: 'About you',
@@ -1165,6 +994,185 @@ export default function You() {
           },
         ],
       },
+      // ---------------------------------------------------------------------
+      // COACHING. Behind the build flag, and it draws NOTHING when the flag is
+      // off — not a disabled row, not an upsell. A feature that is not in this
+      // build should be invisible, not advertised.
+      //
+      // IT SITS BELOW THE RECORD, and until 16 September 2026 it opened the
+      // whole screen, above "About you" (owner's ruling). This page is ordered
+      // by how much of a person's own training a group is about, and coaching
+      // is about somebody ELSE reading that training — so it belongs directly
+      // after "Your record", as the last door onto the record, and above the
+      // billing, support and account groups that close every settings screen.
+      // Most people never link a coach; none of them should meet it first.
+      //
+      // The two halves are independent on purpose (the spec's edge case): the
+      // coach half appears once there is a client, the client half once there
+      // is a coach, and a person holding both ends sees both.
+      // ---------------------------------------------------------------------
+      ...(isCoachModeOn()
+        ? [
+            {
+              key: 'coaching',
+              label: 'Coaching',
+              /**
+               * ONE SECTION, TWO SIDES, AND THEY ARE NOT SYMMETRICAL.
+               *
+               * The client side belongs to everybody: anyone may be given a
+               * code, and anyone who has used one needs to see who reads their
+               * training and how to stop it. The coach side belongs to people
+               * who say they coach — and until 10 September 2026 it belonged to
+               * everybody too, so a client was invited to invite clients. The
+               * switch at the bottom is the whole difference.
+               *
+               * The order follows that: what is being done TO you, then what
+               * you do for others, then the statement that puts you in the
+               * second group.
+               */
+              footnote: coach
+                ? 'Your coach can read the sessions you log and comment on them. They can never edit your record.'
+                : coachRole
+                  ? 'Coaching lets you hand out codes. You can read somebody’s training only after they enter one.'
+                  : 'Turn this on if you train other people. On its own it gives you access to nobody.',
+              rows: [
+                // --- the client's side ---------------------------------------
+                //
+                // WHO YOUR COACH IS, SAID PLAINLY. The only thing that named
+                // them used to be the `sub` line of a red "Remove access" row,
+                // which is a strange place to learn a link exists: the first
+                // sentence about the relationship was attached to the control
+                // that ends it. It is a reading now, not a control — no
+                // chevron, no action (design skill §Structure).
+                ...(coach
+                  ? [
+                      {
+                        key: 'your-coach',
+                        icon: 'person' as const,
+                        label: 'Your coach',
+                        value: coach.displayName ?? undefined,
+                        sub: coach.displayName ? undefined : 'They have not set a name in Recore.',
+                        chevron: false,
+                        keywords: 'coach trainer who linked connected',
+                      },
+                      {
+                        key: 'coach-comments',
+                        // A speech bubble — the same glyph the athlete's own
+                        // per-entry note wears, because it is the same kind of
+                        // thing: somebody's words about a lift.
+                        icon: 'note' as const,
+                        label: 'Comments from your coach',
+                        value: coach.unreadCount > 0 ? String(coach.unreadCount) : undefined,
+                        keywords: 'coach comments feedback replies thread unread',
+                        onPress: () => {
+                          tap();
+                          // The COACH's own two screens, with this person's own
+                          // id: `clientFeed` reads `workouts` by `user_id`, and
+                          // RLS lets an owner read their own rows, so one
+                          // implementation serves both ends of the link.
+                          router.push({
+                            pathname: '/you/coaching/client/[id]',
+                            params: { id: userId ?? '', name: coach.displayName ?? 'Coach' },
+                          });
+                        },
+                      },
+                      {
+                        key: 'remove-coach',
+                        icon: 'lock' as const,
+                        label: 'Remove access',
+                        danger: true,
+                        chevron: false,
+                        keywords: 'coach revoke remove unlink disconnect',
+                        onPress: () => {
+                          tap();
+                          Alert.alert(
+                            'Remove your coach?',
+                            'They will immediately stop being able to read your sessions. The comments already written stay in your record.',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Remove',
+                                style: 'destructive',
+                                onPress: () => {
+                                  void (async () => {
+                                    if (!(await revokeLink(coach.linkId))) return;
+                                    setCoach(null);
+                                    // Nothing can notify this device any more,
+                                    // so the token should not still be
+                                    // reachable — unless this person also
+                                    // coaches someone, in which case replies
+                                    // still arrive.
+                                    if (!clientCount && userId) {
+                                      void unregisterForComments(userId);
+                                    }
+                                  })();
+                                },
+                              },
+                            ],
+                          );
+                        },
+                      },
+                    ]
+                  : [
+                      {
+                        key: 'join',
+                        icon: 'plus' as const,
+                        label: 'Join a coach',
+                        keywords: 'coach join code enter invite trainer',
+                        onPress: () => {
+                          tap();
+                          router.push('/you/coaching/join');
+                        },
+                      },
+                    ]),
+
+                // --- the coach's side, which has to be claimed ----------------
+                ...(coachRole
+                  ? [
+                      {
+                        key: 'clients',
+                        icon: 'barbell' as const,
+                        label: 'Clients',
+                        // Shown at zero too. A coach who has just turned this
+                        // on and issued a code should find the roster where it
+                        // will be, not have it appear from nowhere later.
+                        value: String(clientCount ?? 0),
+                        keywords: 'coach clients athletes roster',
+                        onPress: () => {
+                          tap();
+                          router.push('/you/coaching/clients');
+                        },
+                      },
+                      {
+                        key: 'invite',
+                        icon: 'share' as const,
+                        label: 'Invite a client',
+                        keywords: 'coach invite code share athlete',
+                        onPress: () => {
+                          tap();
+                          router.push('/you/coaching/invite');
+                        },
+                      },
+                    ]
+                  : []),
+
+                // --- and the statement itself --------------------------------
+                {
+                  key: 'coach-role',
+                  icon: 'person' as const,
+                  label: 'I coach other people',
+                  keywords: 'coach trainer role enable turn on off pt personal',
+                  toggle: {
+                    value: coachRole,
+                    onChange: toggleCoachRole,
+                    disabled: roleBusy,
+                  },
+                },
+              ],
+            } as SectionSpec,
+          ]
+        : []),
+
       // SUBSCRIPTION — the store's own state, and three real actions. The
       // footnote doubles as the result line for Restore.
       //

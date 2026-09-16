@@ -1,4 +1,3 @@
-import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, StyleSheet, Text, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -6,18 +5,14 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { markFirstWorkoutFinished } from '@/lib/funnel';
 import { tap, tapMedium } from '@/lib/haptics';
 import { refreshRecapNotification } from '@/lib/recap';
-import { estimateVolume, groupThousands } from '@/lib/parse/estimate';
-import { formatDistanceTotal } from '@/lib/parse/summarize';
-import { hasFinishedOnce, markFinishedOnce } from '@/lib/prefs';
+import { markFinishedOnce } from '@/lib/prefs';
 import { maybeAskForReview } from '@/lib/review';
 import {
   color,
   HIT,
   ink,
   MAX_FONT_SCALE,
-  moderateScale,
   radius,
-  readingStyle,
   shadow,
   spacing,
   type,
@@ -27,7 +22,7 @@ import { useCurrentNote, useSession } from '@/state/session-store';
 
 import { GlassGroup, GlassPressable } from './glass';
 import { Icon } from './icon';
-import { FadeSwap, PressableScale } from './motion';
+import { PressableScale } from './motion';
 import { revealReceipt } from './note-focus';
 import { ACCESSORY_GLYPH, RestBar, RestRing, useRestEngine } from './rest-controls';
 
@@ -37,10 +32,9 @@ import { ACCESSORY_GLYPH, RestBar, RestRing, useRestEngine } from './rest-contro
  *
  * The shape is two rows and no bar:
  *
- *   [ 4 staged · 3 240 kg ]                          ← a glass pill, the number
  *   ( timer ) ( mic ) ( hide kb )            [ Finish ]
  *
- * …and while a rest is running, the top row is the rest instead:
+ * …and while a rest is running, a second row appears ABOVE it:
  *
  *   [ 2:41  rest                        +30 s   Skip ]
  *   ( ◔ )    ( mic ) ( hide kb )             [ Finish ]
@@ -131,18 +125,20 @@ import { ACCESSORY_GLYPH, RestBar, RestRing, useRestEngine } from './rest-contro
  * and never a flame (§5.1, §5.7 — this is the app reporting, and a record does
  * not wink).
  *
- * THE STATUS PILL is the live count and tonnage ("4 staged · 3 240 kg"; parsed
- * volume once the background parse lands, an instant text estimate before
- * that), tapping through to Progress. The teaching tail ("— they count when you
- * finish") explains the record contract only until the first session is
- * finished, then retires for good.
+ * THE STATUS PILL IS GONE (owner, 16 September 2026: *"nek pill … to tudi
+ * umakni, nam ni treba"*). It printed the live count and tonnage ("4 staged ·
+ * 3 240 kg") with a teaching tail about the record contract, and it appeared
+ * the instant the keyboard came up — which is the one moment the athlete is
+ * WRITING and not reading a total. The design system had already ruled a
+ * summary pill off the bottom of Today twice (18 and 20 August 2026: *"the
+ * bottom of Today belongs to the keyboard alone"*); this is that ruling
+ * finally applied to the last pill standing. Every number it carried is still
+ * on the page — the cards, the receipt, Progress — and the record-contract
+ * caption is still taught by the composer's own hint.
  *
- * **It yields its row to a running rest** (10 Sep 2026). Only one of the two can
- * have that slot and rest is the one that is time-critical: the tonnage is a
- * number you can read at any moment of the session, and the rest is a number
- * that is only true for the next two minutes. They cross with `FadeSwap`, which
- * is the app's "a value updating once", so the exchange is legible rather than
- * a flicker.
+ * The row it lived in now exists ONLY while a rest is counting: a reading that
+ * is true for the next two minutes and nowhere else, which is why it was
+ * always the one that won the slot.
  *
  * THE REST TIMER is `rest-controls.tsx` — a ring that never changes the row's
  * geometry, a bar with the reading and `+30 s` / `Skip`, and a rest that starts
@@ -193,23 +189,15 @@ export function BottomToolbar({
   bottomInset?: number;
   active?: boolean;
 }) {
-  const router = useRouter();
   const reduceMotion = useReducedMotion();
   const note = useCurrentNote();
   const setNote = useSession((s) => s.setNote);
-  const parsedSnapshot = useSession((s) => s.parsedSnapshot);
-  const parsedVolume = useSession((s) => s.parsedVolume);
   const receipt = useSession((s) => s.receipt);
   const selectedDay = useSession((s) => s.selectedDay);
   const userId = useSession((s) => s.userId);
   const workoutId = useSession((s) => s.workoutId);
   const openCheckIn = useSession((s) => s.openCheckIn);
   const finishSession = useSession((s) => s.finishSession);
-  const total = parsedSnapshot === note ? parsedVolume : estimateVolume(note);
-  // A run-only session totals in distance, not an empty count (kg still wins
-  // when both exist — the mixed-session detail lives in the receipt).
-  const distanceM = total === 0 && parsedSnapshot === note ? (receipt?.distanceM ?? 0) : 0;
-
   // What's STAGED = distinct parsed exercises on this day's note. Nothing is
   // recorded until the user finishes — the status line says so. A cleared
   // note stages nothing, even while the old parse lingers in memory.
@@ -232,9 +220,6 @@ export function BottomToolbar({
   });
 
   const [recording, setRecording] = useState(false);
-  // The record-contract tail teaches once; after a first finished session the
-  // status line goes bare (a serious lifter doesn't need the caption twice).
-  const [taughtDone, setTaughtDone] = useState(() => hasFinishedOnce());
   const dictation = useRef<DictationHandle | null>(null);
   // The note as it was when dictation started — interim results re-render the
   // utterance in place instead of stacking duplicates.
@@ -311,10 +296,9 @@ export function BottomToolbar({
   const handleFinish = () => {
     if (!canFinish) return;
     tapMedium();
-    if (!taughtDone) {
-      markFinishedOnce();
-      setTaughtDone(true);
-    }
+    // Still written even though this toolbar no longer prints the caption:
+    // note-surface's coach hint reads `hasFinishedOnce()` to retire itself.
+    markFinishedOnce();
     // §13: "first workout finished". A local counter, impossible to backfill —
     // the first hundred installs happen once.
     markFirstWorkoutFinished();
@@ -364,69 +348,23 @@ export function BottomToolbar({
     }
   };
 
-  // The status line names the contract; tonnage rides along (folds the old
-  // volume pill in) and the line still routes to /stats.
-  const tonnage =
-    total > 0
-      ? ` · ${groupThousands(total)} kg`
-      : distanceM > 0
-        ? ` · ${formatDistanceTotal(distanceM)}`
-        : '';
-  // The teaching tail is training wheels — shown only until the first finish.
-  const tail = taughtDone
-    ? ''
-    : staged === 1
-      ? ' — it counts when you finish'
-      : ' — they count when you finish';
-  const status =
-    note.trim().length === 0
-      ? null
-      : staged === 0
-        ? 'nothing staged yet'
-        : `${staged} staged${tonnage}${tail}`;
-
   /** The rest owns row 1 whenever it has something to report. */
   const resting = rest.mode !== 'idle';
 
   return (
     <View style={[styles.wrap, { paddingBottom: bottomInset }]}>
-      {/* ROW 1 — whichever of the two readings is the one that matters now.
-          `FadeSwap` keys on which, so the exchange is the app's one sanctioned
-          "a value updating once" rather than a pop. */}
-      {resting || status ? (
-        <View style={styles.statusRow}>
-          <View style={styles.statusRowBody}>
-            <FadeSwap swapKey={resting ? 'rest' : 'status'}>
-          {resting ? (
-            <RestBar engine={rest} />
-          ) : (
-            <GlassPressable
-              onPress={() => router.push('/progress')}
-              hitSlop={spacing.xs}
-              activeScale={0.98}
-              radius={radius.pill}
-              style={styles.statusPill}
-              contentStyle={styles.statusPillContent}
-              accessibilityLabel={`${status}. Open progress`}>
-              <Text
-                style={styles.statusText}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-                maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {status}
-              </Text>
-            </GlassPressable>
-          )}
-            </FadeSwap>
-          </View>
-          {/* The check that used to stand here MOVED ONTO THE LINE ITSELF
-              (owner, 16 September 2026): it now lives in the ⋯ column of the
-              unread line — and in the composer's value column — exactly where
-              the reading dots appear once it is tapped. See `PendingCard` and
-              `Composer` in note-surface.tsx. */}
-        </View>
-      ) : null}
+      {/* ROW 1 — THE REST, AND NOTHING ELSE (owner, 16 September 2026).
+          The status pill that used to share this row — "4 staged · 3 240 kg",
+          tapping through to Progress — is gone: it appeared the moment the
+          keyboard came up, which is the one moment the athlete is writing and
+          not reading a total, and the design system had already ruled the
+          summary pill off the bottom of Today twice (18 and 20 August). The
+          numbers it carried are all still on the page: the cards, the receipt
+          and Progress. The check moved onto the line itself in the same pass
+          (see `PendingCard` / `Composer` in note-surface.tsx), so the row
+          exists ONLY while a rest is counting — a reading that is true for
+          the next two minutes and nowhere else. */}
+      {resting ? <RestBar engine={rest} /> : null}
 
       <GlassGroup style={styles.row}>
         <RestRing engine={rest} />
@@ -502,32 +440,10 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     gap: spacing.sm,
   },
-  statusPill: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-  },
-  statusPillContent: {
-    minHeight: moderateScale(30),
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md + 2,
-  },
-  statusText: {
-    ...readingStyle('400'),
-    fontSize: moderateScale(11),
-    color: color.textSecondary,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  statusRowBody: {
-    flex: 1,
   },
   round: {
     minWidth: ROUND,

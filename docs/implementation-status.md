@@ -7753,13 +7753,13 @@ Note the spec's own path is `docs/spec/recore-coach-feature-prompt.md`; there is
 
 | Piece | Where | State |
 |---|---|---|
-| Schema, RPCs, RLS | `supabase/migrations/20260910140000_coaching.sql` | applied on a LOCAL database only |
-| Notification webhook | `supabase/migrations/20260910150000_coaching_webhook.sql` | applied locally; inert until two DB settings are set |
+| Schema, RPCs, RLS | `supabase/migrations/20260910140000_coaching.sql` | **applied on the hosted project** — re-measured 16 Sep 2026, see that day's entry |
+| Notification webhook | `supabase/migrations/20260910150000_coaching_webhook.sql` | applied; inert until the two `app_config` rows are set, and whether they are is **unverified** |
 | RLS + RPC test suite | `supabase/tests/coaching-rls.sql` | **20/20 assertions pass** |
 | Remote-only data layer | `src/lib/coaching/index.ts` | typechecks; not exercised on a device |
 | Coach's read of one session | `src/lib/coaching/read-workout.ts` | rebuilds a `ParseResult` from `items`+`sets`, reuses the pure `buildReceipt` |
 | Push registration + tap target | `src/lib/coaching/push.ts`, `src/app/_layout.tsx` | **never run on a device** — `Device.isDevice` is false on a simulator |
-| `notify-comment` | `supabase/functions/notify-comment/index.ts` | **written, never deployed, never invoked** |
+| `notify-comment` | `supabase/functions/notify-comment/index.ts` | **deployed** (ACTIVE, v3, 10 Sep 2026 15:20 UTC — measured 16 Sep); never observed delivering a notification |
 | Six screens | `src/app/(tabs)/you/coaching/**`, `src/components/coaching/**` | typecheck only — see "not verified" |
 
 ### The finding that shaped the whole thing
@@ -9752,3 +9752,126 @@ text precisely so a re-parse cannot touch it.
 
 `npx tsc --noEmit` **pass**. `npm test` **960/960 pass**. `npm run lint` **0 errors**.
 `npx expo export --platform ios` **pass**. No eval: the parser and the prompt are untouched.
+
+
+---
+
+## 16 September 2026, night — coaching moves to the bottom of You, and the TestFlight build finally has it
+
+Two asks, one from the owner: put coaching lower down the You tab, and make the features work in
+TestFlight as well.
+
+### 1. The section moved (`src/app/(tabs)/you/index.tsx`)
+
+Coaching was the FIRST group on You, above "About you". It now sits between "Your record" and
+"Subscription" — last of the feature groups, above the billing/support/account groups that close
+the screen.
+
+The reason it is that slot and not the very bottom: this page is ordered by how much of a person's
+own training a group is about, and the three groups at the end are not about training at all.
+Coaching is about somebody **else** reading the record, which makes it the last door onto the
+record and puts it directly under the group that holds the other doors (import, export, Health).
+Most accounts will never link a coach, and none of them should have met it first.
+
+Nothing else changed: the two halves are still independent, the flag still draws nothing when it
+is off, and the `useFocusEffect` refresh and its dependency list are untouched.
+
+### 2. Coaching is in the TestFlight build (`eas.json`, EAS `preview` environment)
+
+It was not, and nothing was broken — the flag was simply never set for a cloud build.
+`EXPO_PUBLIC_COACH_MODE` is build-time (`lib/env.ts`), Metro inlines it, and `eas.json` set it in
+no profile, so every TestFlight binary so far shipped with every coaching branch compiled out.
+
+Set in **two** places, and both are needed:
+
+- `eas.json` → `testflight.env` → `EXPO_PUBLIC_COACH_MODE: "1"`, beside `EXPO_PUBLIC_BETA_UNLOCK`.
+  This is what a cloud BUILD reads.
+- the EAS **`preview` environment** (`eas env:create preview …`). This is what an **OTA** reads:
+  `eas update` compiles against the EAS environment and ignores `eas.json`'s `env` block entirely,
+  so without this a `--channel testflight` update would have quietly shipped a bundle with
+  coaching gone again. The same trap already cost the beta its unlock flag on 15 Sep.
+
+`production` has it in neither place, so the build that goes on sale still ships the feature
+provably absent.
+
+**The privacy policy follows the flag, by construction.** `lib/legal.ts` gates the coaching
+paragraphs on the same `isCoachModeOn()` constant, so the TestFlight build now shows the
+disclosure that a linked coach reads session text, sets, the session rating and both kinds of
+check-in note, and that `notify-comment` hands a comment's text to Expo's push service. S20 (10
+Sep) asked for the owner's approval of that wording before publication — handing it to testers
+IS publication, so it needs a read.
+
+### What was measured, not assumed
+
+Against the hosted project `nkjrukxrocplesonotqo` — which is the project the TestFlight build
+talks to (the EAS `preview` and `production` environments both carry that URL, and it is the same
+one `.env` names):
+
+- `supabase migration list` — all 16 local migrations are applied remotely, coaching included.
+  The table in "Coach ↔ client layer" said "applied on a LOCAL database only"; that has been
+  wrong since 10 Sep and is corrected above.
+- All seven coaching RPCs exist: `my_coach`, `coach_client_overview`, `create_coach_invite`,
+  `set_coach_role`, `redeem_coach_invite`, `revoke_coach_link`, `mark_comments_read` — each
+  answers anon with `42501 permission denied for function`, which is the RPC existing and being
+  `authenticated`-only. (A first probe with `{}` returned `PGRST202` for the four that take
+  arguments. That is PostgREST resolving overloads by argument NAME, not a missing function —
+  probe with the real parameter names or the reading is nonsense.)
+- Tables `coach_clients`, `coach_invites`, `workout_comments`, `push_tokens`, `profiles` all
+  respond 200 with `[]` to anon, i.e. they exist and RLS hides every row.
+- `supabase functions list` — `notify-comment` is ACTIVE (v3). The doc said "never deployed".
+- `supabase secrets list` — `NOTIFY_WEBHOOK_SECRET` is set on the project.
+
+### Still not verified
+
+- **Whether a comment actually pushes.** The trigger reads `functions_url` and
+  `notify_webhook_secret` from `public.app_config`, a table with RLS on and no policies, so it is
+  readable only by the service role — no anon probe can see it, and fetching a service key was
+  refused in this session. If those two rows are missing the trigger returns silently and the
+  comment still commits; push is the only thing that does not happen. Owner check:
+  `select key from app_config;` in the SQL editor, and set them if empty.
+- **Coaching on a device, end to end.** Still typecheck-only: no invite has been issued, redeemed
+  or commented on against the hosted project, and `registerForComments` has still never run on
+  real hardware (`Device.isDevice` is false on a simulator). TestFlight is the first build that
+  CAN run it.
+
+### Not changed, and why
+
+`EXPO_PUBLIC_AI_REWRITE` stays off for TestFlight. It is off by a dated owner ruling (14 Sep) with
+a cost reason — the beta round should test writing, parsing and progression without buying rewrite
+tokens for every tester — and no sentence is lost with it off, since all three affected lines are
+composed deterministically first and the model only ever rewrites them. One line in
+`eas.json` turns it on if the owner wants it.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **960/960 pass**. `npm run lint` **0 errors**.
+`npx expo export --platform ios` **pass**. No eval: no prompt, schema or guard was touched.
+
+## 16 September 2026, night — the status pill leaves the keyboard
+
+The owner, with the keyboard up: *"ko kliknemo gor da napišemo se pojavi nek tekst tukaj nad
+timerjem in mikrofonom in tipkovnico, nek pill — to tudi umakni, nam ni treba."*
+
+The pill printed the live staged count and tonnage ("4 staged · 3 240 kg") with a
+record-contract tail, and tapped through to Progress. It appeared the instant the keyboard came
+up — the one moment the athlete is WRITING rather than reading a total — and the design system
+had already ruled a summary pill off the bottom of Today twice (18 and 20 August 2026: *"the
+bottom of Today belongs to the keyboard alone"*). This is that ruling applied to the last pill
+standing.
+
+Removed with it: the `parsedVolume` / `parsedSnapshot` subscriptions and the `estimateVolume` /
+`groupThousands` / `formatDistanceTotal`计 that only ever fed the caption, the `taughtDone`
+state, the `FadeSwap` that crossed pill and rest, the `useRouter` the pill tapped through with,
+and five orphaned styles. `markFinishedOnce()` still runs on Finish — note-surface's coach hint
+reads `hasFinishedOnce()` to retire itself, so the pref outlives the caption that used to own
+it.
+
+**Row 1 now exists only while a rest is counting.** That was always the right tenant: a rest is
+true for the next two minutes and nowhere else, while tonnage is readable at any moment of the
+session from the cards, the receipt and Progress. The row's other former occupant, the parse
+check, moved onto the line itself earlier today.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **960/960 pass**. `npm run lint` **0 errors**.
+`npx expo export --platform ios` **pass**.
