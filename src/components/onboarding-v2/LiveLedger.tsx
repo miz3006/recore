@@ -118,7 +118,6 @@ export function LiveLedger({
           <ExerciseCard
             // The demo ledger is a scripted replay, not a page anyone writes on:
             // there is no line to append a set to and nothing to re-parse.
-            onAddSet={null}
             key={key}
             row={row}
             order={i}

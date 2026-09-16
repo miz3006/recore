@@ -18,7 +18,6 @@ import { readEntryNote } from '@/lib/entry-note';
 import { tap, tapMedium } from '@/lib/haptics';
 import { DUR, SPRING } from '@/lib/motion';
 import { gapOfTable, gapOfUnreadLine, type ReadingGap, type UnreadLineGap } from '@/lib/parse/gaps';
-import { appendRepeatSet } from '@/lib/parse/next-set';
 import { namesMatch, typedNameOf, type ReceiptRow } from '@/lib/parse/receipt';
 import { PAPER_FIELD_CSS } from '@/lib/paper-field';
 import {
@@ -34,7 +33,6 @@ import { SESSION_EFFORT_LABEL, sessionEffortOf } from '@/lib/session-effort';
 import {
   color,
   FIXED_FONT_SCALE,
-  HIT,
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
@@ -460,6 +458,18 @@ export function NoteSurface({
   };
 
   let settledCards = 0; // the coach hint only speaks once there is a card to work
+  /**
+   * Was the block just above a settled exercise card? A pure-prose line that
+   * follows one is the athlete's COMMENT about it (owner, 16 September 2026:
+   * *"če napiše nekaj v vrstico in to prepoznaš kot komentar, zapiši to pod
+   * tisti workout lepo"*), and it renders as a quote tucked under that card
+   * instead of a free-standing "kept as a note" row. Consecutive comment
+   * lines keep the flag, so they stack under the same card; anything else —
+   * an unread line, an amber gap, an edit row — breaks the attachment,
+   * because tucking a quote under a card it does not follow would be the
+   * ledger mis-attributing the athlete's words.
+   */
+  let afterCard = false;
   /** Rank among the lines currently being READ — what staggers their beams so a
    * dump is analysed top to bottom instead of all at once (`ReadingSweep`). It
    * counts pending cards, not physical lines: a page with two settled entries
@@ -498,6 +508,7 @@ export function NoteSurface({
           }
         />,
       );
+      afterCard = false; // a line open for editing is not something to hang a quote on
       continue;
     }
     if (rows && rows.length && parsedFresh(i)) {
@@ -506,26 +517,6 @@ export function NoteSurface({
       rows.forEach((row, j) => {
         const key = row.doneKey;
         const cardKey = `${i}:${j}:${row.exercise}`;
-        const line = i;
-        /**
-         * "One more set", and the two guards that decide whether it may exist.
-         *
-         * ONE EXERCISE PER LINE. A superset shares a physical line ("incline
-         * bench 3x10 60kg, ss flyes 3x12"), and appending to that line would
-         * put the flyes' set after the bench's words with nothing saying which
-         * it belongs to. There is no honest place to write it, so the control
-         * is not offered — the composer still is.
-         *
-         * SOMETHING TO REPEAT. Rep-based work only; a run or a hold returns
-         * null from the helper and the row simply does not appear.
-         *
-         * The unit is `kg` because the record IS in kg — the table right above
-         * this control heads its load column "KG", and a line that appended
-         * pounds under a kilogram header would be the record disagreeing with
-         * itself on one card.
-         */
-        const nextLine =
-          rows.length === 1 ? appendRepeatSet(raw.trim(), row.working, 'kg') : null;
         pushBlock(
           <ExerciseCard
             key={cardKey}
@@ -567,22 +558,10 @@ export function NoteSurface({
               Keyboard.dismiss(); // the sheet brings its own inputs
               openFixSheet(row.line); // tap the echoed word → correct the reading
             }}
-            onAddSet={
-              nextLine
-                ? () => {
-                    tap();
-                    // The words land in `raw_text` — the record — and the line
-                    // opens straight away, because the set just done is usually
-                    // the last one with a digit changed. A re-parse follows the
-                    // edit exactly as it does for anything else typed here.
-                    setLineText(line, nextLine);
-                    startEditLine(line);
-                  }
-                : null
-            }
           />,
         );
       });
+      afterCard = true; // a comment line below this one belongs to this card
     } else if (parsing || !parsedFresh(i)) {
       const line = i;
       pushBlock(
@@ -606,19 +585,51 @@ export function NoteSurface({
           }}
         />,
       );
+      afterCard = false; // an unread line is not a reading to comment on
     } else {
       const line = i;
+      const gap = unreadGapByLine.get(i) ?? null;
+      /**
+       * A COMMENT BELONGS UNDER THE LIFT IT IS ABOUT (owner, 16 September
+       * 2026). Prose that the parser read as prose — no gap to name, nothing
+       * countable in it — and that FOLLOWS a settled card is the athlete
+       * talking about that card: "felt heavy today" under the squat. It is
+       * quoted under the card instead of standing as its own "kept as a note"
+       * row, which said the truth (it is not counted) in the least useful
+       * place. Nothing about the record changes: the line is still its own
+       * physical line in `raw_text`, still tappable into the editor, still
+       * exported — only where it is DRAWN moves.
+       *
+       * Prose with no card above it (a mood on a blank page, a day header)
+       * keeps the standalone note, because there is nothing for it to hang
+       * under.
+       */
+      if (gap === null && afterCard) {
+        pushBlock(
+          <CommentLine
+            key={`c:${i}`}
+            text={raw.trim()}
+            reduceMotion={reduceMotion}
+            onPress={() => {
+              tap();
+              startEditLine(line);
+            }}
+          />,
+        );
+        continue; // consecutive comments keep stacking under the same card
+      }
       pushBlock(
         <NoteCard
           key={`n:${i}`}
           text={raw.trim()}
-          gap={unreadGapByLine.get(i) ?? null}
+          gap={gap}
           onPress={() => {
             tap();
             startEditLine(line);
           }}
         />,
       );
+      afterCard = false;
     }
   }
 
@@ -1285,7 +1296,6 @@ export function ExerciseCard({
   onActions,
   onToggleWords,
   onFix,
-  onAddSet,
 }: {
   row: ReceiptRow;
   order: number;
@@ -1316,13 +1326,6 @@ export function ExerciseCard({
   onToggleWords: () => void;
   /** Open the correction sheet for this line (the alias echo's own tap). */
   onFix: () => void;
-  /**
-   * Write one more set of this exercise onto its own line — the set-by-set
-   * logger's shortcut (`lib/parse/next-set.ts`). Null when there is nothing to
-   * repeat or nowhere safe to put it, and the control is then not drawn at all
-   * rather than drawn dead.
-   */
-  onAddSet: (() => void) | null;
 }) {
   const isPr = row.signal?.kind === 'pr';
   const sub = comparisonOf(row.signal);
@@ -1451,37 +1454,6 @@ export function ExerciseCard({
           <Text style={styles.exNote} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {`“${note}”`}
           </Text>
-        ) : null}
-        {/* ONE MORE SET, ON THE LINE THIS EXERCISE ALREADY OWNS (owner, 10
-            September 2026).
-
-            The page assumes a session arrives as a sentence; a large number of
-            people write a set, rest, and write the next one. For them every set
-            meant typing the exercise name again, and the record filled up with
-            three "pull ups" cards that were really one exercise. This appends
-            the last working set to the line and opens it for editing, so the
-            common case — same load, fewer reps — is one tap and one digit.
-
-            Quiet on purpose: `textSecondary` at caption size, the same voice
-            the check-in prompt uses further down the page. The record is bare
-            rows on paper (design skill §Structure) and a blue link on every
-            card would turn a page of readings into a page of buttons. It is
-            still a 44 pt target and it still washes when pressed. */}
-        {onAddSet ? (
-          <PressableScale
-            onPress={onAddSet}
-            haptic="none"
-            activeScale={0.96}
-            wash
-            washStyle={styles.btnWash}
-            accessibilityRole="button"
-            accessibilityLabel={`Add another set of ${row.exercise}, same as the last one`}
-            accessibilityHint="Writes it onto this line and opens it for editing"
-            style={styles.addSetRow}>
-            <Text style={styles.addSetText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              + set
-            </Text>
-          </PressableScale>
         ) : null}
       </PressableScale>
     </Animated.View>
@@ -1797,6 +1769,56 @@ const NOTE_META: Record<UnreadLineGap, string> = {
   unread: 'sets not read · not counted',
 };
 
+/**
+ * THE ATHLETE'S REMARK, UNDER THE LIFT IT IS ABOUT (owner, 16 September 2026).
+ *
+ * A prose line written after an exercise line — "felt heavy today", "koleno
+ * malo teži" — used to render as its own row captioned "kept as a note · not
+ * counted". True, and in the wrong place: the words are about the card above
+ * them, and the ledger read as though the athlete had said something
+ * unrelated in the middle of their session.
+ *
+ * So it is drawn as a quote hanging under that card: no rail mark of its own
+ * (it is not a separate record), indented onto the card's own text column so
+ * it reads as a continuation of it, in the same quiet voice the per-entry note
+ * already speaks in (`exNote`). The gap above it is tight and the gap below it
+ * is the record's own, which is what makes it look attached rather than
+ * merely nearby.
+ *
+ * It is NOT the per-entry note (`workouts.entry_notes`): these words live in
+ * `raw_text` like every other line the athlete wrote, and tapping them opens
+ * that line in the editor. Nothing here is a projection the parser owns —
+ * this component only decides where the line is printed.
+ */
+function CommentLine({
+  text,
+  reduceMotion,
+  onPress,
+}: {
+  text: string;
+  reduceMotion: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(DUR.fast)}>
+      <PressableScale
+        onPress={onPress}
+        haptic="none"
+        activeScale={ROW_SCALE}
+        wash
+        washStyle={styles.rowWash}
+        accessibilityRole="button"
+        accessibilityHint="Opens this line for editing"
+        accessibilityLabel={`Your note: ${text}`}
+        style={styles.commentRow}>
+        <Text style={styles.commentText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+          {`“${text}”`}
+        </Text>
+      </PressableScale>
+    </Animated.View>
+  );
+}
+
 export function NoteCard({
   text,
   gap = null,
@@ -2080,22 +2102,26 @@ const styles = StyleSheet.create({
   // The athlete's own words under their entry. Prose, so it leaves the mono
   // voice the readings speak in — this is the one line on the card that Recore
   // did not compute.
-  /** The one control that lives INSIDE a record row. It keeps the 44 pt target
-   * with `minHeight`, never a fixed `height` (design skill §Typography), so it
-   * grows with the reader's text instead of cropping it. */
-  addSetRow: {
-    marginTop: spacing.xs,
-    minHeight: HIT,
-    justifyContent: 'center',
-    alignSelf: 'flex-start',
-  },
-  addSetText: {
-    fontSize: moderateScale(13),
-    fontWeight: '600',
-    color: color.textSecondary,
-  },
   exNote: {
     marginTop: 2,
+    fontSize: moderateScale(13),
+    lineHeight: lineFor(18),
+    color: color.textSecondary,
+  },
+  /**
+   * The quote hanging under its card. Indented onto the card's own text column
+   * (`RAIL_W + RAIL_GAP` — the rail is deliberately empty: a comment is not a
+   * second record and must not grow a second check mark), and the vertical
+   * rhythm does the attaching: it sits close under the card it belongs to
+   * (`spacing.xs` up, against the `spacing.md` a card row pays) so the eye
+   * groups the two without a bracket, a line or a card around them.
+   */
+  commentRow: {
+    marginTop: -spacing.xs,
+    paddingLeft: RAIL_W + RAIL_GAP,
+    paddingBottom: spacing.xs,
+  },
+  commentText: {
     fontSize: moderateScale(13),
     lineHeight: lineFor(18),
     color: color.textSecondary,

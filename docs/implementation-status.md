@@ -9711,3 +9711,44 @@ kljukico."* This supersedes the 15 September placement beside the status line.
 
 `npx tsc --noEmit` **pass**. `npm test` **968/968 pass**. `npm run lint` **0 errors**.
 `npx expo export --platform ios` **pass**. Not yet shipped over EAS Update.
+
+## 16 September 2026, evening — "+ set" is gone, and a comment is printed under the lift it is about
+
+Two owner rulings in one pass.
+
+### "+ set" is removed (supersedes the 10 September entry)
+
+The set-by-set shortcut that appended the last working set to the line — the `+ set` row on
+every single-exercise card — is deleted, along with `src/lib/parse/next-set.ts` and its tests
+(8 tests, hence 968 → 960). The reason it existed has been answered better by PARSE_VERSION 8:
+a set-by-set logger now writes `120 10` on its own line and the parser reads it as a
+continuation of the exercise named above, so the shortcut was spending a control on a problem
+the reading no longer has. One fewer button inside a record row, which is what §Structure asks
+for anyway.
+
+### A comment is drawn under the card it comments on
+
+The owner: *"če oseba napiše nekaj v vrstico in to prepoznaš kot komentar, zapiši to pod tisti
+workout lepo."* A pure-prose line that FOLLOWS a settled exercise card is the athlete talking
+about that card, and it used to render as a free-standing row captioned "kept as a note · not
+counted" — true, and in the least useful place.
+
+`CommentLine` draws it as a quote tucked under that card: indented onto the card's own text
+column, no rail mark of its own (a comment is not a second record and must not grow a second
+check), `textSecondary` at the per-entry note's size, with the vertical rhythm doing the
+attaching — no bracket, no rule, no card. Consecutive prose lines stack under the same card.
+
+What breaks the attachment, deliberately: an unread line, a line with an amber gap, a line open
+for editing, and prose with no card above it at all (a mood on a blank page, a date header) —
+each of those keeps the standalone `NoteCard`, because hanging a quote under a card it does not
+follow would be the ledger mis-attributing the athlete's words.
+
+**Nothing about the record moves.** The line is still its own physical line in `raw_text`,
+still opens in the editor on tap, still exports. This is a placement decision, not a projection:
+it is NOT the per-entry note (`workouts.entry_notes`), which is authored outside the workout
+text precisely so a re-parse cannot touch it.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **960/960 pass**. `npm run lint` **0 errors**.
+`npx expo export --platform ios` **pass**. No eval: the parser and the prompt are untouched.
