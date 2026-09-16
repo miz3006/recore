@@ -118,9 +118,16 @@ export const OUTPUT_SCHEMA = {
  * used. If it is not, the parse is as slow as it was yesterday rather than
  * broken, and `validateResult` reads both shapes into the same answer.
  *
- * Delete it once the owner-run evaluation (CLAUDE.md §5) has passed on a
- * working key — a fallback for a question that has been answered is just a
- * second thing to keep in step.
+ * THE EVAL RAN, AND IT ANSWERED THE OTHER WAY (16 September 2026). The lean
+ * schema above accepts fine — but the model READS worse under it: freed from
+ * writing every field, it mis-keys carry loads into `rir` on
+ * weight-after-distance lines ("yoke walk 20m x3 180kg" → rir 60, weight_kg
+ * absent; the strongman eval case fails 0/5 direct on BOTH prompt versions
+ * and passes 5/5 with this strict shape — reordering the lean properties does
+ * not help). A load silently clamped into an effort field is worse than the
+ * null-writing time, so THIS schema is the primary again (`runCall`'s
+ * default, and the eval harness asks with it too). `OUTPUT_SCHEMA` stays as
+ * the record of the attempt; do not promote it without a passing §9.4 run.
  */
 const nullable = (t: 'string' | 'number' | 'integer') => ({
   anyOf: [{ type: t }, { type: 'null' }],
@@ -269,7 +276,7 @@ WHAT IS NOT A SET (produce nothing for these)
 
 LANGUAGE & NAMING
 - The note may be written in ANY language. Map every exercise to its canonical ENGLISH name in "exercise" (Title Case, singular) and put the exact strings the user wrote in "aliases_seen" (lowercased, verbatim substrings of the note).
-- Canonical anchors — use exactly these names: bench/bp/potisk s prsi/potisk s prsmi/potisk na klopi → Bench Press · incline bench → Incline Bench Press · squat/počep/počepi/Kniebeuge/sentadilla → Squat · deadlift/dl/mrtvi dvig/Kreuzheben/peso muerto → Deadlift · rdl → Romanian Deadlift · ohp/military press/ramenski potisk/potisk nad glavo/Schulterdrücken → Overhead Press · row/bb row/veslanje z drogom/Rudern/remo → Barbell Row · cable row → Seated Cable Row · lat pulldown/potegi navzdol → Lat Pulldown · pull up(s)/zgibi/Klimmzüge/dominadas → Pull-up · chin up → Chin-up · push up(s)/sklece/Liegestütze/flexiones → Push-up · dips → Dip · curls/biceps upogib → Biceps Curl · triceps pushdown/triceps izteg → Triceps Pushdown · flyes → Chest Fly · leg press/nožna preša → Leg Press · lunges/izpadni koraki → Lunge · hip thrust/dvig bokov → Hip Thrust · calf raise/dvigi na prste → Calf Raise · lateral raise/odmiki v stran → Lateral Raise · sit ups/trebušnjaki → Sit-up · plank → Plank · run/tek/Laufen → Run · bike/kolo/cycling → Cycling · row erg/rowing/veslanje (machine) → Rowing · ski erg → Ski Erg · swim/plavanje → Swimming · walk/hoja → Walk · kb swing(s) → Kettlebell Swing · wall ball(s) → Wall Ball · burpee(s) → Burpee · farmer(s) carry/walk → Farmer Carry · sled push → Sled Push · sled pull → Sled Pull · "db"/"dumbbell" prefix → Dumbbell X (db shoulder press → Dumbbell Shoulder Press).
+- Canonical anchors — use exactly these names: bench/bp/potisk s prsi/potisk s prsmi/potisk na klopi → Bench Press · incline bench → Incline Bench Press · squat/počep/počepi/Kniebeuge/sentadilla → Squat · deadlift/dl/mrtvi dvig/Kreuzheben/peso muerto → Deadlift · rdl → Romanian Deadlift · ohp/military press/ramenski potisk/potisk nad glavo/Schulterdrücken → Overhead Press · row/bb row/veslanje z drogom/Rudern/remo → Barbell Row · cable row → Seated Cable Row · lat pulldown/potegi navzdol → Lat Pulldown · pull up(s)/zgibi/Klimmzüge/dominadas → Pull-up (zgibi is ALWAYS Pull-up, never Chin-up) · chin up → Chin-up · push up(s)/sklece/Liegestütze/flexiones → Push-up · dips → Dip · curls/biceps upogib → Biceps Curl · triceps pushdown/triceps izteg → Triceps Pushdown · flyes → Chest Fly · leg press/nožna preša → Leg Press · lunges/izpadni koraki → Lunge · hip thrust/dvig bokov → Hip Thrust · calf raise/dvigi na prste → Calf Raise · lateral raise/odmiki v stran → Lateral Raise · sit ups/trebušnjaki → Sit-up · plank → Plank · run/tek/Laufen → Run · bike/kolo/cycling → Cycling · row erg/rowing/veslanje (machine) → Rowing · ski erg → Ski Erg · swim/plavanje → Swimming · walk/hoja → Walk · kb swing(s) → Kettlebell Swing · wall ball(s) → Wall Ball · burpee(s) → Burpee · farmer(s) carry/walk → Farmer Carry · sled push → Sled Push · sled pull → Sled Pull · "db"/"dumbbell" prefix → Dumbbell X (db shoulder press → Dumbbell Shoulder Press).
 - "veslanje" alone (no drog/barbell) on a distance/time → Rowing (the erg); "veslanje z drogom" → Barbell Row.
 - A QUALIFIER THAT CHANGES THE MOVEMENT STAYS IN THE NAME. An anchor above maps the BARE word: "push ups" → Push-up, but "diamond push ups" → Diamond Push-up, "archer push ups" → Archer Push-up, "decline push ups" → Decline Push-up, "one arm push up" → One Arm Push-up, "pike push ups" → Pike Push-up. The same holds for every anchor — incline, decline, close grip, pause, sumo, front, hack, box, wide grip, neutral grip, ring, single leg, walking, seated, standing, and so on: keep the qualifier, Title Case, and never fold the variant into its bare anchor. Two movements sharing one name merges two different histories, which is far worse than an unusual name. A qualifier that names the SAME movement is not one of these and still maps to the anchor ("flat bench", "barbell bench", "back squat", "conventional deadlift", "bb row"). Words about the WORK ("warm up", "amrap", "to failure", "bw", "per side", "na nogo") are never part of the name.
 - For anything not in the list, use the most common English gym name. Fix obvious typos ("benhc" → Bench Press) but keep the typo in aliases_seen.

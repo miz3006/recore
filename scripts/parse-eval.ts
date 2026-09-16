@@ -43,7 +43,10 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { OUTPUT_SCHEMA, SYSTEM_PROMPT } from '../supabase/functions/parse-workout/prompt.ts';
+// STRICT is what production asks since 16 Sep 2026 (the lean schema failed
+// its §9.4 eval — carry loads mis-keyed into rir); the eval must ask the
+// same question the deployed function asks or its score is about nothing.
+import { STRICT_OUTPUT_SCHEMA as OUTPUT_SCHEMA, SYSTEM_PROMPT } from '../supabase/functions/parse-workout/prompt.ts';
 
 // Load keys from the (gitignored) .env so `npm run eval` works without
 // exporting anything. Real env vars win over file values.

@@ -73,7 +73,11 @@
   {
     "name": "warmup detection with blank line",
     "input": "deadlift warm up 60x5, 100x3\n\n180 2x3 felt smooth",
-    "expect": [{ "exercise": "Deadlift", "kinds_include": ["warmup", "working"], "weight_kg": 180 }]
+    "expect": [
+      { "exercise": "Deadlift", "line": 0, "kinds_include": ["warmup"] },
+      { "exercise": "Deadlift", "line": 2, "sets": 2, "reps": 3, "weight_kg": 180, "kinds_include": ["working"] }
+    ],
+    "expect_item_count": 2
   },
   {
     "name": "slovenian prose",

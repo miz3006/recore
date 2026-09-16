@@ -32,7 +32,7 @@ import {
   planChunks,
   startDelayMs,
 } from './fanout.ts';
-import { OUTPUT_SCHEMA, PARSE_VERSION, STRICT_OUTPUT_SCHEMA, SYSTEM_PROMPT } from './prompt.ts';
+import { PARSE_VERSION, STRICT_OUTPUT_SCHEMA, SYSTEM_PROMPT } from './prompt.ts';
 
 const MAX_RAW_TEXT_CHARS = 4000;
 const MAX_RAW_TEXT_LINES = 100;
@@ -591,7 +591,20 @@ Deno.serve(async (req) => {
   async function runCall(
     chunk: number[] | null,
     delayMs: number,
-    schema: unknown = OUTPUT_SCHEMA,
+    /**
+     * STRICT by default (16 September 2026). The lean schema finally met the
+     * owner-run eval it had been waiting for since 11 September — and failed
+     * it: with optional fields, the model mis-keys carry loads into `rir` on
+     * weight-after-distance shapes ("yoke walk 20m x3 180kg" → rir 60, no
+     * weight_kg; strongman case 0/5 direct, 5/5 with the strict schema, both
+     * prompt versions). A reading that quietly loses a load to a clamped
+     * effort field is worse than the extra null-writing time, so the
+     * fully-required shape — the one every deployed version has actually run —
+     * stays the question we ask. `OUTPUT_SCHEMA` remains exported as the
+     * documentation of the attempt; do not promote it again without the §9.4
+     * eval passing on it.
+     */
+    schema: unknown = STRICT_OUTPUT_SCHEMA,
   ): Promise<ParsedItem[]> {
     if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
 
@@ -670,22 +683,16 @@ Deno.serve(async (req) => {
    * a malformed answer is not retried: asking the same question again is the
    * least likely thing to change it.
    *
-   * THE RETRY ASKS A DIFFERENT QUESTION (11 September 2026). It goes out with
-   * `STRICT_OUTPUT_SCHEMA` — the fully-`required`, nullable-union shape this
-   * function deployed before the lean schema — so the one failure that a repeat
-   * of the same request could never fix is covered too: an API that will not
-   * accept a schema with optional properties. `prompt.ts` says why that could
-   * not be confirmed on the day. A dropped connection is answered by the second
-   * attempt as before; a rejected schema is answered by the second attempt
-   * being a schema that cannot be rejected. Both end in the same reading —
-   * `validateResult` fills a missing field with null either way.
+   * (The 11 September retry-with-STRICT is gone because STRICT is the primary
+   * schema again — see `runCall`'s default. The retry now repeats the same
+   * question, which is all a transport failure ever needed.)
    */
   async function runCallWithRetry(chunk: number[] | null, delayMs: number): Promise<ParsedItem[]> {
     try {
       return await runCall(chunk, delayMs);
     } catch (err) {
       if (err instanceof CallFailure && err.payload.error === 'parse_unavailable') {
-        return await runCall(chunk, 0, STRICT_OUTPUT_SCHEMA);
+        return await runCall(chunk, 0);
       }
       throw err;
     }

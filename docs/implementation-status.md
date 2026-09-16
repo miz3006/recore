@@ -9627,3 +9627,59 @@ idle states), `supabase/functions/parse-workout/prompt.ts` + `fanout.ts`,
 `npm run typecheck` **pass**. `npm test` **968/968 pass** (958 + 10 new). `npm run lint`
 **0 errors**, 49 pre-existing warnings. `npx expo export --platform ios` **pass**. NOT shipped
 over EAS Update: blocked behind the §9.4 eval and the edge-function deploy, in that order.
+
+## 16 September 2026 — the v8 eval runs, kills the lean schema, and the function ships
+
+The §9.4 evaluation the previous entry was blocked on has now run, and it paid for itself twice
+over before the deploy.
+
+### The credit incident first
+
+The first attempt died mid-run: the Anthropic account was out of credit — the `.env` key 400ing
+with "credit balance is too low" AND the deployed function 502ing `provider_rejected_request`
+on the same balance, which meant **production parsing was down for everyone** until the owner
+topped up. Two lessons are in the memory notes: a minimal direct `/v1/messages` probe names a
+billing outage for free, and the eval must always run with `EVAL_DUMP` and full stdout capture,
+because a mid-run billing death poisons the tail of the results and stdout is the only per-case
+record.
+
+### What the eval found
+
+- **The lean schema (v7, 11 September) fails its own gate.** It was never deployed and never
+  evaluated (the key was already dead the day it was written). Under it the model mis-keys
+  carry loads into `rir` on weight-after-distance lines — "yoke walk 20m x3 180kg" → `rir 60`,
+  no `weight_kg`; the strongman case fails 0/5 direct on BOTH prompt versions and passes 5/5
+  with the strict schema; reordering the lean properties does not help. A load silently clamped
+  into an effort field is worse than null-writing time, so **`STRICT_OUTPUT_SCHEMA` is the
+  primary schema again** (`runCall` default; the eval harness asks with it too; the
+  retry-with-strict special case is gone because the retry now repeats the same question).
+- **"zgibi" read as Chin-up under the strict schema** — on the old prompt too, i.e. today's
+  production behaviour, not a v8 regression. One anchor clarification ("zgibi is ALWAYS
+  Pull-up, never Chin-up") fixes it 3/3.
+- **One corpus case was stale**: "warmup detection with blank line" asserted the pre-v8 merged
+  item; its expectation now matches v8's two items (the continuation on its own line), with
+  `expect_item_count: 2`.
+
+### Scores
+
+Baseline (lean schema, v7 prompt, 12–13 Sep): 104–105/105. Today, strict schema + v8 prompt:
+**108/109 and 107/109**, different single cases each run, and every failing case passes 2–3/3
+when re-run in isolation — the same ±1–2 nondeterministic fringe the baseline had, on a corpus
+four cases larger. The two real defects above were fixed and pinned with repeated mini-runs
+(strongman 3/3 pre-fix-fail → 5/5 strict; zgibi 0/5 → 3/3). Steady-state cost $3.05 per 1000
+notes, p50 2.8 s.
+
+### Deploy
+
+`supabase functions deploy parse-workout` (project nkjrukxrocplesonotqo, function version 17).
+Confirmed against the DEPLOYED function via `EVAL_VIA=edge`: **5/5** on the strongman, mixed
+Slovene/English, warmup-with-blank-line and both v8 key cases, answering **parse_version 8** —
+the version the shipped client refuses to go without. The deploy-before-OTA ordering the
+previous entry required is therefore satisfied; the client work above is now clear to ship over
+EAS Update (B5 rule: carry the beta env by hand).
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **968/968 pass**. `npm run lint` **0 errors**. `npx expo
+export --platform ios` unchanged from the previous entry — this change touches only
+`supabase/functions/` and `scripts/`, none of it in the app bundle.
