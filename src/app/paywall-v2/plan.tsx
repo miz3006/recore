@@ -12,6 +12,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
+import { BetaPass } from '@/components/paywall-v2/BetaPass';
 import { Check } from '@/components/paywall-v2/Check';
 import { paywallCopy } from '@/components/paywall-v2/copy';
 import { PlanCard } from '@/components/paywall-v2/PlanCard';
@@ -22,6 +23,7 @@ import { useAuth } from '@/lib/auth/provider';
 import { savePct, type Plan } from '@/lib/billing/pricing';
 import { purchase, restore } from '@/lib/billing/state';
 import {
+  canSell,
   fetchOffer,
   isStoreConfigured,
   isTestStore,
@@ -103,6 +105,31 @@ import { useV2 } from '@/state/onboarding-v2';
  * tap with no confirmation. */
 const DEFAULT_PLAN: Plan = 'annual';
 
+/**
+ * IS THERE A SHOP BEHIND THIS SCREEN? Read once at module scope — both halves
+ * of `canSell` are build-time constants, so this is decided before the first
+ * render and cannot change under a person mid-screen.
+ *
+ * FALSE IN EVERY BUILD IN THE REPOSITORY TODAY: there is no RevenueCat key in
+ * `.env`, and the TestFlight profile unlocks the app instead of selling it. So
+ * what this screen renders today, everywhere, is the tester pass — and the
+ * owner's ruling of 16 September 2026 is that this is the right screen for
+ * exactly this state: **nothing that says Annual or Monthly, one message and
+ * one button onward to sign-in.** A plan card that cannot be bought is not a
+ * softer version of a shop, it is a lie with a radio button on it.
+ *
+ * The paying screen below is not dead and not deleted; it is one `appl_` key
+ * away, and it comes back with no edit to this file the day that key exists.
+ *
+ * What it does NOT change: the headline and its supporting line, which are the
+ * value proposition a tester is here to judge, and which cost nothing and
+ * promise nothing. (The tester pass's STRINGS travel in every bundle either
+ * way: Hermes keeps a string table and an unrendered branch carries its
+ * literals. Verified by exporting both bundles — nothing renders them, and
+ * none of them is a billing claim.)
+ */
+const TESTER_PASS = !canSell();
+
 export default function PaywallV2Plan() {
   const router = useRouter();
   const { session } = useAuth();
@@ -128,9 +155,14 @@ export default function PaywallV2Plan() {
     // is counted here because this screen became the funnel's paywall on 28
     // August 2026. It is a local counter in `meta`, never a third-party SDK,
     // and it is impossible to backfill once the first installs have happened.
-    markPaywallShown();
+    // THE TESTER PASS IS NOT A PAYWALL VIEW. `markPaywallShown` is the
+    // denominator of every conversion number in the funnel, and a screen that
+    // offers nothing, quotes nothing and cannot be bought from would make that
+    // denominator mean two different things at once. The event still fires —
+    // the screen was seen — carrying the variant that says which screen it was.
+    if (!TESTER_PASS) markPaywallShown();
     track('paywall_view', {
-      variant: 'v2',
+      variant: TESTER_PASS ? 'tester' : 'v2',
       screen: 'plan',
       has_number: copy.hasNumber,
       has_name: copy.hasName,
@@ -299,8 +331,7 @@ export default function PaywallV2Plan() {
    * (`_layout.tsx`), and a push to a guard-false screen is silently ignored —
    * "nothing happens" is exactly how that bug reads.
    */
-  const onDevSkip = () => {
-    tap();
+  const enterApp = () => {
     if (session !== null) {
       router.replace('/');
       return;
@@ -320,6 +351,28 @@ export default function PaywallV2Plan() {
     router.push({ pathname: '/sign-in', params: { next: 'home' } });
   };
 
+  const onDevSkip = () => {
+    tap();
+    enterApp();
+  };
+
+  /**
+   * THE TESTER PASS'S BUTTON. The same forward step as the chip above — there
+   * is no purchase to make in a build with no store — drawn as the screen's
+   * primary control instead of as a door in the corner, and counted as its own
+   * variant so a tester's tap can never be read as a paying one.
+   */
+  const onBetaContinue = () => {
+    tap();
+    track('paywall_cta_tap', {
+      variant: 'tester',
+      plan: null,
+      trial_days: 0,
+      signed_in: session !== null,
+    });
+    enterApp();
+  };
+
   const openLegal = (doc: LegalDocId) => {
     tap();
     router.push({ pathname: '/legal', params: { doc } });
@@ -336,6 +389,69 @@ export default function PaywallV2Plan() {
    * §2 rule 5 exists to stop.
    */
   const annualBadge = annual && annual.trialDays > 0 ? `${annual.trialDays} DAYS FREE` : null;
+
+  /**
+   * THE TESTER'S SCREEN, and today it is THE screen. Same canvas, same header,
+   * same headline block — and then a statement and one button where the
+   * timeline, the plan cards, the store CTA and the renewal paragraph are.
+   *
+   * It is a separate tree rather than a pile of `TESTER_PASS &&` conditionals inside
+   * the paying one because of what it must NOT be able to render: a price, a
+   * trial length, a Restore link or a renewal sentence, none of which exist in
+   * a build with no store. A branch that shares the subtree shares those lines
+   * too, and the only thing keeping them off the screen would be a condition
+   * somebody can get wrong later. Two trees cannot leak into each other.
+   *
+   * The body centres instead of spreading (`betaBody`): there are two groups
+   * here, not four, and `space-between` would push the button to the bottom of
+   * the screen — the corner problem again, in the other corner. Centred, the
+   * control lands in the middle of the page, which is where a person looks
+   * first and where the owner asked for it (16 September 2026).
+   */
+  if (TESTER_PASS) {
+    return (
+      <View style={[styles.screen, { paddingTop: insets.top }]} testID="paywall-v2-plan">
+        <View style={styles.header}>
+          <Pressable
+            onPress={onBack}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            style={styles.back}
+            testID="paywall-v2-back">
+            <Icon name="chevron-back" size={moderateScale(24)} tint={color.textPrimary} />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={[
+            styles.body,
+            styles.betaBody,
+            { paddingBottom: insets.bottom + spacing.md },
+          ]}
+          showsVerticalScrollIndicator={false}
+          contentInsetAdjustmentBehavior="automatic">
+          <View style={styles.headBlock}>
+            <Enter index={0}>
+              <Text style={styles.headline} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {copy.headline}
+              </Text>
+            </Enter>
+            <Enter index={1}>
+              <Text style={styles.support} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {copy.support}
+              </Text>
+            </Enter>
+          </View>
+
+          <View style={styles.group}>
+            <BetaPass onContinue={onBetaContinue} />
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]} testID="paywall-v2-plan">
@@ -354,7 +470,7 @@ export default function PaywallV2Plan() {
             app itself needs a Supabase user (`parse-workout` requires a JWT).
             The only thing skipped is the purchase. `__DEV__` compiles it out
             of release bundles; `paywall.tsx` carries the identical chip. */}
-        {__DEV__ ? (
+        {__DEV__ && !TESTER_PASS ? (
           <Pressable
             onPress={onDevSkip}
             hitSlop={12}
@@ -693,6 +809,15 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'space-between',
   },
+  /**
+   * The tester pass overrides exactly one property of the column above. Two
+   * groups instead of four: `space-between` would put the headline at the top
+   * of the screen and the button at the very bottom with a hole between them,
+   * and the button is the thing this screen is for. `center` keeps the two as
+   * one block in the middle of the page. `flexGrow: 1` still comes from `body`,
+   * so accessibility type simply scrolls.
+   */
+  betaBody: { justifyContent: 'center' },
   /** Group 1. The inner gap is `sm` against the group gap's `xxl`. */
   headBlock: { gap: spacing.sm },
   /**

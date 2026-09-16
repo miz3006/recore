@@ -4,20 +4,54 @@ import { useEffect, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BrandMark } from '@/components/brand-mark';
+import { Icon, type IconName } from '@/components/icon';
 import { FadeSlideIn, PressableScale, Stagger } from '@/components/motion';
 import { Eyebrow } from '@/components/primitives';
 import { AppleSignInButton, GoogleSignInButton } from '@/components/provider-button';
+import { isDevSignInAvailable } from '@/lib/auth/dev-door';
 import { signInAsDeveloper } from '@/lib/auth/dev-sign-in';
 import {
   signInWithApple,
   signInWithGoogle,
   SignInCancelledError,
 } from '@/lib/auth/sign-in';
+import { canSell } from '@/lib/billing/store';
 import { isSupabaseConfigured } from '@/lib/env';
 import type { LegalDocId } from '@/lib/legal';
 import { devLog } from '@/lib/log';
 import { getName } from '@/lib/prefs';
-import { color, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/theme';
+import {
+  color,
+  hairline,
+  HIT,
+  MAX_FONT_SCALE,
+  moderateScale,
+  osFontScale,
+  shadow,
+  spacing,
+  textRoom,
+  type,
+} from '@/lib/theme';
+
+/**
+ * A BUILD WITH NO SHOP HAS NO TRIAL TO START (`canSell`, `billing/store.ts`),
+ * and this screen is the step straight after the paywall — which, in exactly
+ * those builds, has just said that nothing is charged and nothing is running
+ * down. "Create your free account to start the trial" would contradict the
+ * screen before it and promise a clock no store is running (CLAUDE.md §2 rule
+ * 5), so the two screens read the SAME function rather than each deciding for
+ * itself. Read once at module scope, like the paywall's `TESTER_PASS`.
+ */
+const NOTHING_TO_PAY = !canSell();
+
+/**
+ * Whether the development row may be drawn at all — a development build whose
+ * owner has actually configured an account. Read once at module scope: both
+ * halves of the answer are build-time constants, so asking per render would be
+ * asking a question that cannot change. See `lib/auth/dev-door.ts`.
+ */
+const DEV_DOOR = isDevSignInAvailable();
 
 /**
  * Sign in — the LAST step of the funnel (2026-07-23 redesign), not the front
@@ -26,39 +60,59 @@ import { color, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/
  * up. Framed as reward, never a toll gate. Providers are the real ones wired
  * today: Apple and Google.
  *
- * ## The 9 September 2026 pass: native iOS, and a layout that survived nobody
+ * ## The 16 September 2026 pass: a composition, not a column of paragraphs
  *
- * The owner asked for a screen that reads as native iOS. Two separate things
- * were wrong, and only one of them was taste.
+ * (owner — *"naj bo dejansko lepši dizajn ... lepo strukturiraj"*.)
  *
- * **The layout was broken, and a screenshot proved it.** The device this app is
- * reviewed on runs iOS at `AccessibilityXL`. At that setting the old tree —
- * a fixed-height `SafeAreaView` column with `hero: { flex: 1 }` between a
- * wordmark and a pinned bottom block — did what an overflowing centred flex
- * child always does: it overflowed in BOTH directions. The eyebrow printed on
- * top of the wordmark, the subline was sliced in half by the Apple button
- * ("no passwords, no" and then nothing), and the development block ran off the
- * bottom of the screen with no way to reach it. None of that was visible at the
- * default text size, which is why it shipped. **The screen scrolls now** — one
- * `ScrollView` with `flexGrow: 1` and `justifyContent: 'space-between'`, so it
- * still sits hero-high-and-buttons-low when there is room and simply becomes a
- * scrolling page when there is not. `HIG`'s rule, and the design skill's:
- * a screen that can overflow is a scroll view, always.
+ * The screen was correct and plain. Everything it had to say, it said in prose:
+ * a 28 pt ink `R`, an eyebrow, a headline, a four-line subline paragraph, and
+ * then a second three-line caption under the buttons repeating most of the
+ * first one. Two grey paragraphs stacked around two controls is not a layout —
+ * it is a page with the controls placed on it. Ten shipping sign-in screens
+ * were read for this pass through Appllama (Notability, Photoroom, Poke Genie,
+ * Bring!, Widgetable, Smule, RNI Films, Friends, Find What Feels Good, Voice
+ * Dream), and the two things every good one does that this did neither:
  *
- * **The Apple button was a drawing of Apple's button.** It is Apple's own
- * `ASAuthorizationAppleIDButton` now — see `components/provider-button.tsx` for
- * what that changes, the short version being that the mark, the metrics and the
- * LANGUAGE now come from the OS instead of from an English literal in this
- * file. On a Slovenian phone the old one was simply in the wrong language.
+ * **1. It shows you the app you are signing into.** Photoroom, Poke Genie and
+ * Bring! all lead with the APP ICON at 56–72 pt — not a glyph, the actual
+ * install-screen artwork — because a sign-in screen's first job is recognition.
+ * So the top slot is the icon now: the `R` in white on a brand-blue squircle,
+ * at Apple's own icon corner ratio, which is `assets/brand/app-icon-1024.png`
+ * reproduced in two tokens. It does NOT reopen the ruling earlier the same day
+ * that replaced the "Recore" wordmark with the mark — it is that same mark,
+ * wearing the lockup the person has already tapped once today.
  *
- * **Legal attribution was missing and every reference screen has it.** Ten
- * shipping sign-in screens were read for this pass (ChatGPT, Roame, Artie,
- * Avenza, Widgetable, Poke Genie, Photoroom, Notability, Bring!, Airlearn); the
- * near-universal shape is provider buttons in a bottom stack over one line of
- * terms-and-privacy microcopy. Recore had the buttons and not the line, while
- * `/legal` has carried both documents since PLAN A3. They are linked here now,
- * which is also what App Review looks for on the screen that creates an
- * account.
+ * **2. It breaks the promises out of the paragraph.** Notability's sign-in puts
+ * its reassurance in short scannable lines rather than a block. The subline is
+ * one sentence now (what the account is FOR), and the three things a person
+ * actually wants to know before handing over an identity — it syncs, there is
+ * no password, the record stays exportable — are three glyph rows. Nothing new
+ * is claimed: every line is a promise this repository already keeps (§3's
+ * export invariant, `sign-in.ts`'s provider list, the sync loop), and the old
+ * caption that used to repeat two of them under the buttons is deleted rather
+ * than left to drift out of agreement with them.
+ *
+ * The rhythm is the funnel's, unchanged: left-aligned eyebrow → headline →
+ * supporting copy, exactly as `OnboardingScreen` and the paywall set it, so the
+ * last step reads as the same flow rather than as a new screen.
+ *
+ * ## It scrolls, and that is load-bearing (9 September 2026)
+ *
+ * The device this app is reviewed on runs iOS at `AccessibilityXL`. At that
+ * setting the old fixed-height column overflowed in BOTH directions: the
+ * eyebrow printed on top of the wordmark, the subline was sliced in half by the
+ * Apple button, and the development block ran off the bottom with no way to
+ * reach it. None of it was visible at the default text size, which is why it
+ * shipped. One `ScrollView` with `flexGrow: 1` and `space-between` keeps the
+ * roomy layout when there is room and becomes a scrolling page when there is
+ * not. A screen that can overflow is a scroll view, always.
+ *
+ * ## The Apple button is Apple's button (9 September 2026)
+ *
+ * It is the real `ASAuthorizationAppleIDButton` — see
+ * `components/provider-button.tsx`. The mark, the metrics and the LANGUAGE come
+ * from the OS instead of from an English literal, which matters on the
+ * Slovenian device this is reviewed on.
  *
  * ## Apple and Google are the whole list, and that is a decision, not a gap.
  *
@@ -70,8 +124,8 @@ import { color, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/
  * practice. The one real hole is an Apple ID without two-factor, which Sign in
  * with Apple refuses; those people still have Google. If that hole ever needs
  * closing, close it with an email magic link (Supabase already speaks OTP) —
- * never a password, because "No passwords" below is a promise this screen
- * keeps.
+ * never a password, because "No passwords" in the assurance rows is a promise
+ * this screen keeps.
  *
  * ## The Apple button is allowed to be absent. It is not allowed to be SILENT.
  *
@@ -82,15 +136,21 @@ import { color, HIT, MAX_FONT_SCALE, moderateScale, spacing, type } from '@/lib/
  * when the module is not in the running binary it hands back a stub whose
  * `isAvailableAsync` returns `false` forever. **Expo Go does not carry it**, so
  * inside Expo Go the probe answers no, the button was dropped from the tree,
- * and the screen offered Google alone with nothing said about why — while the
- * caption two lines below went on promising Face ID and a hidden email. That is
- * not "Apple is unavailable", it is a screen that looks broken, and the same
+ * and the screen offered Google alone with nothing said about why. That is not
+ * "Apple is unavailable", it is a screen that looks broken, and the same
  * silence would hide a genuinely misconfigured build.
  *
  * So availability is a THREE-state — probing, present, absent — and the absent
  * state prints a line where the button would have been. `probing` renders
  * nothing rather than a placeholder — the native call answers in a frame or two,
  * and a note that flashes and vanishes is worse than a moment of nothing.
+ *
+ * ## Legal attribution
+ *
+ * The near-universal shape on every reference screen is provider buttons in a
+ * bottom stack over one line of terms-and-privacy microcopy. `/legal` has
+ * carried both documents since PLAN A3; they are linked here, which is also
+ * what App Review looks for on the screen that creates an account.
  *
  * A fabricated `<Rating score={4.9} countLabel="loved by early lifters" />` sat
  * under the subline until 28 July. There are no real reviews (§12.1), so it was
@@ -199,30 +259,41 @@ export default function SignIn() {
       // second, absolutely-positioned tree.
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xxl },
+        { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.xxl },
       ]}
       contentInsetAdjustmentBehavior="never"
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled">
       <View style={styles.top}>
         <FadeSlideIn>
-          <Text style={styles.wordmark} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            Recore
-          </Text>
+          <AppIconLockup />
         </FadeSlideIn>
 
         <View style={styles.hero}>
           <Stagger initialDelay={120} step={80} distance={14}>
             <Eyebrow tone="secondary">Last step</Eyebrow>
+            {/* No hard line break any more. A `\n` set the shape of this
+                headline at one text size and one name length and broke it at
+                every other — "Save your ledger,⏎Aleksander." at
+                AccessibilityXL is three lines, one of them a lone full stop. */}
             <Text style={styles.headline} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {name ? `Save your ledger,\n${name}.` : 'Save your ledger\nfor good.'}
+              {name ? `Save your ledger, ${name}.` : 'Save your ledger for good.'}
             </Text>
             <Text style={styles.sub} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              Create your free account to start the trial and back up everything you just set up. It
-              syncs to every iPhone — no passwords, no charge today.
+              {NOTHING_TO_PAY
+                ? 'One free account keeps everything you just set up — and nothing is charged while Recore is being tested.'
+                : 'One free account starts the trial and keeps everything you just set up.'}
             </Text>
           </Stagger>
         </View>
+
+        <FadeSlideIn delay={360} distance={14}>
+          <View style={styles.assurances}>
+            {assurances(apple === 'present').map((a) => (
+              <Assurance key={a.glyph} glyph={a.glyph} text={a.text} />
+            ))}
+          </View>
+        </FadeSlideIn>
       </View>
 
       <View style={styles.bottom}>
@@ -252,14 +323,6 @@ export default function SignIn() {
           />
         </View>
 
-        {/* The promise has to match the buttons. It named Face ID and a hidden
-            email while the Apple button was nowhere on the screen. */}
-        <Text style={styles.caption} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {apple === 'present'
-            ? 'No passwords. Apple uses Face ID; Google opens in your browser. You can hide your email with Apple.'
-            : 'No passwords. Google opens in your browser.'}
-        </Text>
-
         {error ? (
           <Text
             style={styles.error}
@@ -269,8 +332,8 @@ export default function SignIn() {
           </Text>
         ) : null}
 
-        {/* The line every reference screen carries and this one did not. Both
-            documents already exist at `/legal`; nothing here is a new promise. */}
+        {/* The line every reference screen carries. Both documents already
+            exist at `/legal`; nothing here is a new promise. */}
         <Text style={styles.legal} maxFontSizeMultiplier={MAX_FONT_SCALE}>
           By continuing you agree to the{' '}
           <LegalLink label="Terms of Use" onPress={() => openLegal('terms')} />
@@ -278,13 +341,25 @@ export default function SignIn() {
           <LegalLink label="Privacy Policy" onPress={() => openLegal('privacy')} />.
         </Text>
 
-        {/* THE DEVELOPMENT DOOR. `__DEV__` is a compile-time constant, so this
-            whole branch is deleted from a release bundle — see
-            `lib/auth/dev-sign-in.ts` for why it signs in FOR REAL rather than
-            pretending, and what the three `SIMPASS` markers cost when they
+        {/* THE DEVELOPMENT DOOR, and it is behind TWO gates now (16 September
+            2026, owner: it must not be in production).
+
+            `__DEV__` is spelled here literally rather than folded into the
+            constant beside it, and that is the point: Metro replaces it with
+            `false` in a release bundle, so this whole branch is DELETED from
+            the app anyone installs rather than merely evaluated to nothing in
+            it. `DEV_DOOR` is the second gate — a development build whose owner
+            has actually configured an account (`lib/auth/dev-door.ts`, and it
+            has a test, which the rule never had before). Until today only the
+            first gate existed, so every checkout of this repository without a
+            local `.env` drew a labelled control under the Apple and Google
+            buttons whose entire behaviour was to fail.
+
+            See `lib/auth/dev-sign-in.ts` for why it signs in FOR REAL rather
+            than pretending, and what the three `SIMPASS` markers cost when they
             pretended. Under a rule and labelled, because a door nobody can see
             is how those survived. */}
-        {__DEV__ ? (
+        {__DEV__ && DEV_DOOR ? (
           <View style={styles.devBlock}>
             <View style={styles.devRule} />
             <PressableScale
@@ -299,7 +374,7 @@ export default function SignIn() {
               </Text>
             </PressableScale>
             <Text style={styles.devNote} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              A real session on the dev account. Not in release builds.
+              A real session on the dev account. Never in a release build.
             </Text>
           </View>
         ) : null}
@@ -312,6 +387,131 @@ export default function SignIn() {
         ) : null}
       </View>
     </ScrollView>
+  );
+}
+
+/**
+ * THE APP ICON, redrawn in two tokens.
+ *
+ * `assets/brand/app-icon-1024.png` is the white `R` centred on a brand-blue
+ * field, so this is `color.brand` and `color.onInk` and nothing else — no
+ * imported bitmap, which would have to be kept in step with the export by hand
+ * and would go soft at a large text size instead of redrawing at it.
+ *
+ * **`0.2237` is Apple's icon corner ratio**, not `radius.md`. Every other
+ * rounded rectangle in the app comes off the four-value scale and this one may
+ * not: it is a reproduction of a specific piece of artwork, and the artwork is
+ * masked by iOS with a continuous superellipse at that fraction of the side. At
+ * 60 pt it lands on 13.4 — close enough to `radius.md` that guessing would have
+ * looked almost right, which is exactly the near-miss that reads as cheap.
+ *
+ * It takes Dynamic Type through `osFontScale` for the same reason the bare mark
+ * that preceded it did: an `Svg` is a view, so it ignores the reader's text
+ * setting unless it is told, and it would be the one thing on the screen that
+ * does.
+ *
+ * It floats on `shadow.card` like every other surface on the canvas. A filled
+ * blue tile does not strictly need an edge to be visible, but the app's rule is
+ * that a surface on the canvas gets a border or a shadow, and a shadow is the
+ * one that says "this is the icon, sitting on the page".
+ */
+const TILE = moderateScale(60) * osFontScale;
+/** The `R`'s share of the icon's height, measured off the 1024 pt export. */
+const TILE_MARK = TILE * 0.58;
+
+function AppIconLockup() {
+  return (
+    <View style={styles.tile}>
+      <BrandMark size={TILE_MARK} tint={color.onInk} />
+    </View>
+  );
+}
+
+/**
+ * THE ASSURANCE PILL'S GEOMETRY, and the two things a screenshot caught.
+ *
+ * **It is a VIEW, so it takes the reader's text size itself** (`textRoom`, the
+ * helper that exists for exactly this). Left at a flat `moderateScale(30)` it
+ * stayed a 30 pt circle beside a 23 pt line at `AccessibilityXL` — the one
+ * element on the screen not growing with everything around it.
+ *
+ * **The lift is NEGATIVE, and the first draft clamped it to zero.** Centring a
+ * mark on the first line of a paragraph is `(lineHeight − mark) / 2`, which is
+ * what `BetaPass` does with its check — but that check is 15 pt inside a 22 pt
+ * line, so the offset is positive and pushes the mark DOWN inside the row. This
+ * pill is 30 pt against a 21 pt line, so the same arithmetic is −4.5 and the
+ * pill has to be lifted OUT of the top of the row instead. A
+ * `Math.max(0, …)` guard turned that into 0 and left the pill sitting 3.2 pt
+ * low at every text size — measured off the simulator, invisible in the source.
+ *
+ * Both scale by the same factor, so the ratio the two were designed at survives
+ * every Dynamic Type step rather than only the default one.
+ */
+const DOT = textRoom(moderateScale(30));
+const DOT_LIFT = (textRoom(type.subhead.lineHeight ?? DOT) - DOT) / 2;
+
+/**
+ * THE THREE THINGS A PERSON WANTS TO KNOW BEFORE HANDING OVER AN IDENTITY.
+ *
+ * Each is a promise the repository already keeps, which is the only reason any
+ * of them is allowed on the screen (CLAUDE.md §3 — no unsupported claim,
+ * anywhere, including a placeholder):
+ *
+ *  · sync — `lib/sync.ts` runs against the account this screen creates;
+ *  · no password — the provider list IS the whole list, by the decision in the
+ *    header, and this line is why a password path may never be added quietly;
+ *  · export — §3's invariant, verbatim: "export remains complete and ungated
+ *    even after a subscription lapses".
+ *
+ * The middle one follows the Apple button's REAL availability, because the
+ * caption it replaces promised Face ID and a hidden email on screens where the
+ * Apple button was not in the tree at all. It no longer mentions the hidden
+ * email: Apple's own sheet offers that in Apple's own words two taps later, and
+ * carrying it here cost a third line that ended on the single word "browser."
+ *
+ * All three are WRITTEN TO THE COLUMN, which is the part a copy deck cannot
+ * check. The first draft left two of the three rows ending on a one-word line
+ * ("to.", "time.") — measured on the simulator, where the column holds about
+ * 42 characters at the default text size. Same facts, broken so the last line
+ * of each row carries at least three words.
+ */
+function assurances(hasApple: boolean): { glyph: IconName; text: string }[] {
+  return [
+    { glyph: 'refresh', text: 'Backed up, and waiting on every iPhone you sign in to.' },
+    {
+      glyph: 'lock',
+      text: hasApple
+        ? 'No passwords — Face ID with Apple, or your browser with Google.'
+        : 'No passwords — Google opens in your browser.',
+    },
+    { glyph: 'download', text: 'Your writing stays yours — export every word, any time.' },
+  ];
+}
+
+/**
+ * One assurance: a glyph in a small white pill, then the sentence.
+ *
+ * The pill is the app's floating-chrome language at accessory scale (design
+ * skill §Structure — "the colour is on the glyph, never on the circle"), and it
+ * is what turns three grey sentences into a column the eye can scan by shape
+ * before it reads a word. A hairline rather than a shadow: three shadows in a
+ * 200 pt stack reads as three cards, and these are not cards.
+ *
+ * The glyph is drawn in INK and the sentence in secondary, which is the
+ * opposite of the settings rows' arrangement and deliberate — `glyph.*` tints
+ * are wayfinding for a long list, and three rows is not a list to navigate.
+ * One ink, so the column reads as one voice.
+ */
+function Assurance({ glyph, text }: { glyph: IconName; text: string }) {
+  return (
+    <View style={styles.assurance} accessible accessibilityRole="text">
+      <View style={styles.assuranceDot}>
+        <Icon name={glyph} size={DOT / 2} tint={color.textPrimary} />
+      </View>
+      <Text style={styles.assuranceText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {text}
+      </Text>
+    </View>
   );
 }
 
@@ -374,17 +574,18 @@ const styles = StyleSheet.create({
     gap: spacing.xxl,
   },
   top: {
-    gap: spacing.xxl,
+    gap: spacing.xl,
   },
-  wordmark: {
-    fontSize: type.headline.fontSize,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-    color: color.textPrimary,
-    // A minimum, not a height: at a large text setting a fixed box crops the
-    // word inside it.
-    minHeight: moderateScale(44),
-    textAlignVertical: 'center',
+  /** The app icon. See `AppIconLockup` for why the radius is not on the scale. */
+  tile: {
+    width: TILE,
+    height: TILE,
+    borderRadius: TILE * 0.2237,
+    borderCurve: 'continuous',
+    backgroundColor: color.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadow.card,
   },
   hero: {
     gap: spacing.md,
@@ -397,16 +598,42 @@ const styles = StyleSheet.create({
     ...type.body,
     color: color.textSecondary,
   },
+  assurances: {
+    gap: spacing.md,
+  },
+  /** `flex-start`, not `center`: the sentence wraps to two and three lines at
+   * the larger Dynamic Type steps, and a centred pill then floats in the gap
+   * between them instead of marking the line it belongs to. */
+  assurance: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  assuranceDot: {
+    width: DOT,
+    height: DOT,
+    borderRadius: DOT / 2,
+    backgroundColor: color.surface,
+    borderWidth: hairline,
+    borderColor: color.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Optically centred on the FIRST line of the sentence beside it, computed
+    // from the type scale rather than nudged by eye — so it holds at every
+    // text size instead of only at the default one. See `DOT_LIFT` for why it
+    // is negative and why clamping it to zero was wrong.
+    marginTop: DOT_LIFT,
+  },
+  assuranceText: {
+    ...type.subhead,
+    color: color.textSecondary,
+    flex: 1,
+  },
   bottom: {
     gap: spacing.md,
   },
   buttons: {
     gap: spacing.md,
-  },
-  caption: {
-    ...type.footnote,
-    color: color.textMuted,
-    marginTop: spacing.xs,
   },
   /** Sits inside `buttons`, in the gap the Apple button would have filled. It
    * CARRIES INFORMATION — why a control the user expected is not here — so it
@@ -425,6 +652,7 @@ const styles = StyleSheet.create({
   legal: {
     ...type.caption,
     color: color.textMuted,
+    marginTop: spacing.xs,
   },
   /** Brand blue, the one colour that means "this is a link" app-wide. */
   legalLink: {
@@ -439,7 +667,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   devRule: {
-    height: StyleSheet.hairlineWidth,
+    height: hairline,
     backgroundColor: color.border,
     marginBottom: spacing.sm,
   },

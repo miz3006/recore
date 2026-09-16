@@ -199,10 +199,12 @@ interface SessionState {
    * card never leaves the note — only its check state flips. */
   toggleDone: (key: string) => void;
   /**
-   * Remove a physical line from the note (delete an entry). `label` is the
-   * entry's name, purely so the undo can say WHAT it would bring back.
+   * Remove a physical line from the note (delete an entry). `labels` are the
+   * names of every entry that line was holding, purely so the undo can say
+   * WHAT it would bring back — all of them, because one written line can hold
+   * several readings and the line is the only unit that can be removed.
    */
-  deleteNoteLine: (line: number, label?: string | null) => void;
+  deleteNoteLine: (line: number, labels?: string[]) => void;
   /**
    * THE LAST DELETED LINE, for as long as it is still offered back.
    *
@@ -223,7 +225,7 @@ interface SessionState {
    * tell "a second delete" from "the same one re-rendered" and restart its
    * window.
    */
-  lastDelete: { line: number; text: string; label: string | null; day: DayKey; id: number } | null;
+  lastDelete: { line: number; text: string; labels: string[]; day: DayKey; id: number } | null;
   /** Put the deleted line back where it was. A no-op with nothing to restore. */
   undoDelete: () => void;
   /** Withdraw the offer — the window closed, or the athlete moved on. */
@@ -235,6 +237,15 @@ interface SessionState {
    * words (`src/lib/effort.ts`). Null clears it. It goes through `setNote`
    * like any keystroke, so the parser reads it and the engine gets the RIR
    * through the ONE path it already has — no overlay, nothing to re-apply.
+   *
+   * IT WRITES, IT DOES NOT ASK FOR A READING (owner, 16 September 2026). The
+   * sheet's own Done is what asks, once, for every answer given — see
+   * `check-in-sheet.tsx`. A parse per tap was both a model call per lift and a
+   * race: the second answer arrived while the first reading was in flight, was
+   * dropped by the one-question-at-a-time guard, and left every lift after the
+   * first sitting on Today as an unread line wearing the confirm check — the
+   * athlete asked to tick it off again, one exercise at a time, having just
+   * answered on the sheet.
    */
   setLineEffort: (line: number, effort: Effort | null) => void;
   /**
@@ -287,6 +298,23 @@ let undoToken = 0;
 const PARSE_RETRY_DELAYS_MS = [3_000, 8_000, 20_000];
 let parseRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let parseRetryAttempt = 0;
+
+/**
+ * A READING ASKED FOR WHILE ONE WAS IN FLIGHT — the workout it was asked
+ * about, or null (16 September 2026).
+ *
+ * `runParse` reads `raw_text` out of SQLite when it STARTS, so a request that
+ * arrives a second later is asking about text that call never saw. Dropping it
+ * — which is what the bare `if (parsing) return` did — left that text unread
+ * with nothing in flight to read it, and the line went on wearing the confirm
+ * check as though nobody had asked. The check-in sheet hit this every time:
+ * three lifts answered in three seconds, one parse, two lines still unread.
+ *
+ * It holds the id rather than a boolean so a day switch or a sign-out drops it
+ * on its own — the run that finishes checks the open workout still matches
+ * before it asks again.
+ */
+let reparseFor: string | null = null;
 
 function clearParseRetry() {
   if (parseRetryTimer) clearTimeout(parseRetryTimer);
@@ -636,13 +664,17 @@ export const useSession = create<SessionState>((set, get) => ({
   requestParse: () => {
     const { userId, workoutId, note, parsedSnapshot, parsing } = get();
     if (!userId || !workoutId) return;
-    // One question at a time: the check control shows a spinner while a parse
-    // is in flight, and a second tap must not stack a second model call.
-    if (parsing) return;
     if (note.trim().length === 0) return;
     // Nothing new to read — the tap still closes the keyboard, it just does
     // not spend a model call re-asking an answered question.
     if (parsedSnapshot === note) return;
+    // One question at a time — but the second one WAITS, it is not thrown away
+    // (`reparseFor`). Two model calls at once is what the guard exists to
+    // prevent; a question nobody ever answers is not what it was for.
+    if (parsing) {
+      reparseFor = workoutId;
+      return;
+    }
     // The hold is over: this text IS the question now.
     clearParseBackoff(workoutId);
     clearParseRetry();
@@ -761,7 +793,7 @@ export const useSession = create<SessionState>((set, get) => ({
     scheduleSync();
   },
 
-  deleteNoteLine: (line, label = null) => {
+  deleteNoteLine: (line, labels = []) => {
     const { note, selectedDay } = get();
     const cut = removeLine(note, line);
     if (!cut) return;
@@ -771,7 +803,7 @@ export const useSession = create<SessionState>((set, get) => ({
       sheetLine: null,
       // Remembered BEFORE the write, so the offer is already standing by the
       // time the record re-renders without the entry in it.
-      lastDelete: { line: cut.line, text: cut.text, label, day: selectedDay, id: ++undoToken },
+      lastDelete: { line: cut.line, text: cut.text, labels, day: selectedDay, id: ++undoToken },
     });
     get().setNote(cut.note);
     // Deleting is deliberate: without a fresh reading the cards would keep
@@ -842,10 +874,11 @@ export const useSession = create<SessionState>((set, get) => ({
     const next = setEffortOnLine(lines[line]!, effort);
     if (next === lines[line]) return;
     lines[line] = next;
-    // Straight through setNote: SQLite in the same tick — and read now, so
-    // the engine gets the RIR while the sheet is still on screen.
+    // Straight through setNote: SQLite in the same tick, so the answer is the
+    // athlete's own words the instant it is tapped and survives the app dying
+    // on the sheet. The READING is asked for once, when the check-in closes —
+    // see the interface doc above.
     get().setNote(lines.join('\n'));
-    get().requestParse();
   },
 
   openEntryNote: (target) => set({ noteTarget: target }),
@@ -1015,7 +1048,28 @@ async function runParse(workoutId: string) {
       // Dots stay on while a retry is pending; off on success or final failure.
       useSession.setState({ parsing: outcome === null && parseRetryTimer !== null });
     }
+    drainReparse(workoutId);
   }
+}
+
+/**
+ * Ask again for the reading that was asked for mid-flight — see `reparseFor`.
+ *
+ * Every condition is re-checked against the state as it is NOW rather than as
+ * it was when the request came in: the workout must still be the open one, the
+ * text must still be unread, and a failure retry already queued for this note
+ * is the same question, so it is left to do the job. `parsing` is false by the
+ * time this runs (the `finally` above has already settled it), so this goes
+ * through the front door like any other request.
+ */
+function drainReparse(workoutId: string) {
+  const queued = reparseFor;
+  reparseFor = null;
+  if (queued !== workoutId || parseRetryTimer !== null) return;
+  const state = useSession.getState();
+  if (state.workoutId !== workoutId) return;
+  if (state.parsedSnapshot === state.note) return;
+  state.requestParse();
 }
 
 // A parse that lands via the sync loop (offline recovery, app-foreground

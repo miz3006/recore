@@ -79,6 +79,17 @@ export interface ReadItem {
   /** The unit the LINE was written in — display only; loads are always kg. */
   unit: 'kg' | 'lb';
   sets: ReadSet[];
+  /**
+   * THE PERSON'S OWN REMARKS about this movement, in writing order — "squat
+   * 5x5 140kg, last 2 were grindy" keeps *last 2 were grindy* (16 Sep 2026).
+   *
+   * These are the prose segments that follow a movement's sets: they used to
+   * be silently dropped, which was the one honest reading this grammar was
+   * missing — the real parser has lifted inline comments since
+   * PARSE_VERSION 6 and Today prints them under the card. Kept close to
+   * verbatim (`normalise` rewrites a few notations, never words).
+   */
+  notes: string[];
 }
 
 // --- bounds -------------------------------------------------------------------
@@ -248,16 +259,22 @@ export function readWrittenLine(raw: string): ReadItem[] {
     if (i > 0 && !looksLikeTraining(segment)) {
       if (previous && previous.sets.length === 0) {
         previous.sets.push(...inherit(read.sets, previous.load ?? read.load));
+      } else if (previous) {
+        // A REMARK, KEPT (16 Sep 2026). The movement before it already has its
+        // sets, so this prose is the person commenting on them — it used to be
+        // dropped on the floor here, and Today prints exactly this kind of
+        // sentence under the card. The segment travels near-verbatim.
+        previous.notes.push(segment.trim());
       }
       continue;
     }
 
-    items.push({ name: read.name, unit: read.unit, sets: read.sets, load: read.load });
+    items.push({ name: read.name, unit: read.unit, sets: read.sets, load: read.load, notes: [] });
   }
   // A movement nobody said anything about is not a record.
   return items
     .filter((item) => item.sets.length > 0)
-    .map(({ name, unit, sets }) => ({ name, unit, sets }));
+    .map(({ name, unit, sets, notes }) => ({ name, unit, sets, notes }));
 }
 
 /** Does this segment show any sign of being training rather than a remark? */

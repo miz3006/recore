@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
-import { joinNames, SwipeToDelete } from '@/components/swipe-to-delete';
+import { SwipeToDelete } from '@/components/swipe-to-delete';
 import {
   aliasEchoOf,
   Composer,
@@ -135,6 +135,7 @@ export function DemoPage({
    * live. */
   onLineRead,
   inputRef,
+  noteControl,
 }: {
   initialText: string;
   instruction: string;
@@ -144,6 +145,14 @@ export function DemoPage({
   onRecord: (record: DemoRecord) => void;
   onLineRead: (readings: number, source: 'typed' | 'example') => void;
   inputRef: React.RefObject<TextInput | null>;
+  /**
+   * THE DOOR DICTATION WRITES THROUGH (16 Sep 2026). The page owns its note;
+   * the screen owns the mic (exactly Today's division — `BottomToolbar` holds
+   * the dictation and writes into the session store). This hands the screen a
+   * read/write pair on the live note so the same `startDictation` wiring
+   * Today uses can land utterances here, line by line.
+   */
+  noteControl?: React.MutableRefObject<{ get: () => string; set: (text: string) => void } | null>;
 }) {
   const reduceMotion = useReducedMotion();
   const scrollRef = useRef<ScrollView>(null);
@@ -157,6 +166,19 @@ export function DemoPage({
    * "edit" an in-place replacement, with no second model to keep in step.
    */
   const [note, setNote] = useState(() => (initialText ? `${initialText}\n` : ''));
+  /** The note as a ref, so the control below never holds a stale string. */
+  const noteRef = useRef('');
+  useEffect(() => {
+    noteRef.current = note;
+  }, [note]);
+  useEffect(() => {
+    if (!noteControl) return;
+    noteControl.current = { get: () => noteRef.current, set: (text: string) => setNote(text) };
+    return () => {
+      noteControl.current = null;
+    };
+  }, [noteControl]);
+
   /** Rings the person has un-ticked. Keyed by the reading's own `doneKey`. */
   const [undone, setUndone] = useState<Set<string>>(new Set());
   /** Which card is showing the written words instead of the reading — one at a
@@ -280,37 +302,37 @@ export function DemoPage({
     inputRef.current?.blur();
   }, [activeIndex, lines, onLineRead, inputRef]);
 
+  const dropLine = (line: number) => {
+    setEditingLine(null);
+    setNote([...lines.slice(0, line), ...lines.slice(line + 1)].join('\n'));
+  };
+
   /**
-   * DELETE ASKS FIRST, AND NAMES WHAT GOES — Today's own words, because it is
-   * Today's own hazard: one written line can hold several readings ("bench 3x8,
-   * rows 3x10" is one line and two cards) and the line is the only honest unit
-   * to remove, so the person is told that before the finger commits.
+   * THE SWIPE NO LONGER ASKS, AND THE EDITOR'S DELETE STILL DOES — Today's own
+   * ruling (owner, 16 September 2026), because this screen's whole claim is
+   * that it IS Today. A gesture that stops to ask here and not there would
+   * teach the flow's one live surface a rule the app does not keep.
+   *
+   * The demo has no undo pill behind it, and it does not need one: nothing on
+   * this screen is the record yet. The words are a line typed thirty seconds
+   * ago to watch the parser read it, and the way back is typing it again.
+   *
+   * The copy is short of Today's for the same reason — "Undo is offered
+   * straight after" would be a promise this screen cannot keep, and §2 does
+   * not allow a sentence that is true one surface over.
    */
-  const confirmDeleteLine = (
-    line: number,
-    entry: { exercise: string; alsoOnLine: string[] } | null,
-  ) => {
-    const what = entry
-      ? entry.alsoOnLine.length > 0
-        ? `“${entry.exercise}” shares one written line with ${joinNames(entry.alsoOnLine)}, so all of them go.`
-        : `The line you wrote for “${entry.exercise}” is removed.`
-      : 'The line you wrote is removed.';
-    Alert.alert(
-      entry ? 'Delete this entry?' : 'Delete this line?',
-      `${what} This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            tapMedium();
-            setEditingLine(null);
-            setNote([...lines.slice(0, line), ...lines.slice(line + 1)].join('\n'));
-          },
+  const confirmDeleteLine = (line: number) => {
+    Alert.alert('Delete this line?', 'The line you wrote is removed.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          tapMedium();
+          dropLine(line);
         },
-      ],
-    );
+      },
+    ]);
   };
 
   // Every committed line becomes a block: the line under inline edit is an
@@ -329,7 +351,7 @@ export function DemoPage({
           value={raw}
           onChange={(t) => setLineText(line, t)}
           onDone={() => setEditingLine(null)}
-          onDelete={() => confirmDeleteLine(line, null)}
+          onDelete={() => confirmDeleteLine(line)}
           // The correction sheet is store-backed, so the link that opens it is
           // not drawn rather than drawn dead.
           onFix={null}
@@ -353,9 +375,10 @@ export function DemoPage({
       rows.forEach((row, j) => {
         const key = row.doneKey;
         const cardKey = `${i}:${j}:${row.exercise}`;
-        const siblings = rows.filter((r) => r !== row).map((r) => r.exercise);
-        const removeEntry = () =>
-          confirmDeleteLine(line, { exercise: row.exercise, alsoOnLine: siblings });
+        // Straight through, no dialog — the drag was the decision, and Today
+        // does the same. The line is still the unit: a run-on takes its
+        // neighbours' cards with it, visibly, in the same frame.
+        const removeEntry = () => dropLine(line);
         blocks.push(
           // Swipe left to remove it, the same gesture Today ships — the ⋯ menu
           // this replaced is gone from both (16 Sep 2026). There is no

@@ -1,6 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   InputAccessoryView,
   Keyboard,
   Platform,
@@ -11,12 +12,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { GlassGroup, GlassPressable, GlassSurface } from '@/components/glass';
+import { GlassGroup, GlassPressable } from '@/components/glass';
 import { Icon } from '@/components/icon';
 import { PressableScale } from '@/components/motion';
 import { track } from '@/lib/analytics';
-import { tap } from '@/lib/haptics';
-import { estimateVolume, groupThousands } from '@/lib/parse/estimate';
+import { tap, tapMedium } from '@/lib/haptics';
 import {
   alpha,
   color,
@@ -24,11 +24,11 @@ import {
   MAX_FONT_SCALE,
   moderateScale,
   radius,
-  readingStyle,
   shadow,
   spacing,
   type,
 } from '@/lib/theme';
+import { startDictation, voiceAvailable, type DictationHandle } from '@/lib/voice';
 import { useV2 } from '@/state/onboarding-v2';
 
 import { ContinueButton } from '../ContinueButton';
@@ -113,6 +113,59 @@ export function DemoScreen({ def, progress, onAdvance, onBack }: ScreenProps) {
   const [barHeight, setBarHeight] = useState(0);
   const field = useRef<TextInput>(null);
   const attempts = useRef(0);
+  /**
+   * THE MIC IS TODAY'S MIC (owner, 16 Sep 2026: "include a working mic — the
+   * same on-device dictation as Today"). Same `startDictation`, same
+   * utterance-per-line join, same listening state on the same round button;
+   * the only difference is where the words land — the page's own note,
+   * through the `noteControl` door, instead of the session store.
+   */
+  const [recording, setRecording] = useState(false);
+  const dictation = useRef<DictationHandle | null>(null);
+  const baseNote = useRef('');
+  const noteControl = useRef<{ get: () => string; set: (text: string) => void } | null>(null);
+
+  useEffect(
+    () => () => {
+      dictation.current?.stop();
+    },
+    [],
+  );
+
+  const handleMic = useCallback(async () => {
+    if (recording) {
+      tapMedium();
+      dictation.current?.stop();
+      return;
+    }
+    tap();
+    if (!voiceAvailable()) {
+      Alert.alert(
+        'Voice input',
+        'Dictation needs the development build (npx expo run:ios) — it is not available in Expo Go.',
+      );
+      return;
+    }
+    baseNote.current = (noteControl.current?.get() ?? '').replace(/\s+$/, '');
+    const handle = await startDictation({
+      onTranscript: (text, final) => {
+        const base = baseNote.current;
+        const joined = base.length > 0 ? `${base}\n${text}` : text;
+        noteControl.current?.set(joined);
+        if (final) baseNote.current = joined; // next utterance starts a new line
+      },
+      onEnd: () => {
+        dictation.current = null;
+        setRecording(false);
+      },
+    });
+    if (handle) {
+      dictation.current = handle;
+      setRecording(true);
+    } else {
+      Alert.alert('Voice input', 'Microphone or speech permission was not granted.');
+    }
+  }, [recording]);
 
   useEffect(() => {
     const show = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -174,8 +227,6 @@ export function DemoScreen({ def, progress, onAdvance, onBack }: ScreenProps) {
   // grammar missed is a line the real parser may well read, and refusing to let
   // somebody past their own writing would be the app calling it wrong (§3).
   const written = record.text.trim().length > 0;
-  const readings = record.entries.length;
-  const volume = estimateVolume(record.text);
 
   return (
     <Frame
@@ -196,6 +247,7 @@ export function DemoScreen({ def, progress, onAdvance, onBack }: ScreenProps) {
         onRecord={onRecord}
         onLineRead={onLineRead}
         inputRef={field}
+        noteControl={noteControl}
       />
 
       {/* THE BAR ON THE KEYBOARD. `InputAccessoryView` renders nothing until the
@@ -203,30 +255,29 @@ export function DemoScreen({ def, progress, onAdvance, onBack }: ScreenProps) {
           is the writing state and needs no flag of its own. */}
       <InputAccessoryView nativeID={ACCESSORY_ID}>
         <View style={[styles.barInner, styles.barWriting]}>
-          {/* WHAT THE PAGE HAS READ SO FAR, in the row Today prints its staged
-              total in and in the flow's own words for it (screen 7's echo says
-              "Read one line"). Silent until there is something to say: zero is
-              not a number worth speaking (CLAUDE.md §9).
-
-              It is a label, not a control. Today's is a pill because it opens
-              Progress; there is nowhere for this one to go, so it does not
-              pretend to be tappable. */}
-          {readings > 0 ? (
-            <View style={styles.status}>
-              <GlassSurface radius={radius.pill} />
-              <Text
-                style={styles.statusText}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-                maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                {readings === 1 ? 'read one line' : `read ${readings} lines`}
-                {volume > 0 ? ` · ${groupThousands(volume)} kg` : ''}
-              </Text>
-            </View>
-          ) : null}
-
+          {/* NO PILL OVER THE KEYBOARD (owner, 16 Sep 2026). The "read N
+              lines · volume" label that stood here followed Today's own
+              status pill out of the app — the moment the bar is up the person
+              is WRITING, and the reading is already on the page as cards. */}
           <GlassGroup style={styles.row}>
+            {/* THE MIC — Today's dictation, on Today's own control: outline
+                at rest, filled ink circle while it listens. */}
+            <GlassPressable
+              onPress={() => void handleMic()}
+              haptic="none"
+              activeScale={0.92}
+              radius={ROUND / 2}
+              style={styles.round}
+              contentStyle={styles.roundContent}
+              solidFill={recording ? color.accent : undefined}
+              accessibilityLabel={recording ? 'Stop dictation' : 'Dictate'}>
+              <Icon
+                name={recording ? 'mic-on' : 'mic'}
+                size={ACCESSORY_GLYPH}
+                tint={recording ? color.onInk : color.textPrimary}
+              />
+            </GlassPressable>
+
             {/* Put the keyboard away without settling anything — the same
                   labelled way down Today's accessory row offers, and the only
                   one this screen has (there is no navigation bar here to carry
@@ -337,18 +388,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: v2metrics.gutter,
     paddingTop: spacing.md,
-  },
-  status: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    minHeight: moderateScale(30),
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md + 2,
-  },
-  statusText: {
-    ...readingStyle('400'),
-    fontSize: moderateScale(11),
-    color: color.textSecondary,
   },
   row: {
     flexDirection: 'row',

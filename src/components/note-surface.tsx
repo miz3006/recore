@@ -36,7 +36,9 @@ import {
   lineFor,
   MAX_FONT_SCALE,
   moderateScale,
+  radius,
   readingStyle,
+  shadow,
   spacing,
   TAB_BAR_CLEARANCE,
 } from '@/lib/theme';
@@ -58,7 +60,7 @@ import { PressableScale } from './motion';
 import { BODY_PADDING_H, BODY_PADDING_TOP } from './note-metrics';
 import { noteInputRef, noteScrollRef } from './note-focus';
 import { SetTable, worthTable } from './set-table';
-import { DELETE_ROTOR_ACTIONS, joinNames, SwipeToDelete } from './swipe-to-delete';
+import { DELETE_ROTOR_ACTIONS, SwipeToDelete } from './swipe-to-delete';
 import { useSessionActive } from './use-session-active';
 
 /**
@@ -169,64 +171,54 @@ export function NoteSurface({
    * rather than inside the card only because the list owns "one at a time". */
   const [wordsKey, setWordsKey] = useState<string | null>(null);
   /**
-   * DELETE ASKS FIRST, AND NAMES WHAT GOES (20 August 2026).
+   * THE SWIPE NO LONGER ASKS (owner, 16 September 2026).
    *
-   * Two things were wrong with the one-tap delete. It removed a PHYSICAL LINE
-   * while calling itself "Delete entry", and one line can hold several entries
-   * ("bench 3x8, rows 3x10" is one line, two cards) — so deleting the bench
-   * silently took the rows with it. There is no fixing that by deleting less:
+   * This file argued the opposite for a month, and the argument held while
+   * both its halves did. `deleteNoteLine` splices out of `note`, which is
+   * `raw_text`, which is the record (§3) — and nothing could put it back. Two
+   * changes have since taken both halves away. `undo-delete.tsx` made the
+   * action reversible for six seconds, and delete stopped being a tap: it is a
+   * DRAG the thumb has to carry past 42 % of the screen, through a red block
+   * that appears under it and a haptic when it arms. Pulling that far IS the
+   * decision the dialog was asking for, and asking again on the far side of it
+   * is the app declining to believe the gesture it just built.
+   *
+   * WHAT THE DIALOG DID THAT THE UNDO DID NOT was NAME THE SIBLINGS. One
+   * written line can hold several readings ("bench 3x8, rows 3x10" is one
+   * line, two cards) and the line is the only honest unit to remove —
    * `ParsedItem` carries no offset back into the sentence, and guessing at a
-   * substring of what the athlete wrote would corrupt the record (§3). The line
-   * is the only honest unit, so the athlete is TOLD it is the unit — on the row
-   * itself (`alsoOnLine`) and again here.
+   * substring of what the athlete wrote would corrupt the record. That
+   * sentence was not dropped, it MOVED: the names travel with the delete and
+   * the pill prints every one of them, so the report of what went now arrives
+   * beside the way back rather than in front of it.
    *
-   * And it never asked. `deleteNoteLine` splices out of `note`, which is
-   * `raw_text`, which is the record — while the far gentler "Remove reading" in
-   * the fix sheet, which deletes nothing the athlete wrote, already stops to
-   * ask. Same Alert shape as that one, so the app has one destructive voice.
+   * THE INLINE EDITOR'S DELETE STILL ASKS, which is not an inconsistency but
+   * the same rule applied to a different door. It is a bare one-tap button
+   * beside an autofocused field — the accidental door, never the deliberate
+   * one — and there is no drag in front of it to have been the decision.
    *
-   * **THERE IS AN UNDO BEHIND IT NOW (11 September 2026)**, and this paragraph
-   * used to end "and there is no undo stack behind it" as the second half of
-   * the argument for asking. `undo-delete.tsx` closes that, so the dialog's
-   * last sentence — "This cannot be undone." — stopped being true and was
-   * replaced rather than kept: a warning that overstates what it is warning
-   * about is the kind of copy §2 exists to prevent, and it teaches the athlete
-   * to distrust the next warning too.
-   *
-   * The dialog itself stays, because it still does the one thing the undo
-   * cannot: it NAMES THE SIBLINGS that go with a run-on line before they go.
-   * For a line holding a single entry it is now pure friction on a reversible
-   * action, and dropping it there is the owner's call, not this file's.
-   *
-   * It runs from `onSelect`, i.e. after the sheet's native modal is gone. An
-   * alert is a presentation like any other, and UIKit will refuse it over a
-   * live modal exactly as it refuses a second sheet.
+   * It runs from a plain press, i.e. with no native modal of its own on
+   * screen. An alert is a presentation like any other, and UIKit will refuse
+   * it over a live modal exactly as it refuses a second sheet.
    */
-  const confirmDeleteLine = (
-    line: number,
-    /** The entry the ⋯ was tapped on, when that is where this came from. The
-     * inline editor deletes the line it is editing, and says so instead. */
-    entry: { exercise: string; alsoOnLine: string[] } | null,
-  ) => {
-    const what = entry
-      ? entry.alsoOnLine.length > 0
-        ? `“${entry.exercise}” shares one written line with ${joinNames(entry.alsoOnLine)}, so all of them go.`
-        : `The line you wrote for “${entry.exercise}” is removed from this session.`
-      : 'The line you wrote is removed from this session.';
-    Alert.alert(entry ? 'Delete this entry?' : 'Delete this line?', `${what} Undo is offered straight after.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          tapMedium();
-          // The entry's name travels with the delete so the undo pill can say
-          // WHAT it would bring back. A line with several entries on it has no
-          // one name, and the pill falls back to naming the line.
-          deleteNoteLine(line, entry && entry.alsoOnLine.length === 0 ? entry.exercise : null);
+  const confirmDeleteLine = (line: number, labels: string[]) => {
+    Alert.alert(
+      'Delete this line?',
+      'The line you wrote is removed from this session. Undo is offered straight after.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            tapMedium();
+            // Whatever the line was holding travels with the delete, so the
+            // undo pill can say WHAT it would bring back — all of it.
+            deleteNoteLine(line, labels);
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   const lines = note.split('\n');
@@ -448,12 +440,13 @@ export function NoteSurface({
           value={raw}
           onChange={(t) => setLineText(i, t)}
           onDone={stopEditLine}
-          // The SAME `deleteNoteLine`, so the same confirm — a bare one-tap
-          // Delete beside an autofocused field was the more accidental of the
-          // two doors, not the safer one. (It used to read "on a line with no
-          // undo behind it"; there is one now — `undo-delete.tsx` — which is
-          // why the dialog's copy no longer claims otherwise.)
-          onDelete={() => confirmDeleteLine(i, null)}
+          // THE ONE DOOR THAT STILL ASKS (16 September 2026). A bare one-tap
+          // Delete beside an autofocused field is the accidental door, and
+          // unlike the swipe there is no drag in front of it to be the
+          // decision. The names of whatever the line was holding go with it
+          // either way, so the undo pill reads the same whichever door was
+          // used — the line under edit is not always one entry.
+          onDelete={() => confirmDeleteLine(i, rows?.map((r) => r.exercise) ?? [])}
           // "Fix reading" repairs the PARSE of this line (wrong name, wrong
           // numbers) without touching the written words — only offered while
           // the line has a reading to fix.
@@ -480,11 +473,15 @@ export function NoteSurface({
         const cardKey = `${i}:${j}:${row.exercise}`;
         // The rest of this written line. Delete can only ever take the LINE —
         // the words are the record (§3) and nothing maps one card back to its
-        // slice of a run-on sentence — so the confirm has to be able to name
+        // slice of a run-on sentence — so the undo pill has to be able to name
         // who leaves with this card.
         const siblings = rows.filter((r) => r !== row).map((r) => r.exercise);
-        const removeEntry = () =>
-          confirmDeleteLine(row.line, { exercise: row.exercise, alsoOnLine: siblings });
+        // Straight through, no dialog: the drag was the decision and the pill
+        // is the report. No haptic here either — the gesture already fired its
+        // own when it armed, and a second one on the same action would read as
+        // a second thing happening. VoiceOver's copy of this door is announced
+        // by the pill instead (`undo-delete.tsx`).
+        const removeEntry = () => deleteNoteLine(row.line, [row.exercise, ...siblings]);
         pushBlock(
           /* SWIPE THE ROW LEFT TO REMOVE IT (owner, 16 September 2026) — the
              gesture that replaced the ⋯ menu's Delete row. It rests on
@@ -970,6 +967,49 @@ export const COMPOSER_HINT = 'like “bench 3x8 60, felt easy”';
  * the same component serves a page backed by SQLite and a page backed by
  * nothing at all.
  */
+/**
+ * THE CHECK THAT ASKS FOR A READING — the one control an unread line carries,
+ * and since 16 September 2026 the only way a written line becomes a record.
+ *
+ * IT IS A SHAPE NOW, NOT A GLYPH. It shipped as a bare blue checkmark drawn
+ * straight onto the paper, and on this canvas that is not a control: §Structure
+ * says the record is ink and *everything interactive floats as a white pill*,
+ * so a mark with nothing around it is read as a STATUS — "this line is done" —
+ * which is the exact opposite of what it means. Every confirm affordance on the
+ * phone is a shape with a glyph inside it, and the workout apps that solved
+ * this column first (Strong draws its per-set check as a filled tile under a
+ * ✓ header) did not draw a loose glyph either.
+ *
+ * So it takes the app's OWN accessory-button shape, one scale down from the
+ * keyboard row's 40: a white circle with `shadow.card`, the colour on the glyph
+ * and never on the circle (§Structure), brand blue on white at 5.97:1. The
+ * shadow is not decoration — a white pill on `canvas` is 1.05:1 by tone, so it
+ * is the only thing that separates the control from the page.
+ *
+ * 28 pt, so the pill sits on a line of text without making the row taller than
+ * the words in it, and the 44 pt target comes back as `hitSlop` (28 + 2 × 8),
+ * which costs no layout. No wash: the press dip IS the feedback on a floating
+ * pill, and a highlight inside a shadowed circle fights its own edge.
+ *
+ * ONE COMPONENT FOR BOTH PLACES IT STANDS — the unread card and the line being
+ * written. The owner's ruling is that those are the same control in the same
+ * column, and two copies of it would be two things to keep in step.
+ */
+function ConfirmMark({ onPress }: { onPress: () => void }) {
+  return (
+    <PressableScale
+      onPress={onPress}
+      haptic="none"
+      activeScale={0.9}
+      hitSlop={spacing.sm}
+      accessibilityRole="button"
+      accessibilityLabel="Read my note"
+      style={styles.confirmMark}>
+      <Icon name="check" size={moderateScale(15)} tint={color.brand} />
+    </PressableScale>
+  );
+}
+
 export function Composer({
   inputRef,
   value,
@@ -1167,17 +1207,8 @@ export function Composer({
             // right of the same line's column (owner, 16 September 2026).
             <Animated.View
               entering={reduceMotion ? undefined : FadeIn.duration(180)}
-              style={styles.previewPending}>
-              <PressableScale
-                onPress={onConfirm}
-                haptic="none"
-                activeScale={0.88}
-                hitSlop={spacing.md}
-                accessibilityRole="button"
-                accessibilityLabel="Read my note"
-                style={styles.confirmMark}>
-                <Icon name="check" size={moderateScale(20)} tint={color.brand} />
-              </PressableScale>
+              style={[styles.previewPending, styles.confirmSlot]}>
+              <ConfirmMark onPress={onConfirm} />
             </Animated.View>
           ) : null}
         </Animated.View>
@@ -1399,8 +1430,10 @@ export function ExerciseCard({
 
               Outline while there is nothing written, filled once there is —
               the state IS the glyph, so a card with a remark on it says so at
-              the same size it says everything else. (The remark is quoted
-              under the card too; this is the way in to change it.) */}
+              the same size it says everything else. The remark itself prints
+              under the card wearing THIS SAME BUBBLE (`Remark`), so the door
+              and what comes through it are one mark; this is the way in to
+              change it. */}
           {onNote ? (
             <PressableScale
               onPress={onNote}
@@ -1466,21 +1499,13 @@ export function ExerciseCard({
             the editor, which is where these words live (`raw_text`) and the
             one place they can be changed. */}
         {row.comments.map((comment, ci) => (
-          <Text
-            key={`cm:${ci}`}
-            style={styles.commentText}
-            maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {`“${comment}”`}
-          </Text>
+          <Remark key={`cm:${ci}`} text={comment} />
         ))}
-        {/* The remark, quoted under its own entry: the athlete's words sit in
-            the record they were written about, not behind a sheet. Two lines at
-            most — the whole note is one tap away, on the glyph above. */}
-        {note ? (
-          <Text style={styles.exNote} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {`“${note}”`}
-          </Text>
-        ) : null}
+        {/* The remark, under its own entry: the athlete's words sit in the
+            record they were written about, not behind a sheet. Two lines at
+            most — the whole note is one tap away, on the glyph above, which is
+            the same bubble this line is marked with. */}
+        {note ? <Remark text={note} numberOfLines={2} /> : null}
       </PressableScale>
     </Animated.View>
   );
@@ -1622,17 +1647,40 @@ export function EditRow({
             allowFontScaling
             maxFontSizeMultiplier={MAX_FONT_SCALE}
           />
+          {/* DELETE IS THE GLYPH, NOT THE WORD (owner, 16 September 2026).
+              It was the word "Delete" in red beside the field — the only
+              control on this page spelled out in letters, and a label is what
+              a mark needs only when the mark is ambiguous. The trash is not:
+              it is the destructive mark on this phone, and iOS spends red on
+              exactly one row of a menu to say so (Ulysses, Daylio, Mail — all
+              the same outline trash in red, every other glyph ink).
+
+              It is also the SAME GLYPH THE SWIPE SHOWS (`swipe-to-delete.tsx`),
+              which matters more than the word did: one action has one mark, so
+              the two doors to it are recognisably one thing.
+
+              A BARE GLYPH, not a pill — the shape is the urgency on this page.
+              The confirm check takes a white pill because nothing is recorded
+              until it is pressed; this asks for nothing, so it rests as ink the
+              way the note bubble does two rows up.
+
+              THE LABEL MOVES TO VOICEOVER RATHER THAN DISAPPEARING. The word
+              was the accessible name; with it gone the button needs one
+              stated, or a screen reader reaches an unnamed control on the one
+              row where the mistake is unrecoverable. */}
           <PressableScale
             onPress={onDelete}
             haptic="none"
             activeScale={0.94}
+            // 20 pt glyph + 2 × 4 padding = 28, and the target is restored
+            // without layout: 28 + 2 × 8 = 44 (§14).
             hitSlop={spacing.sm}
             wash
             washStyle={styles.btnWash}
+            accessibilityRole="button"
+            accessibilityLabel="Delete this line"
             style={styles.deleteBtn}>
-            <Text style={styles.deleteText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              Delete
-            </Text>
+            <Icon name="trash" size={moderateScale(20)} tint={color.error} />
           </PressableScale>
         </View>
         <View style={styles.editHintRow}>
@@ -1761,20 +1809,7 @@ export function PendingCard({
               the dots while one is in flight — same slot, so the tap and the
               work it starts trade places without anything moving. */}
           <View style={styles.pendingMark}>
-            {reading ? (
-              <ReadingMark />
-            ) : onConfirm ? (
-              <PressableScale
-                onPress={onConfirm}
-                haptic="none"
-                activeScale={0.88}
-                hitSlop={spacing.md}
-                accessibilityRole="button"
-                accessibilityLabel="Read my note"
-                style={styles.confirmMark}>
-                <Icon name="check" size={moderateScale(20)} tint={color.brand} />
-              </PressableScale>
-            ) : null}
+            {reading ? <ReadingMark /> : onConfirm ? <ConfirmMark onPress={onConfirm} /> : null}
           </View>
         </View>
       </PressableScale>
@@ -1804,18 +1839,60 @@ const NOTE_META: Record<UnreadLineGap, string> = {
  * them, and the ledger read as though the athlete had said something
  * unrelated in the middle of their session.
  *
- * So it is drawn as a quote hanging under that card: no rail mark of its own
- * (it is not a separate record), indented onto the card's own text column so
- * it reads as a continuation of it, in the same quiet voice the per-entry note
- * already speaks in (`exNote`). The gap above it is tight and the gap below it
- * is the record's own, which is what makes it look attached rather than
- * merely nearby.
+ * So it hangs under that card: no rail mark of its own (it is not a separate
+ * record), indented onto the card's own text column so it reads as a
+ * continuation of it, in the same quiet voice — the bubble and the ink of
+ * `Remark` — that the per-entry note speaks in. The gap above it is tight and
+ * the gap below it is the record's own, which is what makes it look attached
+ * rather than merely nearby.
  *
  * It is NOT the per-entry note (`workouts.entry_notes`): these words live in
  * `raw_text` like every other line the athlete wrote, and tapping them opens
  * that line in the editor. Nothing here is a projection the parser owns —
  * this component only decides where the line is printed.
  */
+/**
+ * THE ATHLETE'S OWN WORDS, WHEREVER THEY WERE WRITTEN (16 September 2026).
+ *
+ * Three surfaces print a remark about one lift — words typed inside the line
+ * ("bench 100x5, tehnika super"), a prose line written under it, and the note
+ * kept in `entry_notes` — and all three were drawn as curly-quoted grey text.
+ * Quotation marks were doing a job punctuation should not have to do: saying
+ * *whose voice this is*. They are also the only curly quotes on the page, and
+ * they cost the line two characters of width on a surface where an exercise
+ * name already truncates.
+ *
+ * The mark does it instead, and it is THE SAME BUBBLE the card's own note
+ * button wears — so the door and what comes through it share a glyph, and a
+ * person who taps the bubble sees a bubble appear under the entry. Muted,
+ * because the mark only labels the line and the prose carries the meaning
+ * (§Colour: *colour marks, ink speaks*); `textSecondary` for the words, which
+ * are information.
+ *
+ * It also settles a real ambiguity on a dense card. The footer already holds
+ * the app's own computed lines — the comparison, the amber gap — in the reading
+ * face, and the remark is sans; the voices were distinct but only to someone
+ * looking for it. A glyph in front of one of them is distinct at a glance.
+ */
+function Remark({ text, numberOfLines }: { text: string; numberOfLines?: number }) {
+  return (
+    <View style={styles.remark}>
+      {/* A box on the text's own line height, so the bubble sits on the FIRST
+          line's optical centre whether the remark runs to one line or three —
+          a glyph aligned to the top of a wrapping paragraph drifts. */}
+      <View style={styles.remarkGlyph}>
+        <Icon name="note" size={moderateScale(12)} tint={color.textMuted} />
+      </View>
+      <Text
+        style={styles.remarkText}
+        numberOfLines={numberOfLines}
+        maxFontSizeMultiplier={MAX_FONT_SCALE}>
+        {text}
+      </Text>
+    </View>
+  );
+}
+
 function CommentLine({
   text,
   reduceMotion,
@@ -1837,9 +1914,7 @@ function CommentLine({
         accessibilityHint="Opens this line for editing"
         accessibilityLabel={`Your note: ${text}`}
         style={styles.commentRow}>
-        <Text style={styles.commentText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          {`“${text}”`}
-        </Text>
+        <Remark text={text} />
       </PressableScale>
     </Animated.View>
   );
@@ -1897,6 +1972,15 @@ export function NoteCard({
 const MARK = moderateScale(22);
 /** The pending line's own text box — see `pendingText`. */
 const PENDING_LINE = lineFor(22);
+/**
+ * The confirm pill's diameter (`ConfirmMark`). 28 so it centres on a line of
+ * text without making the row taller than the words, and so `spacing.sm` of
+ * hitSlop on each side restores exactly the 44 pt target: 28 + 2 × 8.
+ */
+const CONFIRM_PILL = moderateScale(28);
+/** One line box for a remark — the glyph's slot and the prose's line height are
+ * the same number, which is what puts the bubble on the first line's centre. */
+const REMARK_LINE = lineFor(18);
 const RAIL_W = MARK;
 /** Ring → text. It absorbed the 12 pt the rail gave back, so the text did not
  * move when the ring did. */
@@ -2125,17 +2209,39 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(11.5),
     color: color.warning,
   },
-  // The athlete's own words under their entry. Prose, so it leaves the mono
-  // voice the readings speak in — this is the one line on the card that Recore
-  // did not compute.
-  exNote: {
-    marginTop: 2,
+  /**
+   * THE ATHLETE'S OWN WORDS UNDER THEIR ENTRY (see `Remark`). Prose, so it
+   * leaves the reading voice the numbers speak in — this is the one line on the
+   * card that Recore did not compute — and it wears the note bubble rather than
+   * a pair of curly quotes, so the mark says whose voice it is and the
+   * punctuation goes back to being punctuation.
+   *
+   * `flex-start` on the row, not `center`: a remark that wraps to three lines
+   * must keep its mark on the FIRST one, beside where the sentence starts.
+   */
+  remark: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs + 2,
+    marginTop: 3,
+  },
+  /** `minHeight`, never `height`, around a glyph that sits on a label's line
+   * (design skill §Typography) — the reader's text size grows the line and a
+   * fixed box would hold the bubble above it. */
+  remarkGlyph: {
+    minHeight: REMARK_LINE,
+    justifyContent: 'center',
+  },
+  remarkText: {
+    // The words take the rest of the row, so a long remark wraps under itself
+    // rather than pushing the card wider than the record it belongs to.
+    flex: 1,
     fontSize: moderateScale(13),
-    lineHeight: lineFor(18),
+    lineHeight: REMARK_LINE,
     color: color.textSecondary,
   },
   /**
-   * The quote hanging under its card. Indented onto the card's own text column
+   * The remark hanging under its card. Indented onto the card's own text column
    * (`RAIL_W + RAIL_GAP` — the rail is deliberately empty: a comment is not a
    * second record and must not grow a second check mark), and the vertical
    * rhythm does the attaching: it sits close under the card it belongs to
@@ -2147,15 +2253,10 @@ const styles = StyleSheet.create({
     paddingLeft: RAIL_W + RAIL_GAP,
     paddingBottom: spacing.xs,
   },
-  /** One voice for the athlete's own remark, wherever it was written: on its
-   * own line (`CommentLine`, which adds the indent and the press wash) or
-   * inline beside the sets (quoted inside the card, which already has both). */
-  commentText: {
-    marginTop: 2,
-    fontSize: moderateScale(13),
-    lineHeight: lineFor(18),
-    color: color.textSecondary,
-  },
+  /* (`commentText` and `exNote` were one style written twice — "one voice for
+     the athlete's own remark, wherever it was written". That voice is a
+     COMPONENT now, `Remark`, so the two cannot drift and the glyph in front of
+     the words arrives on all three surfaces at once.) */
   /**
    * THE GLYPH IS ALIGNED BY ITSELF, NOT BY ITS BOX (9 September 2026).
    *
@@ -2212,16 +2313,50 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     color: color.textSecondary,
   },
-  /** The ⋯ column, one text line tall and centred inside it — so the dots sit
-   * on the words' own centre whatever is stacked below them. */
+  /**
+   * The mark's column — so whatever stands in it sits on the words' own centre
+   * whatever is stacked below them.
+   *
+   * IT IS THE PILL'S HEIGHT, NOT THE LINE'S, AND THAT IS A YOGA FACT (measured
+   * on the iPhone 17 Pro, 16 September 2026). The slot used to be exactly one
+   * text line tall with `justifyContent: 'center'`, which is correct for the
+   * reading dots and wrong for anything TALLER than the line: Yoga clamps an
+   * oversized child to the top of a fixed-height box instead of overflowing it
+   * both ways, so the 28 pt confirm pill hung with its centre at **152.5 pt**
+   * against the check ring's **149.2** and the words' own ink centre at
+   * **148.0** — 3–4 pt of droop, which is exactly the "too small to name and
+   * too large to miss" error this file's other alignment notes are about.
+   *
+   * Taking the pill's height and paying the difference back as a negative
+   * margin puts the slot's centre exactly where the one-line slot's was, so
+   * **the dots do not move at all** — which is the whole point of the column:
+   * the tap and the work it starts trade places without anything shifting.
+   */
   pendingMark: {
-    height: PENDING_LINE,
+    height: CONFIRM_PILL,
+    marginTop: (PENDING_LINE - CONFIRM_PILL) / 2,
     justifyContent: 'center',
   },
-  /** The check in the dots' own slot: glyph-sized so the column never grows,
-   * the 44 pt target restored by hitSlop (20 + 2×12 = 44, §14). */
+  /**
+   * THE CONFIRM PILL (see `ConfirmMark`). A white circle on the warm canvas is
+   * **1.05:1 by tone**, so `shadow.card` is not decoration here — it is the
+   * only thing that separates the control from the page (`elevation.ts`). No
+   * `borderCurve`: a full circle has no squircle to continue.
+   */
   confirmMark: {
-    alignItems: 'flex-end',
+    width: CONFIRM_PILL,
+    height: CONFIRM_PILL,
+    borderRadius: radius.pill,
+    backgroundColor: color.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadow.card,
+  },
+  /** The same pill under the line being WRITTEN. It needs the air the card's
+   * own `paddingVertical` gives the other one, or it crowds the field it sits
+   * beneath. */
+  confirmSlot: {
+    marginTop: spacing.xs,
   },
   /** The words' row, and the only row this card has: the line on the left,
    * whatever the app has to say about it hard against the right, and the ⋯
@@ -2297,16 +2432,37 @@ const styles = StyleSheet.create({
   editInput: {
     flex: 1,
   },
+  /**
+   * The edit row's delete. Sized by its glyph and aligned by it, exactly as
+   * `sideBtn` is: `paddingRight: 0` puts the trash's own box on the page
+   * margin, so it stands in the SAME COLUMN as the settled card's note bubble
+   * and the unread line's confirm pill — one right edge for everything the app
+   * puts beside a record, whichever state that record is in.
+   *
+   * (`deleteText` went with the word it styled.)
+   */
   deleteBtn: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    paddingLeft: spacing.sm,
     paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
     borderRadius: moderateScale(8),
     borderCurve: 'continuous',
-  },
-  deleteText: {
-    fontSize: moderateScale(13),
-    fontWeight: '600',
-    color: color.error,
+    /**
+     * IT CENTRES ON THE WRITTEN LINE, NOT ON THE FIELD'S BOX. `editLine` sets
+     * `alignItems: 'center'`, which centres the glyph on the TextInput's box —
+     * and a field's ink does not sit in the middle of its own line box, because
+     * the room below a descender is not the room above a cap. Measured on the
+     * iPhone 17 Pro: the trash's ink centre at **339.2 pt** against the typed
+     * line's **342.8**. The word "Delete" hid it; two pieces of text read as
+     * aligned on their baselines, and a glyph beside text does not.
+     *
+     * The pair shifts the glyph down by exactly `spacing.xs` (a one-sided
+     * margin would only move a centred item by half of it), which is 3.6 pt
+     * rounded to the token the rest of this row is spaced with.
+     */
+    marginTop: spacing.xs,
+    marginBottom: -spacing.xs,
   },
   previewRow: {
     flexDirection: 'row',

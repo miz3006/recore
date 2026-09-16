@@ -295,3 +295,34 @@ export const ALL_HEADLINES: readonly string[] = [
   ...Object.values(HEADLINE),
   HEADLINE_FALLBACK,
 ];
+
+/**
+ * THE TESTER PASS — what the paywall says in a beta build, and the only copy
+ * in this file that is not assembled from a person's answers.
+ *
+ * A beta build (`isBetaUnlocked`, `lib/env.ts`) carries no store key by
+ * construction, so the screen those builds used to skip could only have said
+ * "Prices unavailable". These four lines are what it says instead, and every
+ * one of them is written against the same invariant the rest of the screen is:
+ * **it promises nothing a store has to keep.** No amount, no trial length, no
+ * renewal date, no Restore, no "your trial starts today" — `copy.test.ts`
+ * asserts that not one of these strings can contain a digit or a currency
+ * mark, which is the mechanical version of that sentence.
+ *
+ * The thank-you is the owner's, 16 September 2026. It is the one line here
+ * that is not a fact about the build, and it is allowed for the reason §3
+ * forbids the things beside it: it makes no claim about anyone else, counts
+ * nobody, rates nothing, and cannot be wrong.
+ */
+export const BETA_COPY = {
+  /** The status, beside a check. The screen's one statement of fact. */
+  badge: 'Free while Recore is being tested',
+  /** Why it is free, in the same words the You tab uses for the same build. */
+  body:
+    'No store is attached to this build. Nothing is charged, nothing is running down, and there is nothing to cancel — the whole app is open.',
+  /** The thank-you. */
+  thanks:
+    'Thank you to everyone who tests Recore. You are using it before it is finished, and what you log here — and everything about it that gets in your way — is what decides the version that ships.',
+  /** The button, and it says what it does. */
+  cta: 'Continue — free for testers',
+} as const;

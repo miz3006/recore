@@ -85,7 +85,10 @@ import { Segmented } from './settings-rows';
  *  2. **How each lift felt** — three answers, not four (`lib/effort.ts`). A tap
  *     APPENDS `rpe 9` into the line the user wrote, so the parser reads it like
  *     any other word and the engine gets its RIR through the one path it
- *     already has. The words are the record (§3).
+ *     already has. The words are the record (§3). Writing it is instant;
+ *     READING it is asked for once, when the sheet closes — see `commit`, and
+ *     the paragraph there on why the athlete must not be sent back to Today to
+ *     confirm each lift by hand.
  *  3. **Anything worth remembering** — the reflection, in its own column on the
  *     workout. Prose about the session, not notation inside it: appending it to
  *     `raw_text` would hand "legs felt heavy" to the parser, and a re-parse
@@ -141,6 +144,7 @@ export function CheckInSheet() {
   const receipt = useSession((s) => s.receipt);
   const workoutId = useSession((s) => s.workoutId);
   const setLineEffort = useSession((s) => s.setLineEffort);
+  const requestParse = useSession((s) => s.requestParse);
   const note = useCurrentNote();
 
   const [text, setText] = useState('');
@@ -159,6 +163,12 @@ export function CheckInSheet() {
   // receipt shows the note instead of an empty field, and so the §13 event
   // fires on a genuinely NEW reflection rather than on every edit.
   const stored = useRef<string | null>(null);
+  /**
+   * Has an answer here rewritten a line of the note this visit? A ref, not
+   * state: nothing on screen depends on it, and it has to survive the
+   * re-render every answer causes so `commit` can still see it on the way out.
+   */
+  const answered = useRef(false);
 
   /**
    * What is on the sheet right now, readable from a cleanup that closes over
@@ -282,6 +292,29 @@ export function CheckInSheet() {
   const commit = () => {
     const { text: t, tags: g, workoutId: id } = latest.current;
     if (!id) return;
+
+    /**
+     * THE ANSWERS ARE READ WHEN THE SHEET CLOSES (owner, 16 September 2026).
+     *
+     * Every answer above has already rewritten its line — `rpe 7` is in the
+     * athlete's own words the instant it is tapped. What it is NOT yet is a
+     * reading: the note went back on the writing hold with the edit, so the
+     * lift sat on Today as an unread line wearing the confirm check, and the
+     * athlete was asked to tick off each exercise a second time for an answer
+     * they had just given. Done is the ask. One request for the whole sheet,
+     * however many lifts were answered — the parse reads the note, not a line.
+     *
+     * Before the reflection write and outside its guard, because leaving the
+     * words untouched is the common case and it must not cost the lifts their
+     * reading. `requestParse` no-ops when there is nothing new to read, and
+     * the flag is lowered here so the unmount pass that follows Done does not
+     * ask twice.
+     */
+    if (answered.current) {
+      answered.current = false;
+      requestParse();
+    }
+
     const next = composeReflection(g, t);
     if (next === stored.current) return;
     setReflection(id, next);
@@ -562,7 +595,10 @@ export function CheckInSheet() {
                     label: EFFORT_CHOICE_LABEL[e],
                   }))}
                   selected={row.current}
-                  onSelect={(e) => setLineEffort(row.line, row.current === e ? null : e)}
+                  onSelect={(e) => {
+                    answered.current = true;
+                    setLineEffort(row.line, row.current === e ? null : e);
+                  }}
                   labelFor={(e) => `${row.exercise}: ${EFFORT_CHOICE_LABEL[e]}, ${EFFORT_HINT[e]}`}
                 />
               </View>

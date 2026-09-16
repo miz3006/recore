@@ -109,13 +109,14 @@ export const ORDER: readonly string[] = [
 /** §4's table, verbatim, keyed by screen id. Screens absent from this map have
  * no character — every question screen, and the demo. */
 export const PRESENCE: Readonly<Record<string, CharacterDeclaration>> = {
-  // Welcome — "Settles in with a small spring".
-  welcome: { present: true, placement: 'hero', weight: 50, art: 'arriving' },
-  // The obstacle insight — the flow's clearest case of §4's own rule: "it
-  // appears only where the app speaks to the user, never where it asks them
-  // something". This screen asks nothing and carries no figure, so both hard
-  // rules pass and the character can react to what was just said.
-  'obstacle-insight': { present: true, placement: 'below', weight: 60, art: 'greeting' },
+  // Welcome — GONE 16 September 2026 (owner's directive): the hero band now
+  // holds a drawn iPhone with the Today page performing itself. The character
+  // did not lose an argument about rules; the screen's subject changed.
+  welcome: { present: false, placement: 'hero', weight: 50, art: 'arriving' },
+  // The obstacle insight — GONE 16 September 2026 with the same directive:
+  // the top half of the screen belongs to the grid-collapse demonstration,
+  // and a character beside a demonstration competes with it.
+  'obstacle-insight': { present: false, placement: 'below', weight: 60, art: 'greeting' },
   // The read — §4 "Optional, small … only if it reacts to or points at the
   // content". The content is a parsed table of loads and reps. Rule 1.
   reading: { present: true, placement: 'aside', nearNumber: true, weight: 10, art: 'greeting' },
@@ -123,10 +124,12 @@ export const PRESENCE: Readonly<Record<string, CharacterDeclaration>> = {
   greeting: { present: true, placement: 'hero', weight: 90, art: 'greeting' },
   // Why overload works — one chart built from their own loads. Rule 1.
   overload: { present: true, placement: 'aside', nearNumber: true, weight: 10, art: 'building' },
-  // Commitment — "Reacts as the hold completes". Loses to building on rule 2.
-  commit: { present: true, placement: 'aside', weight: 40, art: 'committing' },
-  // Building — the signature placement, inside the rotating ring.
-  building: { present: true, placement: 'ring', weight: 100, art: 'building' },
+  // Commitment — "Reacts as the hold completes". The completion moment is the
+  // emoji burst now (owner, 16 Sep 2026), so the drawn figure stays out.
+  commit: { present: false, placement: 'aside', weight: 40, art: 'committing' },
+  // Building — GONE 16 September 2026: the ring it stood inside was replaced
+  // by the bottom-to-top brand fill, which is the screen's one subject.
+  building: { present: false, placement: 'ring', weight: 100, art: 'building' },
   // Reveal — "Small, to one side. The numbers are the subject." Rule 1.
   reveal: { present: true, placement: 'aside', nearNumber: true, weight: 20, art: 'greeting' },
 };

@@ -44,20 +44,17 @@ test('rule 2 — the character never appears on two consecutive screens', () => 
   }
 });
 
-test('a conflicting pair is resolved by weight, not by order', () => {
-  // commit and building are both declared present and adjacent. building
-  // carries more weight (the flow's signature placement) so commit yields.
-  assert.equal(characterFor('commit'), null);
-  assert.notEqual(characterFor('building'), null);
+test('the redesigned screens carry no character (owner, 16 Sep 2026)', () => {
+  // The premium pass gave welcome to the drawn phone, the obstacle insight to
+  // the grid-collapse demonstration, commit's completion to the emoji burst
+  // and building to the brand fill. The table says so; the resolver obeys.
+  for (const id of ['welcome', 'obstacle-insight', 'commit', 'building']) {
+    assert.equal(characterFor(id), null, `${id} should no longer show the character`);
+  }
 });
 
-test('the resolved set is welcome, the obstacle insight, greeting and building', () => {
-  assert.deepEqual(Object.keys(RESOLVED).sort(), [
-    'building',
-    'greeting',
-    'obstacle-insight',
-    'welcome',
-  ]);
+test('the resolved set is the greeting alone', () => {
+  assert.deepEqual(Object.keys(RESOLVED).sort(), ['greeting']);
 });
 
 /**

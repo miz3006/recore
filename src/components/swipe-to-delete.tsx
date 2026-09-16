@@ -134,10 +134,18 @@ export function SwipeToDelete({
 }: {
   children: ReactNode;
   /**
-   * Remove this row from the record. It may raise a confirm of its own (a
-   * run-on line takes its neighbours with it) and it may be cancelled — the
-   * row is put back either way, so a dialog dismissed leaves the ledger exactly
-   * as it was.
+   * Remove this row from the record, straight away.
+   *
+   * IT DOES NOT ASK (owner, 16 September 2026). It used to raise a confirm —
+   * a run-on line takes its neighbours with it and somebody had to be told —
+   * and the owner's ruling is that the drag past `COMMIT` already IS the
+   * answer to that question. What the dialog said still gets said: the names
+   * travel with the delete and the undo pill prints them. See the long note in
+   * `note-surface.tsx` for the whole argument.
+   *
+   * The row is still reset after the call either way (`commit`), so a caller
+   * that DOES stop to ask — the demo has no undo pill, so its inline editor
+   * still does — leaves the ledger exactly as it was when the dialog goes.
    */
   onDelete: () => void;
   label?: string;
@@ -210,9 +218,10 @@ export function SwipeToDelete({
   /**
    * Remove it, then put the row back where it started. The reset is not a
    * contradiction: a deleted card unmounts in the same React commit and never
-   * draws again, while a card whose confirm was cancelled has to be sitting
-   * square on the page when the dialog goes. One path covers both, so there is
-   * no state saying which happened.
+   * draws again, while a card whose `onDelete` declined to delete has to be
+   * sitting square on the page afterwards. One path covers both, so there is
+   * no state saying which happened — and that is why the reset stays now that
+   * the swipe's own confirm is gone.
    */
   const commit = useCallback(() => {
     if (openRowId === id) openRowId = null;
@@ -370,9 +379,10 @@ export const DELETE_ROTOR_ACTIONS = [{ name: 'delete', label: 'Delete' }] as con
 
 /**
  * "A", "A and B", "A, B and C" — the ONE voice for naming the entries that
- * share a written line. It lived on the ⋯ sheet until that sheet was deleted;
- * the delete confirm is the last thing that needs it, and this is where delete
- * lives now.
+ * share a written line. It lived on the ⋯ sheet until that sheet was deleted,
+ * and it now belongs to the undo pill (`undo-delete.tsx`), which names what a
+ * delete took now that the swipe no longer asks first. This is where delete
+ * lives, so this is where the voice lives.
  */
 export function joinNames(names: string[]): string {
   if (names.length <= 1) return names[0] ?? '';

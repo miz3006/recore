@@ -1,22 +1,31 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ChecklistRow, Enter, SpringBar, TrackingNumber } from '@/lib/motion/index';
+import { ChecklistRow, Enter, push, REDUCED_FADE_MS, SpringBar, tick, TrackingNumber } from '@/lib/motion/index';
 import { MAX_FONT_SCALE, moderateScale, readingStyle, spacing, type } from '@/lib/theme';
 import { useV2 } from '@/state/onboarding-v2';
 
-import { Character } from '../Character';
 import { Check } from '../Check';
 import { v2color, v2metrics } from '../tokens';
 import type { ScreenProps } from './types';
 
 /** §3: "2.5–3.5s total. Do not make it faster." Four steps, 720 ms apart, with
- * a beat before the first and a beat after the last. */
+ * a beat before the first and a long enough beat after the last for "built"
+ * to be READ rather than flashed — the screen still leaves on its own
+ * (owner, 16 Sep 2026: "show that the plan is built, then auto-advance with
+ * no tap"). */
 const FIRST_MS = 420;
 const STEP_MS = 720;
-const TAIL_MS = 620;
+const BUILT_MS = 1150;
 
 /**
  * SCREEN 16 — GRADIM TVOJ PLAN.
@@ -75,7 +84,7 @@ export function BuildingScreen({ def, onAdvance }: ScreenProps) {
       const timers = steps.map((step, i) => setTimeout(() => setStage(i + 1), step.delay));
       const finish = setTimeout(
         onAdvance,
-        FIRST_MS + STEP_MS * (steps.length - 1) + TAIL_MS,
+        FIRST_MS + STEP_MS * (steps.length - 1) + BUILT_MS,
       );
       return () => {
         timers.forEach(clearTimeout);
@@ -85,13 +94,19 @@ export function BuildingScreen({ def, onAdvance }: ScreenProps) {
   );
 
   const percent = Math.round((stage / steps.length) * 100);
+  const built = stage >= steps.length;
 
   return (
     <View
       style={[styles.screen, { paddingTop: insets.top + spacing.huge, paddingBottom: insets.bottom }]}
       testID="v2-screen-building">
-      <Enter index={0} from={0}>
-        <Character screen={def.id} />
+      {/* THE FILL REPLACED THE RING (owner, 16 Sep 2026): one shape, the
+          app's own squircle, filling bottom-to-top in the brand blue as the
+          work below reports itself done. It is `stage / steps` made visible —
+          the same honest number as the percentage and the bar, never a timer
+          with nothing behind it. */}
+      <Enter index={0} from={0} style={styles.shapeRow}>
+        <FillShape fraction={stage / steps.length} built={built} />
       </Enter>
 
       <View style={styles.head}>
@@ -101,13 +116,13 @@ export function BuildingScreen({ def, onAdvance }: ScreenProps) {
               value={percent}
               suffix="%"
               style={styles.percent}
-              accessibilityLabel={`${percent} odstotkov`}
+              accessibilityLabel={`${percent} percent`}
             />
           </View>
         </Enter>
         <Enter index={2}>
           <Text style={styles.headline} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {def.headline}
+            {built ? 'Your plan is built.' : def.headline}
           </Text>
         </Enter>
       </View>
@@ -145,7 +160,54 @@ export function BuildingScreen({ def, onAdvance }: ScreenProps) {
   );
 }
 
+/**
+ * The squircle that fills as the plan is built. The fill is a full-height
+ * layer scaled from its bottom edge — transform only, never an animated
+ * height — and the check belongs to 100% alone.
+ */
+function FillShape({ fraction, built }: { fraction: number; built: boolean }) {
+  const reduced = useReducedMotion();
+  const fill = useSharedValue(0);
+  const checkIn = useSharedValue(0);
+
+  useEffect(() => {
+    fill.value = reduced
+      ? withTiming(fraction, { duration: REDUCED_FADE_MS })
+      : withSpring(fraction, push);
+  }, [fill, fraction, reduced]);
+  useEffect(() => {
+    checkIn.value = built
+      ? reduced
+        ? withTiming(1, { duration: REDUCED_FADE_MS })
+        : withSpring(1, tick)
+      : 0;
+  }, [built, checkIn, reduced]);
+
+  const fillStyle = useAnimatedStyle(() => ({
+    transform: [{ scaleY: Math.max(fill.value, 0.0001) }],
+  }));
+  const checkStyle = useAnimatedStyle(() => ({
+    opacity: checkIn.value,
+    transform: [{ scale: 0.5 + checkIn.value * 0.5 }],
+  }));
+
+  return (
+    <View
+      style={styles.shape}
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityValue={{ min: 0, max: 100, now: Math.round(fraction * 100) }}
+      accessibilityLabel="Building your plan">
+      <Animated.View style={[styles.shapeFill, fillStyle]} />
+      <Animated.View style={[styles.shapeCheck, checkStyle]}>
+        <Check size={moderateScale(38)} color={v2color.onBlue} strokeWidth={3} />
+      </Animated.View>
+    </View>
+  );
+}
+
 const CHECK = moderateScale(24);
+const SHAPE = moderateScale(124);
 
 const styles = StyleSheet.create({
   screen: {
@@ -155,6 +217,30 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
   head: { alignItems: 'center', marginTop: spacing.xxxl },
+  shapeRow: { alignItems: 'center' },
+  shape: {
+    width: SHAPE,
+    height: SHAPE,
+    borderRadius: SHAPE * 0.28,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderColor: v2color.border,
+    backgroundColor: v2color.surface,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  /** Scaled from the bottom edge — the fill RISES, it does not fade in. */
+  shapeFill: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: v2color.blue,
+    transformOrigin: 'bottom center',
+  },
+  shapeCheck: { position: 'absolute' },
   percentRow: { alignItems: 'center' },
   percent: {
     ...readingStyle('700'),

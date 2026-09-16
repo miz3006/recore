@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { V2Answers } from '../../state/onboarding-v2.ts';
-import { ALL_HEADLINES, MAX_LINE_DELTA, paywallCopy } from './copy.ts';
+import { ALL_HEADLINES, BETA_COPY, MAX_LINE_DELTA, paywallCopy } from './copy.ts';
 import { reminderDay, trialTimeline } from './timeline.ts';
 
 /**
@@ -380,4 +380,25 @@ test('a run with no number hands the timeline no highlight at all', () => {
   const { today, todayStrong } = paywallCopy(answers());
   const steps = trialTimeline(7, { body: today, strong: todayStrong }, '39,99 €', NOW);
   assert.equal(steps[0].strong, null);
+});
+
+/* ── the tester pass ──────────────────────────────────────────────────────── */
+
+/**
+ * The beta build's copy replaces the priced half of the screen, and it runs in
+ * a build with NO STORE behind it to correct a wrong word. So the guard is the
+ * blunt one: a digit or a currency mark in any of these strings is a price, a
+ * trial length or a date, and there is no fourth thing it could be.
+ */
+test('the tester pass cannot quote a price, a length or a date', () => {
+  for (const [key, line] of Object.entries(BETA_COPY)) {
+    assert.ok(line.length > 0, `${key} is empty`);
+    assert.ok(!/[\d$€£¥]/.test(line), `${key} carries a number or a currency mark: ${line}`);
+  }
+});
+
+test('the tester pass says it is free, and thanks the people testing it', () => {
+  assert.match(BETA_COPY.badge, /free/i);
+  assert.match(BETA_COPY.cta, /free/i);
+  assert.match(BETA_COPY.thanks, /thank you/i);
 });

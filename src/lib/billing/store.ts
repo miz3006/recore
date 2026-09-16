@@ -8,7 +8,7 @@ import Purchases, {
   type PurchasesStoreProduct,
 } from 'react-native-purchases';
 
-import { REVENUECAT_IOS_KEY, isTestStore } from '@/lib/env';
+import { REVENUECAT_IOS_KEY, isBetaUnlocked, isTestStore } from '@/lib/env';
 import { devLog } from '@/lib/log';
 
 import type { EntitlementSnapshot } from './entitlement';
@@ -49,6 +49,34 @@ import { ALL_PLANS, ENTITLEMENT_ID, MANAGE_SUBSCRIPTIONS_URL, type Plan } from '
 /** Is there a key to configure with? False in Expo Go and on web. */
 export function isStoreConfigured(): boolean {
   return Platform.OS !== 'web' && REVENUECAT_IOS_KEY.length > 0;
+}
+
+/**
+ * CAN THIS BUILD SELL ANYTHING AT ALL? — the question every commercial surface
+ * should ask before it draws a price, a plan card or a renewal sentence.
+ *
+ * Two builds cannot, and they are not the same build:
+ *
+ *  · **No key.** `isStoreConfigured()` is false — no offering can be fetched,
+ *    no purchase can be started, no receipt can exist. This is the state of
+ *    every build in the repository today: `.env` carries no RevenueCat key, and
+ *    `env.ts` blanks a `test_` one outside `__DEV__` in any case.
+ *  · **A beta build.** `isBetaUnlocked()` — the whole app is handed to a tester
+ *    and billing is off by construction (`env.ts`).
+ *
+ * WHY A SCREEN SHOULD BRANCH ON THIS RATHER THAN ON THE FETCH RESULT. A failed
+ * `fetchOffer` means "the store did not answer just now", which is a network
+ * outcome and must still render the paying screen with an honest "prices
+ * unavailable". This function answers a different question — whether there is
+ * a shop behind the screen at all — and it is knowable before anything is
+ * asked, so the paywall can show a person the true screen immediately instead
+ * of a priced one that will never fill in. Owner's ruling, 16 September 2026.
+ *
+ * It is also SELF-REPAIRING: the day a real `appl_` key lands in the build,
+ * every surface reading this goes back to selling with no second edit.
+ */
+export function canSell(): boolean {
+  return isStoreConfigured() && !isBetaUnlocked();
 }
 
 /**

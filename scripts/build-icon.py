@@ -1,85 +1,62 @@
 #!/usr/bin/env python3
 """
-Generate every app icon asset from one description (PLAN C1).
+Derive every app icon asset from the one exported master (PLAN C1, rewritten
+16 September 2026).
 
-WHY A SCRIPT. The icon was the Expo template — a blue chevron on a grid, with
-an Android background of #E6F4FE, a template blue that belongs to no palette in
-this app. Replacing it with an exported PNG would leave the next change to a
-guess; this file IS the design, in the same colours as src/lib/theme/color.ts,
-and re-running it reproduces every size exactly.
+WHAT CHANGED, AND WHY THIS FILE NO LONGER DRAWS. Until now this script WAS the
+icon: it set an "R" in SF Pro Bold over a ledger rule, in ink on warm paper,
+and re-running it reproduced every size. That was the right call while the
+brand had no drawn mark. It has one now — the geometric R with the circular
+counter and the descending leg, exported at 1024 to
+`assets/brand/app-icon-1024.png` (white on `color.brand`) and as a path to
+`assets/brand/mark.svg` (which `src/components/brand-mark.tsx` draws).
 
-THE MARK. Warm paper, ink, and one letter set in the app's own voice: SF Pro
-Bold with tight tracking, the same face and the same restraint as the wordmark
-in `top-bar.tsx`. Under it, the rule a ledger line is written on. Monochrome —
-`signal` green marks a PLANNED VALUE and nothing else (CLAUDE.md §5.1), and an
-icon is not a planned value, so there is no green here at all.
+A drawing script and an exported master cannot both be the source of truth. The
+master wins, because it is where the mark is actually designed. So this file
+DERIVES: it reads the export and emits the six assets `app.json` names. Running
+it is now idempotent against the export rather than against a description of a
+different icon — which is the bug that made the rewrite necessary, since the old
+script would have quietly redrawn the retired letter-mark over the new one.
+
+HOW THE MARK IS LIFTED OFF THE FIELD. The export is exactly two colours:
+`#007AFF` behind, `#FFFFFF` on top. Their RED channels are 0 and 255, so the
+red channel IS the mark's coverage mask, antialiased edges included — no
+threshold, no path maths, and the mark keeps the export's own position and size
+rather than a re-derived guess at them. (Green would be wrong: 122 vs 255 is a
+partial separation. Blue would be useless: 255 in both.)
 
 Not an app dependency: this needs python3 + Pillow on a dev machine and nothing
 in `package.json` changes. Run it from the repo root:
 
-    python3 scripts/build-icon.py
+    npm run build:icon
 """
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
-# src/lib/theme/color.ts — the only place these numbers are allowed to differ.
-BG = (244, 245, 239)      # color.bg      #F4F5EF  warm paper
-INK = (23, 25, 20)        # color.accent  #171914  ink
-
-SF = "/System/Library/Fonts/SFNS.ttf"
-
+MASTER = "assets/brand/app-icon-1024.png"
 OUT = "assets/images"
 
-# Geometry, expressed as fractions of the canvas so every size is one render
-# rather than a resample of a bigger one (a resampled hairline goes muddy).
-LETTER = "R"
-LETTER_SIZE = 0.60        # cap height relative to the canvas
-LETTER_BASELINE = 0.635   # where the letter sits
-RULE_WIDTH = 0.52
-RULE_THICKNESS = 0.022
-RULE_GAP = 0.085          # below the baseline
+# src/lib/theme/color.ts — the only place these numbers are allowed to differ.
+BRAND = (0, 122, 255)     # color.brand      #007AFF  the one blue, the icon field
+ON_INK = (255, 255, 255)  # color.onInk      #FFFFFF  a glyph sitting ON brand
+INK = (23, 25, 20)        # color.textPrimary #171914 the mark inside the product
 
 
-def font_at(px: int) -> ImageFont.FreeTypeFont:
-    f = ImageFont.truetype(SF, px)
-    try:
-        f.set_variation_by_name("Bold")
-    except Exception:
-        pass
-    return f
+def mask() -> Image.Image:
+    """The mark's coverage, 1024×1024, white where the mark is."""
+    return Image.open(MASTER).convert("RGB").getchannel("R")
 
 
-def draw_mark(size: int, ink=INK, bg=None, safe_zone: float = 1.0) -> Image.Image:
-    """The mark on `bg`, or on transparency when bg is None.
+def tinted(coverage: Image.Image, rgb: tuple[int, int, int], size: int) -> Image.Image:
+    """The mark in one flat colour on transparency, at `size`.
 
-    `safe_zone` shrinks the artwork for Android's adaptive icon, where the
-    launcher may mask away everything outside the middle ~66%.
+    Resampled from the 1024 coverage rather than re-rendered: LANCZOS on a
+    coverage mask keeps the edge that the export already antialiased, where a
+    redraw at a small size would have to guess at it.
     """
-    img = Image.new("RGBA", (size, size), (bg + (255,)) if bg else (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-
-    s = size * safe_zone
-    off = (size - s) / 2
-
-    px = int(s * LETTER_SIZE)
-    font = font_at(px)
-
-    # Place by the glyph's real ink box, not by its metrics: SF Pro's line box
-    # carries leading that would push the letter visibly off centre.
-    box = d.textbbox((0, 0), LETTER, font=font)
-    w = box[2] - box[0]
-    h = box[3] - box[1]
-    x = off + (s - w) / 2 - box[0]
-    y = off + s * LETTER_BASELINE - h - box[1]
-    d.text((x, y), LETTER, font=font, fill=ink)
-
-    # The ledger rule the letter is written on.
-    rw = s * RULE_WIDTH
-    rt = max(2, round(s * RULE_THICKNESS))
-    ry = off + s * (LETTER_BASELINE + RULE_GAP)
-    rx = off + (s - rw) / 2
-    d.rounded_rectangle([rx, ry, rx + rw, ry + rt], radius=rt / 2, fill=ink)
-
+    a = coverage.resize((size, size), Image.LANCZOS) if size != coverage.width else coverage
+    img = Image.new("RGBA", (size, size), rgb + (0,))
+    img.putalpha(a)
     return img
 
 
@@ -90,20 +67,30 @@ def write(img: Image.Image, name: str) -> None:
 
 
 def main() -> None:
+    master = Image.open(MASTER).convert("RGB")
+    coverage = mask()
+
     # iOS + the store listing. Opaque, no transparency, no rounded corners —
-    # the system masks it.
-    write(draw_mark(1024, bg=BG).convert("RGB").convert("RGBA"), "icon.png")
+    # the system masks it. This is the export itself, passed through.
+    write(master.convert("RGBA"), "icon.png")
 
-    # Android adaptive: three layers, artwork inside the safe zone.
-    write(Image.new("RGBA", (1024, 1024), BG + (255,)), "android-icon-background.png")
-    write(draw_mark(1024, safe_zone=0.66), "android-icon-foreground.png")
+    # Android adaptive: three layers. The mark sits 0.48 × 0.58 of the canvas
+    # in the export, so it is already inside the inner 66% the launcher
+    # guarantees — no safe-zone shrink, and the two platforms show the same
+    # lockup rather than two different ones.
+    write(Image.new("RGBA", (1024, 1024), BRAND + (255,)), "android-icon-background.png")
+    write(tinted(coverage, ON_INK, 1024), "android-icon-foreground.png")
     # The monochrome layer is a stencil: shape only, the launcher tints it.
-    write(draw_mark(1024, ink=(0, 0, 0), safe_zone=0.66), "android-icon-monochrome.png")
+    write(tinted(coverage, (0, 0, 0), 1024), "android-icon-monochrome.png")
 
-    # The splash mark (app.json draws it at 76 pt on the paper background) and
-    # the web favicon.
-    write(draw_mark(512), "splash-icon.png")
-    write(draw_mark(96, bg=BG), "favicon.png")
+    # The splash mark, drawn by app.json at 76 pt on white. INK, not the field
+    # blue and not white: inside the product the mark is one ink, the same one
+    # `BrandMark` takes on the sign-in screen. White on blue belongs to the
+    # icon, which is the one place the app is a tile on someone's home screen.
+    write(tinted(coverage, INK, 512), "splash-icon.png")
+
+    # The web favicon — the full tile, since a favicon is shown at tile size.
+    write(master.resize((96, 96), Image.LANCZOS).convert("RGBA"), "favicon.png")
 
 
 if __name__ == "__main__":

@@ -1,61 +1,50 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withDelay,
+  withSpring,
+  type SharedValue,
+} from 'react-native-reanimated';
 
-import { CountUp, Enter, GrowingBar } from '@/lib/motion/index';
+import { count, CountUp, Enter } from '@/lib/motion/index';
 import { MAX_FONT_SCALE, moderateScale, readingStyle, spacing, type } from '@/lib/theme';
 import { useV2 } from '@/state/onboarding-v2';
 
-import { Character } from '../Character';
 import { Frame } from '../Frame';
-import { insightFor, MONTHS, sessionsByMonth, yearInsight } from '../insights';
+import { GridCollapse } from '../GridCollapse';
+import { insightFor, yearInsight } from '../insights';
 import { v2color } from '../tokens';
 import type { ScreenProps } from './types';
 
 /**
- * THE INSIGHT SCREENS — 4 and 13.
+ * THE INSIGHT SCREENS — 4 and 13. Both rebuilt 16 September 2026 on the
+ * owner's premium pass; what they are ALLOWED to say is unchanged (arithmetic
+ * on their own answers, facts about the app, nothing about anybody else —
+ * `insights.ts` holds that argument).
  *
- * No question, one centred statement built out of what they just answered, and
- * a Continue. Cal AI runs the same shape twice (`Habit Insight` 12/38, `AI
- * Comparison` 14/38) and it is the only screen type in its funnel that has no
- * input at all — the flow stops asking for a beat and tells you something.
+ * ## Screen 4 — the demonstration, then the claim
  *
- * ## Its one highlighted span
+ * The top half is the grid-collapse loop (`GridCollapse`): a Strong-style
+ * set grid folding into one written line. The statement and its supporting
+ * sentence moved to the bottom half, under the thing they describe — a claim
+ * below its own evidence rather than a sentence with a mascot.
  *
- * `Insight.accent` names a substring of the headline to draw in brand blue,
- * and the renderer splits on it rather than the copy carrying markup. On the
- * year screen the accent is the session count, so it also counts up — it is a
- * RESULT, computed from their answer, which is exactly what §3 reserves the
- * count-up for. On the obstacle screen the accent is a phrase and simply
- * changes colour, because animating a phrase would be decoration.
+ * ## Screen 13 — the year, counted and seen
  *
- * ## What moves on each of them
- *
- * The year screen draws twelve bars, one a month, growing from the baseline on
- * the shared `GrowingBar` primitive (§3: "Bars grow from baseline, ~40ms
- * stagger"). It is the same number the count-up is reaching, shown as an amount
- * rather than a figure — "208" is read, a year of training is seen.
- *
- * It was 52 dots, one a week, and it was replaced: at that density a
- * four-a-week year rendered as a texture rather than as a count, which is the
- * opposite of the point. Twelve bars are countable, a month is a unit people
- * feel, and four of them stand slightly taller because 52 weeks do not divide
- * into 12 — that unevenness is the calendar, and it is what stops the chart
- * looking like a picture of a division sum.
- *
- * The obstacle screen has no figure at all, so it gets the cap character
- * instead — §4's rule is that the character appears where the app SPEAKS and
- * never where it asks, and an insight screen is the app speaking. It arrives
- * after the sentence has landed, so it reads as a reaction to it.
- *
- * Neither screen animates its own statement beyond the shared `Enter`. One
- * moving thing per screen; the sentence is the subject.
+ * A hero count-up ("208") over a grid of 52 week cells that fill on the same
+ * spring family, so the number and the amount arrive as one fact. The twelve
+ * monthly bars this replaces averaged the year into a texture; 52 cells ARE
+ * the year, one square per week they said they would train. Pure arithmetic
+ * on the frequency answer, as before.
  *
  * ## It disappears when it has nothing to say
  *
- * If the answer it depends on is missing — someone reached the URL directly, or
- * went back and cleared it — `insightFor` returns null and the screen advances
- * itself rather than showing an empty statement. A personalised screen with no
- * personalisation is worse than no screen.
+ * If the answer a screen depends on is missing — someone reached the URL
+ * directly, or went back and cleared it — `insightFor` returns null and the
+ * screen offers a plain Continue rather than an empty statement.
  */
 export function InsightScreen({ def, progress, onAdvance, onBack, echo }: ScreenProps) {
   const answers = useV2((s) => s.answers);
@@ -64,12 +53,6 @@ export function InsightScreen({ def, progress, onAdvance, onBack, echo }: Screen
     () => (def.id === 'year-insight' ? yearInsight(answers) : null),
     [answers, def.id],
   );
-  const months = useMemo(
-    () => (year ? sessionsByMonth(Number(answers.frequency)) : []),
-    [answers.frequency, year],
-  );
-  const peak = months.length > 0 ? Math.max(...months) : 1;
-  const [chartWidth, setChartWidth] = useState(0);
 
   if (!insight) {
     // Nothing to say. Render the frame with a Continue so the flow is never a
@@ -87,6 +70,49 @@ export function InsightScreen({ def, progress, onAdvance, onBack, echo }: Screen
     );
   }
 
+  if (year) {
+    const perWeek = Number(answers.frequency);
+    return (
+      <Frame
+        headline=""
+        progress={progress}
+        echo={echo}
+        onBack={onBack}
+        cta={{ enabled: true, onPress: onAdvance }}
+        testID={`v2-screen-${def.id}`}>
+        <View style={styles.yearBody}>
+          <Enter index={1}>
+            <View style={styles.hero}>
+              <CountUp
+                value={year.sessions}
+                delay={260}
+                style={styles.heroNumber}
+                sized
+                accessibilityLabel={`${year.sessions}`}
+              />
+              <Text style={styles.heroCaption} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                sessions a year
+              </Text>
+            </View>
+          </Enter>
+
+          <Enter index={2} style={styles.gridWrap}>
+            <WeekGrid />
+            <Text style={styles.gridCaption} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              52 weeks · {perWeek} a week
+            </Text>
+          </Enter>
+
+          <Enter index={3}>
+            <Text style={styles.support} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {insight.body}
+            </Text>
+          </Enter>
+        </View>
+      </Frame>
+    );
+  }
+
   const [before, after] = splitOn(insight.headline, insight.accent);
 
   return (
@@ -97,72 +123,90 @@ export function InsightScreen({ def, progress, onAdvance, onBack, echo }: Screen
       onBack={onBack}
       cta={{ enabled: true, onPress: onAdvance }}
       testID={`v2-screen-${def.id}`}>
-      <View style={styles.body}>
-        <Enter index={1}>
-          <Text style={styles.statement} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {before}
-            {year ? (
-              <CountUp
-                value={year.sessions}
-                delay={220}
-                style={styles.count}
-                accessibilityLabel={`${year.sessions}`}
-              />
-            ) : (
+      <View style={styles.splitBody}>
+        <View style={styles.demoHalf}>
+          <GridCollapse />
+        </View>
+        <View style={styles.copyHalf}>
+          <Enter index={1}>
+            <Text style={styles.statement} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {before}
               <Text style={styles.accent}>{insight.accent}</Text>
-            )}
-            {after}
-          </Text>
-        </Enter>
-
-        {year ? (
-          <Enter index={2} style={styles.chartWrap}>
-            <View
-              style={styles.bars}
-              onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}>
-              {chartWidth > 0
-                ? months.map((sessions, i) => (
-                    <GrowingBar
-                      key={i}
-                      fraction={sessions / peak}
-                      width={(chartWidth - BAR_GAP * (months.length - 1)) / months.length}
-                      height={CHART_HEIGHT}
-                      color={v2color.blue}
-                      index={i}
-                      radius={3}
-                    />
-                  ))
-                : null}
-            </View>
-            <View style={styles.axis}>
-              {MONTHS.map((m, i) => (
-                <Text
-                  key={i}
-                  style={[
-                    styles.month,
-                    { width: (chartWidth - BAR_GAP * 11) / 12 },
-                  ]}
-                  maxFontSizeMultiplier={1.2}>
-                  {m}
-                </Text>
-              ))}
-            </View>
+              {after}
+            </Text>
           </Enter>
-        ) : null}
-
-        <Enter index={year ? 3 : 2}>
-          <Text style={styles.support} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {insight.body}
-          </Text>
-        </Enter>
-
-        {/* The table decides whether this draws anything — the obstacle screen
-            is the only insight it says yes to. */}
-        <View style={styles.character}>
-          <Character screen={def.id} delay={520} />
+          <Enter index={2}>
+            <Text style={styles.support} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+              {insight.body}
+            </Text>
+          </Enter>
         </View>
       </View>
     </Frame>
+  );
+}
+
+/**
+ * 52 WEEKS, ONE CELL EACH, filling on the count's own spring — the year as an
+ * amount. One shared value sweeps 0→52 and every cell reads its own threshold
+ * off it, so the fill is one gesture rather than 52 animations.
+ */
+function WeekGrid() {
+  const reduced = useReducedMotion();
+  const sweep = useSharedValue(reduced ? WEEKS : 0);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    if (reduced) {
+      sweep.value = WEEKS;
+      return;
+    }
+    sweep.value = 0;
+    sweep.value = withDelay(260, withSpring(WEEKS, count));
+  }, [reduced, sweep]);
+
+  const cell = width > 0 ? (width - CELL_GAP * (COLS - 1)) / COLS : 0;
+
+  return (
+    <View
+      style={styles.grid}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel="52 weeks of training, one square each">
+      {width > 0
+        ? Array.from({ length: WEEKS }, (_, i) => (
+            <WeekCell key={i} index={i} sweep={sweep} size={cell} />
+          ))
+        : null}
+    </View>
+  );
+}
+
+function WeekCell({
+  index,
+  sweep,
+  size,
+}: {
+  index: number;
+  sweep: SharedValue<number>;
+  size: number;
+}) {
+  const style = useAnimatedStyle(() => {
+    const on = Math.min(Math.max(sweep.value - index, 0), 1);
+    return {
+      opacity: 0.18 + on * 0.82,
+      transform: [{ scale: 0.86 + on * 0.14 }],
+    };
+  });
+  return (
+    <Animated.View
+      style={[
+        styles.cellFill,
+        { width: size, height: size, borderRadius: Math.max(3, size * 0.28) },
+        style,
+      ]}
+    />
   );
 }
 
@@ -175,23 +219,16 @@ function splitOn(headline: string, accent: string): [string, string] {
   return [headline.slice(0, at), headline.slice(at + accent.length)];
 }
 
-const CHART_HEIGHT = moderateScale(76);
-const BAR_GAP = 6;
+const WEEKS = 52;
+const COLS = 13;
+const CELL_GAP = 6;
 
 const styles = StyleSheet.create({
-  /**
-   * Optically centred, not mathematically. A block centred in the space between
-   * the rail and the CTA sits low, because the eye reads the top of the screen
-   * as emptier than it is; lifting it by the CTA's own height puts it where it
-   * looks centred. Everything inside is centre-aligned on one axis, so the
-   * sentence, the grid, the support line and the character share a centre line.
-   */
-  body: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'stretch',
-    paddingBottom: spacing.huge,
-  },
+  /** Screen 4: demonstration above, claim below — the two halves the owner
+   * asked for by name. */
+  splitBody: { flex: 1, paddingBottom: spacing.xl },
+  demoHalf: { flex: 11, justifyContent: 'center' },
+  copyHalf: { flex: 9, justifyContent: 'center' },
   statement: {
     ...type.largeTitle,
     fontWeight: '800',
@@ -199,14 +236,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   accent: { color: v2color.blue },
-  /** The count sits inline in the sentence, so it takes the sentence's size and
-   * the reading face's tabular figures — the width cannot jitter mid-count. */
-  count: {
-    ...readingStyle('800'),
-    fontSize: moderateScale(34),
-    lineHeight: moderateScale(40),
-    color: v2color.blue,
-  },
   support: {
     ...type.body,
     color: v2color.inkSecondary,
@@ -214,14 +243,41 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
     paddingHorizontal: spacing.sm,
   },
-  chartWrap: { marginTop: spacing.xxl },
-  bars: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height: CHART_HEIGHT,
+
+  /** Screen 13: number, amount, sentence — optically centred, lifted by the
+   * CTA's own height like every centred screen in the flow. */
+  yearBody: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingBottom: spacing.huge,
   },
-  axis: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.sm },
-  month: { ...type.footnote, color: v2color.inkMuted, textAlign: 'center' },
-  character: { alignItems: 'center', marginTop: spacing.xxl },
+  hero: { alignItems: 'center' },
+  heroNumber: {
+    ...readingStyle('800'),
+    fontSize: moderateScale(72),
+    lineHeight: moderateScale(80),
+    color: v2color.blue,
+  },
+  heroCaption: {
+    ...type.title2,
+    fontWeight: '700',
+    color: v2color.ink,
+    marginTop: spacing.xs,
+  },
+  gridWrap: { marginTop: spacing.xxl },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: CELL_GAP,
+    justifyContent: 'center',
+  },
+  cellFill: { backgroundColor: v2color.blue },
+  gridCaption: {
+    ...type.footnote,
+    color: v2color.inkMuted,
+    letterSpacing: 1.2,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: spacing.md,
+  },
 });

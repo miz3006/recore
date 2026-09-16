@@ -215,6 +215,7 @@ export function demoItemOf(reading: DemoReading, line: number): ParsedItem {
         durationS: null,
         rir: null,
       })),
+      notes: [],
     },
     line,
   );
@@ -232,7 +233,7 @@ function itemOf(item: ReadItem, line: number): ParsedItem {
       : 'strength',
     group_key: null,
     line,
-    sets: item.sets.map((s) => ({
+    sets: item.sets.map((s, i) => ({
       kind: s.kind,
       reps: s.reps,
       weight_kg: s.weightKg,
@@ -240,7 +241,12 @@ function itemOf(item: ReadItem, line: number): ParsedItem {
       duration_s: s.durationS,
       rir: s.rir,
       parent: null,
-      note: null,
+      // The person's remark rides the set, which is where the real parser
+      // puts an inline comment and where `buildReceipt` reads them back from
+      // (`ReceiptRow.comments`). One remark per set, in writing order; a
+      // first remark about the whole movement lands on the first set exactly
+      // as the prompt attributes it.
+      note: item.notes[i] ?? null,
     })),
   };
 }

@@ -239,6 +239,8 @@ of drift this repository has actually suffered before.
 | Trial promise, first charge date, cancellation explanation | **done** | `src/app/paywall.tsx` (`timelineFor`, legal line) | |
 | Terms, Privacy, Restore, Manage | **done** | `src/app/paywall.tsx` | All four are real controls with real targets. |
 | Honest annual preselection (four conditions) | **done** | see §2 row above | |
+| A build that cannot sell does not draw a shop | **done** (16 Sep 2026) | `src/lib/billing/store.ts` (`canSell`), `src/app/paywall-v2/plan.tsx` (`TESTER_PASS`), `src/components/paywall-v2/BetaPass.tsx`, `copy.ts` (`BETA_COPY`), `src/app/sign-in.tsx` (`NOTHING_TO_PAY`) | `canSell()` = a configured key AND not a beta build. False in every build today, and then the timeline, both plan cards, the store CTA and the renewal paragraph are replaced by one statement — free while Recore is being tested, a thank-you — and a full-width button onward to sign-in. No price, trial length, renewal date or Restore is rendered; the copy's test forbids a digit or a currency mark in any of it. The paying screen returns untouched when a real key lands. See the 16 Sep entry in the change log. |
+| The sign-in screen is a composition, and the development door is not in it | **done** (16 Sep 2026) | `src/app/sign-in.tsx` (`AppIconLockup`, `assurances`, `Assurance`, `DEV_DOOR`), `src/lib/auth/dev-door.ts` (new) + `dev-door.test.ts` (new, 6 tests), `src/lib/auth/dev-sign-in.ts` | App icon at 61 pt (the `R` on brand blue, at Apple's own 0.2237 corner ratio — measured against `assets/brand/app-icon-1024.png`: 0.58 of the height, as the export draws it), then eyebrow → headline → one sentence → three glyph rows. The four-line subline and the three-line caption that repeated it are gone; nothing new is claimed, each row is an invariant this repository already keeps. **The development row is behind two gates now**: `__DEV__` spelled literally in the JSX so Metro deletes the branch from a release bundle, AND a configured account — the row used to draw in every checkout without a local `.env`, where its only behaviour was to fail. The rule has a test for the first time. |
 | No review stars, testimonials, pseudo-science, "AI magic", seven-day transformation claim | **partial** | `src/app/paywall.tsx` (screen is clean); `src/components/primitives.tsx:191–247` (components remain) | The screen complies; the codebase does not (**B4**). No user-visible string in `src/` uses "AI" as marketing — verified by grep; the only hits are code comments and guard tests. |
 
 ---
@@ -274,13 +276,13 @@ of drift this repository has actually suffered before.
 | Set table readable at low vision (owner, 9 Aug) | **done** | `src/components/set-table.tsx`, `src/state/display.ts` | Measured, not guessed: `textMuted` is **2.45:1** on the paper canvas — below AA (4.5) and below the 3:1 large-text floor — and it was carrying the set numbers and notes. Nothing in the table is muted now (counted work 16:1, everything else `textSecondary` 4.7:1); warm-ups/drops are told apart by their **word**, never by tone alone. Type up ~2 pt per cell; load and work grouped into one short scan instead of opposite edges; header rule moved from `tableRule` (1.11:1, invisible) to `border`. Past `fontScale` 1.2 (1.1 when a note column competes) the columns give way to one spelled-out line per set ("Set 1 · 100 kg · 10 reps"), which wraps instead of cropping and is allowed to grow to 1.6× — the app-wide 1.3 clamp exists to protect layouts that can break, and this one cannot. Live via `useWindowDimensions().fontScale`, so changing the OS text size needs no relaunch. |
 | **§8.1** End-of-session free-text reflection | **done** | `src/components/check-in-sheet.tsx`, `src/lib/reflection.ts` (+ test), `src/lib/db/workouts.ts` (`setReflection`) | A free-text field on one sheet opened by Finish and re-openable from the receipt. Owner's ruling 29 Jul: **one sheet**, not two — so a finish never queues two sheets. **17 Aug: the reflection no longer LEADS it** — see the check-in redesign row below. |
 | **§8.1** Optional prompts ("How did that feel?" etc.) | **superseded** | `src/lib/reflection.ts` (`REFLECTION_PROMPTS`, still exported + asserted verbatim by test) | All four are still the spec'd vocabulary and still tested, but **the check-in no longer renders them**: the owner's 17 Aug ruling replaced the placeholder chips with three preset ANSWERS that write (`REFLECTION_TAGS`). The field's own placeholder is now "Anything about today…". Any future surface that suggests rather than answers should use the four prompts. |
-| **Check-in redesigned to read the session back** (owner ask + mockup, 17 Aug) | **done** | `src/components/check-in-sheet.tsx`, `src/lib/effort.ts` (`EFFORT_CHOICES`, `EFFORT_CHOICE_LABEL`, `effortChoiceOf` + tests), `src/lib/reflection.ts` (`REFLECTION_TAGS`, `composeReflection`, `splitReflection`, `reflectionRoomFor` + tests), `src/lib/parse/receipt.ts` (`lastSetTextOf` + tests) | "How did it go?" over the session's own line ("2 lifts · 9,840 kg · 48 min" — lifts and volume from the receipt, minutes from the workout row's timestamps under the receipt's own 10–360 min sanity rule; a run-only day totals in distance and an implausible span simply drops). Then **the lifts first, the words second**: one row per lift the sheet reads out of the record, its LAST counted set beside the name, and three answers — Could do more (rir 3) · Just right (rir 1) · Nothing left (rir 0), written into the line as an RPE token exactly as before. **Only unrated lifts are asked about**, and the question set is frozen when the sheet opens (or when a late parse lands) so answering a row cannot make it vanish mid-tap. Reversal of a July ruling, on the owner's say-so: the note chips (Slept badly · Felt strong · Short on time) are now **multi-select answers that are stored**, as the reflection's own first line — no new column, no migration, and `splitReflection` reads them back so the sheet re-opens armed. Nothing is preselected and the app still never infers one. Skip / × / swipe / Save session all commit exactly what is on the sheet. |
+| **Check-in redesigned to read the session back** (owner ask + mockup, 17 Aug) | **done** | `src/components/check-in-sheet.tsx`, `src/lib/effort.ts` (`EFFORT_CHOICES`, `EFFORT_CHOICE_LABEL`, `effortChoiceOf` + tests), `src/lib/reflection.ts` (`REFLECTION_TAGS`, `composeReflection`, `splitReflection`, `reflectionRoomFor` + tests), `src/lib/parse/receipt.ts` (`lastSetTextOf` + tests) | "How did it go?" over the session's own line ("2 lifts · 9,840 kg · 48 min" — lifts and volume from the receipt, minutes from the workout row's timestamps under the receipt's own 10–360 min sanity rule; a run-only day totals in distance and an implausible span simply drops). Then **the lifts first, the words second**: one row per lift the sheet reads out of the record, its LAST counted set beside the name, and three answers — Could do more (rir 3) · Just right (rir 1) · Nothing left (rir 0), written into the line as an RPE token exactly as before. **Only unrated lifts are asked about**, and the question set is frozen when the sheet opens (or when a late parse lands) so answering a row cannot make it vanish mid-tap. Reversal of a July ruling, on the owner's say-so: the note chips (Slept badly · Felt strong · Short on time) are now **multi-select answers that are stored**, as the reflection's own first line — no new column, no migration, and `splitReflection` reads them back so the sheet re-opens armed. Nothing is preselected and the app still never infers one. Skip / × / swipe / Save session all commit exactly what is on the sheet. **16 Sep 2026: the answers read themselves.** Marking a lift writes its line and nothing more; the sheet's Done asks for ONE reading covering every answer given, so the athlete is never sent back to Today to confirm each exercise a second time — see that day's entry in the change log for the dropped-mid-flight parse behind it. |
 | **The session's own rating** (owner ask, 10 Sep 2026) | **done** | `src/lib/session-effort.ts` (+ test), `src/lib/db/schema.ts` (v7), `src/lib/db/workouts.ts` (`setSessionEffort`/`getSessionEffort`), `src/components/check-in-sheet.tsx`, `src/components/check-in-note.tsx`, `src/lib/sync/index.ts`, `src/lib/export-json.ts`, `supabase/migrations/20260910000000_session_effort.sql` | One tap for how hard the WHOLE session was — the session-RPE method, stored on Foster's CR-10 (`Easy` 3 · `Moderate` 5 · `Hard` 8) in its own nullable column on `workouts`. It comes first on the sheet because its cost does not scale with the number of lifts, and it is the input to NO prescription: `sets.rir` is one set's distance from failure and is the engine's; this is what the session cost and is quoted, never computed against. An unrated session has no load — `sessionLoad` returns null, never a zero. Printed back on Today as the word the athlete chose, leading the chips in `CheckInNote`, and summed into **this week's training load on Progress** (`components/week-load.tsx`) — a week holding one unrated session shows no total, because a partial sum is a lighter week that never happened. Monotony, strain and deload timing are deliberately not built. |
 | **§8.1** Reflections included in export and deletion | **done** | `src/lib/export-json.ts`, `src/lib/account/delete.ts`, `supabase/migrations/20260729000000_reflections.sql` | By construction rather than by remembering: the reflection is a **column on `workouts`**, so it inherits that row's RLS, its cascade delete, the local wipe and the JSON export. CSV stays a sets table — the JSON is the complete export and the privacy policy says so. |
 | **§8.1** Next may quote a reflection without inferring causation | **partial** | `src/lib/db/brief.ts` (`BriefNote`, `recentEntryNotes`, `tagPattern`), `src/lib/reflection.ts` (`tagPattern`), `src/lib/brief-prose.ts`, `src/app/(tabs)/next/index.tsx` | 4 Aug: the PER-ENTRY note is captured and quoted (see the section below). **10 Sep: the session-level check-in is half-read.** Its CHIPS are counted across the last five sessions and stated as a tally — *You marked "slept badly" after 3 of your last 5 sessions* — with the verb on what the app actually knows (which button was tapped) and no causal clause anywhere near it (§9.1); a test asserts the paragraph never gains *because*, a prescription or a diagnosis beside it. The PROSE half of a reflection is still never quoted by the brief. |
 | **Per-entry note on a ledger card** (owner ask, 4 Aug) | **done, not seen on a device since 16 Sep** | `src/lib/entry-note.ts` (+ test), `src/lib/db/entry-notes.ts`, `src/components/entry-note-sheet.tsx`, `src/components/note-surface.tsx` | One sheet carrying a free-text note. Stored in `workouts.entry_notes` (schema v5), never in `raw_text`. **12 Aug: the speech bubble that opened it from every card is gone** — the standing per-card invitation became one end-of-session row (below), and this became a named row inside the ⋯ sheet. **16 Sep: the ⋯ sheet is deleted and this is the card's ONE glyph** (`note` / `note-on`, outline until something is written), and the sheet's four placeholder chips became five preset ANSWERS that write (`ENTRY_NOTE_TAGS`) — the 17 Aug reflection ruling applied one level down. Storage mirrors `reflection.ts`: the tag line is the note's first line, ` · `-joined, one column. `noteTarget` now carries the entry's `GutterSignal`, so the header keeps the PR label the ⋯ sheet used to show. The written note still renders on its card. |
-| **Visible ⋯ actions on a settled card** (owner ask, 6 Aug) | **withdrawn 16 Sep 2026 — the sheet is deleted** | (was `src/components/entry-actions-sheet.tsx`) → `src/components/swipe-to-delete.tsx` (new), `src/components/note-surface.tsx`, `src/components/icon.tsx` | The menu shipped 6 Aug and was cut to four rows on 12 Aug. The owner's 16 Sep ruling: three of those four were doors to somewhere the app already went — history is Progress's whole job, fixing a reading is the card's own tap plus the alias echo, and **delete became swipe-the-row-left**. The card's one glyph is the note (row above). `joinNames` moved to `swipe-to-delete.tsx`; the `ellipsis` icon left the registry. The run-on delete confirm stays — undo cannot name the neighbours that leave with a shared line. |
-| **Swipe a ledger row left to delete it** (owner, 16 Sep 2026) | **built, NOT seen on a device** | `src/components/swipe-to-delete.tsx` (new), `src/components/day-swipe.tsx` (`DaySwipeGestureContext`), `src/components/note-surface.tsx`, `src/components/onboarding-v2/DemoPage.tsx` | The gesture that replaced the ⋯ menu's Delete row. Two ways out of one drag: past 42 % of the screen and released, the row leaves and the red block sweeps after it; past the block's own width and released short of that, the row rests open with a tappable Delete; anything less springs shut. Haptic on arming, one open row app-wide, tap-to-close. Safe only because `undo-delete.tsx` exists. Arbitration: `failOffsetY` → the scroll view, `activeOffsetX(-14)` + `failOffsetX(14)` → leftward only so a rightward drag is `DaySwipe`'s, and `blocksExternalGesture` so a fast flick cannot fire both. VoiceOver gets it as a rotor action on the card body, not as a gesture. **Nothing here has been seen moving** — no simulator this session (912 MB free, a native build needs ~15 GB). |
+| **Visible ⋯ actions on a settled card** (owner ask, 6 Aug) | **withdrawn 16 Sep 2026 — the sheet is deleted** | (was `src/components/entry-actions-sheet.tsx`) → `src/components/swipe-to-delete.tsx` (new), `src/components/note-surface.tsx`, `src/components/icon.tsx` | The menu shipped 6 Aug and was cut to four rows on 12 Aug. The owner's 16 Sep ruling: three of those four were doors to somewhere the app already went — history is Progress's whole job, fixing a reading is the card's own tap plus the alias echo, and **delete became swipe-the-row-left**. The card's one glyph is the note (row above). `joinNames` moved to `swipe-to-delete.tsx`; the `ellipsis` icon left the registry. **The run-on delete confirm went too (16 Sep, later)** — the undo pill names the neighbours now, so the dialog's last job moved rather than vanished. |
+| **Swipe a ledger row left to delete it** (owner, 16 Sep 2026) | **built, NOT seen on a device** | `src/components/swipe-to-delete.tsx` (new), `src/components/day-swipe.tsx` (`DaySwipeGestureContext`), `src/components/note-surface.tsx`, `src/components/onboarding-v2/DemoPage.tsx` | The gesture that replaced the ⋯ menu's Delete row. Two ways out of one drag: past 42 % of the screen and released, the row leaves and the red block sweeps after it; past the block's own width and released short of that, the row rests open with a tappable Delete; anything less springs shut. Haptic on arming, one open row app-wide, tap-to-close. Safe only because `undo-delete.tsx` exists. **It does not ask (16 Sep, later — owner: the drag past the threshold IS the decision, and there is an undo behind it).** The dialog's one irreplaceable sentence — which siblings leave with a run-on line — moved into the undo pill, which now prints every name that went. The inline editor's one-tap trash still confirms: no drag in front of it. Arbitration: `failOffsetY` → the scroll view, `activeOffsetX(-14)` + `failOffsetX(14)` → leftward only so a rightward drag is `DaySwipe`'s, and `blocksExternalGesture` so a fast flick cannot fire both. VoiceOver gets it as a rotor action on the card body, not as a gesture. **Nothing here has been seen moving** — no simulator this session (912 MB free, a native build needs ~15 GB). |
 | **The written line visible on its card** (owner ask, 12 Aug) | **done** | `src/components/note-surface.tsx` (`WordsFlip`, `wordsKey`) | Long-press a settled card and the interpreted SET/KG/REPS table crossfades to the raw line, quoted in mono, exactly as typed. (The "Show my words" menu row left on 12 Aug; the menu itself on 16 Sep. The long-press is the whole door and always was.) Tap or long-press again to flip back. Read-only display of `raw_text` (§3): no new data, no new column, nothing writable. Both faces are laid out and the words layer reports its height as the wrapper's floor, so flipping never moves the page. `DUR.fast`, instant under Reduce Motion; the hidden face is hidden from VoiceOver rather than merely transparent. |
 | **One reflection prompt per session, not per card** (owner ask, 12 Aug) | **done** | `src/lib/session-activity.ts` (+ test), `src/components/use-session-active.ts`, `note-surface.tsx` (`showReflectionRow`), `session-store.ts` (`finishSession`, `lastActivityAt`, `sessionFinished`), `bottom-toolbar.tsx` | §8.1 asks once, about the session; the note bubble asked once per exercise, five times a session. One quiet row now sits under the ledger — "Add a note about this session" — opening the check-in that already existed. It appears when the session has ENDED: Finish pressed, or 90 quiet minutes with work on the record (so the athlete who never presses Finish is still asked), and disappears once a reflection exists. Finish is remembered per workout in the meta KV (`session_done:<id>`), like receipt mode; writing another line re-opens the session. |
 | **The session's reflection printed under its lifts** (owner ask, 20 Aug · redrawn 10 Sep 2026) | **done** | `src/components/check-in-note.tsx` (new — `CheckInNote`), `src/components/note-surface.tsx` (the `reflection` memo, which now also reads `getSessionEffort`) | The check-in was write-only from Today: the words went into `workouts.reflection` and no screen printed them back, so the prompt row simply vanished and the note was only visible by re-opening the sheet. The day prints it where the day's lifts end — and since 10 Sep it prints it as ONE QUOTED BLOCK rather than two grey lines. Owner's ask: *"naredi cim lepsi mozen nacin napisa tistih informaciji na today … naj izgleda tudi cim bolj native ios"*. Four things, in the order the eye reads them: an eyebrow (`HOW IT WENT`) that says what the block is; the session's rating as the word the athlete picked; the armed chips **as the app's own chips** (`chip-row.tsx`'s white pill, hairline, `shadow.card`, ink label, one step smaller because they are answers already given, not controls); and their prose in **ink** at 16/23, a step under an exercise name. A 2 pt block-quote rule runs down the record's rail column, under the check rings, which is what lets the block hold together with no card on the one screen the design system forbids cards on. Three defects it fixes, each one a rule the repository already had: a chip that read as a pill in the sheet and as `a · b` prose on Today (the drift `chip-row.tsx` was written to end); the athlete's own sentence set in `textSecondary`, which §Colour reserves for what the eye may skip; and no label at all, so a note under a ledger could be read as a comment on the last lift. The prose clamps at six lines — ten was tried on the simulator and pushed the writing line off the page, which is the one thing Today may not do — with iOS's own ellipsis as the tell and the whole note in the VoiceOver label. Verified on the iPhone 17 Pro simulator (iOS 26.5) in four states: rating + chips + prose, rating only, a 737-character note, and Dynamic Type accessibility-extra-large. It sits **above** the writing line, with the settled record, while the invitation to write it stays below — and that prompt is now gated on the WORDS, not on the block, so a session someone rated and did not write about is still asked. Tapping re-opens the same check-in. Day-scoped by construction: `workoutId` follows the selected day. No new column, no new event, no model.
@@ -997,6 +999,74 @@ that were resolved rather than followed literally are in `FINDINGS.md`.
 ---
 
 ## Change log
+
+- **16 Sep 2026 — the sign-in screen becomes a composition, and the development door gets a second
+  gate and its first test.** Owner: *"naj bo dejansko lepši dizajn pri prijavi ... lepo strukturiraj
+  ... development sign in ne sme biti v produkciji."*
+
+  **What was wrong was not correctness, it was that nothing was designed.** The screen said
+  everything it had to say in prose: a 28 pt ink `R`, an eyebrow, a headline, a four-line subline
+  paragraph, and then a three-line caption under the buttons repeating most of the paragraph. Two
+  grey blocks stacked around two controls is a page with controls placed on it.
+
+  Ten shipping sign-in screens were pulled through the Appllama MCP for this pass (Notability,
+  Photoroom, Poke Genie, Bring!, Widgetable, Smule, RNI Films, Friends, Find What Feels Good, Voice
+  Dream). Two things every good one does that this did neither:
+
+  1. **It shows the app you are signing into.** Photoroom, Poke Genie and Bring! all lead with the
+     APP ICON at 56–72 pt — the actual install-screen artwork, not a glyph, because recognition is a
+     sign-in screen's first job. `AppIconLockup` draws it from two tokens (`color.brand`,
+     `color.onInk`) rather than importing the bitmap, so it redraws at any text size instead of
+     going soft. **`0.2237` is Apple's icon corner ratio and is deliberately off the radius scale** —
+     the tile is a reproduction of a specific artwork, and `radius.md` would have been the kind of
+     near-miss that reads as cheap. Measured against `assets/brand/app-icon-1024.png` on the
+     simulator: the mark is 0.58 of the tile's height, which is what the export draws (594/1024).
+  2. **It breaks the promises out of the paragraph.** One sentence now says what the account is FOR
+     (and it still branches on `canSell()`, so a build with no shop cannot promise a trial clock);
+     the three things a person wants before handing over an identity — it syncs, there is no
+     password, the record stays exportable — are three glyph rows. **Nothing new is claimed:** each
+     is an invariant the repository already keeps (§3's ungated export, the provider list being the
+     WHOLE list by decision, the sync loop). The old caption is deleted rather than left to drift
+     out of agreement with the rows that replaced it.
+
+  The hard `\n` in the headline went with it — it set the shape at one text size and one name
+  length and broke it at every other.
+
+  **Two defects the screenshots caught and the source could not.** The assurance pill is 30 pt
+  against a 21 pt line, so `(lineHeight − mark) / 2` is NEGATIVE — the mark has to be lifted out of
+  the top of the row, not pushed down inside one, and a `Math.max(0, …)` guard turned that into 0
+  and left every pill sitting 3.2 pt low. And the pill is a VIEW, so it does not take Dynamic Type
+  on its own: at `AccessibilityXL` it stayed a 30 pt circle beside a 23 pt line, the only element on
+  the screen not growing. `textRoom()` on both the diameter and the lift fixes both at once, because
+  the ratio is then preserved at every step. Measured on device after a cold relaunch: **−1.2 pt at
+  the default size, −2.0 pt at `AccessibilityXL`** (down from +3.2 / −3.0), and the residual is the
+  ascender-vs-descender asymmetry of the measured ink band rather than a layout error.
+
+  **The development door: two gates, and the rule is finally testable.** `__DEV__` was always the
+  real protection — Metro substitutes `false` and the minifier deletes the branch — and it is
+  spelled literally in the JSX so that stays true. What it could not do was be CHECKED:
+  `dev-sign-in.ts` imports the Supabase client, so no `node --test` file could reach it, and the one
+  rule that must never quietly stop holding had nothing behind it. The policy moved to
+  `lib/auth/dev-door.ts`, which imports nothing, and `dev-door.test.ts` asserts all six states — a
+  production bundle however well configured, a bundle with no `__DEV__` global at all, a development
+  build with no account, whitespace, half a credential, and the one case that opens. The second gate
+  falls out of the same answer: the row is drawn only when the door can actually OPEN, where before
+  every checkout without a local `.env` put a labelled control under the Apple and Google buttons
+  whose entire behaviour was to fail. `signInAsDeveloper` reads the same function, so the screen
+  that draws the door and the function that opens it can no longer disagree about whether it exists.
+
+  **Verified on the booted iPhone 17 Pro**, cold relaunch each time (Fast Refresh reports layout
+  defects that are not there): default text size, `accessibility-extra-large`, and Reduce Motion —
+  screenshotted 0.9 s after the deep link, with every element already in its final position and no
+  information withheld by the entrance. Geometry was measured off the full-resolution screenshots
+  with PIL rather than eyeballed. **Not verified: a completed tap-through of either provider** —
+  unchanged from the 9 Sep entry, and unchanged by this pass, which touched no auth path.
+
+  Gates: typecheck clean, 979 tests pass (6 new), `expo lint --no-cache` 0 errors and no warning in
+  either changed file.
+
+  Files: `app/sign-in.tsx`, `lib/auth/dev-door.ts` (new), `lib/auth/dev-door.test.ts` (new),
+  `lib/auth/dev-sign-in.ts`.
 
 - **10 Sep 2026 — third security pass: the systematic sweep, and it found a billing defect
   (S23–S26).** The first two passes followed findings. This one walked the app in the order a user
@@ -10038,3 +10108,793 @@ That is step two and is not built.
 
 `npx tsc --noEmit` **pass**. `npm test` **971/971 pass** (960 + 11 new: four receipt cases for
 the comment lane). `npm run lint` **0 errors**. `npx expo export --platform ios` **pass**.
+
+---
+
+## 16 September 2026, late — the check becomes a control, and a remark stops wearing quotes
+
+The owner's ask was to take the day's two additions — the confirm checkmark on the right of an
+unread line, and the comments printed under a lift — and make them look like iOS rather than
+like something drawn on top of it. Research first: Appllama's `Active Workout` walk of **Strong**
+(464254577, $500K/mo, 4.86★) and **Hevy** (1458862350), which between them own this exact column.
+
+**The pattern Strong encodes, and the defect it exposed here:** its per-set check is a **filled
+tile in its own column under a ✓ header** — grey at rest, green once tapped. The tile is the
+point. Recore shipped the same control this morning as a **bare blue glyph drawn straight onto
+the paper**, and on this canvas that is not a control at all: §Structure's ruling is that ink is
+the record and *everything interactive floats as a white pill*, so a checkmark with nothing
+around it reads as a STATUS — "this line is done" — which is the exact opposite of what it means.
+It is also the one control that decides whether a written line ever becomes a record.
+
+### The check (`ConfirmMark`, new)
+
+It takes the app's own accessory-button shape, one scale down from the keyboard row's 40: a
+**white circle with `shadow.card`, the colour on the glyph and never on the circle**, brand blue
+on white at **5.97:1**. The shadow is load-bearing rather than decorative — a white pill on
+`canvas` is **1.05:1 by tone**, so it is the only thing separating the control from the page
+(`elevation.ts`). Diameter **28**, so it centres on a line of text without making the row taller
+than the words in it, and the 44 pt target returns as `hitSlop` (28 + 2 × 8), which costs no
+layout. No press wash: on a floating pill the dip IS the feedback, and a highlight inside a
+shadowed circle fights its own edge.
+
+It is **one component for both places the check stands** — the unread card and the line being
+written. The 16 September ruling is that those are the same control in the same column, and two
+copies of it were two things to keep in step. The slot, the x-position and the hand-off to the
+reading dots are all unchanged; only the mark's shape is.
+
+### The remark (`Remark`, new)
+
+Three surfaces print an athlete's words about one lift — typed inside the line ("bench 100x5,
+tehnika super"), written as a prose line under it (`CommentLine`), and kept in `entry_notes` —
+and **all three were curly-quoted grey text**, one style written out twice. Quotation marks were
+doing a job punctuation should not have to do: saying whose voice this is. They were also the
+only curly quotes on the page and cost each line two characters of width on a surface where an
+exercise name already truncates.
+
+The **mark** does it instead, and it is the **same bubble the card's own note button wears** — so
+the door and what comes through it share a glyph, and a person who taps the bubble watches a
+bubble appear under the entry. Muted, because the mark only labels the line and the prose carries
+the meaning (§Colour: *colour marks, ink speaks*); the words stay `textSecondary`, which is
+information. It also settles a real ambiguity on a dense card: the footer already holds the app's
+own computed lines — the comparison, the amber gap — in the reading face against the remark's
+sans, and the voices were distinct only to someone looking for it.
+
+    Incline Dumbbell Press                                     [bubble]
+    1   35   8   RIR 2
+    2   35   9   RIR 0
+    [bubble] prva serija ylo dobra
+    [bubble] zadnjo serijo forma padla
+
+The glyph sits in a `minHeight` box on the text's own line, never `height` (§Typography), so a
+remark that wraps to three lines keeps its mark beside the first one and a reader's larger text
+size cannot hold the bubble above the sentence.
+
+### The bubble is Apple's now
+
+`note` / `note-on` were the **last Ionicons on that row** — half a point heavier than the SF
+`checkmark` beside them and drawn on a different grid, which is the near-miss the design skill's
+fidelity law 3 names. They resolve to **`text.bubble` / `text.bubble.fill`** on iOS and keep the
+Ionicons outline everywhere else, through the same `SymbolView` fallback the settings surface and
+the tour already use. `text.bubble` rather than `bubble.left`: the content is WRITING about the
+entry, and Apple's bubble-with-lines is the symbol that says so.
+
+### What the simulator caught, and it was real
+
+The Mac had 411 MB free of 245 GB, so there was no build to look at. Clearing three rebuildable
+caches (Xcode `DerivedData`, `ms-playwright`, VSCode's update staging — the owner's call, nothing
+in a project) returned **34 GB**, and a cold `expo run:ios` put a debug build on the iPhone 17 Pro
+(iOS 26.5). Every state below was rendered through a throwaway route driving the REAL components
+with `demoParseText` → `buildReceipt`, then measured off full-resolution screenshots with PIL — the
+route was deleted before the gates and `grep -rn TEMP-VERIFY src/` is clean.
+
+**The pill hung 3.5 pt low, and the cause was Yoga rather than a token.** Measured at default text
+size, before any correction: pill centre **152.5 pt**, the check ring's **149.2**, the words' own
+ink centre **148.0**. The mark's slot was one text line tall (`PENDING_LINE` ≈ 22) with
+`justifyContent: 'center'`, which is right for the reading dots and wrong for anything TALLER than
+the line: **Yoga clamps an oversized child to the top of a fixed-height box instead of overflowing
+it both ways**, so a 28 pt pill in a 22 pt slot sat 3 pt below where `center` claimed to put it.
+The old bare glyph had the same offset and was too small for anyone to see it.
+
+The slot now takes the PILL's height and pays the difference back as a negative margin, which puts
+its centre exactly where the one-line slot's was. Re-measured after the fix: **pill centre 149.0
+against the ring's 149.2** — and the reading dots did not move by a pixel relative to their own row
+(−1.0 pt from the ring before and after), which is the point of the column: the tap and the work it
+starts trade places without anything shifting.
+
+**The remark's bubble sits 1.2 pt above its first line's ink centre** (glyph 399.33, "Felt heavy"
+400.50) — correct rather than off, since a line ending in a descender carries its ink centre low.
+
+**Dynamic Type at accessibility-extra-large breaks nothing**: no clipping, no overlap, the pill
+still reads as the row's control. Both marks drift up 3–5 pt against the grown text there, because
+`pendingText` states a fixed `lineHeight` that the font size outgrows — the check ring drifts with
+them, so this is the row's existing behaviour at that size and not something these two marks
+introduced. Left alone: the line height is load-bearing (the mark column is aligned to it by name).
+
+### Found on the way, NOT changed
+
+**`color.ts` still carries `brand: '#007AFF'`.** The design skill records that the owner chose Volt
+`#0B5CD6` on device on 20 August 2026 and retired `#007AFF` as failing text-sized use at 4.02:1 on
+white — the token never moved. The confirm check measures **`#007AFD` on screen**, so it is drawing
+`brand` faithfully; a glyph is a non-text component and clears the 3:1 bar either way, so the pill
+is honest as it stands and simply gets better whenever the token does. Swapping the app's one blue
+touches every screen and is the owner's, not a side effect of a checkmark.
+
+The rail's own done-ring still draws a text `✓` rather than the SF mark. Same glyph in spirit;
+swapping it changes how a 12 pt character centres inside a 22 pt circle, which is a second
+alignment problem to measure, and it was not what the owner asked for. Left.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **971/971 pass**. `npm run lint` **0 errors** (61
+pre-existing warnings, none in the touched files). `npx expo export --platform ios` **pass**
+(9.6 MB bundle). Simulator: iPhone 17 Pro / iOS 26.5, default and accessibility-extra-large.
+
+---
+
+## 16 September 2026, late — Delete stops being a word
+
+Owner, on the inline editor a card opens into: *"ko kliknemo gor na vajo pri parserju umakni
+delete in dej sam tko kot rdeci ikono ampk mora biti v style apple ios"*.
+
+**It was the only control on Today spelled out in letters.** Tapping an exercise drops its line
+into `EditRow`, and beside the field stood the word `Delete` in `error` red — a label, and a label
+is what a mark needs only when the mark is ambiguous. The trash is not ambiguous: it is the
+destructive mark on this phone, and iOS spends red on exactly one row of a menu to say so. Checked
+against real apps rather than assumed (Appllama): **Ulysses' editor menu draws an outline `trash`
+in red with every other glyph in ink** — the same shape in Daylio's entry actions and Mail's
+toolbar. The word is redundant with the glyph, never the other way round.
+
+So the button is the glyph: SF `trash`, 20 pt, `color.error` `#A33D36` — **measured `(163, 61, 54)`
+on screen, the token exactly.** House red, not `systemRed`: the palette is the warm paper one, and
+an imported hue would be the first thing on the page that came from somewhere else.
+
+**It is the SAME GLYPH THE SWIPE SHOWS** (`swipe-to-delete.tsx`), which matters more than the word
+did — one action has one mark, so the two doors to deleting a line are recognisably one thing.
+
+**A bare glyph, not a pill, and that distinction is now the page's grammar.** The confirm check
+earned a white pill this morning because nothing is recorded until it is pressed; this asks for
+nothing, so it rests as ink the way the note bubble does. Shape is urgency on this surface. Its box
+sits on the page margin (`paddingRight: 0`, as `sideBtn` does), so the trash, the note bubble and
+the confirm pill all stand in **one right-hand column** whatever state the record is in.
+
+**The label moved to VoiceOver rather than disappearing.** The visible word WAS the accessible
+name; the button carried no `accessibilityLabel` at all, because it never needed one. It has
+`accessibilityRole="button"` and `"Delete this line"` now — without them a screen reader would
+reach an unnamed control on the one row where a mistake is unrecoverable.
+
+### What the simulator caught
+
+**The glyph sat 3.6 pt high, and the word had been hiding it.** `editLine` is
+`alignItems: 'center'`, which centres a child on the TextInput's BOX — and a field's ink does not
+sit in the middle of its own line box, because the room under a descender is not the room over a
+cap. Measured: trash ink centre **339.2 pt** against the typed line's **342.8**. Two pieces of text
+read as aligned on their baselines and absorb this; a glyph beside text does not.
+
+Fixed with a `marginTop` / negative `marginBottom` pair — a one-sided margin moves a centred item
+by only half of it — shifting the glyph down by `spacing.xs`. Re-measured: **343.2 against 342.8**,
+0.4 pt.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **971/971 pass**. `npm run lint` **0 errors** (61
+pre-existing warnings, none in the touched file). `npx expo export --platform ios` **pass**.
+Simulator: iPhone 17 Pro / iOS 26.5, both `EditRow` states (with and without "fix reading").
+
+---
+
+## 16 September 2026 — the premium native pass over onboarding v2 (owner's directive, verbatim goal)
+
+The owner directed a screen-by-screen polish of the v2 funnel "to feel like a premium native
+iOS app", naming ten screens by number and marking the rest KEEP. Everything below is live and
+was walked end to end on the iOS 26.5 simulator (iPhone 17 Pro, fresh install, real run:
+answers → commit → dispatcher → paywall).
+
+### What shipped, screen by screen
+
+- **1 · welcome** — the cap character yielded the hero to the product: a code-drawn iPhone
+  (`PhoneFrame.tsx`: bezel, Dynamic Island, side keys — action, volumes, power; two new tokens
+  `color.device`/`color.deviceScreen` carry its inks) rises in on the `character` spring
+  (`RiseIn.tsx`) and the real Today page performs a push session inside it (`PhoneDemo.tsx`):
+  typed two beats per line (lift+load, breath, reps), parsed by the offline grammar, settled as
+  real `ExerciseCard`s via `LiveLedger`, page scroll-shifting to keep the caret on the glass,
+  looping seamlessly (fade out whole → retype). Copy: "Log it like a note." / "Type your sets
+  the way you'd say them. Recore does the rest.", centred under the phone; the screen no longer
+  scrolls (first sim pass photographed the subline below the fold). `SelfWritingLedger.tsx` is
+  deleted; `live-ledger.test.ts` now pins `PhoneDemo` to the shared ledger instead.
+- **4 · obstacle-insight** — statement and support moved to the bottom half; the top half runs
+  `GridCollapse.tsx`: a Strong/Hevy-style set grid (SET/KG/REPS cells, Add Set row) folds in on
+  itself and the same three sets come back as one typed line with the record's check. Loops;
+  the card fades fully to nothing (an 8 % remnant read as a rendering fault on the sim).
+- **6 · demo** — the accessory bar lost its status pill (following Today's own 16 Sep ruling)
+  and gained Today's mic: same `startDictation`/`voiceAvailable` wiring, same listening state,
+  writing into the page through a `noteControl` bridge on `DemoPage`. Verified on the sim up to
+  both real permission prompts (speech recognition, then microphone) and the listening state;
+  actual transcription needs a device. **Inline comments now survive the offline read**:
+  `demo-read.ts` keeps prose segments after a movement's sets as `ReadItem.notes`,
+  `demo-parse.ts` rides them on the sets (`note`), and `buildReceipt` already lifts them into
+  `ReceiptRow.comments` — so "bench 100kg 5,5,4, felt strong" prints *felt strong* under the
+  card on screens 6 and 7, photographed.
+- **13 · year-insight** — a blue hero count-up ("156") over a grid of 52 week-cells that fill
+  on the same `count` spring family, caption "52 weeks · N a week"; the twelve monthly bars are
+  gone. Still nothing but arithmetic on the frequency answer.
+- **15 · lifts** — opens with Bench press / Squat / Deadlift already on the sheet as editable
+  load rows (demo-seeded loads win over defaults — the sim run showed bench pre-filled at the
+  typed 100 kg), one "Add lift" row opens the old option rows for the rest. `KEY_LIFTS` lost
+  Pull-ups (loaded lifts only, owner's words), `MAX_KEY_LIFTS` rose 3 → 5,
+  `DEFAULT_KEY_LIFTS` is new in `flow.ts`. The smallest-plate control is untouched.
+  NOTE: Profile's key-lifts sheet imports the same list, so it now offers five loaded lifts and
+  no Pull-ups; a previously stored Pull-ups selection survives but can no longer be re-picked.
+- **16 · overload** — the drawn series carries a small deterministic ripple (`WOBBLE`, a fixed
+  fraction of their own step, same for the same answers on every visit); week 0 and the final
+  week stay exactly the stated numbers. The area wash literal that spelled the retired #007AFF
+  became `alpha(color.brand, 0.08)`.
+- **17 · commit** — on the frame the hold completes: success haptic (already there) plus a
+  burst of system Apple emoji — 💪 and ✊ — leaving the disc on one underdamped spring each,
+  fading as they land; nothing replays on a return visit, Reduce Motion drops it whole.
+  **A recorded exception to the flow's no-emoji rule, on the owner's explicit directive**; the
+  glyph rules in `characters.test.ts` cover `flow.ts` copy and still pass untouched.
+- **18 · building** — the mascot's rotating ring is replaced by the app's own squircle filling
+  bottom → top in `color.brand` (transform-only scaleY from the bottom edge), the 0–100 %
+  tabular counter kept; at 100 % a white check springs in, the headline flips to "Your plan is
+  built." and the screen auto-advances after a readable beat (no tap).
+- **19 · reveal** — replaced completely: "Here's what Recore knows." — a ruled paper sheet
+  (the sanctioned value-card family) on which every ANSWERED question writes itself, row after
+  row, caret and reading face and all (name, goal, training age, sessions a week, split, key
+  lifts with loads, smallest plate, units), closing on a line that is only ever their name and
+  their own arithmetic ("Edis — 156 sessions a year starts with one written line."). The
+  first-session card this replaces still exists where it always shipped: the prescription lives
+  in Next's brief, and the paywall's own line ("Your bench press at 105 kg × 3") was verified
+  on the sim to carry the plate-rounded target built from these answers. `firstSessionTargets`
+  and its tests are untouched.
+- **20 · recap** — its own screen (`RecapScreen.tsx`) instead of the generic question: a drawn
+  iPhone shows the lock screen (clock, date line following the selected row) with the recap
+  banner sliding in on a loop — app icon, "Weekly recap", body built from their frequency in
+  `lib/recap.ts`'s own words. The Sunday/Monday rows carry their marks and new factual
+  sub-lines (`flow.ts`). **The iOS permission prompt fires on the row tap now**, not on
+  Continue (the directive's words: "immediately triggers the native prompt") — photographed
+  firing on the sim; a denial shows the existing truthful note and never blocks. Scheduling is
+  unchanged: the commit writes day/hour/enabled, the first Today open schedules.
+
+### The character's presence table
+
+`PRESENCE` now says no on welcome, obstacle-insight, commit and building (each entry carries
+the dated reason); the resolved set is the greeting alone, and `characters.test.ts` asserts
+exactly that. The resolver machinery is untouched.
+
+### Owner-amended rules, recorded
+
+1. **Looping demonstrations are allowed where the loop IS the demonstration** (screens 1, 4,
+   and the recap banner). The motion rules' ban on looping decoration stands everywhere else.
+2. **The 💪/✊ burst on screen 17** is a deliberate, owner-directed exception to the flow's
+   no-emoji rule — a one-shot celebration at the funnel's single moment of commitment.
+3. **The reveal is the person, not the prescription** — screen 19's §2 mandate ("first
+   session targets, editable") is superseded; the numbers moved to the paywall line and Next.
+
+### Gates
+
+`npm run typecheck` **pass** · `npm test` **971/971 pass** · `npm run lint` **0 errors** (65
+warnings, all of the codebase's standing react-hooks classes) · `npx expo export --platform
+ios` **pass**. Simulator: full flow end to end on a fresh install — every changed screen
+photographed, both permission prompts (speech + mic on 6, notifications on 20) fired for real,
+the commit landed and the dispatcher handed to the paywall with the funnel's answers in its
+copy.
+
+### Same day, the owner's frame pass
+
+The drawn iPhone was upgraded to the standard product-render grammar the owner referenced: a
+titanium rim OUTSIDE the black bezel (`color.deviceBand` — first silver, switched to the
+black model's graphite the same evening on the owner's word), side keys standing off the rim, a drawn status bar (time left of the island — hidden on the lock screen, whose big
+clock is the time — cellular/Wi-Fi glyphs and a drawn battery right), and a lens dot in the
+island's right lobe. `phoneMetrics()` is the one source of the frame's geometry, shared by
+both pages scaled into it. The recap lock screen lost its black panel for a dusk-blue
+wallpaper gradient (rgba, deliberately outside the palette: it is a picture of a lock screen,
+not app chrome). Re-verified on the simulator; gates re-run green.
+
+The hero page's top offset follows `fontScale` since the same evening: at Dynamic Type XL the
+mock's large title grew up into the drawn island (photographed); the title block now starts
+lower by the same factor its own text grows by.
+
+### Not verified here
+
+Dictation transcription end to end (needs a device's speech engine), haptics (simulator has
+none), and the 60 fps release-build motion pass on the slowest supported device.
+
+
+---
+
+## 16 September 2026, late — the swipe stops asking, and the undo pill says what went
+
+Owner: *"dej umakni to ko swipamo v levo za brisanje vrstice da potem se potrdimo da zelimo
+izbrisati ker dejansko ce potengemo do konca to ze pomeni da smo prepricani itak potem je se undo
+moznost"*.
+
+**The dialog was the second half of an argument whose first half had already been withdrawn.**
+`note-surface.tsx` carried thirty lines explaining why delete had to stop and ask, and both of its
+reasons had expired. The first — `deleteNoteLine` splices `raw_text`, which IS the record, and
+nothing could put it back — died on 11 September when `undo-delete.tsx` shipped; that entry's own
+comment says so, and the dialog's closing sentence ("This cannot be undone.") was replaced then
+rather than kept, precisely because it had stopped being true. The second — delete is a one-tap
+row on a menu — died on 16 September when delete became a drag the thumb has to carry past 42 % of
+the screen, through a red block that appears under it and a haptic when it arms. The file even
+wrote down the conclusion it would not draw: *"For a line holding a single entry it is now pure
+friction on a reversible action, and dropping it there is the owner's call, not this file's."*
+This is that call, and it is wider than the file expected: the drag is the decision on every line,
+not only a single-entry one.
+
+**What the dialog did that the undo did not, and where it went.** One written line can hold several
+readings — "bench 3x8, rows 3x10" is one line and two cards — and the line is the only honest unit
+to remove, because `ParsedItem` carries no offset back into the sentence and guessing at a
+substring of what the athlete wrote would corrupt the record (§3). Naming those neighbours was the
+dialog's last real job, so it was **moved, not dropped**: `lastDelete.label: string | null` became
+`labels: string[]`, the swipe hands over `[row.exercise, ...siblings]`, and the pill prints all of
+them — *Deleted "Bench press" and "Rows"* — each name in its own quotes, because
+`"Bench press and Rows"` reads as one entry with a comical name. The report now arrives **beside**
+the way back instead of in front of it, which is the right order for a reversible action: a
+pre-confirm interrupts everyone to protect the rare case, an undo costs nothing until the rare case
+happens.
+
+The pill's message went to `numberOfLines={2}`. It grows off `minHeight`, and truncating the
+sibling names would have quietly undone the only reason they are printed.
+
+**One door still asks: the inline editor's trash.** Not an inconsistency — the same rule applied to
+a different door. It is a bare one-tap glyph beside an autofocused field, with no drag in front of
+it to have been the decision, and the file it lives in has called it "the more accidental of the two
+doors" since August. Its copy keeps "Undo is offered straight after", and it now hands the line's
+entry names over too, so the pill reads the same whichever door was used.
+
+**VoiceOver loses the dialog with the finger.** The card's rotor action and the swipe are one
+function, and splitting them would have made the screen-reader path the only one that has to pass a
+confirm — the exact afterthought treatment `swipe-to-delete.tsx` was written to avoid. The undo
+pill already announces itself (`announceForAccessibility`) and already stands for 20 seconds rather
+than 6 when a screen reader is on, which is the report the dialog used to be.
+
+**No second haptic.** The gesture already fires `tapMedium` when it arms; the dialog's Delete used
+to fire another on confirm. With the dialog gone, one action gets one haptic. The resting-open
+Delete button keeps its own `tap()`.
+
+**The onboarding demo follows, and asks a smaller question.** `DemoPage` exists to be Today, and
+`live-ledger.test.ts` pins the two ends of that claim — a gesture that stopped to ask there and not
+here would teach the flow's one live ledger a rule the app does not keep, so its swipe deletes
+straight through as well. Its **editor** still confirms, with shorter copy: there is no undo pill in
+onboarding, so "Undo is offered straight after" would be a promise that surface cannot keep, and
+nothing on that screen is the record yet — the words are a line typed thirty seconds ago to watch
+the parser read it. The parity test was renamed off "its delete is Today's own confirm" and now
+asserts the absence rather than the presence, because the failure mode is a confirm creeping back
+onto one of the two surfaces.
+
+Changed: `src/components/note-surface.tsx`, `src/components/onboarding-v2/DemoPage.tsx`,
+`src/components/undo-delete.tsx`, `src/state/session-store.ts`,
+`src/components/swipe-to-delete.tsx` (prop contract and `joinNames`' home comment — no behaviour),
+`src/components/onboarding-v2/live-ledger.test.ts`.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **971/971 pass**. `npm run lint --no-cache` **0 errors**
+(66 pre-existing warnings; the touched files report none except `swipe-to-delete.tsx`'s existing
+`react-hooks/immutability` set, which is untouched shared-value code, and two pre-existing warnings
+in `note-surface.tsx` / `DemoPage.tsx` that predate this change — `BODY_PADDING_TOP` is unused on
+`HEAD` too). `npx expo export --platform ios` **pass**.
+
+**NOT seen on a device.** The swipe it changes has never been seen moving either (row 283), so the
+whole gesture — arm haptic, red sweep, and now the pill naming two entries at once — is still
+unverified on hardware.
+
+---
+
+## 16 September 2026 — the brand gets a drawn mark, and the icon script stops being the design
+
+The owner supplied two exports: `Blue.png`, the app icon at 1024 (a white geometric R with a
+circular counter and a descending leg, on `#007AFF`), and `Mark.svg`, the same R as a path in
+`#171914`. Both are now in the repository, and the R that the app has been drawing for itself since
+PLAN C1 is retired.
+
+### The masters live in `assets/brand/`, which is new
+
+`assets/brand/app-icon-1024.png` and `assets/brand/mark.svg` are the exports, byte-for-byte. Expo
+never reads that directory; it exists so the next change diffs against the real thing rather than
+against a derivative. The measured facts that the rest of this entry depends on: the export's field
+is exactly `color.brand` `#007AFF` and its mark exactly `color.onInk` `#FFFFFF`, the mark's ink box
+is 494 × 594 at 1024 (0.48 × 0.58 of the canvas, optically centred at 0.490 / 0.500), and the SVG's
+own fill `#171914` is `color.textPrimary`. None of those were chosen here — they are what the export
+already is, read off it.
+
+### `scripts/build-icon.py` derives now; it used to draw
+
+This is the load-bearing change, and it is a bug fix as much as a rebrand. The script WAS the icon:
+it set an "R" in SF Pro Bold over a ledger rule, ink on warm paper, and emitted all six assets
+`app.json` names. Dropping the new export over `assets/images/icon.png` would have left a script in
+the tree that silently redraws the retired letter-mark over it on the next `npm run build:icon` —
+a generated file hand-edited is drift by construction.
+
+So the script reads the master and derives. **The mark is lifted off the field by the red channel**:
+the export is two colours whose reds are 0 and 255, so red IS the coverage mask, antialiased edges
+included — no threshold, no path arithmetic, and every derived asset keeps the export's own position
+and size instead of a re-derived guess at them. What it writes:
+
+| Asset | What it is now |
+|---|---|
+| `icon.png` | the export, passed through |
+| `android-icon-background.png` | solid `#007AFF` — was warm paper |
+| `android-icon-foreground.png` | white mark on transparency, 1:1 with the export |
+| `android-icon-monochrome.png` | the same coverage as a black stencil |
+| `splash-icon.png` | the mark in **ink**, not white and not the field blue |
+| `favicon.png` | the whole tile at 96 |
+
+Two of those are decisions rather than transcription. **Android drops the safe-zone shrink**: the
+old script scaled its artwork to 0.66 because it drew at full bleed, but the export's mark already
+sits at 0.48 × 0.58, inside the inner 66% the launcher guarantees, so shrinking it again would make
+the two platforms show two different lockups. `app.json`'s `adaptiveIcon.backgroundColor` moved from
+`#F4F5EF` to `#007AFF` to match the layer beneath. **The splash mark is ink**: inside the product
+the mark is one ink, the same one `BrandMark` takes on sign-in; white-on-blue belongs to the icon,
+which is the one place the app is a tile on someone's home screen.
+
+Verified rather than assumed: compositing the two Android layers reproduces the master to within
+1/255 per channel.
+
+### `src/components/brand-mark.tsx` (new)
+
+`metro.config.js` wraps Expo's default config for Sentry and adds nothing else, so there is no
+`react-native-svg-transformer` and `import Mark from './mark.svg'` resolves to a string. The working
+route is the one `onboarding-v2/BrandIcon.tsx` already takes — the path data in the component,
+drawn by the `react-native-svg` that draws the charts.
+
+Three things the export could not carry across on its own:
+
+- **`tint` is required.** The export bakes `#171914`; baking it here would make the mark invisible
+  the first time it sits on a filled blue row, which is the failure `BrandIcon` already documents.
+- **`size` is the HEIGHT.** The mark is 495 × 594 — the leg makes it taller than wide — so the width
+  follows from `MARK_ASPECT`. Fitted to a square box the R squashes.
+- **One edit to the path.** Figma wrote the opening curve's second coordinate as `8.2466e-06`, and
+  exponent notation is the corner of path syntax most likely to differ between parsers. It is zero
+  to within a hundred-millionth of the mark's height and is written `0`. `assets/brand/mark.svg`
+  keeps the original.
+
+The component is a `View` with `accessibilityRole="image"` and label `"Recore"` around the `Svg`:
+it replaces a word, so VoiceOver still reads the word.
+
+### Sign-in prints the mark instead of the word
+
+`src/app/sign-in.tsx` drew "Recore" in SF Pro at 17/700 — a placeholder for a brand with no drawn
+mark. It draws `BrandMark` now, at `color.textPrimary` (which is the export's own fill), in the same
+`minHeight: 44` slot, so nothing below it moves. This is the **only** place the mark appears in the
+product: the Today tab deliberately dropped its wordmark row (row above, 9 September) and does not
+get one back.
+
+`MARK_HEIGHT` is `moderateScale(28) * osFontScale`. A `Text` got Dynamic Type from the renderer; an
+`Svg` is a view, so it takes the reader's setting the way `osFontScale` documents for views — or it
+would be the one thing on that screen that ignores the text size.
+
+`onboarding-v2/LockScreenDemo.tsx` renders `assets/images/icon.png` as the app icon in its fake
+notification banner, so the onboarding recap screen shows the new icon with no edit.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **971/971 pass**. `npx expo lint --no-cache` **0 errors**
+(68 pre-existing warnings; `brand-mark.tsx` and `sign-in.tsx` report none).
+`npx expo export --platform ios` **pass**.
+
+The path transcribed into `brand-mark.tsx` was rasterised on its own and compared against the mark
+in the export — same geometry, counter punched by `fill-rule="evenodd"` — so the transcription and
+the exponent normalisation are confirmed rather than assumed.
+
+**NOT seen on a device or in the simulator.** The booted iPhone 17 Pro has no build of the app
+installed, and an app icon cannot be seen without a native build in any case — an OTA does not carry
+it. Unverified: how `react-native-svg` renders this path on device, the mark's optical size beside
+the hero at every Dynamic Type step, and all six icon assets as the OS actually masks them.
+
+---
+
+## 16 September 2026 — the paywall stops selling: free while Recore is being tested, a thank-you, and one button
+
+Owner's brief, verbatim: *"dej vzemi paywall in naredi tko da piše da je trenutno za testerje free
+in da ni treba klikat gor levo gumba ampk da je en gumb ze tko prov nekje na sredini ki pise in na
+paywallu napisi zahvalo za vse ki bodo testirali app."* Three asks — say it is free for testers,
+put the way forward in a real button in the middle of the screen instead of a chip in a corner,
+and thank the people testing it. Then, on seeing it: *"na paywalu naj ne bo nc tko da pise anual
+ap pa monthly naj bo sam tko kot sporocilo in gumb da nadaljujejo na prijavo naprej"* — **no plan
+cards at all**, in any build that is not actually selling.
+
+### What was there before, and why it was nothing
+
+**No build in this repository can sell anything today.** `.env` carries no RevenueCat key, a
+`test_` key is blanked outside `__DEV__` by `env.ts`, and the `testflight` profile hands the whole
+app over (`EXPO_PUBLIC_BETA_UNLOCK=1`) instead. So `fetchOffer` had nothing to read and
+`paywall-v2/plan` rendered an Annual card with no price, a Monthly card with no price, a trial
+timeline for a trial nobody was starting and a disabled **"Prices unavailable"** button. A beta
+build did not even get that far: `app/index.tsx` **skipped the screen**, redirecting straight to
+`/sign-in` with `next: 'home'`.
+
+Both were dead ends, and the dev build's only way past was the `DEV · SKIP` chip in the header — a
+developer's door, drawn as quietly as a 44 pt target can be drawn, which is what the owner's
+second ask is about. A plan card that cannot be bought is not a softer version of a shop; the
+radio button, the "12 months, billed once" and the renewal paragraph all assert something the
+build cannot do.
+
+### One question decides the screen: can this build sell anything?
+
+`canSell()` is new in `src/lib/billing/store.ts` — `isStoreConfigured() && !isBetaUnlocked()` — and
+it is the rule both screens now read. It answers a different question from `fetchOffer`: a failed
+fetch means "the store did not answer just now" and must still render the paying screen with an
+honest *prices unavailable*; `canSell` asks whether there is a shop behind the screen at all, which
+is knowable before anything is asked.
+
+`const TESTER_PASS = !canSell()` at module scope in `paywall-v2/plan.tsx`. Both halves are
+build-time constants, so the screen is decided before the first render. `app/index.tsx`'s beta
+branch is gone — every build redirects to `/paywall-v2/plan`, and the screen decides what it is.
+
+| | Build with a real key | Every build today (no key, or beta) |
+|---|---|---|
+| Header | back chevron · `DEV · SKIP` (`__DEV__` only) | back chevron only |
+| Body | headline · trial timeline · two plan cards · saving line · assurance · store CTA · renewal fine print · Terms/Privacy/Restore | headline · **tester pass** |
+| Forward step | plan → account → Apple's sheet | one button → sign-in (`next: 'home'`) → home |
+| Funnel counter | `markPaywallShown()` | **not counted** |
+| `paywall_view` | `variant: 'v2'` | `variant: 'tester'` |
+
+**The paying screen is not deleted and not dead.** It is one `appl_` key away: the day a real key
+is in the build, `canSell()` turns true and both screens go back to selling with no edit to either
+file.
+
+The tester pass is `src/components/paywall-v2/BetaPass.tsx`: a `surface` card carrying a check and
+**"Free while Recore is being tested"**, under it what that means — *"No store is attached to this
+build. Nothing is charged, nothing is running down, and there is nothing to cancel — the whole app
+is open"* — then the thank-you, then a full-width brand pill reading **"Continue — free for
+testers"**. The copy itself lives in `copy.ts` as `BETA_COPY`, next to the personalised copy and
+under the same test file.
+
+### Four decisions worth not re-litigating
+
+1. **It is a separate render tree, not `TESTER_PASS &&` conditionals inside the paying one.** What must
+   never reach a tester's screen is a price, a trial length, a Restore link or a renewal sentence —
+   none of which exist in a build with no store. A shared subtree keeps all four lines one
+   mis-written condition away from rendering; two trees cannot leak into each other.
+2. **The copy is in `copy.ts`, so a test can hold it.** `copy.test.ts` asserts that no string in
+   `BETA_COPY` can contain a digit or a currency mark. In a build with no store behind it there is
+   nothing to correct a wrong word, and a digit in any of those four lines could only be a price, a
+   trial length or a date — there is no fourth thing it could be.
+3. **A tester-pass view is not a paywall view.** `markPaywallShown()` is the denominator of every
+   conversion number in §13, and a screen that quotes nothing and cannot be bought from would make
+   that denominator mean two things at once. The `paywall_view` event still fires, carrying
+   `variant: 'tester'`; the CTA tap does too, and never writes `markPlanSelected`.
+4. **The body centres instead of spreading.** `body` uses `space-between` over four groups; the
+   tester pass has two, and `space-between` would have pinned the button to the bottom edge — the
+   corner problem again, in the other corner. `betaBody` overrides exactly one property
+   (`justifyContent: 'center'`), so the block sits in the middle of the page and `flexGrow`,
+   padding and scrolling behaviour all still come from the same column.
+
+### The sign-in screen stopped promising a trial it cannot start
+
+The step straight after the tester pass said *"Create your free account to start the trial…"*,
+which contradicts the screen before it and promises a clock no store is running (§2 rule 5). It
+reads the SAME `canSell()` — `const NOTHING_TO_PAY = !canSell()` — rather than deciding for
+itself, and says *"…no passwords, and nothing to pay while Recore is being tested."* The selling
+build's sentence is unchanged.
+
+### What this does NOT change, and the one thing it now requires
+
+No price, trial length, renewal date, Restore promise or countdown is rendered anywhere in a build
+that cannot sell — there are fewer billing claims on screen after this change than before it, not
+more, and every remaining one is behind a real key. The purchase code itself is untouched: same
+`fetchOffer`, same `purchase`, same seven outcomes, same entitlement, same plan cards, same legal
+paragraph.
+
+**The paying screen is now unverifiable on screen until a key exists.** Nothing in this repository
+renders it today, so the next person to add an `appl_` key has to walk the plan → account →
+purchase path again before trusting it; the gates cannot see a branch no build takes. That is the
+price of not drawing a shop that is not there, and it is the owner's ruling.
+
+**It does not clear B5, and it makes B5 louder.** A store build that applied a beta-flagged OTA
+already unlocked itself for free; it would now also tell the customer it is free for testers. The
+remedy is the one already written in the blocker row — clear the `production` branch before any
+submission — not a change to this screen.
+
+### Gates
+
+`npx tsc --noEmit` **pass** over everything this change touches. (A full-repo run at the end of the
+session reported 7 errors, all of them in `src/lib/auth/dev-door.test.ts` and `dev-sign-in.ts` —
+files a second session was editing live, mtimes seconds old, untouched here. Re-run once that work
+lands.) `npm test` **973/973 pass** at the time of the run, 979 once the other session's tests
+appeared (two of them new here: the tester copy cannot quote a price, a length or a date, and it
+says "free" on both the badge and the button while thanking the people testing).
+`npx expo lint --no-cache` **0 errors** (66 warnings, all pre-existing; `BetaPass.tsx`,
+`sign-in.tsx` and `index.tsx` report none, and `plan.tsx` reports only the `setState`-in-effect
+warning it already had). `npx expo export --platform ios` **pass**, and a second export with
+`EXPO_PUBLIC_BETA_UNLOCK=1` **pass** — the two bundles differ, as they must.
+
+`BETA_COPY`'s strings are present in BOTH bundles (Hermes keeps a string table; an unrendered
+branch still carries its literals — they are stored UTF-16 because of the em dashes, which is why
+an ASCII `strings` grep finds only the badge). That is dormant text, not a claim: a build with a
+real key evaluates `canSell()` at module scope and never enters the tree that draws them.
+
+### Verified in the simulator, not only by the gates
+
+iPhone 17 Pro, dev client, on BOTH bundles — a Metro started with `EXPO_PUBLIC_BETA_UNLOCK=1` and
+the ordinary dev Metro on 8081:
+
+- `/` dispatches to the paywall and it renders the tester pass — headline, the free card, the
+  thank-you, the blue pill — with **no Annual, no Monthly**, no price, no timeline, no Restore and
+  no `DEV · SKIP` chip.
+- The button lands on sign-in, exactly where the beta redirect it replaced went, and that screen
+  shows the "nothing to pay while Recore is being tested" sentence rather than the trial one.
+- The paying tree was photographed on the same route before `canSell` widened the rule (plan cards,
+  timeline, `DEV · SKIP`, "Prices unavailable"), which is the evidence that the branch — not the
+  screen — is what changed.
+
+- At `content_size accessibility-extra-large` the block scrolls rather than compressing, and the
+  button still renders whole with its label on one line. That step is also what produced the one
+  layout fix in this pass: the status label wraps to two lines there, and a vertically centred
+  check floated in the gap between them, so `badgeRow` aligns to `flex-start` and `checkSlot`
+  offsets the check onto the first line's optical centre — `(lineHeight − CHECK) / 2`, taken from
+  the type scale.
+
+Motion needs no new rule: the three entrances are the flow's own `Enter` and the button is
+`PressScale`, both of which already fade without travel under Reduce Motion.
+
+**Not verified:** VoiceOver order over the new card, and the screen on a real TestFlight build —
+it has only been seen against Metro with the flag set by hand.
+
+---
+
+## 16 September 2026, later — the brand audit, and the one place the old wordmark was still shipping
+
+The owner asked whether the new brand is actually everywhere, and whether the mark should also go on
+Today. Two different answers.
+
+### The audit: one leftover, and it was the one that leaves the phone
+
+Every rendered use of the name was read. All but one are the product NAME inside a sentence — the
+paywall's "Recore keeps a verified record", Next's "Recore has something to beat", the aliases
+sheet's "Recore will stop reading…" — which is copy, not a lockup, and correctly stays a word.
+
+The exception: **`session-receipt.tsx` printed `Recore` as a `Text` at the foot of the share card.**
+It is the only brand lockup left in the product, and it is the only one that LEAVES the app — the
+card is captured to PNG and handed to the share sheet, so it lands in camera rolls and group chats
+in front of people who have never opened Recore. The file's own comment already called it "the
+Recore mark"; it had a word because there was no mark to draw.
+
+Also checked and clean: `onboarding/panels.tsx` and `onboarding-v2/LockScreenDemo.tsx` both
+`require('assets/images/icon.png')` and so picked up the new icon with no edit. `ios/` and
+`android/` are gitignored, and the local `ios/Recore/Images.xcassets/AppIcon.appiconset` still holds
+the old warm-paper icon — **`npx expo prebuild` has not been run since the swap**, so a build from
+this working copy would still install the old icon. Nothing in the repository is wrong; the local
+native directory is stale.
+
+`TESTFLIGHT_READINESS.md` rows 297 and 404 describe the icon as warm paper with a `#F4F5EF` corner.
+Both statements are now false and are NOT corrected here — that file is a release checklist, and
+rewriting its findings from another change's chair would erase the audit it records. Flagged for
+whoever next runs it.
+
+### The share card signs itself now
+
+`BrandMark` + the word, right-aligned at the foot, both `textMuted`, replacing the lone `Text`.
+This is deliberately **the only lockup in the app that pairs the mark with the word**: everywhere
+else the reader is already inside Recore and the mark alone is enough, while this image has to
+introduce a brand to someone who has never met it — a shape on its own resolves to nothing.
+
+The size was mocked rather than guessed. `type.caption` is 13 pt and its SF Pro cap height measures
+9.2 pt; the mark was rendered beside the word at 13 / 15 / 17 pt against `surface` at 6× and read
+back. 17 closes up the mark's counter and pulls the eye off the numbers the card exists to show, 13
+goes timid, **15 sits as a signature** — a little above the caps with its leg hanging past the
+baseline like a descender, which is what anchors the pair. `BRAND_MARK_H` is
+`moderateScale(15) * osFontScale`, for the same reason sign-in's is: the word grows with the
+reader's text setting and an `Svg` has to be told.
+
+`BrandMark` grew `label: string | null` for this. The word is printed right beside it, so the mark
+passes `null` and steps out of the accessibility tree — a lockup announced as "Recore, Recore" is
+worse than one announced once.
+
+### Today does NOT get the mark, and that is the answer rather than a deferral
+
+Four reasons, in order of how much they bind:
+
+1. **It was removed on purpose and the removal is recorded.** `today/_layout.tsx` (9 September):
+   the wordmark row went so that *"all four tabs now print their own name at the same optical
+   anchor"*. A mark on Today alone breaks exactly the symmetry that change bought — Next, Progress
+   and You would have nothing.
+2. **Today's reference is Apple Notes**, and the same file states the rule it was rebuilt around:
+   Notes *"has no app-titled bar over your writing"*. A brand mark in that bar is an app title with
+   extra steps.
+3. **It would compete with the record.** CLAUDE.md's whole posture for this tab is that the record
+   is the loudest thing on the page.
+4. **On an iOS 26 SDK build the bar is Liquid Glass and a bar button is a CONTROL** — the calendar
+   earned its place there by doing something. A mark parked in the same bar is a control that does
+   nothing, which is the failure `today-header.tsx` already documents for a differently-shaped
+   button.
+
+The empty page was considered as the one spot with nothing to compete with, and rejected on the
+same grounds: `note-surface.tsx` says an empty page *"is the app talking to itself"* and opens
+*"exactly like a new note in Apple Notes"* (owner, 12 Aug 2026). A logo is the app talking to
+itself.
+
+So the mark's three homes are the ones it has: the icon (white on the field blue), the splash and
+sign-in (ink, inside the product), and the share card (ink, signing an artifact that leaves).
+
+### Gates
+
+`npm test` **979/979 pass**. `npx expo lint --no-cache` **0 errors**, 67 warnings, none in
+`brand-mark.tsx`, `session-receipt.tsx` or `sign-in.tsx`. `npx expo export --platform ios` **pass**.
+
+**`npx tsc --noEmit` is RED, and not from this change.** It reports 7 errors, all in
+`src/lib/auth/dev-door.test.ts` — an untracked file from another session in flight while this ran
+(`__DEV__` redeclared, and read off `globalThis` without a declaration). Filtering that file out
+leaves zero errors, and none of the three files touched here reports anything. The working tree
+carried roughly forty other in-flight modifications throughout; every gate above was run against
+that tree, so it is evidence about the tree, not about this change alone.
+
+**NOT seen on a device or in the simulator**, same as the entry above. One risk specific to this
+change is worth naming: the card is captured with `captureRef` (`react-native-view-shot`), and the
+signature is now `react-native-svg` where it used to be a `Text`. Text always captures. The SVG
+almost certainly does — on iOS it is a real view layer — but if it does not, the failure is silent:
+a share card with no brand on it at all. That is the first thing to look at on a device.
+
+## 16 September 2026, late — the check-in's answers read themselves
+
+The owner, after finishing a session and answering the sheet: *"naredi tako, da ce nekdo v finish
+oznaci da je could more do ali druge opcije za posamezno vajo naj se avtomatsko posodobi ko klikne
+done namesto, da mora uporabnik klknit se enkrat kljukico desno da potrdi za vsako vajo."*
+
+Exactly what it looked like. Answer three lifts on the check-in, tap Done, and Today came back with
+those three lifts sitting as UNREAD lines, each wearing the confirm check from the 16 September
+ruling — the athlete asked to tick off, one exercise at a time, an answer they had given four
+seconds earlier on the sheet.
+
+### Two causes, and the second one was the real one
+
+1. **Marking an effort rewrites the line, and a rewritten line goes back on the writing hold.**
+   That is correct and stays: `rpe 7` is the athlete's own words (§3), `setNote` is the one path
+   that writes them, and since 15 September writing never parses. What was missing was anybody
+   asking for the reading afterwards.
+2. **`setLineEffort` DID ask — once, and the ask was then thrown away.** It called `requestParse()`
+   after every tap, and `requestParse` opened with `if (parsing) return`. The first answer started a
+   reading; the second and third arrived while it was in flight and were dropped on the floor. Then
+   the reading landed carrying the snapshot of the text as it was BEFORE those answers, so
+   `parsedFresh` said no for every line marked after the first, and `note-surface.tsx` drew them as
+   pending. One tap looked fine; the moment somebody answered a second lift, the sheet started
+   handing back work.
+
+It was also one model call per lift, which is the cost shape the 15 September ruling was written to
+end.
+
+### The model now
+
+- **`setLineEffort` writes and does not ask.** SQLite in the same tick, as before — the answer
+  survives the app dying on the sheet — and no parse.
+- **The sheet's Done is the ask, once, for every answer given.** `commit()` (which is Done, ×, and
+  the swipe-down through the unmount cleanup — all three have always meant "keep what is on the
+  sheet") fires one `requestParse()` when any lift was answered this visit, before the reflection
+  write and outside its guard, so leaving the words untouched cannot cost the lifts their reading.
+  The flag is lowered as it fires, so the unmount pass that follows Done does not ask twice. A visit
+  where nobody touched a lift spends nothing.
+- **A reading asked for mid-flight now WAITS instead of vanishing** (`reparseFor`). The one-question-
+  at-a-time guard exists to stop two model calls overlapping, not to swallow the second question:
+  `runParse` now drains the queued ask in its `finally`, re-checking against the state as it is then
+  — the workout is still the open one, the text is still unread, and no failure retry is already
+  queued for the same note. It holds the workout id rather than a boolean, so a day switch or a
+  sign-out drops it with no extra bookkeeping. This is a general fix: the same drop was there for
+  anybody who tapped ✓, kept writing, and tapped ✓ again while the first call was out.
+
+### What did not change
+
+The per-lift answer is still an RPE token in the athlete's own line, still read by the parser like
+any other word, still the ONE path the engine gets RIR through. The frozen question set, the
+revocable chips, the session rating's immediate write and the reflection's commit-on-close are all
+untouched. Nothing new is stored and no column moved.
+
+### Files
+
+`src/state/session-store.ts` (`setLineEffort` no longer parses; `requestParse` queues instead of
+dropping; `drainReparse`), `src/components/check-in-sheet.tsx` (`answered` ref, the ask inside
+`commit`).
+
+### Gates
+
+`npm test` **979/979 pass**. `npx expo lint --no-cache` **0 errors**, 67 warnings, none of them new
+and none in the two files touched. `npx expo export --platform ios` **pass**.
+
+**`npx tsc --noEmit` is RED, and not from this change** — the same 7 errors in
+`src/lib/auth/dev-door.test.ts`, an untracked file from another session, that the entry above
+records. Nothing in the two files touched here reports anything.
+
+**NOT seen running.** The simulator has no Recore build installed and a native build needs roughly
+the free disk there is; the argument above is read off the code paths, not off a screen. The one
+thing to watch on a device is the moment after Done: the answered lifts should go to reading dots
+and settle back into cards on their own, with no confirm check on any of them.

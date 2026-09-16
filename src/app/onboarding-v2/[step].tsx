@@ -15,6 +15,7 @@ import { NameScreen } from '@/components/onboarding-v2/screens/NameScreen';
 import { OverloadScreen } from '@/components/onboarding-v2/screens/OverloadScreen';
 import { QuestionScreen } from '@/components/onboarding-v2/screens/QuestionScreen';
 import { ReadingScreen } from '@/components/onboarding-v2/screens/ReadingScreen';
+import { RecapScreen } from '@/components/onboarding-v2/screens/RecapScreen';
 import { RevealScreen } from '@/components/onboarding-v2/screens/RevealScreen';
 import type { ScreenProps } from '@/components/onboarding-v2/screens/types';
 import { WelcomeScreen } from '@/components/onboarding-v2/screens/WelcomeScreen';
@@ -298,6 +299,10 @@ export default function OnboardingV2Step() {
     case 'single':
     case 'multi':
     default:
+      // The recap is the one question with a system permission behind it, and
+      // since 16 Sep 2026 it also carries the lock-screen preview — its own
+      // screen, on the shared frame and rows.
+      if (def.id === 'recap') return <RecapScreen {...props} />;
       return <QuestionScreen {...props} />;
   }
 }

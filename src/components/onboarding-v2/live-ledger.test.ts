@@ -27,7 +27,7 @@ const LEDGER = read('./LiveLedger.tsx');
 const DEMO = read('./screens/DemoScreen.tsx');
 const DEMO_PAGE = read('./DemoPage.tsx');
 const READING = read('./screens/ReadingScreen.tsx');
-const WELCOME = read('./SelfWritingLedger.tsx');
+const WELCOME = read('./PhoneDemo.tsx');
 const NOTE_SURFACE = read('../note-surface.tsx');
 
 test('the ledger imports the real entry card rather than defining one', () => {
@@ -110,10 +110,10 @@ test('Today still uses the same components it exports', () => {
  * the record the way Today draws it — a card per reading, as each line settles —
  * which is a stronger claim than sharing a component with the replay.
  */
-test('the read screen and the welcome demo draw the same ledger', () => {
+test('the read screen and the welcome phone demo draw the same ledger', () => {
   for (const [name, src] of [
     ['ReadingScreen', READING],
-    ['SelfWritingLedger', WELCOME],
+    ['PhoneDemo', WELCOME],
   ] as const) {
     assert.match(src, /LiveLedger/, `${name} does not render the shared ledger`);
   }
@@ -125,7 +125,7 @@ test('nothing in v2 re-implements a set table or a reading row', () => {
     ['DemoScreen', DEMO],
     ['DemoPage', DEMO_PAGE],
     ['ReadingScreen', READING],
-    ['SelfWritingLedger', WELCOME],
+    ['PhoneDemo', WELCOME],
   ] as const) {
     assert.ok(!/setText.*×|reps\.join/.test(code(src)), `${name} formats sets by hand`);
   }
@@ -244,8 +244,19 @@ test('the demo only offers the entry actions that work without an account', () =
  * WHAT THE DEMO DOES KEEP IS THE GESTURE. Delete is the row's swipe on Today
  * now, and this screen's whole claim is that it IS Today — a card you could
  * remove there and not here would be the drift `DemoPage` exists to prevent.
+ *
+ * That includes the swipe NOT ASKING (owner, 16 September 2026): the drag past
+ * the commit threshold is the decision on both surfaces, and a demo that
+ * raised a dialog would teach the flow's one live ledger a rule Today does not
+ * keep. Both ends are pinned, because the failure mode is a confirm creeping
+ * back onto one of the two.
  */
-test('the demo card is swipeable, and its delete is Today’s own confirm', () => {
+test('the demo card is swipeable, and the swipe deletes without asking', () => {
   assert.match(code(DEMO_PAGE), /<SwipeToDelete/);
   assert.match(code(DEMO_PAGE), /onDelete=\{removeEntry\}/);
+  assert.match(code(DEMO_PAGE), /const removeEntry = \(\) => dropLine\(line\);/);
+  assert.ok(
+    !/const removeEntry = \(\) =>\s*confirmDeleteLine/.test(code(DEMO_PAGE)),
+    'the demo swipe asks again before deleting',
+  );
 });

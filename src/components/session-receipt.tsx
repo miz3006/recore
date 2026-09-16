@@ -19,11 +19,40 @@ import { groupThousands } from '@/lib/parse/estimate';
 import { namesMatch, typedNameOf, type ReceiptData, type ReceiptRow } from '@/lib/parse/receipt';
 import { formatDistanceTotal } from '@/lib/parse/summarize';
 import { type GutterSignal, type LineSignal } from '@/lib/parse/types';
-import { color, HIT, MAX_FONT_SCALE, moderateScale, radius, readingStyle, spacing, type } from '@/lib/theme';
+import {
+  color,
+  HIT,
+  MAX_FONT_SCALE,
+  moderateScale,
+  osFontScale,
+  radius,
+  readingStyle,
+  spacing,
+  type,
+} from '@/lib/theme';
 import { useSession } from '@/state/session-store';
 
+import { BrandMark } from './brand-mark';
 import { COMPARISON_SUBLINES_ON, MonoTag, PrLabel, readingText } from './gutter-value';
 import { SetTable, worthTable } from './set-table';
+
+/**
+ * THE SIGNATURE ON THE SHARE CARD, sized against the word it stands beside.
+ *
+ * The word is `type.caption` — 13 pt, whose cap height in SF Pro measures
+ * **9.2 pt**. A mark matched to that cap reads as a letter in the word rather
+ * than as a logo beside it, and one much larger takes the eye off the numbers
+ * the card exists to show. Mocked at 13 / 15 / 17 against `surface` at 6× and
+ * read back: 17 closes up the mark's counter and starts to shout, 13 goes
+ * timid, 15 sits as a signature — a touch above the caps, its leg hanging past
+ * the baseline like a descender, which is what anchors the pair.
+ *
+ * `osFontScale` for the same reason as sign-in's: the word grows with the
+ * reader's text setting and an `Svg` is a view, so the mark has to be told.
+ */
+const BRAND_MARK_H = moderateScale(15) * osFontScale;
+/** Optical, from the same mock: tight enough to read as one lockup. */
+const BRAND_GAP = moderateScale(5);
 
 /**
  * The RECORDED receipt (design frames 08/09) — the settled ledger under the
@@ -433,9 +462,12 @@ export function SessionReceipt({
       ) : null}
 
       {branding ? (
-        <Text style={styles.brand} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-          Recore
-        </Text>
+        <View style={styles.brand}>
+          <BrandMark size={BRAND_MARK_H} tint={color.textMuted} label={null} />
+          <Text style={styles.brandWord} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            Recore
+          </Text>
+        </View>
       ) : null}
     </View>
   );
@@ -468,9 +500,19 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(10.5),
     color: color.textMuted,
   },
+  // The signature, and the only lockup in the app that pairs the mark WITH the
+  // word. Everywhere else the reader is already inside Recore; this image is
+  // not — it lands in a camera roll, a group chat, a feed, in front of people
+  // who have never heard the name. The mark alone would be a shape nobody can
+  // resolve, so it carries the word, and the word is read by the mark.
   brand: {
     marginTop: spacing.md,
-    textAlign: 'right',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: BRAND_GAP,
+  },
+  brandWord: {
     fontSize: type.caption.fontSize,
     fontWeight: '600',
     letterSpacing: 0.3,

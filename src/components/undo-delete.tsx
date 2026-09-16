@@ -17,6 +17,7 @@ import { useSession } from '@/state/session-store';
 
 import { Icon } from './icon';
 import { PressableScale } from './motion';
+import { joinNames } from './swipe-to-delete';
 
 /**
  * UNDO, for the one edit that had none (11 September 2026).
@@ -51,6 +52,15 @@ import { PressableScale } from './motion';
  * "Deleted “Bench press”" — the record's dry voice, past tense, no apology and
  * no reassurance. The design skill's §Tone allows warmth in onboarding and
  * empty states; this sits on the ledger, which is the dry half.
+ *
+ * ## It names EVERYTHING that went (16 September 2026)
+ *
+ * The swipe stopped asking first, so this pill is now the only report a delete
+ * makes — and a written line can hold several readings, which is the one thing
+ * the dialog said that the athlete could not otherwise be told. So the pill
+ * says all of them: "Deleted “Bench press” and “Rows”". The alternative was a
+ * pill that says "Deleted that line" while two cards leave the page, which is
+ * the app declining to name what it just took.
  */
 /**
  * How long the offer stands. Apple's own undo toasts sit for about five
@@ -94,8 +104,12 @@ export function UndoDelete({
   }, []);
 
   const id = pending?.id ?? null;
-  const label = pending?.label ?? null;
-  const message = label ? `Deleted “${label}”` : 'Deleted that line';
+  const labels = pending?.labels;
+  // Each name in its own quotes, because "“Bench press and Rows”" reads as one
+  // entry with a comical name rather than as the two that actually went.
+  const message = labels?.length
+    ? `Deleted ${joinNames(labels.map((n) => `“${n}”`))}`
+    : 'Deleted that line';
 
   /**
    * THE WINDOW, keyed on `id` and not on the object.
@@ -158,7 +172,10 @@ export function UndoDelete({
             accessibilityRole="button"
             accessibilityLabel={`Undo. ${message}`}
             accessibilityHint="Puts the line back where it was">
-            <Text style={styles.message} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {/* Two lines, not one: the pill grows off `minHeight`, and
+                truncating the sibling names would quietly undo the only reason
+                they are printed here. */}
+            <Text style={styles.message} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
               {message}
             </Text>
             <Icon name="undo" size={moderateScale(15)} tint={color.brand} />

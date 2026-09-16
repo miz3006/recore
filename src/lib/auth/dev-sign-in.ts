@@ -1,3 +1,4 @@
+import { devDoorCredentials } from '@/lib/auth/dev-door';
 import { devLog } from '@/lib/log';
 import { supabase } from '@/lib/supabase';
 
@@ -27,16 +28,22 @@ import { supabase } from '@/lib/supabase';
  *
  * ## Three properties that keep it out of a release
  *
- *  1. **`__DEV__` and nothing else.** Not an env var, not a preference, not a
- *     remote flag — any of which can be switched on in a shipped binary. Metro
- *     replaces `__DEV__` with `false` in a production bundle and the minifier
- *     deletes the branch, so this function's body cannot execute in an app
- *     anyone installs. `signInAsDeveloper` returns early even so, because a
- *     guard you can read at the top of the function is worth more than one you
- *     have to trust the bundler for.
- *  2. **It is visible.** The sign-in screen draws a labelled row for it, under
- *     a rule, saying what it is. A door nobody can see is how the last three
- *     survived as long as they did.
+ *  1. **`__DEV__` first, and nothing that a shipped binary can flip.** Not a
+ *     preference, not a remote flag, not an env var that decides the ANSWER —
+ *     only one that supplies the key once `__DEV__` has already said yes.
+ *     Metro replaces `__DEV__` with `false` in a production bundle and the
+ *     minifier deletes the branch, so this function's body cannot execute in
+ *     an app anyone installs. It throws at the top even so, because a guard
+ *     you can read is worth more than one you have to trust the bundler for.
+ *     The gate itself lives in `dev-door.ts` and is covered by
+ *     `dev-door.test.ts` — the only part of this that a future edit can be
+ *     caught widening.
+ *  2. **It is visible when it exists, and absent when it does not.** The
+ *     sign-in screen draws a labelled row for it, under a rule, saying what it
+ *     is — a door nobody can see is how the last three survived as long as
+ *     they did. It draws NO row in a build where the door cannot open, which
+ *     until 16 September 2026 it did: every checkout without a local `.env`
+ *     put a control on the screen whose only behaviour was to fail.
  *  3. **It writes no product state.** No preference, no funnel event, no
  *     entitlement. It obtains a session; everything downstream then runs the
  *     ordinary way, including the claim of whatever the funnel wrote.
@@ -73,29 +80,35 @@ import { supabase } from '@/lib/supabase';
  * build you hand to anyone.
  */
 
-/** The development account, from the developer's own `.env`. Empty by default. */
-const DEV_EMAIL = (process.env.EXPO_PUBLIC_DEV_EMAIL ?? '').trim();
-const DEV_SECRET = (process.env.EXPO_PUBLIC_DEV_PASSWORD ?? '').trim();
-
 /**
  * Sign in as the development account. The account must already exist —
  * creating one is not this function's job any more (S3).
+ *
+ * BOTH GATES — a development bundle, and an account configured in the
+ * developer's own `.env` — are `dev-door.ts`'s single answer now (16 September
+ * 2026). The screen that decides whether to DRAW this door and the function
+ * that OPENS it therefore cannot disagree about whether it exists, and the
+ * rule itself has a test, which it could not have while it lived in this file:
+ * the `supabase` import above keeps `node --test` out.
  *
  * Throws with a readable reason on any failure — the caller shows it, and in a
  * development build that sentence is the whole point of the function.
  */
 export async function signInAsDeveloper(): Promise<void> {
-  if (!__DEV__) throw new Error('the development sign-in is not available in this build');
-
-  if (!DEV_EMAIL || !DEV_SECRET) {
+  const account = devDoorCredentials();
+  if (!account) {
+    // Two shut states, one sentence each. A release bundle reaches neither:
+    // Metro folds `__DEV__` to `false` inside `devDoorCredentials`, so this
+    // function's body is deleted rather than merely refused at runtime.
+    if (!__DEV__) throw new Error('the development sign-in is not available in this build');
     throw new Error(
       'no development account configured — set EXPO_PUBLIC_DEV_EMAIL and EXPO_PUBLIC_DEV_PASSWORD in your local .env, against a development project, and restart Metro',
     );
   }
 
   const existing = await supabase.auth.signInWithPassword({
-    email: DEV_EMAIL,
-    password: DEV_SECRET,
+    email: account.email,
+    password: account.password,
   });
   if (existing.error) {
     // Including "no such account". Creating it here is what made a hardcoded

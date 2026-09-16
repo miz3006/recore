@@ -170,9 +170,12 @@ export const FLOW: readonly ScreenDef[] = [
     step: 1,
     kind: 'welcome',
     id: 'welcome',
-    headline: "Write it like you'd say it.",
-    subline: 'Recore reads your session from one line. No forms, no tapping through sets.',
-    why: 'No question. A live ledger demo that writes and parses itself.',
+    // The hero claim, over the drawn iPhone playing the Today page
+    // (owner, 16 September 2026 — the character yielded this screen to the
+    // product performing itself).
+    headline: 'Log it like a note.',
+    subline: "Type your sets the way you'd say them. Recore does the rest.",
+    why: 'No question. The Today page types, parses and settles a push session inside a drawn phone, on a loop.',
   },
   {
     step: 2,
@@ -374,7 +377,7 @@ export const FLOW: readonly ScreenDef[] = [
     kind: 'lifts',
     id: 'lifts',
     headline: 'Your key lifts, and what you lift now.',
-    subline: "Pick the ones you watch most. Use today's working weight.",
+    subline: "Use today's working weight. Add or drop lifts to match how you train.",
     why: 'Fuel for both the projection and the first-session targets.',
   },
   {
@@ -403,9 +406,13 @@ export const FLOW: readonly ScreenDef[] = [
     step: 19,
     kind: 'reveal',
     id: 'reveal',
-    headline: 'Your first session.',
-    subline: 'You can change these now or any time later.',
-    why: 'A number you use today, not a promise about three months out.',
+    // REPLACED 16 September 2026 (owner): the first-session prescription gave
+    // this screen to the person — everything the flow now knows, read back as
+    // a record, ending on their own name. The prescription itself still lives
+    // where it always shipped: Next's brief, built from these same answers.
+    headline: "Here's what Recore knows.",
+    subline: 'All of it from your own answers. Change any of it later in You.',
+    why: 'The payoff: their answers, read back as a record, with their name on the closing line.',
   },
   {
     step: 20,
@@ -416,8 +423,20 @@ export const FLOW: readonly ScreenDef[] = [
     requestsNotifications: true,
     options: [
       // One family: the time of day each option names. Both denote literally.
-      { id: 'sunday', label: 'Sunday evening', icon: 'evening' },
-      { id: 'monday', label: 'Monday morning', icon: 'morning' },
+      // The sub-lines are facts about when the read arrives, not moods
+      // (owner, 16 Sep 2026 — the recap screen's polish pass).
+      {
+        id: 'sunday',
+        label: 'Sunday evening',
+        icon: 'evening',
+        sub: 'The week, read back before it closes.',
+      },
+      {
+        id: 'monday',
+        label: 'Monday morning',
+        icon: 'morning',
+        sub: 'Open the week knowing your numbers.',
+      },
       { id: 'never', label: 'No thanks', optOut: true },
     ],
     why: 'Ask WHEN, not whether. Cal AI does the same with a segmented control.',
@@ -493,9 +512,14 @@ export function sessionsPerStep(experience: string | null): number {
 }
 
 /**
- * The lifts offered on screen 13. No emoji, and there is no near miss here:
+ * The lifts offered on screen 15. No emoji, and there is no near miss here:
  * every candidate was a gendered human figure (🏋️ 🚣 🧗 🙆), a body part (🦵)
  * or a pun (🛋️ for "bench"). Barbell training has no emoji.
+ *
+ * LOADED LIFTS ONLY (owner, 16 September 2026). Pull-ups left the list with
+ * that directive: a key lift here exists to feed the load projection and the
+ * first-session prescription, and a bodyweight movement has no bar to add
+ * 2.5 kg to. The whole list is external-load barbell work now.
  */
 export const KEY_LIFTS: readonly { id: string; label: string }[] = [
   { id: 'Bench press', label: 'Bench press' },
@@ -503,10 +527,17 @@ export const KEY_LIFTS: readonly { id: string; label: string }[] = [
   { id: 'Deadlift', label: 'Deadlift' },
   { id: 'Overhead press', label: 'Overhead press' },
   { id: 'Barbell row', label: 'Barbell row' },
-  { id: 'Pull-ups', label: 'Pull-ups' },
 ];
 
-export const MAX_KEY_LIFTS = 3;
+/**
+ * Screen 15 opens with the big three already on the sheet, loads editable —
+ * the two rarer lifts wait behind its "Add lift" row (owner, 16 Sep 2026).
+ */
+export const DEFAULT_KEY_LIFTS: readonly string[] = ['Bench press', 'Squat', 'Deadlift'];
+
+/** Raised from 3 with the same directive: every offered lift may now be on
+ * the sheet at once, because the sheet starts at three and grows by choice. */
+export const MAX_KEY_LIFTS = 5;
 
 /**
  * STARTING POINTS FOR THE STEPPER — not claims about anybody.

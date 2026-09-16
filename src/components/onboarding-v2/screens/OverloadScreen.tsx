@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { CountUp, DrawnLine, Enter, type Point } from '@/lib/motion/index';
-import { MAX_FONT_SCALE, moderateScale, readingStyle, spacing, type } from '@/lib/theme';
+import { alpha, color, MAX_FONT_SCALE, moderateScale, readingStyle, spacing, type } from '@/lib/theme';
 import { useV2 } from '@/state/onboarding-v2';
 
 import { Frame } from '../Frame';
@@ -12,6 +12,15 @@ import type { ScreenProps } from './types';
 
 const CHART_HEIGHT = moderateScale(150);
 const PAD = 10;
+
+/** The ripple, in step-sizes. Sums to nearly zero over a cycle so the trend
+ * stays the arithmetic's; deliberately a constant, never randomness — the
+ * same answers must draw the same chart on every visit (CLAUDE.md §2 r.3). */
+const WOBBLE = [0.22, -0.3, 0.12, -0.16, 0.3, -0.1, 0.18, -0.26] as const;
+
+/** The wash under the record's line, in the brand's own ink — the hex that
+ * stood here spelled the retired #007AFF. */
+const AREA_FILL = alpha(color.brand, 0.08);
 
 /**
  * SCREEN 14 — ZAKAJ PROGRESIVNA OBREMENITEV DELUJE.
@@ -58,12 +67,30 @@ export function OverloadScreen({ def, progress, onAdvance, onBack, echo }: Scree
   }
 
   const { series, startKg, endKg, incrementKg: step, everyNth, lift } = projection;
-  const min = Math.min(...series);
-  const max = Math.max(...series);
+  /**
+   * THE LINE IS JAGGED ON PURPOSE (owner, 16 September 2026: "small ups and
+   * downs with a clear upward trend, not a straight line").
+   *
+   * The staircase `projectionFor` returns is the arithmetic, and the sentence
+   * below still states exactly that arithmetic — but a perfectly even line is
+   * a picture of a spreadsheet, not of training, and this screen's claim is
+   * about how PROGRESS actually accrues: a heavy week, a flat one, the trend
+   * up anyway. So the drawn series carries a small deterministic ripple —
+   * a fixed fraction of their own step size, cycling through a fixed pattern,
+   * the same for everyone with the same answers. The two ANCHORS are exact:
+   * week 0 is the load they typed and the final week is the stated result,
+   * so no number the screen prints is ever off the line it draws.
+   */
+  const drawn = series.map((value, i) => {
+    if (i === 0 || i === series.length - 1) return value;
+    return value + step * WOBBLE[i % WOBBLE.length];
+  });
+  const min = Math.min(...drawn);
+  const max = Math.max(...drawn);
   const span = Math.max(max - min, 1);
   const innerWidth = Math.max(width - PAD * 2, 1);
-  const points: Point[] = series.map((value, i) => ({
-    x: PAD + (innerWidth * i) / (series.length - 1),
+  const points: Point[] = drawn.map((value, i) => ({
+    x: PAD + (innerWidth * i) / (drawn.length - 1),
     y: PAD + (CHART_HEIGHT - PAD * 2) * (1 - (value - min) / span),
   }));
 
@@ -87,7 +114,7 @@ export function OverloadScreen({ def, progress, onAdvance, onBack, echo }: Scree
               width={width}
               height={CHART_HEIGHT}
               stroke={v2color.blue}
-              areaFill="rgba(0,122,255,0.08)"
+              areaFill={AREA_FILL}
               endDotFill={v2color.blue}
               endDotStroke={v2color.surface}
               delay={240}

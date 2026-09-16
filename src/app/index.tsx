@@ -2,7 +2,6 @@ import { Redirect } from 'expo-router';
 
 import { useAuth } from '@/lib/auth/provider';
 import { useEntitlement } from '@/lib/billing/state';
-import { isBetaUnlocked } from '@/lib/env';
 import { wantsImportFastPath } from '@/lib/onboarding';
 import {
   getFirstAction,
@@ -87,20 +86,18 @@ export default function Dispatcher() {
    * same code — one `fetchOffer`, one `purchase`, one entitlement — so the swap
    * changes what the screen LOOKS like and nothing about what it promises.
    */
-  if (!session) {
-    /**
-     * A BETA BUILD HAS NO PAYWALL TO SEND ANYONE TO (`isBetaUnlocked`, `env.ts`).
-     * Its store is unconfigured by construction, so `paywall-v2/plan` would
-     * render "Prices unavailable" and the funnel would simply stop there. The
-     * ACCOUNT is still required — `parse-workout` needs a JWT — so the gate
-     * becomes sign-in itself, which is where the paywall's forward step led
-     * anyway; `next: 'home'` is the same parameter the real CTA passes.
-     */
-    if (isBetaUnlocked()) {
-      return <Redirect href={{ pathname: '/sign-in', params: { next: 'home' } }} />;
-    }
-    return <Redirect href="/paywall-v2/plan" />;
-  }
+  /**
+   * A BETA BUILD GOES TO THE SAME SCREEN, AND THE SCREEN KNOWS (16 September
+   * 2026). It used to be sent straight to sign-in, because a build with no
+   * store key could only have rendered "Prices unavailable" and a disabled
+   * button — true, and a dead end. `paywall-v2/plan` now reads `isBetaUnlocked`
+   * itself and renders the tester pass instead: free while Recore is being
+   * tested, a thank-you, and one full-width button whose forward step is
+   * exactly the redirect this branch used to be (`next: 'home'`, sign-in,
+   * home). No price, no trial clock and no Restore is rendered in that build,
+   * so nothing here promises what its store cannot keep.
+   */
+  if (!session) return <Redirect href="/paywall-v2/plan" />;
 
   if (
     entitlement === 'entitled' &&

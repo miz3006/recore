@@ -302,6 +302,21 @@ const SF: Partial<Record<IconName, Symbol>> = {
   'tour-next': { name: 'arrow.forward' },
   'tour-progress': { name: 'chart.xyaxis.line', box: 1.1 },
   'tour-you': { name: 'person' },
+
+  // --- THE LEDGER'S OWN TWO GLYPHS (16 September 2026) ---------------------
+  //
+  // The record row is where the app's set fidelity is most visible, because a
+  // settled card and an unread line sit one above the other and each wears one
+  // mark: the note bubble on the card, the confirm check on the line. The check
+  // has been Apple's `checkmark` since the tour moved over; the bubble was the
+  // last Ionicon on that row, half a point heavier and drawn on a different
+  // grid, which is exactly the near-miss §3 of the design skill names.
+  //
+  // `text.bubble` rather than `bubble.left`: the content is WRITING about the
+  // entry, and Apple's bubble-with-lines is the symbol that says so. The filled
+  // face marks an entry that already carries words — state, not decoration.
+  note: { name: 'text.bubble' },
+  'note-on': { name: 'text.bubble.fill' },
 };
 
 /** The weight every SF glyph is drawn at. `regular` is a hair thin against the

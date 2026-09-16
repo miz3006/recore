@@ -192,6 +192,7 @@ test('distance and time are read as themselves', () => {
     name: 'Run',
     unit: 'kg',
     sets: [{ kind: 'working', reps: null, weightKg: null, distanceM: 400, durationS: null, rir: null }],
+    notes: [],
   });
   assert.equal(readWrittenLine('tek 2,5km')[0]!.sets[0]!.distanceM, 2500);
   assert.equal(readWrittenLine('plank 60s')[0]!.sets[0]!.durationS, 60);

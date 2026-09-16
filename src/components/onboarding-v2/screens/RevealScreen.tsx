@@ -1,61 +1,59 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
-import { CountUp, Enter, PressScale } from '@/lib/motion/index';
+import { Enter } from '@/lib/motion/index';
 import { MAX_FONT_SCALE, moderateScale, readingStyle, spacing, type } from '@/lib/theme';
-import { useV2 } from '@/state/onboarding-v2';
+import { useV2, type V2Answers } from '@/state/onboarding-v2';
 
 import { Frame } from '../Frame';
-import { kg, PROJECTION_WEEKS, projectionFor, firstSessionTargets } from '../projection';
+import { FLOW, KEY_LIFTS } from '../flow';
+import { kg } from '../projection';
 import { v2color, v2radius, v2shadow } from '../tokens';
 import type { ScreenProps } from './types';
 
-const STEP_KG = 2.5;
-
 /**
- * SCREEN 19 — YOUR FIRST SESSION. The reveal.
+ * SCREEN 19 — HERE'S WHAT RECORE KNOWS. The reveal.
  *
- * §2: "Not the 12-week projection. Concrete targets, editable … Both reference
- * apps give a number you use today rather than a promise about three months
- * out."
+ * REPLACED 16 September 2026 on the owner's directive, and shaped by the
+ * second half of it the same day: *"naj bo to kot da je na nekem papirju …
+ * kao notes"*. Nineteen screens of answering earn one page of being READ
+ * BACK — so the answers arrive on a sheet of the app's own paper, and they
+ * arrive the way everything in Recore arrives: WRITTEN. Each row's value
+ * types itself in the reading face, one row after another, the caret moving
+ * on exactly as it does on Today. The app is keeping its first record, and
+ * the record is the person.
  *
- * ## REBUILT 28 August 2026 — the owner could not tell what it was
+ * ## The rules this screen lives under
  *
- * The first version drew each lift as its own large block with its own steppers
- * and its own "+2.5 kg on what you entered" line. Three problems, and they
- * compounded:
+ * Every value is something they typed or tapped; an unanswered question's
+ * row simply does not exist (§2 rule 2 — personalise only from chosen
+ * information, never invent). The closing line is warm the only way this
+ * app is allowed to be warm: specific evidence — their name and the year
+ * their frequency answer multiplies out to. No praise, no claims about
+ * their body.
  *
- *   1. **It did not look like a session.** A session is one thing containing
- *      several lifts; three stacked blocks read as three unrelated settings.
- *   2. **The rule was stated three times.** "Plus your step" is one rule about
- *      the whole screen, and repeating it per row turned the explanation into
- *      noise you stop reading by the second one.
- *   3. **The steppers dominated.** Big touchable controls beside every number
- *      make a screen look like a form to fill in, not a plan to read.
- *
- * It is now one card that IS the session: a header naming what it is, one line
- * per lift, a footer that counts the work, and the rule said once underneath.
- * The steppers are still there — §2 requires the targets to be editable — but
- * they are secondary, at the end of their row, sized like an accessory.
- *
- * ## Why the loads are green
- *
- * They are PLANNED values — a load prescribed and not yet lifted — and green is
- * reserved in this app for exactly that (recore-design §Colour; CLAUDE.md §3).
- * The contract is that it never appears without its label and its reason, so
- * the card says both, once, directly under the loads it applies to.
+ * REDUCE MOTION: the whole sheet stands finished on arrival. The writing is
+ * choreography; the facts never wait for it.
  */
 export function RevealScreen({ def, progress, onAdvance, onBack, echo }: ScreenProps) {
+  const reduced = useReducedMotion();
   const answers = useV2((s) => s.answers);
-  const setLoad = useV2((s) => s.setLoad);
+  const rows = useMemo(() => knownRows(answers), [answers]);
+  const closing = useMemo(() => closingLine(answers), [answers]);
 
-  const targets = useMemo(() => firstSessionTargets(answers), [answers]);
-  const projection = useMemo(() => projectionFor(answers), [answers]);
-
-  const totalSets = targets.reduce((sum, t) => sum + t.sets, 0);
-  const step = targets[0]?.addedKg ?? STEP_KG;
-  const platesKnown = targets[0]?.platesKnown ?? false;
-  const anyRounded = targets.some((t) => t.rounded);
+  // The writing timeline: each row starts once the one above has finished,
+  // plus a breath. Computed up front so the closing line knows when the pen
+  // is done.
+  const starts = useMemo(() => {
+    let at = FIRST_ROW_MS;
+    return rows.map((row) => {
+      const mine = at;
+      at += row.value.length * CHAR_MS + ROW_GAP_MS;
+      return mine;
+    });
+  }, [rows]);
+  const penDone = starts.length > 0 ? starts[starts.length - 1]! + (rows[rows.length - 1]?.value.length ?? 0) * CHAR_MS : 0;
 
   return (
     <Frame
@@ -64,205 +62,183 @@ export function RevealScreen({ def, progress, onAdvance, onBack, echo }: ScreenP
       progress={progress}
       echo={echo}
       onBack={onBack}
-      cta={{ label: 'This is my plan', enabled: true, onPress: onAdvance }}
+      cta={{ label: "Let's go", enabled: true, onPress: onAdvance }}
       testID="v2-screen-reveal">
       <Enter index={2}>
-        <View style={[styles.card, v2shadow]}>
-          {/* What this session IS. Without it the numbers are settings. */}
-          <View style={styles.head}>
-            <Text style={styles.kicker} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {sessionName(answers.split)}
-            </Text>
-            <Text style={styles.count} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              {targets.length} {targets.length === 1 ? 'lift' : 'lifts'} · {totalSets} sets
-            </Text>
-          </View>
-
-          <View style={styles.rule} />
-
-          {targets.map((target, i) => (
-            <View key={target.lift} style={styles.row}>
-              <Text
-                style={styles.lift}
-                maxFontSizeMultiplier={MAX_FONT_SCALE}
-                numberOfLines={1}>
-                {target.lift}
-              </Text>
-
-              <View style={styles.value}>
-                <CountUp
-                  value={target.targetKg}
-                  decimals={Number.isInteger(target.targetKg) ? 0 : 1}
-                  delay={200 + i * 90}
-                  style={styles.load}
-                  accessibilityLabel={`${kg(target.targetKg)} kilograms, planned`}
-                />
-                <Text style={styles.unit} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  kg
+        <View style={[styles.paper, v2shadow]}>
+          {rows.map((row, i) => (
+            <Enter key={row.label} index={0} extraDelay={reduced ? 0 : starts[i]! - 160}>
+              <View style={[styles.row, i === rows.length - 1 && !closing && styles.lastRow]}>
+                <Text style={styles.rowLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                  {row.label}
                 </Text>
-                <Text style={styles.sets} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-                  × {target.sets}
-                </Text>
+                <TypedValue text={row.value} startAt={starts[i]!} />
               </View>
-
-              <View style={styles.steppers}>
-                <Stepper
-                  glyph="−"
-                  label={`Decrease ${target.lift}`}
-                  disabled={target.currentKg <= STEP_KG}
-                  onPress={() =>
-                    setLoad(target.lift, Math.max(STEP_KG, target.currentKg - STEP_KG))
-                  }
-                />
-                <Stepper
-                  glyph="+"
-                  label={`Increase ${target.lift}`}
-                  disabled={target.currentKg >= 400}
-                  onPress={() => setLoad(target.lift, Math.min(400, target.currentKg + STEP_KG))}
-                />
-              </View>
-            </View>
+            </Enter>
           ))}
 
-          <View style={styles.rule} />
-
-          {/* The rule, once. Green never appears without its label and reason. */}
-          <Text style={styles.reason} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            Green is what Recore is asking for — each one is the load you entered plus your{' '}
-            {kg(step)} kg step
-            {anyRounded ? ', rounded to the plates you have' : ''}.
-          </Text>
+          {closing ? (
+            <Enter index={0} extraDelay={reduced ? 0 : penDone + 260}>
+              <Text style={styles.closing} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+                {closing}
+              </Text>
+            </Enter>
+          ) : null}
         </View>
       </Enter>
-
-      {!platesKnown && targets.length > 0 ? (
-        <Enter index={3} style={styles.note}>
-          <Text style={styles.noteText} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            These assume you can load any weight. Tell Recore your smallest plate and it will only
-            ever ask for numbers you can actually build.
-          </Text>
-        </Enter>
-      ) : null}
-
-      {projection ? (
-        <Enter index={4} style={styles.projection}>
-          <Text style={styles.projectionLabel} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            IF THIS REPEATS
-          </Text>
-          <Text style={styles.projectionLine} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-            {projection.lift} in {PROJECTION_WEEKS} weeks: {kg(projection.endKg)} kg
-          </Text>
-        </Enter>
-      ) : null}
     </Frame>
   );
 }
 
 /**
- * What to call the session. The split answer already decided how Recore groups
- * lifts, so this is that decision said out loud rather than a new one — and it
- * is the missing piece that turns a list of numbers into a session.
+ * One value writing itself onto the sheet — the same caret, the same reading
+ * face, the same cadence as the note the whole app is built around.
  */
-function sessionName(split: string | null): string {
-  switch (split) {
-    case 'ppl':
-      return 'PUSH — YOUR FIRST SESSION';
-    case 'upperlower':
-      return 'UPPER — YOUR FIRST SESSION';
-    case 'fullbody':
-      return 'FULL BODY — YOUR FIRST SESSION';
-    case 'bro':
-      return 'CHEST — YOUR FIRST SESSION';
-    default:
-      return 'YOUR FIRST SESSION';
-  }
-}
+function TypedValue({ text, startAt }: { text: string; startAt: number }) {
+  const reduced = useReducedMotion();
+  const [chars, setChars] = useState(reduced ? text.length : 0);
 
-function Stepper({
-  glyph,
-  label,
-  disabled,
-  onPress,
-}: {
-  glyph: string;
-  label: string;
-  disabled: boolean;
-  onPress: () => void;
-}) {
+  useEffect(() => {
+    if (reduced) {
+      setChars(text.length);
+      return;
+    }
+    setChars(0);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (let c = 1; c <= text.length; c += 1) {
+      timers.push(setTimeout(() => setChars(c), startAt + c * CHAR_MS));
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [reduced, startAt, text]);
+
+  const writing = !reduced && chars > 0 && chars < text.length;
+
   return (
-    <PressScale onPress={onPress} disabled={disabled} haptic="selection" accessibilityLabel={label}>
-      <View style={[styles.step, disabled && styles.stepDisabled]}>
-        <Text style={styles.stepGlyph} maxFontSizeMultiplier={1.2}>
-          {glyph}
-        </Text>
-      </View>
-    </PressScale>
+    <Text style={styles.rowValue} maxFontSizeMultiplier={MAX_FONT_SCALE}>
+      {text.slice(0, chars)}
+      {writing ? <Text style={styles.caret}>|</Text> : null}
+    </Text>
   );
 }
 
-const BUTTON = moderateScale(28);
+interface KnownRow {
+  label: string;
+  value: string;
+}
+
+/** The label a screen's option list gives an answer id — the person's own
+ * words for it, never a re-phrasing invented here. */
+function optionLabel(screenId: string, value: string | null): string | null {
+  if (!value) return null;
+  const screen = FLOW.find((s) => s.id === screenId);
+  return screen?.options?.find((o) => o.id === value)?.label ?? null;
+}
+
+/**
+ * Every answered question, one row each, in the order the flow asked. An
+ * unanswered one contributes nothing — a dash against a question they
+ * skipped would read as a reproach.
+ */
+function knownRows(a: V2Answers): KnownRow[] {
+  const rows: KnownRow[] = [];
+  const name = a.name.trim();
+  if (name) rows.push({ label: 'NAME', value: name });
+
+  const goal = optionLabel('goal', a.goal);
+  if (goal) rows.push({ label: 'TRAINING FOR', value: goal });
+
+  const experience = optionLabel('experience', a.experience);
+  if (experience) rows.push({ label: 'TRAINING AGE', value: experience });
+
+  const frequency = optionLabel('frequency', a.frequency);
+  if (frequency) rows.push({ label: 'SESSIONS A WEEK', value: frequency });
+
+  const split = optionLabel('split', a.split);
+  if (split) rows.push({ label: 'SPLIT', value: split });
+
+  const lifts = a.keyLifts
+    .map((id) => {
+      const label = KEY_LIFTS.find((l) => l.id === id)?.label ?? id;
+      const load = a.liftLoads[id];
+      return load != null && load > 0 ? `${label} · ${kg(load)} kg` : label;
+    })
+    .join('\n');
+  if (lifts) rows.push({ label: 'KEY LIFTS', value: lifts });
+
+  if (a.smallestPlateKg != null) {
+    rows.push({ label: 'SMALLEST PLATE', value: `${kg(a.smallestPlateKg)} kg` });
+  }
+
+  // The flow writes and shows kilograms; saying so here is a fact about the
+  // record being started, not a question that was asked.
+  rows.push({ label: 'UNITS', value: 'Kilograms' });
+
+  return rows;
+}
+
+/**
+ * The closing line: their name, their arithmetic. `frequency × 52` is the
+ * same multiplication screen 13 performed — repeated here because it is the
+ * one number in the funnel that is both theirs and worth ending on.
+ */
+function closingLine(a: V2Answers): string {
+  const name = a.name.trim();
+  const perWeek = Number(a.frequency);
+  const sessions = Number.isFinite(perWeek) && perWeek > 0 ? perWeek * 52 : null;
+  if (name && sessions) {
+    return `${name} — ${sessions} sessions a year starts with one written line.`;
+  }
+  if (name) return `${name} — the record starts with one written line.`;
+  if (sessions) return `${sessions} sessions a year starts with one written line.`;
+  return 'The record starts with one written line.';
+}
+
+/** The writing cadence — a touch quicker than the hero's demo typing, because
+ * eight rows are being written and the reader already knows the words. */
+const CHAR_MS = 20;
+const ROW_GAP_MS = 240;
+const FIRST_ROW_MS = 420;
 
 const styles = StyleSheet.create({
-  card: {
+  /**
+   * THE SHEET. The app's own paper — a white surface with the warm shadow —
+   * ruled like a notebook: one hairline under every written row. The one
+   * sanctioned card family in onboarding is the value card, and this is one.
+   */
+  paper: {
     backgroundColor: v2color.surface,
     borderRadius: v2radius.hero,
     borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: v2color.border,
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-  },
-  head: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.md },
-  kicker: {
-    ...type.footnote,
-    color: v2color.inkMuted,
-    letterSpacing: 1.4,
-    fontWeight: '600',
-    flexShrink: 1,
-  },
-  count: { ...type.footnote, color: v2color.inkMuted },
-  rule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: v2color.border,
-    marginVertical: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: v2color.border,
   },
-  lift: { ...type.body, fontWeight: '600', color: v2color.ink, flex: 1 },
-  value: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
-  /** PLANNED green — a load prescribed and not yet lifted, never "success". */
-  load: {
-    ...readingStyle('700'),
-    fontSize: moderateScale(20),
-    color: v2color.planned,
-  },
-  unit: { ...type.caption, color: v2color.planned, fontWeight: '600' },
-  sets: { ...type.subhead, color: v2color.inkSecondary, marginLeft: spacing.xs },
-  steppers: { flexDirection: 'row', gap: spacing.xs },
-  step: {
-    width: BUTTON,
-    height: BUTTON,
-    borderRadius: BUTTON / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(23,25,20,0.05)',
-  },
-  stepDisabled: { opacity: 0.3 },
-  stepGlyph: { ...type.subhead, fontWeight: '600', color: v2color.ink },
-  reason: { ...type.caption, color: v2color.inkSecondary },
-  note: { marginTop: spacing.md },
-  noteText: { ...type.subhead, color: v2color.inkSecondary },
-  projection: { marginTop: spacing.xl },
-  projectionLabel: {
+  lastRow: { borderBottomWidth: 0 },
+  rowLabel: {
     ...type.footnote,
     color: v2color.inkMuted,
     letterSpacing: 1.6,
     fontWeight: '600',
     marginBottom: spacing.xs,
   },
-  projectionLine: { ...type.subhead, color: v2color.inkSecondary },
+  rowValue: {
+    ...readingStyle('600'),
+    fontSize: moderateScale(18),
+    lineHeight: moderateScale(26),
+    color: v2color.ink,
+    minHeight: moderateScale(26),
+  },
+  caret: { color: v2color.blue },
+  closing: {
+    ...type.lede,
+    color: v2color.ink,
+    marginTop: spacing.lg,
+  },
 });

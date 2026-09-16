@@ -142,6 +142,9 @@ export const color = {
   disabled: '#C3C5BF', // a disabled LABEL or fill, as a colour. Distinct from `ink.disabled`, which is the 40% opacity a CTA drops to.
   track: '#DEDFD9', // the unfilled half of a progress rail or a meter
   shadowCast: '#2E2418', // the warm ink every neutral shadow is cast in (`theme/elevation.ts`). A neutral near-black on cream reads as a smudge.
+  device: '#17130E', // the drawn iPhone's hardware — bezel and Dynamic Island (onboarding `PhoneFrame`). Warm black, like the ink; a neutral #000 bezel reads cold on the paper canvas.
+  deviceScreen: '#191613', // the lock-screen panel inside that frame (recap preview) — a shade off the bezel, so the glass reads lit rather than off.
+  deviceBand: '#413D38', // the drawn iPhone's outer titanium band (`PhoneFrame`) — a black-model graphite, a step lighter than the bezel so the rim still reads as a rim; also the side keys' ink. Silver was the first pass; the owner asked for black the same day (16 Sep 2026).
   /**
    * ATTENTION (owner, 12 Aug 2026) — plateau / backoff / paused. Never for
    * chrome or CTAs.

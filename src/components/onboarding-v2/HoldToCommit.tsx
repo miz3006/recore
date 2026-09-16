@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -9,6 +9,7 @@ import Animated, {
   useSharedValue,
   withSpring,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -64,6 +65,10 @@ export function HoldToCommit({
   const held = useSharedValue(done ? 1 : 0);
   const discScale = useSharedValue(1);
   const settled = useRef(done);
+  /** Bumped when the hold completes ON THIS VISIT. Walking back onto an
+   * already-committed screen replays nothing — the burst belongs to the act,
+   * not to the state. */
+  const [burst, setBurst] = useState(0);
 
   useEffect(() => {
     settled.current = done;
@@ -74,6 +79,10 @@ export function HoldToCommit({
     if (settled.current) return;
     settled.current = true;
     success();
+    // The one celebratory moment this flow is allowed, on the owner's own
+    // word (16 Sep 2026): the hand and the arm burst off the disc on springs
+    // the instant the hold completes, on the same frame as the haptic.
+    setBurst((b) => b + 1);
     onDone();
   }, [onDone]);
 
@@ -155,6 +164,7 @@ export function HoldToCommit({
               Hold
             </Text>
           ) : null}
+          {burst > 0 && !reduced ? <EmojiBurst key={burst} /> : null}
         </Animated.View>
       </Pressable>
       <Text style={styles.pledge} maxFontSizeMultiplier={MAX_FONT_SCALE}>
@@ -164,8 +174,92 @@ export function HoldToCommit({
   );
 }
 
+/**
+ * THE BURST — system Apple emoji leaving the disc on real springs.
+ *
+ * 16 September 2026, owner's directive, and a deliberate, recorded exception
+ * to the flow's no-emoji rule: these are not UI glyphs standing for an
+ * option, they are a celebration fired once, at the single moment in the
+ * funnel where the person commits to something. Every particle rides one
+ * underdamped spring from the disc's centre outward; the spring's overshoot
+ * IS the pop. Nothing here reports information — Reduce Motion drops the
+ * whole thing and loses only confetti, never a fact (the check and the
+ * success haptic still land).
+ */
+const PARTICLES: readonly { emoji: string; angle: number; dist: number; size: number; spin: number }[] =
+  Array.from({ length: 10 }, (_, i) => ({
+    emoji: i % 3 === 0 ? '✊' : '💪',
+    // Fanned around the full circle with an upward bias — a burst, not a ring.
+    angle: (-90 + (i - 4.5) * 36) * (Math.PI / 180),
+    dist: 96 + (i % 4) * 22,
+    size: 22 + (i % 3) * 6,
+    spin: (i % 2 === 0 ? 1 : -1) * (14 + (i % 5) * 7),
+  }));
+
+const burstSpring = { mass: 0.7, damping: 13, stiffness: 160 };
+
+function EmojiBurst() {
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.value = withSpring(1, burstSpring);
+  }, [progress]);
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {PARTICLES.map((particle, i) => (
+        <BurstParticle key={i} progress={progress} {...particle} />
+      ))}
+    </View>
+  );
+}
+
+function BurstParticle({
+  progress,
+  emoji,
+  angle,
+  dist,
+  size,
+  spin,
+}: {
+  progress: SharedValue<number>;
+  emoji: string;
+  angle: number;
+  dist: number;
+  size: number;
+  spin: number;
+}) {
+  const style = useAnimatedStyle(() => {
+    const p = progress.value;
+    return {
+      opacity: p < 0.7 ? 1 : Math.max(0, 1 - (p - 0.7) / 0.3),
+      transform: [
+        { translateX: Math.cos(angle) * dist * p },
+        { translateY: Math.sin(angle) * dist * p },
+        { scale: 0.3 + p * 0.7 },
+        { rotate: `${spin * p}deg` },
+      ],
+    };
+  });
+  return (
+    <Animated.View style={[styles.particle, style]}>
+      <Text style={{ fontSize: size }} allowFontScaling={false}>
+        {emoji}
+      </Text>
+    </Animated.View>
+  );
+}
+
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', gap: spacing.xxl },
+  /** Every particle starts at the disc's own centre; the springs do the rest. */
+  particle: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -14,
+    marginTop: -14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   disc: {
     width: SIZE,
     height: SIZE,
