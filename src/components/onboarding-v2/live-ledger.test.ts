@@ -70,6 +70,29 @@ test('the demo draws the record with Today’s own blocks', () => {
   }
 });
 
+/**
+ * THE CARD'S ONE GLYPH IS THE NOTE (owner, 16 September 2026), and the menu it
+ * replaced is deleted rather than hidden.
+ *
+ * Three of that menu's four rows were doors to places the app already went —
+ * history is Progress's whole job, fixing a reading is the card's own tap plus
+ * the alias echo, and delete became the row's swipe. This pins all three ends
+ * of the ruling in the file that draws the card, because the failure mode is
+ * somebody adding a "quick" second action back onto the card and the menu
+ * growing again one row at a time, which is exactly how it reached six in
+ * August.
+ */
+test('the settled card draws the note glyph, and the ⋯ menu is gone', () => {
+  const src = code(NOTE_SURFACE);
+  // Outline until something is written, filled once it is — the state IS the
+  // glyph, so a card with a remark on it says so at the same size.
+  assert.match(src, /name=\{note \? 'note-on' : 'note'\}/);
+  assert.ok(!/ellipsis/i.test(src), 'the card still draws a ⋯');
+  assert.ok(!/EntryActionsSheet/.test(src), 'the deleted ⋯ menu is still rendered');
+  // Delete is the gesture now, and it is the ledger that puts every card in it.
+  assert.match(src, /<SwipeToDelete/);
+});
+
 test('Today still uses the same components it exports', () => {
   assert.match(NOTE_SURFACE, /export function NoteInput\(/);
   assert.match(NOTE_SURFACE, /export function ExerciseCard\(/);
@@ -207,9 +230,22 @@ test('the demo page draws on the funnel’s own gutter', () => {
 
 /**
  * The demo runs before there is an account, so the doors that need one are not
- * drawn rather than drawn dead: no history to look up, nowhere to keep a note.
+ * drawn rather than drawn dead: nowhere to keep a note means no note glyph at
+ * all. (This used to assert the ⋯ menu's `only` list. The menu was deleted on
+ * 16 September 2026 — the card's one glyph is the note, and delete became the
+ * row's own swipe — so the same rule is now expressed as a null prop.)
  */
 test('the demo only offers the entry actions that work without an account', () => {
-  assert.match(code(DEMO_PAGE), /only=\{DEMO_ACTIONS\}/);
-  assert.match(code(DEMO_PAGE), /const DEMO_ACTIONS: EntryAction\[\] = \['fix', 'delete'\]/);
+  assert.match(code(DEMO_PAGE), /onNote=\{null\}/);
+  assert.ok(!/EntryActionsSheet/.test(code(DEMO_PAGE)), 'the demo still opens the deleted ⋯ menu');
+});
+
+/**
+ * WHAT THE DEMO DOES KEEP IS THE GESTURE. Delete is the row's swipe on Today
+ * now, and this screen's whole claim is that it IS Today — a card you could
+ * remove there and not here would be the drift `DemoPage` exists to prevent.
+ */
+test('the demo card is swipeable, and its delete is Today’s own confirm', () => {
+  assert.match(code(DEMO_PAGE), /<SwipeToDelete/);
+  assert.match(code(DEMO_PAGE), /onDelete=\{removeEntry\}/);
 });

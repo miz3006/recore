@@ -27,7 +27,12 @@ import { hydrateFromStructure, warmRecentReadings } from '@/lib/parse/rehydrate'
 import { parseWorkout, type ParseOutcome } from '@/lib/parse/client';
 import { applyCorrection, getFixTarget, type FixTarget } from '@/lib/parse/correct';
 import { buildReceipt, type ReceiptData } from '@/lib/parse/receipt';
-import { validateParseResult, type LineSignal, type ParsedSet } from '@/lib/parse/types';
+import {
+  validateParseResult,
+  type GutterSignal,
+  type LineSignal,
+  type ParsedSet,
+} from '@/lib/parse/types';
 import { clearParseBackoff } from '@/lib/db/parse-backoff';
 import { scheduleSync, setParseListener } from '@/lib/sync/index';
 
@@ -68,7 +73,16 @@ interface SessionState {
    */
   entryNotes: EntryNotes;
   /** The ledger entry whose note sheet is open, or null. */
-  noteTarget: { exercise: string; setText: string; line: number } | null;
+  noteTarget: {
+    exercise: string;
+    setText: string;
+    line: number;
+    /** This entry's comparison against the last session, so the sheet's header
+     * can carry the PR label and the "up 2.5 kg vs last" line the card already
+     * knows. Computed for the card either way — it just travels now, since the
+     * ⋯ sheet that used to carry it is gone (16 Sep 2026). */
+    signal?: GutterSignal | null;
+  } | null;
   /** Gutter signals + the exact raw text they were computed from. */
   signals: LineSignal[];
   parsedSnapshot: string | null;
@@ -228,7 +242,7 @@ interface SessionState {
    * it carries that entry's effort and the athlete's own words about it. Two
    * different writes — see `saveEntryNote`.
    */
-  openEntryNote: (target: { exercise: string; setText: string; line: number }) => void;
+  openEntryNote: (target: NonNullable<SessionState['noteTarget']>) => void;
   closeEntryNote: () => void;
   /** Store (or clear) the note on one entry of the open session. */
   saveEntryNote: (exercise: string, text: string | null) => void;

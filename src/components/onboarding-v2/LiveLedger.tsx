@@ -136,12 +136,18 @@ export function LiveLedger({
               })
             }
             onToggleWords={() => setWordsKey((prev) => (prev === key ? null : key))}
-            // The three that open store-backed sheets. See FINDINGS §21: they
+            // The two that open store-backed sheets. See FINDINGS §21: they
             // are inert here rather than faked, because a sheet that opened and
             // could not save would be a worse lie than a tap that does nothing.
             onEdit={() => {}}
-            onActions={() => {}}
             onFix={() => {}}
+            // The note glyph and the delete rotor action are ABSENT rather than
+            // inert (16 Sep 2026): there is nowhere to keep a remark and nothing
+            // to delete on a scripted replay, and `ExerciseCard` draws no button
+            // at all for a null — which is the honest shape, and the one the
+            // menu's own `only` list used to reach for.
+            onNote={null}
+            onDelete={null}
           />
         );
       })}

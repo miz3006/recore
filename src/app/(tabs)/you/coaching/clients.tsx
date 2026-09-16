@@ -30,9 +30,13 @@ import { relativeDay } from '@/lib/coaching/relative';
  *
  * ## The context menu is ADDITIVE, which is the only reason it is allowed
  *
- * `entry-actions-sheet.tsx` records this app moving actions OFF a long-press
- * because it was "a gesture nobody could see", and that ruling stands: nothing
- * here is reachable ONLY by long-pressing. The row still taps straight through
+ * This app moved a card's actions OFF a long-press in August 2026 because it
+ * was "a gesture nobody could see", and that ruling stands: nothing here is
+ * reachable ONLY by long-pressing. (Today's ledger does carry a gesture again
+ * — swipe a row left to delete, `swipe-to-delete.tsx` — and it is the same
+ * rule kept, not broken: the ledger names it in its own coaching line and
+ * publishes it on the VoiceOver rotor, which is exactly what the long-press
+ * never did.) The row still taps straight through
  * to the feed, and "Remove access" is a visible header button once you are in
  * it. What the menu adds is a peek at the client's sessions and a shortcut for
  * a coach who already knows what they want — a real `UIContextMenu`, with

@@ -55,8 +55,132 @@ export const ENTRY_NOTE_PROMPTS: readonly string[] = [
   'What would you change next time?',
 ] as const;
 
-/** The neutral placeholder before any prompt is chosen. */
-export const ENTRY_NOTE_PLACEHOLDER = ENTRY_NOTE_PROMPTS[0]!;
+/**
+ * THE FIELD'S OWN PLACEHOLDER — the widest question, not the first of four.
+ *
+ * It used to BE `ENTRY_NOTE_PROMPTS[0]`, because the prompts were the only
+ * thing the sheet had: four chips that re-pointed this string and changed
+ * nothing a person could see. The chips below now ANSWER instead of suggesting
+ * (`ENTRY_NOTE_TAGS`), which is the 17 August ruling `reflection.ts` already
+ * carries for the session, applied one level down to a single lift. With real
+ * answers on the sheet, the field asks the widest question it can and gets out
+ * of the way — `REFLECTION_PLACEHOLDER`'s exact shape, one scale smaller.
+ *
+ * The four prompts above stay the spec'd vocabulary for anywhere that still
+ * suggests rather than answers.
+ */
+export const ENTRY_NOTE_PLACEHOLDER = 'Anything about this lift…';
+
+/**
+ * THE PRESET ANSWERS — the chips under the field (16 September 2026).
+ *
+ * This applies the owner's 17 August ruling for the session reflection
+ * (`REFLECTION_TAGS`) to the per-entry note, which had been left on the older
+ * suggest-only shape: tapping one now WRITES that phrase into the stored note,
+ * multi-select, instead of merely re-pointing a placeholder. The reason is the
+ * same one and it is stronger here — a remark about ONE lift is written on the
+ * gym floor, one-handed, between sets, and a blank box with a rotating hint is
+ * not something anyone fills in at that moment.
+ *
+ * WHICH FIVE, and each is an answer to one of `ENTRY_NOTE_PROMPTS`: the two
+ * directions of "how did that feel", the commonest answer to "how was the form
+ * or bar speed", the commonest answer to "anything hurting or tight", and the
+ * commonest answer to "what would you change next time". They are the things a
+ * lifter would otherwise type, in the order the questions are asked.
+ *
+ * What keeps it honest is what did NOT change: nothing is preselected, the app
+ * never infers one from the record, every chip is togglable off, and the text a
+ * chip contributes is visible on the sheet the whole time it is armed. The
+ * athlete still decides every word that gets stored — they just get five of
+ * them as buttons.
+ *
+ * NONE OF IT IS A NUMBER, and that boundary is load-bearing. "Felt heavy" is
+ * prose that Next quotes back beside the lift; it is not RIR, it never reaches
+ * the engine, and it moves no load. Effort is a number the athlete picks from a
+ * bounded set, per set, and it lives in the correction sheet and the check-in
+ * (see this file's header, and `effort.ts`).
+ *
+ * They are stored INSIDE the note, as its first line, rather than in a column
+ * of their own: the note is prose, and "Felt heavy · Go up next time" is prose
+ * the person chose. No migration, no second source of truth, and export and
+ * sync carry them for free. `splitEntryNote` reads them back out.
+ */
+export const ENTRY_NOTE_TAGS: readonly string[] = [
+  'Felt easy',
+  'Felt heavy',
+  'Form broke down',
+  'Something felt tight',
+  'Go up next time',
+] as const;
+
+/** What joins two armed chips on the stored line — the app's own separator, so
+ * the split is unambiguous against ordinary prose. The same glyph
+ * `reflection.ts` uses, because it is the same idea one level down. */
+const TAG_SEP = ' · ';
+
+/** The chosen chips in CANONICAL order (the order they stand on the sheet),
+ * ignoring anything not on the list. */
+export function entryNoteTagLine(tags: readonly string[]): string {
+  return ENTRY_NOTE_TAGS.filter((t) => tags.includes(t)).join(TAG_SEP);
+}
+
+/**
+ * How many characters the free-text field may still take. The stored value is
+ * the tag line PLUS the typed words, and `MAX_ENTRY_NOTE_CHARS` is a promise
+ * about the whole thing, so arming a chip costs the field its own length (plus
+ * the blank line between them).
+ */
+export function entryNoteRoomFor(tags: readonly string[]): number {
+  const line = entryNoteTagLine(tags);
+  return line.length === 0 ? MAX_ENTRY_NOTE_CHARS : MAX_ENTRY_NOTE_CHARS - line.length - 2;
+}
+
+/**
+ * One stored note from the two things the sheet holds: the armed chips and the
+ * typed words. Null when there is neither — skipping stays free, and clearing
+ * both genuinely leaves nothing behind.
+ */
+export function composeEntryNote(tags: readonly string[], text: string): string | null {
+  const line = entryNoteTagLine(tags);
+  const body = text.trim();
+  if (line.length === 0) return normalizeEntryNote(body);
+  const composed = body.length > 0 ? `${line}\n\n${body}` : line;
+  if (composed.length <= MAX_ENTRY_NOTE_CHARS) return composed;
+  // Over the limit, one of the two has to go, and it is never the athlete's.
+  // The chips are the app's contribution; the words are the record.
+  return normalizeEntryNote(body);
+}
+
+/**
+ * The inverse, so re-opening the sheet shows the chips armed and the words
+ * intact. A first line made ENTIRELY of known tags is a tag line; anything else
+ * is prose and stays in the field untouched — including, deliberately, a note
+ * someone typed as literally "Felt heavy", which round-trips to the identical
+ * stored value either way.
+ */
+export function splitEntryNote(stored: string | null | undefined): {
+  tags: string[];
+  text: string;
+} {
+  const value = typeof stored === 'string' ? stored : '';
+  if (value.trim().length === 0) return { tags: [], text: '' };
+
+  const nl = value.indexOf('\n');
+  const head = (nl === -1 ? value : value.slice(0, nl)).trim();
+  const parts = head
+    .split(TAG_SEP)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  const isTagLine = parts.length > 0 && parts.every((p) => ENTRY_NOTE_TAGS.includes(p));
+  if (!isTagLine) return { tags: [], text: value };
+
+  const rest = nl === -1 ? '' : value.slice(nl + 1);
+  return {
+    tags: ENTRY_NOTE_TAGS.filter((t) => parts.includes(t)),
+    text: rest.replace(/^\s+/, ''),
+  };
+}
 
 /** The map as it is stored on a workout: exercise key → the athlete's words. */
 export type EntryNotes = Record<string, string>;

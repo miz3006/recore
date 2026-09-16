@@ -125,10 +125,10 @@ export default function ClientFeed() {
           rule a one-sided feature.
 
           It is a VISIBLE header button, not a long-press context menu, and that
-          is the house ruling rather than a preference: `entry-actions-sheet.tsx`
-          records the app moving actions OFF a long-press precisely because it
-          was "a gesture nobody could see". Ending a coaching relationship is
-          the last thing that should be hidden behind one.
+          is the house ruling rather than a preference: the app moved a card's
+          actions OFF a long-press in August 2026 precisely because it was "a
+          gesture nobody could see". Ending a coaching relationship is the last
+          thing that should be hidden behind one.
 
           `headerRight` is the native navigation item, so it gets the system's
           own placement, its own hit target and swipe-back beside it for free. */}

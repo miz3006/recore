@@ -5,6 +5,8 @@ import {
   ENTRY_NOTE_COUNTER_FROM,
   ENTRY_NOTE_PLACEHOLDER,
   ENTRY_NOTE_PROMPTS,
+  ENTRY_NOTE_TAGS,
+  composeEntryNote,
   entryNoteCharsLeft,
   entryNoteError,
   entryNoteKey,
@@ -15,11 +17,17 @@ import {
   parseEntryNotes,
   readEntryNote,
   serializeEntryNotes,
+  entryNoteRoomFor,
+  entryNoteTagLine,
   setEntryNoteIn,
+  splitEntryNote,
 } from './entry-note.ts';
 
 test('the prompts ask, they never assess or instruct', () => {
-  assert.equal(ENTRY_NOTE_PLACEHOLDER, ENTRY_NOTE_PROMPTS[0]);
+  // The field's own placeholder stopped being the first prompt when the chips
+  // began ANSWERING rather than suggesting (16 Sep 2026) — the same move
+  // `reflection.ts` made on 17 August. The four prompts stay the vocabulary.
+  assert.equal(ENTRY_NOTE_PLACEHOLDER, 'Anything about this lift…');
   for (const p of ENTRY_NOTE_PROMPTS) {
     assert.ok(p.endsWith('?'), `"${p}" is not a question`);
     assert.ok(!/!/.test(p), `"${p}" cheers`);
@@ -164,4 +172,64 @@ test('a remote row cannot grow past the per-workout cap', () => {
     Object.keys(parseEntryNotes(JSON.stringify(oversized))).length,
     MAX_ENTRY_NOTES_PER_WORKOUT,
   );
+});
+
+// --- the preset answers (16 September 2026) ----------------------------------
+
+test('nothing is preselected and the chips are plain words', () => {
+  assert.deepEqual(ENTRY_NOTE_TAGS, [
+    'Felt easy',
+    'Felt heavy',
+    'Form broke down',
+    'Something felt tight',
+    'Go up next time',
+  ]);
+  // No verdicts, no praise, no diagnosis — five things about one lift, stated
+  // flatly enough that a person can mean them.
+  for (const t of ENTRY_NOTE_TAGS) {
+    assert.ok(!/!/.test(t), `"${t}" cheers`);
+    assert.ok(t.length <= 20, `"${t}" is a sentence, not a chip`);
+    // Not one of them is a number: a chip is prose Next quotes back, never
+    // effort the engine reads (see the constant's note).
+    assert.ok(!/\d/.test(t), `"${t}" carries a number`);
+  }
+  // An empty sheet stores nothing at all: skipping stays free.
+  assert.equal(composeEntryNote([], ''), null);
+  assert.equal(composeEntryNote([], '   '), null);
+});
+
+test('chips are stored in canonical order, whatever order they were tapped', () => {
+  assert.equal(entryNoteTagLine(['Go up next time', 'Felt heavy']), 'Felt heavy · Go up next time');
+  // Anything not on the list contributes nothing — the app never stores a word
+  // it did not offer.
+  assert.equal(entryNoteTagLine(['Crushed it']), '');
+  assert.equal(composeEntryNote(['Crushed it'], ''), null);
+});
+
+test('chips and typed words round-trip through one stored note', () => {
+  const stored = composeEntryNote(['Go up next time', 'Felt easy'], '  bar moved fast all three ');
+  assert.equal(stored, 'Felt easy · Go up next time\n\nbar moved fast all three');
+
+  const back = splitEntryNote(stored);
+  assert.deepEqual(back.tags, ['Felt easy', 'Go up next time']);
+  assert.equal(back.text, 'bar moved fast all three');
+
+  // Chips alone are a whole note.
+  assert.equal(composeEntryNote(['Felt heavy'], ''), 'Felt heavy');
+  assert.deepEqual(splitEntryNote('Felt heavy'), { tags: ['Felt heavy'], text: '' });
+});
+
+test('prose that merely looks like a tag line stays prose', () => {
+  const written = 'felt heavy · not really\n\nthe second set';
+  assert.deepEqual(splitEntryNote(written), { tags: [], text: written });
+  assert.deepEqual(splitEntryNote(null), { tags: [], text: '' });
+  assert.deepEqual(splitEntryNote('   '), { tags: [], text: '' });
+});
+
+test('an armed chip costs the field its own length, never the athlete their words', () => {
+  assert.equal(entryNoteRoomFor([]), MAX_ENTRY_NOTE_CHARS);
+  assert.equal(entryNoteRoomFor(['Felt easy']), MAX_ENTRY_NOTE_CHARS - 'Felt easy'.length - 2);
+  // Past the limit the CHIPS go, not the typed words.
+  const long = 'x'.repeat(MAX_ENTRY_NOTE_CHARS);
+  assert.equal(composeEntryNote(['Felt heavy'], long), long);
 });

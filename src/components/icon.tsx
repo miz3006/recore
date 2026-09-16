@@ -60,8 +60,9 @@ export type IconName =
   | 'sign-out'
   | 'trash'
   | 'wrench'
-  // The settled card's ⋯ (entry-actions-sheet) and its Edit row.
-  | 'ellipsis'
+  // `pencil` is the inline editor's own mark. (`ellipsis` left the registry on
+  // 16 September 2026 with the card menu it was drawn for: the settled card's
+  // one glyph is `note` now, and delete is the row's swipe.)
   | 'pencil'
   // The undo pill under a deleted entry — the one mark in the app that means
   // "put that back", so it is Apple's own turn-back arrow and nothing else.
@@ -141,7 +142,6 @@ const MAP: Record<IconName, Glyph> = {
   star: { set: 'ion', name: 'star-outline' },
   'sign-out': { set: 'ion', name: 'log-out-outline' },
   trash: { set: 'ion', name: 'trash-outline' },
-  ellipsis: { set: 'ion', name: 'ellipsis-horizontal' },
   pencil: { set: 'ion', name: 'pencil-outline' },
   wrench: { set: 'ion', name: 'construct-outline' },
   close: { set: 'ion', name: 'close-circle' },

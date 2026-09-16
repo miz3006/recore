@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
-import { EntryActionsSheet, joinNames, type EntryAction } from '@/components/entry-actions-sheet';
+import { joinNames, SwipeToDelete } from '@/components/swipe-to-delete';
 import {
   aliasEchoOf,
   Composer,
@@ -52,8 +52,8 @@ import { v2color, v2metrics } from './tokens';
  * So this page is the page. Same title block, same dateline, same empty canvas
  * that is one big tap target, same composer with the rail that arrives with the
  * first card, same live read-out of the line being typed, same settling beat,
- * same cards with their rings and their ⋯, same long-press to see your own
- * words, same inline editor, same delete confirm.
+ * same cards with their rings, same long-press to see your own words, same
+ * swipe-left to remove a row, same inline editor, same delete confirm.
  *
  * ## The four things that are NOT the same, and each has a reason
  *
@@ -66,12 +66,13 @@ import { v2color, v2metrics } from './tokens';
  *    length of the screen and is handed up as an answer (`demoText`,
  *    `demoEntries`), which is what the later screens and the first-session seed
  *    read.
- * 3. **The ⋯ offers two of its four rows** — fix and delete. There is no
- *    history to look up and nowhere to keep a note yet, and a row that does
- *    nothing when tapped is worse than a shorter menu (`EntryActionsSheet.only`).
- *    "Fix" opens the inline editor rather than the correction sheet, which is
- *    the half of fixing that needs no store behind it: your own words, editable,
- *    re-read on return.
+ * 3. **The card draws no note glyph.** There is nowhere to keep a remark about
+ *    a lift until there is an account, and a button that opens a sheet which
+ *    could not save would be a worse lie than no button (`ExerciseCard`'s
+ *    `onNote={null}`). What the card DOES keep is the swipe-left that removes a
+ *    row, and the alias echo, which here opens the inline editor rather than
+ *    the store-backed correction sheet — the half of fixing that needs nothing
+ *    behind it: your own words, editable, re-read on return.
  * 4. **The page gutter is the funnel's 24, not Today's 16.** Today's 16 is
  *    UIKit's own layout margin, which its large title hangs off; this screen
  *    draws no navigation bar and sits under the flow's back circle and progress
@@ -165,9 +166,6 @@ export function DemoPage({
   /** The line that has just settled and is still being read — one beat, then
    * the card takes its place (see `READ_BEAT_MS`). */
   const [readingLine, setReadingLine] = useState<number | null>(null);
-  const [actionsRow, setActionsRow] = useState<ReceiptRow | null>(null);
-  const [actionsSiblings, setActionsSiblings] = useState<string[]>([]);
-  const [actionsOpen, setActionsOpen] = useState(false);
 
   const lines = note.split('\n');
   const activeIndex = lines.length - 1;
@@ -315,31 +313,6 @@ export function DemoPage({
     );
   };
 
-  const runEntryAction = (action: EntryAction) => {
-    const row = actionsRow;
-    const siblings = actionsSiblings;
-    setActionsRow(null);
-    setActionsSiblings([]);
-    if (!row) return;
-    switch (action) {
-      case 'fix':
-        // The half of "fix this entry" that needs nothing behind it: the words
-        // themselves, open for editing, re-read the moment they change. The
-        // correction sheet — teaching the parser an alias — is store-backed and
-        // is not offered here (see the header, difference 3).
-        setEditingLine(row.line);
-        break;
-      case 'delete':
-        confirmDeleteLine(row.line, {
-          exercise: row.exercise,
-          alsoOnLine: siblings,
-        });
-        break;
-      default:
-        break;
-    }
-  };
-
   // Every committed line becomes a block: the line under inline edit is an
   // input, a line still being read is pending, a parsed line is a card each,
   // and anything the grammar could not read stays as the quiet prose it is.
@@ -380,51 +353,58 @@ export function DemoPage({
       rows.forEach((row, j) => {
         const key = row.doneKey;
         const cardKey = `${i}:${j}:${row.exercise}`;
+        const siblings = rows.filter((r) => r !== row).map((r) => r.exercise);
+        const removeEntry = () =>
+          confirmDeleteLine(line, { exercise: row.exercise, alsoOnLine: siblings });
         blocks.push(
-          <ExerciseCard
-            // The demo ledger is a scripted replay, not a page anyone writes on:
-            // there is no line to append a set to and nothing to re-parse.
-            key={cardKey}
-            row={row}
-            order={i}
-            done={!undone.has(key)}
-            alias={alias}
-            // There is nowhere to keep a remark about a lift before there is an
-            // account, so the card never carries one here.
-            note={null}
-            rawLine={raw.trim()}
-            showWords={wordsKey === cardKey}
-            reduceMotion={reduceMotion}
-            onToggle={() => {
-              tap();
-              setUndone((prev) => {
-                const next = new Set(prev);
-                if (next.has(key)) next.delete(key);
-                else next.add(key);
-                return next;
-              });
-            }}
-            onToggleWords={() => {
-              tap();
-              setWordsKey((k) => (k === cardKey ? null : cardKey));
-            }}
-            onEdit={() => {
-              tap();
-              setEditingLine(line);
-            }}
-            onActions={() => {
-              tap();
-              setActionsRow(row);
-              setActionsSiblings(rows.filter((r) => r !== row).map((r) => r.exercise));
-              setActionsOpen(true);
-            }}
-            // The echoed word is the auto-fix made visible, and tapping it goes
-            // where the ⋯'s "fix" goes: your own words, editable.
-            onFix={() => {
-              tap();
-              setEditingLine(line);
-            }}
-          />,
+          // Swipe left to remove it, the same gesture Today ships — the ⋯ menu
+          // this replaced is gone from both (16 Sep 2026). There is no
+          // `DaySwipe` on this screen to arbitrate against, so the row's pan
+          // simply has the drag to itself.
+          <SwipeToDelete key={cardKey} onDelete={removeEntry} reduceMotion={reduceMotion}>
+            <ExerciseCard
+              // The demo ledger is a scripted replay, not a page anyone writes
+              // on: there is no line to append a set to and nothing to re-parse.
+              row={row}
+              order={i}
+              done={!undone.has(key)}
+              alias={alias}
+              // There is nowhere to keep a remark about a lift before there is
+              // an account, so the card never carries one here — and for the
+              // same reason it draws no note glyph at all, rather than one that
+              // opens a sheet that could not save (header, difference 3).
+              note={null}
+              onNote={null}
+              onDelete={removeEntry}
+              rawLine={raw.trim()}
+              showWords={wordsKey === cardKey}
+              reduceMotion={reduceMotion}
+              onToggle={() => {
+                tap();
+                setUndone((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(key)) next.delete(key);
+                  else next.add(key);
+                  return next;
+                });
+              }}
+              onToggleWords={() => {
+                tap();
+                setWordsKey((k) => (k === cardKey ? null : cardKey));
+              }}
+              onEdit={() => {
+                tap();
+                setEditingLine(line);
+              }}
+              // The echoed word is the auto-fix made visible, and tapping it
+              // opens the half of fixing that needs no store behind it: your
+              // own words, editable, re-read on return.
+              onFix={() => {
+                tap();
+                setEditingLine(line);
+              }}
+            />
+          </SwipeToDelete>,
         );
       });
     } else {
@@ -528,23 +508,9 @@ export function DemoPage({
         </Pressable>
       </ScrollView>
 
-      <EntryActionsSheet
-        visible={actionsOpen}
-        target={actionsRow ? { exercise: actionsRow.exercise, setText: actionsRow.setText } : null}
-        alsoOnLine={actionsSiblings}
-        // Two of the four: there is no history to look up and nowhere to keep a
-        // note until there is an account.
-        only={DEMO_ACTIONS}
-        onClose={() => setActionsOpen(false)}
-        onSelect={runEntryAction}
-      />
     </>
   );
 }
-
-/** Module-scope so it is one prop identity for the life of the app, not a fresh
- * array on every render of the page. */
-const DEMO_ACTIONS: EntryAction[] = ['fix', 'delete'];
 
 /** What the dateline will say — read here only so the screen can name the day
  * in its accessibility label without formatting a date of its own. */

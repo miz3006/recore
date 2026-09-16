@@ -451,6 +451,7 @@ test('a lift with nothing counted prints no last set at all', () => {
       setText: '40 kg × 10',
       table: setTableOf([set({ kind: 'warmup', reps: 10, weight_kg: 40 })]),
       working: [],
+      comments: [],
       signal: null,
       doneKey: 'Bench Press 40 kg × 10',
     }),
@@ -542,4 +543,66 @@ test('a carry, a hold and a split keep every metric on the compact line', () => 
   // Nothing countable is still nothing.
   assert.equal(setsLineText([]), null);
   assert.equal(setsLineText([set({ kind: 'warmup', reps: 10, weight_kg: 40 })]), null);
+});
+
+test('the athlete’s inline remarks ride the row, in writing order', () => {
+  // "incline db press 35kg x8 (rir 2)/ 9 (rir 0), prva serija ylo dobra,
+  //  zadnjo serijo forma padla" — one remark per set, each on its own set.
+  const receipt = buildReceipt(
+    resultOf(
+      item('Incline Dumbbell Press', 0, [
+        set({ reps: 8, weight_kg: 35, note: 'prva serija ylo dobra' }),
+        set({ reps: 9, weight_kg: 35 }),
+        set({ reps: 8, weight_kg: 35, note: 'zadnjo serijo forma padla' }),
+      ]),
+    ),
+    [],
+  );
+  assert.deepEqual(receipt.rows[0]!.comments, [
+    'prva serija ylo dobra',
+    'zadnjo serijo forma padla',
+  ]);
+});
+
+test('a whole-exercise remark is printed once, however many sets carry it', () => {
+  // The prompt attributes it to the FIRST set only; a model that repeats it
+  // across every set must not make the card say it five times.
+  const receipt = buildReceipt(
+    resultOf(
+      item('Squat', 0, [
+        set({ reps: 5, weight_kg: 100, note: 'koleno malo teži' }),
+        set({ reps: 5, weight_kg: 100, note: 'koleno malo teži' }),
+        set({ reps: 5, weight_kg: 100, note: 'koleno malo teži' }),
+      ]),
+    ),
+    [],
+  );
+  assert.deepEqual(receipt.rows[0]!.comments, ['koleno malo teži']);
+});
+
+test('a warm-up’s remark is kept — the athlete wrote it', () => {
+  const receipt = buildReceipt(
+    resultOf(
+      item('Deadlift', 0, [
+        set({ kind: 'warmup', reps: 5, weight_kg: 60, note: 'hrbet še trd' }),
+        set({ reps: 3, weight_kg: 180 }),
+      ]),
+    ),
+    [],
+  );
+  assert.deepEqual(receipt.rows[0]!.comments, ['hrbet še trd']);
+});
+
+test('no remark, no array to render', () => {
+  const receipt = buildReceipt(
+    resultOf(item('Bench Press', 0, [set({ reps: 8, weight_kg: 80 })])),
+    [],
+  );
+  assert.deepEqual(receipt.rows[0]!.comments, []);
+  // Whitespace-only notes are nothing to quote.
+  const blank = buildReceipt(
+    resultOf(item('Bench Press', 0, [set({ reps: 8, weight_kg: 80, note: '   ' })])),
+    [],
+  );
+  assert.deepEqual(blank.rows[0]!.comments, []);
 });

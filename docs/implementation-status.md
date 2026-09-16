@@ -278,9 +278,10 @@ of drift this repository has actually suffered before.
 | **The session's own rating** (owner ask, 10 Sep 2026) | **done** | `src/lib/session-effort.ts` (+ test), `src/lib/db/schema.ts` (v7), `src/lib/db/workouts.ts` (`setSessionEffort`/`getSessionEffort`), `src/components/check-in-sheet.tsx`, `src/components/check-in-note.tsx`, `src/lib/sync/index.ts`, `src/lib/export-json.ts`, `supabase/migrations/20260910000000_session_effort.sql` | One tap for how hard the WHOLE session was — the session-RPE method, stored on Foster's CR-10 (`Easy` 3 · `Moderate` 5 · `Hard` 8) in its own nullable column on `workouts`. It comes first on the sheet because its cost does not scale with the number of lifts, and it is the input to NO prescription: `sets.rir` is one set's distance from failure and is the engine's; this is what the session cost and is quoted, never computed against. An unrated session has no load — `sessionLoad` returns null, never a zero. Printed back on Today as the word the athlete chose, leading the chips in `CheckInNote`, and summed into **this week's training load on Progress** (`components/week-load.tsx`) — a week holding one unrated session shows no total, because a partial sum is a lighter week that never happened. Monotony, strain and deload timing are deliberately not built. |
 | **§8.1** Reflections included in export and deletion | **done** | `src/lib/export-json.ts`, `src/lib/account/delete.ts`, `supabase/migrations/20260729000000_reflections.sql` | By construction rather than by remembering: the reflection is a **column on `workouts`**, so it inherits that row's RLS, its cascade delete, the local wipe and the JSON export. CSV stays a sets table — the JSON is the complete export and the privacy policy says so. |
 | **§8.1** Next may quote a reflection without inferring causation | **partial** | `src/lib/db/brief.ts` (`BriefNote`, `recentEntryNotes`, `tagPattern`), `src/lib/reflection.ts` (`tagPattern`), `src/lib/brief-prose.ts`, `src/app/(tabs)/next/index.tsx` | 4 Aug: the PER-ENTRY note is captured and quoted (see the section below). **10 Sep: the session-level check-in is half-read.** Its CHIPS are counted across the last five sessions and stated as a tally — *You marked "slept badly" after 3 of your last 5 sessions* — with the verb on what the app actually knows (which button was tapped) and no causal clause anywhere near it (§9.1); a test asserts the paragraph never gains *because*, a prescription or a diagnosis beside it. The PROSE half of a reflection is still never quoted by the brief. |
-| **Per-entry note on a ledger card** (owner ask, 4 Aug) | **done** | `src/lib/entry-note.ts` (+ test), `src/lib/db/entry-notes.ts`, `src/components/entry-note-sheet.tsx`, `src/components/note-surface.tsx` | One sheet carrying that entry's effort scale and a free-text note. Stored in `workouts.entry_notes` (schema v5), never in `raw_text`. **12 Aug: the speech bubble that opened it from every card is gone** — the standing per-card invitation became one end-of-session row (below), and this became a named row inside the ⋯ sheet. The written note still renders on its card; only the prompt moved. |
-| **Visible ⋯ actions on a settled card** (owner ask, 6 Aug) | **done** | `src/components/entry-actions-sheet.tsx`, `src/components/note-surface.tsx` (sideCol, `runEntryAction`), `src/components/icon.tsx` (`ellipsis`, `pencil`) | The card's hidden gestures are now one visible ⋯ (Mobbin-verified logger pattern: Hevy/Gymshark/Bevel per-exercise menu): a BottomSheet with Edit line · Show my words · Note & effort · History · Fix reading · Delete entry (`color.error`, last, own rule). The body's long-press → history was REMOVED — the menu owns it; tap-to-edit stays. Sequencing honours UIKit's one-modal rule: the chosen action fires from `onClosed`, so History/Fix can present their own sheet. Delete routes to the same `deleteNoteLine` the inline editor uses. **12 Aug: two rows added** (words, note) and the ⋯ became the card's only glyph. |
-| **The written line visible on its card** (owner ask, 12 Aug) | **done** | `src/components/note-surface.tsx` (`WordsFlip`, `wordsKey`), `entry-actions-sheet.tsx` (`words` action) | Long-press a settled card — or pick "Show my words" in its ⋯ — and the interpreted SET/KG/REPS table crossfades to the raw line, quoted in mono, exactly as typed. Tap or long-press again to flip back. Read-only display of `raw_text` (§3): no new data, no new column, nothing writable. Both faces are laid out and the words layer reports its height as the wrapper's floor, so flipping never moves the page. `DUR.fast`, instant under Reduce Motion; the hidden face is hidden from VoiceOver rather than merely transparent. |
+| **Per-entry note on a ledger card** (owner ask, 4 Aug) | **done, not seen on a device since 16 Sep** | `src/lib/entry-note.ts` (+ test), `src/lib/db/entry-notes.ts`, `src/components/entry-note-sheet.tsx`, `src/components/note-surface.tsx` | One sheet carrying a free-text note. Stored in `workouts.entry_notes` (schema v5), never in `raw_text`. **12 Aug: the speech bubble that opened it from every card is gone** — the standing per-card invitation became one end-of-session row (below), and this became a named row inside the ⋯ sheet. **16 Sep: the ⋯ sheet is deleted and this is the card's ONE glyph** (`note` / `note-on`, outline until something is written), and the sheet's four placeholder chips became five preset ANSWERS that write (`ENTRY_NOTE_TAGS`) — the 17 Aug reflection ruling applied one level down. Storage mirrors `reflection.ts`: the tag line is the note's first line, ` · `-joined, one column. `noteTarget` now carries the entry's `GutterSignal`, so the header keeps the PR label the ⋯ sheet used to show. The written note still renders on its card. |
+| **Visible ⋯ actions on a settled card** (owner ask, 6 Aug) | **withdrawn 16 Sep 2026 — the sheet is deleted** | (was `src/components/entry-actions-sheet.tsx`) → `src/components/swipe-to-delete.tsx` (new), `src/components/note-surface.tsx`, `src/components/icon.tsx` | The menu shipped 6 Aug and was cut to four rows on 12 Aug. The owner's 16 Sep ruling: three of those four were doors to somewhere the app already went — history is Progress's whole job, fixing a reading is the card's own tap plus the alias echo, and **delete became swipe-the-row-left**. The card's one glyph is the note (row above). `joinNames` moved to `swipe-to-delete.tsx`; the `ellipsis` icon left the registry. The run-on delete confirm stays — undo cannot name the neighbours that leave with a shared line. |
+| **Swipe a ledger row left to delete it** (owner, 16 Sep 2026) | **built, NOT seen on a device** | `src/components/swipe-to-delete.tsx` (new), `src/components/day-swipe.tsx` (`DaySwipeGestureContext`), `src/components/note-surface.tsx`, `src/components/onboarding-v2/DemoPage.tsx` | The gesture that replaced the ⋯ menu's Delete row. Two ways out of one drag: past 42 % of the screen and released, the row leaves and the red block sweeps after it; past the block's own width and released short of that, the row rests open with a tappable Delete; anything less springs shut. Haptic on arming, one open row app-wide, tap-to-close. Safe only because `undo-delete.tsx` exists. Arbitration: `failOffsetY` → the scroll view, `activeOffsetX(-14)` + `failOffsetX(14)` → leftward only so a rightward drag is `DaySwipe`'s, and `blocksExternalGesture` so a fast flick cannot fire both. VoiceOver gets it as a rotor action on the card body, not as a gesture. **Nothing here has been seen moving** — no simulator this session (912 MB free, a native build needs ~15 GB). |
+| **The written line visible on its card** (owner ask, 12 Aug) | **done** | `src/components/note-surface.tsx` (`WordsFlip`, `wordsKey`) | Long-press a settled card and the interpreted SET/KG/REPS table crossfades to the raw line, quoted in mono, exactly as typed. (The "Show my words" menu row left on 12 Aug; the menu itself on 16 Sep. The long-press is the whole door and always was.) Tap or long-press again to flip back. Read-only display of `raw_text` (§3): no new data, no new column, nothing writable. Both faces are laid out and the words layer reports its height as the wrapper's floor, so flipping never moves the page. `DUR.fast`, instant under Reduce Motion; the hidden face is hidden from VoiceOver rather than merely transparent. |
 | **One reflection prompt per session, not per card** (owner ask, 12 Aug) | **done** | `src/lib/session-activity.ts` (+ test), `src/components/use-session-active.ts`, `note-surface.tsx` (`showReflectionRow`), `session-store.ts` (`finishSession`, `lastActivityAt`, `sessionFinished`), `bottom-toolbar.tsx` | §8.1 asks once, about the session; the note bubble asked once per exercise, five times a session. One quiet row now sits under the ledger — "Add a note about this session" — opening the check-in that already existed. It appears when the session has ENDED: Finish pressed, or 90 quiet minutes with work on the record (so the athlete who never presses Finish is still asked), and disappears once a reflection exists. Finish is remembered per workout in the meta KV (`session_done:<id>`), like receipt mode; writing another line re-opens the session. |
 | **The session's reflection printed under its lifts** (owner ask, 20 Aug · redrawn 10 Sep 2026) | **done** | `src/components/check-in-note.tsx` (new — `CheckInNote`), `src/components/note-surface.tsx` (the `reflection` memo, which now also reads `getSessionEffort`) | The check-in was write-only from Today: the words went into `workouts.reflection` and no screen printed them back, so the prompt row simply vanished and the note was only visible by re-opening the sheet. The day prints it where the day's lifts end — and since 10 Sep it prints it as ONE QUOTED BLOCK rather than two grey lines. Owner's ask: *"naredi cim lepsi mozen nacin napisa tistih informaciji na today … naj izgleda tudi cim bolj native ios"*. Four things, in the order the eye reads them: an eyebrow (`HOW IT WENT`) that says what the block is; the session's rating as the word the athlete picked; the armed chips **as the app's own chips** (`chip-row.tsx`'s white pill, hairline, `shadow.card`, ink label, one step smaller because they are answers already given, not controls); and their prose in **ink** at 16/23, a step under an exercise name. A 2 pt block-quote rule runs down the record's rail column, under the check rings, which is what lets the block hold together with no card on the one screen the design system forbids cards on. Three defects it fixes, each one a rule the repository already had: a chip that read as a pill in the sheet and as `a · b` prose on Today (the drift `chip-row.tsx` was written to end); the athlete's own sentence set in `textSecondary`, which §Colour reserves for what the eye may skip; and no label at all, so a note under a ledger could be read as a comment on the last lift. The prose clamps at six lines — ten was tried on the simulator and pushed the writing line off the page, which is the one thing Today may not do — with iOS's own ellipsis as the tell and the whole note in the VoiceOver label. Verified on the iPhone 17 Pro simulator (iOS 26.5) in four states: rating + chips + prose, rating only, a 737-character note, and Dynamic Type accessibility-extra-large. It sits **above** the writing line, with the settled record, while the invitation to write it stays below — and that prompt is now gated on the WORDS, not on the block, so a session someone rated and did not write about is still asked. Tapping re-opens the same check-in. Day-scoped by construction: `workoutId` follows the selected day. No new column, no new event, no model.
 | **Every text field has a way to close the keyboard** (owner ask, 20 Aug) | **done** | `src/components/keyboard-done.tsx` (new), `app/(tabs)/you.tsx`, `app/plan-day.tsx`, `components/check-in-sheet.tsx`, `entry-note-sheet.tsx`, `fix-sheet.tsx`, `planned-checklist.tsx`, `note-surface.tsx` | Audited against three exits — tap outside, return/done, scroll. iOS number pads (`decimal-pad`, `number-pad`) have **no return key**, so the ten fields using one now carry a `Done` accessory bar (`inputAccessoryViewID`); the bar is mounted inside each sheet that needs it, since a `BottomSheet` is its own RN `Modal` window. Five input-bearing ScrollViews gained `keyboardDismissMode="interactive"`. The four sheets whose field is multiline or numeric make their title block a `Keyboard.dismiss()` target (`accessible={false}`, so VoiceOver still reads it as text). The ⋯ sheet's Note row and both reflection rows dismiss before presenting, as the Fix reading row already did. Today's composer is the deliberate exception: return commits a line and a page tap re-focuses, because the page IS the composer — its labelled hide-keyboard button is the exit. |
@@ -9794,12 +9795,23 @@ Set in **two** places, and both are needed:
 `production` has it in neither place, so the build that goes on sale still ships the feature
 provably absent.
 
-**The privacy policy follows the flag, by construction.** `lib/legal.ts` gates the coaching
-paragraphs on the same `isCoachModeOn()` constant, so the TestFlight build now shows the
-disclosure that a linked coach reads session text, sets, the session rating and both kinds of
-check-in note, and that `notify-comment` hands a comment's text to Expo's push service. S20 (10
-Sep) asked for the owner's approval of that wording before publication — handing it to testers
-IS publication, so it needs a read.
+**The privacy policy follows the flag, by construction — and the PUBLIC page had to be rebuilt.**
+`lib/legal.ts` gates the coaching paragraphs on the same `isCoachModeOn()` constant, so the
+in-app policy turned on by itself. The hosted page did not: `docs/privacy.html` is a static file
+generated by `npm run build:legal`, it reads the flag from whatever environment the generator
+runs in, and the committed copy had **zero** mentions of coaching. A TestFlight build that shares
+your training with another person, pointing App Store Connect at a policy that says "no other
+user can read it", is the exact harm `.env.example` warns about under this flag. Regenerated with
+`EXPO_PUBLIC_COACH_MODE=1 node scripts/build-legal-html.ts`; only `privacy.html` changed, by the
+"If you link a coach" section, Expo as a sixth processor, and "there is no sixth" becoming
+"seventh".
+
+Two things follow from that. **It needs the owner's read before the push** — S20 (10 Sep) asked
+for approval of this wording before publication, and GitHub Pages publishes `docs/` on push to
+main, so the push IS the publication. And **the page must be regenerated WITHOUT the flag** if a
+store build ever ships with coaching off, or the published policy describes a feature that build
+does not have — the opposite error, and the one `lib/legal.ts` cannot prevent from here because
+one URL serves every build.
 
 ### What was measured, not assumed
 
@@ -9875,3 +9887,154 @@ check, moved onto the line itself earlier today.
 
 `npx tsc --noEmit` **pass**. `npm test` **960/960 pass**. `npm run lint` **0 errors**.
 `npx expo export --platform ios` **pass**.
+
+
+## 16 September 2026, late — the ⋯ is gone: the card's glyph is the note, and delete is a swipe
+
+The owner: *"umakni tiste tri pike in namesto tega dej samo ikonico za add note in notr naj bo
+nekaj tko smiselno da izpolnit… ne rabimo vec treh pikic in teh funkcij fix this entry, history
+in deleting, ker deleting bo lahko naredil tako da swipa vrstico v levo in se izbrise (to tudi
+naredi), history bo pa lahko videl v progression itak tam ze."*
+
+**Three of the menu's four rows were doors to somewhere the app already went.** History is the
+Progress tab's entire job and was a second, worse way in. Fixing a reading has two better doors
+on the card itself — the body's own tap opens the line for editing, and a mis-read word carries
+the echo beside the name that opens the correction sheet. Delete moved to the gesture the rest of
+the phone uses. What was left was the one thing the card genuinely cannot do by itself, so the
+menu stops being a menu and becomes the action: **the card's one glyph is now the note**, outline
+while there is nothing written and filled once there is.
+
+`entry-actions-sheet.tsx` is deleted. `joinNames` — the "A, B and C" voice the delete confirm
+speaks — moved to `swipe-to-delete.tsx`, which is where delete lives now. The `ellipsis` icon left
+the registry with the menu it was drawn for. Two coaching files cited the old file as the record
+of the "no actions behind an invisible gesture" ruling; both now cite the ruling itself, and say
+plainly that Today carries a gesture again and why that is the same rule kept rather than broken.
+
+### Swipe left to remove a row (`src/components/swipe-to-delete.tsx`, new)
+
+Two ways out of one drag, which is what iOS does: past `COMMIT` (42 % of the screen) and released,
+the row leaves and the red block sweeps after it; past the block's own width and released short of
+that, the row rests open with a real Delete button; anything less springs shut. A haptic when the
+drag arms, one open row app-wide, and a tap anywhere on an open card means "never mind".
+
+**It is only a safe gesture because `undo-delete.tsx` exists.** A line of `raw_text` is the record
+(§3), and the August argument against a gesture was that the action could not be taken back. It
+can, for six seconds. The run-on confirm STAYS: a line holding several entries can only be removed
+whole, and naming the neighbours before they go is the one thing undo cannot do.
+
+**It has to lose three arguments to win one.** `failOffsetY` hands a vertical drag to the scroll
+view; `activeOffsetX(-14)` with `failOffsetX(14)` means it activates leftward only and FAILS on a
+rightward drag, which is `DaySwipe` going back a day; and `blocksExternalGesture` makes `DaySwipe`
+wait for it rather than race it — without that, a fast left flick crossed both thresholds in one
+frame and on a past day would have deleted an entry *and* changed the day. `DaySwipe` publishes its
+own pan ref through a new `DaySwipeGestureContext`.
+
+Two layout rules the first draft got wrong and the code now states: the red block is a **sibling**
+of the sliding layer rather than a child, because iOS will not deliver a touch to a subview lying
+outside its parent's bounds and a block parked past the card's right edge was tappable nowhere;
+and the clip is **on only while the row is off its mark**, because a permanent `overflow: hidden`
+sized to the card cut the `FadeInDown` entrance off at the ankles on every settling line.
+
+**VoiceOver gets the verb, not the gesture.** The card publishes Delete as a custom rotor action on
+its body — the element VoiceOver actually lands on — which is how iOS exposes its own swipe
+actions. Today's first-session coaching line now spends its second half naming the swipe instead of
+the ⋯ it used to name.
+
+### The note sheet answers instead of suggesting
+
+The sheet's chips were four placeholders: tapping one re-pointed the empty field's hint and changed
+nothing else, so its whole answer to *"what would I write here?"* was a blank box rephrasing its own
+question. The owner settled this shape for the session reflection on **17 August** — preset ANSWERS
+that write, multi-select, stored as the reflection's first line — and this is that ruling one level
+down, where it matters more: a remark about ONE lift is written on the gym floor, one-handed,
+between sets.
+
+`ENTRY_NOTE_TAGS` is five, one answer to each of the four spec'd prompts (`ENTRY_NOTE_PROMPTS`,
+still exported and still asserted): **Felt easy · Felt heavy · Form broke down · Something felt
+tight · Go up next time** — how it felt, both ways; the form; the body; next time. Storage mirrors
+`reflection.ts` exactly (`entryNoteTagLine`, `entryNoteRoomFor`, `composeEntryNote`,
+`splitEntryNote`): the tag line is the note's own first line, ` · `-joined, no migration and no
+second source of truth, and over the limit the CHIPS go rather than the athlete's words. The
+field's placeholder stopped being `ENTRY_NOTE_PROMPTS[0]` and became *"Anything about this lift…"*,
+the widest question it can ask now that there are real answers beside it.
+
+**Nothing here is a number, and that boundary is what lets a "how did it feel" answer live on this
+sheet at all.** "Felt heavy" is prose Next quotes back beside the lift; it is not RIR, it never
+reaches the engine, and it moves no load. Effort is still a number picked from a bounded set, per
+SET, in the correction sheet and the check-in — the 12 August ruling that moved it off this sheet
+is untouched.
+
+The header now carries the entry's **signal**: `noteTarget` gained an optional `GutterSignal`, so
+the PR label and the "up 2.5 kg vs last" line the ⋯ sheet used to show survive the sheet's deletion.
+Chips take the check-in's own two states (recessed `surfaceHigh` at rest, the one blue when armed)
+at a smaller geometry — five chips about one lift ran to three rows at the check-in's 40 pt.
+
+### The onboarding demo
+
+`DemoPage` keeps the swipe and loses the menu. `ExerciseCard` gained `onNote` and `onDelete` as
+**nullable** props, so a surface with nowhere to keep a note draws no glyph at all rather than one
+that opens a sheet which could not save — the same honesty the menu's `only` list used to buy.
+`LiveLedger` passes null for both. The `live-ledger.test.ts` assertion that pinned the old `only`
+list now pins the null prop and the swipe.
+
+### Not verified on a device
+
+**The simulator was not run.** This Mac has 912 MB free and a native build needs ~15 GB, so nothing
+here has been seen moving: not the swipe's thresholds, not the block's hit target, not the note
+glyph's optical alignment on the page margin. Two specific numbers are stated in the code as
+UNMEASURED rather than measured — `sideBtn`'s 384.3 pt right edge was measured with SF's `ellipsis`
+and Ionicons' bubble sets its own inset, and the 1–2 frame gap between a drag starting and the red
+block mounting is reasoned about, not watched. Both need a device pass.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **967/967 pass**. `npx expo lint` **0 errors**
+(60 warnings, down from 63 — all pre-existing Reanimated shared-value and ref-during-render
+patterns the whole codebase carries). `npx expo export --platform ios` **pass**.
+
+## 16 September 2026, late — the comment the parser already read is finally printed
+
+Step one of the owner's question (*"če oseba napiše komentar in to parser prepozna, ali lahko
+avtomatsko napiše to v note, in potem to spreminja s klikom?"*). The answer to the second half
+is deliberately NOT automatic — see the ruling at the end — but the first half turned out to be
+a bug rather than a feature request.
+
+**The parser has been reading inline comments since PARSE_VERSION 6 and Today never showed
+them.** "incline db press 35kg x8, tehnika super" puts *tehnika super* on that set, verbatim,
+attributed by ordinal ("prva serija…", "zadnjo…"); it reaches `sets.note` in SQLite and
+surfaced only in the lift sheet's per-day history. The card printed the numbers and dropped the
+sentence written beside them — on the page where the athlete had just written it.
+
+`ReceiptRow.comments` now carries them (de-duplicated, warm-ups included — the athlete wrote
+it, the same rule `exercise-stats.ts` follows), and `ExerciseCard` quotes them under the
+reading in exactly the voice a remark written on its OWN line already gets (`CommentLine`,
+shipped earlier today). The two ways of writing the same remark now look the same on the page:
+
+    Incline Dumbbell Press
+    1   35   8   RIR 2
+    2   35   9   RIR 0
+    “prva serija ylo dobra”
+    “zadnjo serijo forma padla”
+
+No pressable of its own — the card body already opens that line in the editor, which is where
+the words live and the one place they can be changed.
+
+### What was NOT done, and why (the owner's second half)
+
+Copying a recognised comment into the per-entry note (`workouts.entry_notes`) automatically was
+assessed and declined: it would put two writers on one field. The parser rebuilds its output on
+every parse, so it would either overwrite an edit the athlete made in the sheet — the exact loss
+`entry_notes` exists to prevent (schema.ts: *"a note the athlete wrote must survive a re-parse;
+a projection cannot hold it"*) — or let the line and the note drift apart with neither being the
+record. It also duplicates the words into the export, and the keys do not match (`entry_notes`
+is one per exercise per workout; comments are per set).
+
+The shape that WOULD be honest, if the owner wants it: a deliberate one-tap "save as note" that
+MOVES the words out of the line into `entry_notes` — the athlete's own edit, like the effort
+chip appending `rpe 8` — leaving exactly one home for them and letting Next quote them back.
+That is step two and is not built.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **971/971 pass** (960 + 11 new: four receipt cases for
+the comment lane). `npm run lint` **0 errors**. `npx expo export --platform ios` **pass**.

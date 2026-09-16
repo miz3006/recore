@@ -51,13 +51,14 @@ import { useCurrentNote, useSession } from '@/state/session-store';
 
 import { CheckInNote } from './check-in-note';
 import { DaySwipe } from './day-swipe';
-import { EntryActionsSheet, joinNames, type EntryAction } from './entry-actions-sheet';
+
 import { comparisonOf, PrLabel, ReadingLine, ReadingMark } from './gutter-value';
 import { Icon } from './icon';
 import { PressableScale } from './motion';
 import { BODY_PADDING_H, BODY_PADDING_TOP } from './note-metrics';
 import { noteInputRef, noteScrollRef } from './note-focus';
 import { SetTable, worthTable } from './set-table';
+import { DELETE_ROTOR_ACTIONS, joinNames, SwipeToDelete } from './swipe-to-delete';
 import { useSessionActive } from './use-session-active';
 
 /**
@@ -70,8 +71,9 @@ import { useSessionActive } from './use-session-active';
  * stacks above as clean, well-spaced blocks; when a single line carries several
  * exercises the parser splits them into a card each. Tap a card to edit its
  * line inline; LONG-PRESS it to see the line you actually wrote in place of the
- * reading, and tap it to flip back; the ⋯ opens the card's four actions (fix ·
- * note · history · delete — entry-actions-sheet.tsx); the alias echo beside an
+ * reading, and tap it to flip back; the note glyph on the name's row opens the
+ * one thing the card cannot do itself (`entry-note-sheet.tsx`); SWIPE THE ROW
+ * LEFT to remove it (`swipe-to-delete.tsx`); the alias echo beside an
  * auto-corrected name opens the correction sheet directly. The raw text stays the source of truth
  * (`note` is still the full log, newline-joined); the cards are a live
  * projection of the parse. No predictor — the app's one job on open is to read
@@ -80,7 +82,7 @@ import { useSessionActive } from './use-session-active';
  * ONE PROMPT PER SESSION, NOT PER CARD (owner, 11 Aug 2026). The note bubble
  * that used to sit on every card is gone; the invitation to write about
  * training now appears once, under the ledger, when the session has actually
- * ended (§8.1). Writing about a single lift survives inside the ⋯ sheet.
+ * ended (§8.1). Writing about a single lift survives as the card's own glyph.
  */
 /**
  * THE EMPTY CANVAS (owner, 12 August 2026).
@@ -128,7 +130,6 @@ export function NoteSurface({
   const parsing = useSession((s) => s.parsing);
   const parsedSnapshot = useSession((s) => s.parsedSnapshot);
   const requestParse = useSession((s) => s.requestParse);
-  const openExerciseSheet = useSession((s) => s.openExerciseSheet);
   const openFixSheet = useSession((s) => s.openFixSheet);
   const editingLine = useSession((s) => s.editingLine);
   const startEditLine = useSession((s) => s.startEditLine);
@@ -163,18 +164,6 @@ export function NoteSurface({
     }
   };
 
-  // The ⋯ sheet's card (owner, 6 Aug). `actionsRow` outlives `actionsOpen` on
-  // purpose: History and Fix reading open OTHER modals, and UIKit only allows
-  // one at a time — so the chosen action fires from the sheet's onSelect
-  // (after the native modal is gone) and still needs to know which card it
-  // was for. The row is cleared there, never on close.
-  const [actionsRow, setActionsRow] = useState<ReceiptRow | null>(null);
-  /** The OTHER entries on `actionsRow`'s physical line, snapshotted the moment
-   * the sheet opened — for the same reason `actionsRow` outlives `actionsOpen`:
-   * a parse landing mid-sheet must not change what the athlete was warned
-   * about between reading the row and confirming it. */
-  const [actionsSiblings, setActionsSiblings] = useState<string[]>([]);
-  const [actionsOpen, setActionsOpen] = useState(false);
   /** Which card is showing the athlete's own words instead of the reading —
    * one at a time, so flipping a second card settles the first. Held here
    * rather than inside the card only because the list owns "one at a time". */
@@ -238,34 +227,6 @@ export function NoteSurface({
         },
       },
     ]);
-  };
-
-  const runEntryAction = (action: EntryAction) => {
-    const row = actionsRow;
-    const siblings = actionsSiblings;
-    setActionsRow(null);
-    setActionsSiblings([]);
-    if (!row) return;
-    switch (action) {
-      case 'note':
-        // The athlete's own remark about THIS lift — effort (which moves the
-        // next load) and words (which Next quotes back). It used to be a bubble
-        // on every card; one door per card, named, is the 11 Aug ruling.
-        Keyboard.dismiss(); // the sheet brings its own input
-        openEntryNote({ exercise: row.exercise, setText: row.setText, line: row.line });
-        break;
-      case 'history':
-        retireCoachRing();
-        openExerciseSheet(row.exercise, row.line);
-        break;
-      case 'fix':
-        Keyboard.dismiss(); // the correction sheet brings its own inputs
-        openFixSheet(row.line);
-        break;
-      case 'delete':
-        confirmDeleteLine(row.line, { exercise: row.exercise, alsoOnLine: siblings });
-        break;
-    }
   };
 
   const lines = note.split('\n');
@@ -517,48 +478,62 @@ export function NoteSurface({
       rows.forEach((row, j) => {
         const key = row.doneKey;
         const cardKey = `${i}:${j}:${row.exercise}`;
+        // The rest of this written line. Delete can only ever take the LINE —
+        // the words are the record (§3) and nothing maps one card back to its
+        // slice of a run-on sentence — so the confirm has to be able to name
+        // who leaves with this card.
+        const siblings = rows.filter((r) => r !== row).map((r) => r.exercise);
+        const removeEntry = () =>
+          confirmDeleteLine(row.line, { exercise: row.exercise, alsoOnLine: siblings });
         pushBlock(
-          <ExerciseCard
-            key={cardKey}
-            row={row}
-            order={i}
-            done={!undone[key]}
-            gap={gapOfTable(row.exercise, row.table)}
-            alias={alias}
-            note={readEntryNote(entryNotes, row.exercise)}
-            rawLine={raw.trim()}
-            showWords={wordsKey === cardKey}
-            reduceMotion={reduceMotion}
-            onToggleWords={() => {
-              tap();
-              setWordsKey((k) => (k === cardKey ? null : cardKey));
-            }}
-            onToggle={() => {
-              tap();
-              retireCoachRing(); // the real action is the tutorial's step two
-              toggleDone(key); // tap the check → done ↔ not done (stays recorded)
-            }}
-            onEdit={() => {
-              tap();
-              startEditLine(row.line); // tap the name → edit the line right here
-            }}
-            onActions={() => {
-              tap();
-              // The card's one visible door (owner, 6 Aug) — everything that
-              // used to hide behind a gesture: edit, words, note, history, fix,
-              // delete.
-              setActionsRow(row);
-              // The rest of this written line: delete takes the line, so the
-              // sheet has to be able to name who leaves with this card.
-              setActionsSiblings(rows.filter((r) => r !== row).map((r) => r.exercise));
-              setActionsOpen(true);
-            }}
-            onFix={() => {
-              tap();
-              Keyboard.dismiss(); // the sheet brings its own inputs
-              openFixSheet(row.line); // tap the echoed word → correct the reading
-            }}
-          />,
+          /* SWIPE THE ROW LEFT TO REMOVE IT (owner, 16 September 2026) — the
+             gesture that replaced the ⋯ menu's Delete row. It rests on
+             `undo-delete.tsx`: a line of `raw_text` is the record, and this is
+             only a safe gesture because the pill offers it straight back. */
+          <SwipeToDelete key={cardKey} onDelete={removeEntry} reduceMotion={reduceMotion}>
+            <ExerciseCard
+              row={row}
+              order={i}
+              done={!undone[key]}
+              gap={gapOfTable(row.exercise, row.table)}
+              alias={alias}
+              note={readEntryNote(entryNotes, row.exercise)}
+              rawLine={raw.trim()}
+              showWords={wordsKey === cardKey}
+              reduceMotion={reduceMotion}
+              onToggleWords={() => {
+                tap();
+                setWordsKey((k) => (k === cardKey ? null : cardKey));
+              }}
+              onToggle={() => {
+                tap();
+                retireCoachRing(); // the real action is the tutorial's step two
+                toggleDone(key); // tap the check → done ↔ not done (stays recorded)
+              }}
+              onEdit={() => {
+                tap();
+                startEditLine(row.line); // tap the name → edit the line right here
+              }}
+              onNote={() => {
+                tap();
+                Keyboard.dismiss(); // the sheet brings its own input
+                // The athlete's own remark about THIS lift, which Next quotes
+                // back beside it. One tap, no menu in the way.
+                openEntryNote({
+                  exercise: row.exercise,
+                  setText: row.setText,
+                  line: row.line,
+                  signal: row.signal ?? null,
+                });
+              }}
+              onDelete={removeEntry}
+              onFix={() => {
+                tap();
+                Keyboard.dismiss(); // the sheet brings its own inputs
+                openFixSheet(row.line); // tap the echoed word → correct the reading
+              }}
+            />
+          </SwipeToDelete>,
         );
       });
       afterCard = true; // a comment line below this one belongs to this card
@@ -836,14 +811,18 @@ export function NoteSurface({
 
         {/* The first-session hint — the FIRST SESSION card's step two, live.
             One muted line while there is a settled card the user has never
-            worked; it retires forever on the first ring toggle or opened
-            history (and stays away for anyone who has already finished a
-            session). */}
+            worked; it retires forever on the first ring toggle (and stays away
+            for anyone who has already finished a session).
+
+            Its second half used to name the ⋯ and the history behind it. Both
+            are gone (16 Sep 2026), and what replaced one of them is a GESTURE,
+            which is the one thing on this card a person cannot discover by
+            looking — so the sentence now spends its second half there. */}
         {!empty && settledCards > 0 && !coachRingDone && !hasFinishedOnce() ? (
           <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(180)}>
             <Text style={styles.coachHint} maxFontSizeMultiplier={MAX_FONT_SCALE}>
-              the ring marks a lift done — tap it if you skipped one · the ⋯ opens a lift’s
-              history
+              the ring marks a lift done — tap it if you skipped one · swipe a lift left to
+              remove it
             </Text>
           </Animated.View>
         ) : null}
@@ -886,22 +865,6 @@ export function NoteSurface({
       </DaySwipe>
     </ScrollView>
 
-    {/* The ⋯ sheet. It delivers the chosen action only once its own modal is
-        fully gone (onSelect ← BottomSheet.onClosed) — the one moment History
-        or Fix reading may present THEIR modal (UIKit's one-at-a-time rule). */}
-    <EntryActionsSheet
-      visible={actionsOpen}
-      target={actionsRow ? { exercise: actionsRow.exercise, setText: actionsRow.setText } : null}
-      // The card's own three facts travel with it: the athlete's remark (which
-      // makes "Edit note" a decision instead of a guess), and the comparison
-      // signal, which the header turns into a PR label or an "up 2.5 kg vs
-      // last" line. All of it was already computed for the card.
-      note={actionsRow ? readEntryNote(entryNotes, actionsRow.exercise) : null}
-      signal={actionsRow?.signal ?? null}
-      alsoOnLine={actionsSiblings}
-      onClose={() => setActionsOpen(false)}
-      onSelect={runEntryAction}
-    />
     </>
   );
 }
@@ -1293,7 +1256,8 @@ export function ExerciseCard({
   reduceMotion,
   onToggle,
   onEdit,
-  onActions,
+  onNote,
+  onDelete,
   onToggleWords,
   onFix,
 }: {
@@ -1320,8 +1284,21 @@ export function ExerciseCard({
   reduceMotion: boolean;
   onToggle: () => void;
   onEdit: () => void;
-  /** Open the ⋯ sheet — edit, history, fix reading, delete, all named. */
-  onActions: () => void;
+  /**
+   * Write about this entry. The card's ONE glyph since 16 September 2026, and
+   * the only thing behind it: null on a surface with nowhere to keep a note
+   * (the onboarding demo), where the button is simply absent rather than
+   * present and dead.
+   */
+  onNote: (() => void) | null;
+  /**
+   * Remove this entry, for VoiceOver. The finger's door is the row's own
+   * swipe-left (`SwipeToDelete`), which no screen reader can find — so the card
+   * publishes the same action on the rotor, the way iOS publishes its own swipe
+   * actions. Null wherever the row is not swipeable, so the two can never
+   * disagree about whether delete exists.
+   */
+  onDelete: (() => void) | null;
   /** Flip between the reading and the written line, both ways. */
   onToggleWords: () => void;
   /** Open the correction sheet for this line (the alias echo's own tap). */
@@ -1347,10 +1324,9 @@ export function ExerciseCard({
         style={styles.rail}>
         <AnimatedCheck done={done} reduceMotion={reduceMotion} />
       </PressableScale>
-      {/* The body edits the line; everything else lives behind the visible ⋯
-          (owner, 6 Aug — the long-press it replaces was a gesture nobody could
-          see). While the written words are showing, a tap puts them away again
-          rather than opening the editor — the way out is the way you came in. */}
+      {/* The body edits the line. While the written words are showing, a tap
+          puts them away again rather than opening the editor — the way out is
+          the way you came in. */}
       <PressableScale
         onPress={showWords ? onToggleWords : onEdit}
         onLongPress={onToggleWords}
@@ -1359,15 +1335,28 @@ export function ExerciseCard({
         wash
         washStyle={styles.bodyWash}
         accessibilityHint={showWords ? 'Shows the reading again' : 'Long press to show your words'}
+        // Delete, on the rotor, because the gesture that carries it cannot be
+        // seen. It sits on the BODY rather than on a wrapper: iOS attaches
+        // custom actions to the focused accessibility element, and the body is
+        // the element VoiceOver lands on when it reads this entry out.
+        accessibilityActions={onDelete ? DELETE_ROTOR_ACTIONS : undefined}
+        onAccessibilityAction={
+          onDelete
+            ? (e) => {
+                if (e.nativeEvent.actionName === 'delete') onDelete();
+              }
+            : undefined
+        }
         style={styles.cardBody}>
-        {/* THE ⋯ SITS ON THE NAME'S OWN ROW (9 September 2026), which is the
-            29 August ruling the pending card already carries, finally applied
-            to the card it settles into. Measured before the change: the glyph's
-            optical centre was **7.1 pt below the ring's** and 9.1 pt below the
-            name's, because a 36 pt button top-aligned to a card five sets tall
-            centres on nothing. Inside this row it centres on the line it is
-            about — and the body reclaims the 44 pt the side column was holding,
-            which is what stopped "Triceps Pushdown" truncating at 17 pt. */}
+        {/* THE GLYPH SITS ON THE NAME'S OWN ROW (9 September 2026), which is
+            the 29 August ruling the pending card already carries, finally
+            applied to the card it settles into. Measured before the change: the
+            glyph's optical centre was **7.1 pt below the ring's** and 9.1 pt
+            below the name's, because a 36 pt button top-aligned to a card five
+            sets tall centres on nothing. Inside this row it centres on the line
+            it is about — and the body reclaims the 44 pt the side column was
+            holding, which is what stopped "Triceps Pushdown" truncating at
+            17 pt. */}
         <View style={styles.cardHead}>
           <View style={styles.headText}>
           <Text
@@ -1397,23 +1386,42 @@ export function ExerciseCard({
           ) : null}
           {isPr ? <PrLabel animate /> : null}
           </View>
-          {/* The card's one visible door (owner, 11 Aug 2026): everything
-              per-entry lives behind it — fix reading, note, history, delete. */}
-          <PressableScale
-            onPress={onActions}
-            haptic="none"
-            activeScale={0.9}
-            // The target the 25 pt box no longer carries: 25 + 2 × 12 = 49.
-            hitSlop={spacing.md}
-            wash
-            washStyle={styles.btnWash}
-            accessibilityRole="button"
-            // FOUR, because the sheet has four (owner, 12 Aug). "Edit line" and
-            // "Show my words" left that day; VoiceOver kept announcing them.
-            accessibilityLabel={`More on ${row.exercise} — fix reading, note, history, delete`}
-            style={styles.sideBtn}>
-            <Icon name="ellipsis" size={moderateScale(17)} tint={color.textMuted} />
-          </PressableScale>
+          {/* THE CARD'S ONE GLYPH IS THE NOTE (owner, 16 September 2026).
+              It was a ⋯ opening a four-row menu, and three of those rows were
+              doors to somewhere else. History is the Progress tab's entire job
+              and was a second, worse way in. Fixing a reading already has two
+              better doors on this very card — the body's own tap opens the
+              line for editing, and a mis-read word carries the echo beside the
+              name that opens the correction sheet. Delete became the gesture
+              the rest of the phone uses (`SwipeToDelete`). What was left was
+              the one thing the card genuinely cannot do by itself, so it stops
+              being a menu and becomes the action: writing about this lift.
+
+              Outline while there is nothing written, filled once there is —
+              the state IS the glyph, so a card with a remark on it says so at
+              the same size it says everything else. (The remark is quoted
+              under the card too; this is the way in to change it.) */}
+          {onNote ? (
+            <PressableScale
+              onPress={onNote}
+              haptic="none"
+              activeScale={0.9}
+              // The target the 25 pt box no longer carries: 25 + 2 × 12 = 49.
+              hitSlop={spacing.md}
+              wash
+              washStyle={styles.btnWash}
+              accessibilityRole="button"
+              accessibilityLabel={
+                note ? `Edit your note on ${row.exercise}` : `Write a note on ${row.exercise}`
+              }
+              style={styles.sideBtn}>
+              <Icon
+                name={note ? 'note-on' : 'note'}
+                size={moderateScale(17)}
+                tint={note ? color.textSecondary : color.textMuted}
+              />
+            </PressableScale>
+          ) : null}
         </View>
         {/* The sets settle into the mini table — one set per row, so a pyramid
             reads down a column instead of along a compressed line. A lone plain
@@ -1447,9 +1455,27 @@ export function ExerciseCard({
             {sub}
           </Text>
         ) : null}
+        {/* WHAT THE ATHLETE WROTE BESIDE THE NUMBERS (owner, 16 September
+            2026). The parser has been lifting these out of the line since
+            v6 — "bench 100x5, tehnika super" — and the card printed the
+            numbers and dropped the sentence. Quoted here in exactly the voice
+            a remark written on its OWN line gets (`CommentLine`), so the two
+            ways of writing the same thing look the same on the page.
+
+            No pressable of its own: the card body already opens this line in
+            the editor, which is where these words live (`raw_text`) and the
+            one place they can be changed. */}
+        {row.comments.map((comment, ci) => (
+          <Text
+            key={`cm:${ci}`}
+            style={styles.commentText}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}>
+            {`“${comment}”`}
+          </Text>
+        ))}
         {/* The remark, quoted under its own entry: the athlete's words sit in
             the record they were written about, not behind a sheet. Two lines at
-            most — the whole note is one tap away behind the ⋯. */}
+            most — the whole note is one tap away, on the glyph above. */}
         {note ? (
           <Text style={styles.exNote} numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE}>
             {`“${note}”`}
@@ -2022,8 +2048,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-  /** Everything the row SAYS, taking the free width so the ⋯ is pushed to the
-   * edge rather than sitting wherever the name happens to end. */
+  /** Everything the row SAYS, taking the free width so the note glyph is
+   * pushed to the edge rather than sitting wherever the name happens to end. */
   headText: {
     flex: 1,
     flexDirection: 'row',
@@ -2121,23 +2147,30 @@ const styles = StyleSheet.create({
     paddingLeft: RAIL_W + RAIL_GAP,
     paddingBottom: spacing.xs,
   },
+  /** One voice for the athlete's own remark, wherever it was written: on its
+   * own line (`CommentLine`, which adds the indent and the press wash) or
+   * inline beside the sets (quoted inside the card, which already has both). */
   commentText: {
+    marginTop: 2,
     fontSize: moderateScale(13),
     lineHeight: lineFor(18),
     color: color.textSecondary,
   },
   /**
-   * THE ⋯ IS ALIGNED BY ITS GLYPH, NOT BY ITS BOX (9 September 2026).
+   * THE GLYPH IS ALIGNED BY ITSELF, NOT BY ITS BOX (9 September 2026).
    *
-   * `alignItems: 'center'` in a 36 pt button put the dots' right edge at
+   * `alignItems: 'center'` in a 36 pt button put the glyph's right edge at
    * **374.3 pt** while the dateline's "1 session" ended at **384.3** — the only
    * two things on the right of the page, 10 pt apart, which is exactly the kind
    * of raggedness that reads as "nothing lines up" without being nameable.
    *
    * `flex-end` puts the button's own right edge on the margin and the glyph
-   * against it: SF's `ellipsis` at 17 pt draws its dots 1.7 pt inside its box,
-   * so the dots now end at 384.3 — the dateline's number, to the point. The
-   * 36 pt box stays for the target and for the press wash.
+   * against it. The measurement above was taken with SF's `ellipsis`, which
+   * draws its dots 1.7 pt inside its box and so landed them on 384.3 exactly.
+   * The glyph is the note bubble now (16 Sep 2026) and Ionicons sets its own
+   * inset, so the box is still on the margin but the number is the ellipsis's,
+   * not this glyph's — worth re-measuring on device the next time this column
+   * is touched.
    */
   /**
    * …AND IT IS SIZED BY THAT GLYPH, NOT BY A TARGET.
@@ -2149,9 +2182,7 @@ const styles = StyleSheet.create({
    *
    * So the box is the glyph plus a little air (≈25 pt), the row is the name's
    * own height again, and the 44 pt target comes from `hitSlop`, which costs no
-   * layout. `paddingRight: 0` puts the glyph's box on the page margin — SF's
-   * `ellipsis` draws its dots 1.7 pt inside it, landing them on the dateline's
-   * own right edge.
+   * layout. `paddingRight: 0` puts the glyph's box on the page margin.
    */
   sideBtn: {
     alignItems: 'flex-end',

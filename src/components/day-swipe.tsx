@@ -1,6 +1,6 @@
-import { type ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { Dimensions, StyleSheet } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -14,6 +14,8 @@ import { shiftDayKey, todayKey } from '@/lib/db/dates';
 import { tap } from '@/lib/haptics';
 import { DUR, EASE, SPRING } from '@/lib/motion';
 import { useSession } from '@/state/session-store';
+
+import { DaySwipeGestureContext } from './swipe-to-delete';
 
 /**
  * Swipe left and right on Today to move between days.
@@ -78,7 +80,18 @@ export function DaySwipe({ children, enabled }: { children: ReactNode; enabled: 
 
   const atToday = selectedDay >= todayKey();
 
+  /**
+   * Published to the ledger's rows through `DaySwipeGestureContext`, so a
+   * card's own swipe-left-to-delete can out-rank this one instead of racing it
+   * (16 September 2026). A fast left flick crosses both thresholds inside a
+   * single frame, and on a past day that used to delete an entry AND move the
+   * day; `SwipeToDelete` declares `blocksExternalGesture` against this ref, so
+   * this pan now waits for the row's to resolve.
+   */
+  const panRef = useRef<GestureType | undefined>(undefined);
+
   const pan = Gesture.Pan()
+    .withRef(panRef)
     .enabled(enabled)
     .activeOffsetX([-24, 24])
     .failOffsetY([-12, 12])
@@ -130,7 +143,9 @@ export function DaySwipe({ children, enabled }: { children: ReactNode; enabled: 
 
   return (
     <GestureDetector gesture={pan}>
-      <Animated.View style={[styles.fill, style]}>{children}</Animated.View>
+      <Animated.View style={[styles.fill, style]}>
+        <DaySwipeGestureContext.Provider value={panRef}>{children}</DaySwipeGestureContext.Provider>
+      </Animated.View>
     </GestureDetector>
   );
 }

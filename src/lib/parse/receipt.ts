@@ -46,6 +46,33 @@ export interface ReceiptRow {
    * the shape is deliberately the engine's `WorkingSet`.
    */
   working: { reps: number | null; weight_kg: number | null; rir: number | null }[];
+  /**
+   * THE ATHLETE'S OWN REMARKS ON THIS LINE, in the order they were written
+   * (owner, 16 September 2026).
+   *
+   * The parser has lifted inline comments out of the written line since
+   * PARSE_VERSION 6 — "incline db press 35kg x8, tehnika super" puts *tehnika
+   * super* on that set, verbatim — and until now Today never printed them:
+   * they reached `sets.note` in SQLite and surfaced only in the lift sheet's
+   * per-day history. The card showed the athlete a reading of their numbers
+   * and silently dropped the sentence they wrote beside them.
+   *
+   * So the row carries them and the card quotes them under the reading, in
+   * the same voice a comment written on its OWN line already gets
+   * (`CommentLine`): the two ways of writing the same remark now look the
+   * same on the page.
+   *
+   * A PROJECTION, like every other field here — these words live in
+   * `raw_text` and are rebuilt from it on each parse, which is why tapping
+   * the card (and so the comment) opens that line in the editor. They are NOT
+   * the per-entry note (`workouts.entry_notes`), which is authored outside
+   * the workout text so a re-parse can never touch it.
+   *
+   * De-duplicated: the prompt attributes a whole-exercise remark to the FIRST
+   * set only, but a model that repeats one across every set must not make the
+   * card say it five times.
+   */
+  comments: string[];
   /** Comparison vs the previous session (↑ = ↓ PR). Null = no history yet —
    * the signal column stays SILENT, not labeled. */
   signal: GutterSignal | null;
@@ -227,6 +254,15 @@ export function buildReceipt(
       working: item.sets
         .filter((set) => set.kind !== 'warmup' && set.kind !== 'drop')
         .map((set) => ({ reps: set.reps, weight_kg: set.weight_kg, rir: set.rir })),
+      // Every set's remark, warm-ups included — the athlete wrote it, so it is
+      // theirs to read back (the same rule `exercise-stats.ts` follows).
+      comments: [
+        ...new Set(
+          item.sets
+            .map((set) => set.note?.trim())
+            .filter((note): note is string => !!note && note.length > 0),
+        ),
+      ],
       signal: first ? (signalByLine.get(item.line) ?? null) : null,
       doneKey,
     });
