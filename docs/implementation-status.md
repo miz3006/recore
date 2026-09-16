@@ -9683,3 +9683,31 @@ EAS Update (B5 rule: carry the beta env by hand).
 `npx tsc --noEmit` **pass**. `npm test` **968/968 pass**. `npm run lint` **0 errors**. `npx expo
 export --platform ios` unchanged from the previous entry — this change touches only
 `supabase/functions/` and `scripts/`, none of it in the app bundle.
+
+## 16 September 2026, later — the check moves onto the line itself
+
+The owner, iterating on the phone: *"kljukica mora biti desno v isti vrstici … tam kjer so
+tiste tri pikice; namesto tistega tri pikice, pa [pikice] dej šele po temu, ko klikne
+kljukico."* This supersedes the 15 September placement beside the status line.
+
+- **The check lives where the dots will be.** On an unread settled line, the ⋯ column — the
+  one slot on the card that belongs to the app — holds a brand-blue check (`PendingCard`'s new
+  `onConfirm`); on the line being written, the same check stands right-aligned in the
+  composer's value column. Tapping either runs the one `requestParse`. The reading dots and
+  the beam take exactly those slots only WHILE the parse is genuinely in flight, so the tap
+  and the work it starts trade places without anything moving — and the settled card's ⋯
+  arrives in the same column when the reading lands.
+- **The toolbar's status row is a reading again.** The `GlassPressable` check beside the
+  status pill is gone, with its handler and the toolbar's `parsing`/`requestParse`
+  subscriptions; a comment points at the new home.
+- **A side effect worth naming:** the check is now reachable with the keyboard DOWN — an
+  unread line on a re-opened day carries its own ask, which the toolbar (keyboard-only) never
+  could.
+- Glyph-sized control, 44 pt target via hitSlop (20 + 2×12, §14); `color.brand` because the
+  muted ⋯ is wayfinding and an ink check already means "done" on the ring. The onboarding
+  demo passes no `onConfirm` and is unchanged.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **968/968 pass**. `npm run lint` **0 errors**.
+`npx expo export --platform ios` **pass**. Not yet shipped over EAS Update.

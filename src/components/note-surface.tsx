@@ -129,6 +129,7 @@ export function NoteSurface({
   const receipt = useSession((s) => s.receipt);
   const parsing = useSession((s) => s.parsing);
   const parsedSnapshot = useSession((s) => s.parsedSnapshot);
+  const requestParse = useSession((s) => s.requestParse);
   const openExerciseSheet = useSession((s) => s.openExerciseSheet);
   const openFixSheet = useSession((s) => s.openFixSheet);
   const editingLine = useSession((s) => s.editingLine);
@@ -591,13 +592,17 @@ export function NoteSurface({
           // The beam and the dots claim WORK, and work only happens while a
           // parse is genuinely in flight. A settled line waiting for the
           // checkmark is not being read — it is the athlete's text, at rest,
-          // and it stays visually untouched until they ask (15 Sep 2026).
+          // wearing the check that asks (16 Sep 2026) until they tap it.
           reading={parsing}
           order={parsing ? pendingOrder++ : 0}
           reduceMotion={reduceMotion}
           onPress={() => {
             tap();
             startEditLine(line);
+          }}
+          onConfirm={() => {
+            tap();
+            requestParse();
           }}
         />,
       );
@@ -806,6 +811,14 @@ export function NoteSurface({
           prefill={
             lastPrefill ? { reading: lastPrefill.reading, onAccept: acceptPrefill } : null
           }
+          onConfirm={
+            !parsing && activeValue.trim().length > 0 && !parsedFresh(activeIndex)
+              ? () => {
+                  tap();
+                  requestParse();
+                }
+              : null
+          }
           hint={canvas && showComposerHint ? COMPOSER_HINT : null}
           reduceMotion={reduceMotion}
         />
@@ -1004,6 +1017,14 @@ export function Composer({
   /** Last session's real sets, offered for the exercise being named (Today
    * only: it takes a history to read one from). */
   prefill,
+  /**
+   * The check that starts the parse, on the line being written (owner, 16
+   * September 2026 — the same ruling that put it on `PendingCard`): it sits
+   * right-aligned exactly where the reading dots will stand, and the dots
+   * replace it only once it is tapped. Null while there is nothing unread —
+   * or on the demo, which confirms nothing.
+   */
+  onConfirm,
   /** One example sentence under the line, on an empty page. */
   hint,
   /** Makes that sentence the tap target that writes itself into the line. */
@@ -1023,6 +1044,7 @@ export function Composer({
   rows: { exercise: string; setText: string }[] | null;
   pending: boolean;
   prefill: { reading: string; onAccept: () => void } | null;
+  onConfirm?: (() => void) | null;
   hint?: string | null;
   onHintPress?: (() => void) | null;
   inputAccessoryViewID?: string;
@@ -1164,6 +1186,24 @@ export function Composer({
               <View style={styles.previewPending}>
                 <ReadingMark />
               </View>
+            </Animated.View>
+          ) : onConfirm ? (
+            // The check, standing exactly where the dots will: unread words on
+            // the left, the one control that asks for their reading on the
+            // right of the same line's column (owner, 16 September 2026).
+            <Animated.View
+              entering={reduceMotion ? undefined : FadeIn.duration(180)}
+              style={styles.previewPending}>
+              <PressableScale
+                onPress={onConfirm}
+                haptic="none"
+                activeScale={0.88}
+                hitSlop={spacing.md}
+                accessibilityRole="button"
+                accessibilityLabel="Read my note"
+                style={styles.confirmMark}>
+                <Icon name="check" size={moderateScale(20)} tint={color.brand} />
+              </PressableScale>
             </Animated.View>
           ) : null}
         </Animated.View>
@@ -1647,6 +1687,7 @@ export function PendingCard({
   order,
   reduceMotion,
   onPress,
+  onConfirm = null,
 }: {
   text: string;
   /**
@@ -1662,6 +1703,16 @@ export function PendingCard({
   order: number;
   reduceMotion: boolean;
   onPress: () => void;
+  /**
+   * THE CHECK LIVES ON THE LINE (owner, 16 September 2026: *"kljukica mora
+   * biti desno v isti vrstici … tam kjer so tiste tri pikice"*). While the
+   * line is unread and idle, the ⋯ column — the one slot on this card that
+   * belongs to the app — holds the checkmark that starts the parse, and the
+   * reading dots take that same slot only AFTER it is tapped. This
+   * supersedes the 15 September placement beside the status line. Null (the
+   * onboarding demo) leaves the slot empty at rest, as before.
+   */
+  onConfirm?: (() => void) | null;
 }) {
   return (
     // ENTERING ONLY, DELIBERATELY. An exiting animation would be the obvious
@@ -1708,10 +1759,25 @@ export function PendingCard({
                 the text stops, or it runs on under the ⋯ and is a rule again. */}
             {reading ? <ReadingLine flow order={order} /> : null}
           </View>
-          {/* Dots in the ⋯ column, or the word when motion is off — one hook
-              decides, so this row can never end up silent. The column keeps
-              its slot either way, so a parse starting moves nothing. */}
-          <View style={styles.pendingMark}>{reading ? <ReadingMark /> : null}</View>
+          {/* The ⋯ column: the CHECK while the line waits for its reading,
+              the dots while one is in flight — same slot, so the tap and the
+              work it starts trade places without anything moving. */}
+          <View style={styles.pendingMark}>
+            {reading ? (
+              <ReadingMark />
+            ) : onConfirm ? (
+              <PressableScale
+                onPress={onConfirm}
+                haptic="none"
+                activeScale={0.88}
+                hitSlop={spacing.md}
+                accessibilityRole="button"
+                accessibilityLabel="Read my note"
+                style={styles.confirmMark}>
+                <Icon name="check" size={moderateScale(20)} tint={color.brand} />
+              </PressableScale>
+            ) : null}
+          </View>
         </View>
       </PressableScale>
     </Animated.View>
@@ -2094,6 +2160,11 @@ const styles = StyleSheet.create({
   pendingMark: {
     height: PENDING_LINE,
     justifyContent: 'center',
+  },
+  /** The check in the dots' own slot: glyph-sized so the column never grows,
+   * the 44 pt target restored by hitSlop (20 + 2×12 = 44, §14). */
+  confirmMark: {
+    alignItems: 'flex-end',
   },
   /** The words' row, and the only row this card has: the line on the left,
    * whatever the app has to say about it hard against the right, and the ⋯

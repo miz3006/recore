@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Keyboard, StyleSheet, Text, View } from 'react-native';
+import { Alert, Keyboard, StyleSheet, Text, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { markFirstWorkoutFinished } from '@/lib/funnel';
@@ -197,8 +197,6 @@ export function BottomToolbar({
   const reduceMotion = useReducedMotion();
   const note = useCurrentNote();
   const setNote = useSession((s) => s.setNote);
-  const requestParse = useSession((s) => s.requestParse);
-  const parsing = useSession((s) => s.parsing);
   const parsedSnapshot = useSession((s) => s.parsedSnapshot);
   const parsedVolume = useSession((s) => s.parsedVolume);
   const receipt = useSession((s) => s.receipt);
@@ -305,17 +303,6 @@ export function BottomToolbar({
   const handleHideKeyboard = () => {
     tap();
     Keyboard.dismiss();
-  };
-
-  /**
-   * READ MY NOTE (15 Sep 2026, owner's ruling — second pass). The first cut
-   * folded this into the way-down circle; the owner wanted the way down BACK
-   * and the parse to be its own control, beside the parser's status line
-   * where its result lands. Keyboard stays up: reading is not leaving.
-   */
-  const handleParse = () => {
-    tap();
-    requestParse();
   };
 
   // Finish = settle the eye on the ledger: keyboard down, receipt in view.
@@ -433,29 +420,11 @@ export function BottomToolbar({
           )}
             </FadeSwap>
           </View>
-          {/* THE CHECK — the one thing that starts the parser (15 Sep 2026,
-              owner's ruling: typing never parses, and neither does a timer).
-              It sits beside the status line because that line is where its
-              answer lands, and it EXISTS only while there is unread text —
-              absent otherwise, so it can never be a dead control; while the
-              question is in flight it is the spinner, and `requestParse`
-              refuses a second call anyway. */}
-          {note.trim().length > 0 && parsedSnapshot !== note ? (
-            <GlassPressable
-              onPress={handleParse}
-              haptic="none"
-              activeScale={0.92}
-              radius={ROUND / 2}
-              style={styles.round}
-              contentStyle={styles.roundContent}
-              accessibilityLabel={parsing ? 'Reading your note' : 'Read my note'}>
-              {parsing ? (
-                <ActivityIndicator size="small" color={color.accent} />
-              ) : (
-                <Icon name="check" size={ACCESSORY_GLYPH} tint={color.accent} />
-              )}
-            </GlassPressable>
-          ) : null}
+          {/* The check that used to stand here MOVED ONTO THE LINE ITSELF
+              (owner, 16 September 2026): it now lives in the ⋯ column of the
+              unread line — and in the composer's value column — exactly where
+              the reading dots appear once it is tapped. See `PendingCard` and
+              `Composer` in note-surface.tsx. */}
         </View>
       ) : null}
 
