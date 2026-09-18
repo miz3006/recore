@@ -21,6 +21,7 @@ import {
   NoteCard,
   PendingCard,
   PLACEHOLDER,
+  WRITING_PAUSE_MS,
 } from '@/components/note-surface';
 import { TodayDateline } from '@/components/today-header';
 import { longDayLabel, todayKey } from '@/lib/db/dates';
@@ -447,7 +448,44 @@ export function DemoPage({
   /** Has this page produced a reading yet? Not "is the note empty" — the
    * furniture arrives with the record, never a beat before it. */
   const canvas = blocks.length === 0 && editingLine === null;
-  const activeRows = rowsByLine.get(activeIndex) ?? null;
+
+  /**
+   * THE READING ARRIVES WHEN THE WRITING STOPS, NOT PER KEYSTROKE (owner,
+   * 17 September 2026: *"naj počaka, da uporabnik vpiše do konca, preden
+   * začne parsat"*).
+   *
+   * The grammar is a regex and answers in the tick it is asked, so this page
+   * used to re-read the line on every character — and the read-out under the
+   * field wrote itself three times on the way to one sentence: `bench 3` said
+   * "3", `bench 3x8` said "8·8·8", `bench 3x8 60` said "60 kg × 8·8·8". Each
+   * of those is TRUE about a line nobody had finished. The aha moment this
+   * screen exists for is the reading appearing UNDER YOUR OWN WORDS in one
+   * move, and it cannot happen if it has already happened twice, half-formed,
+   * while you were still typing.
+   *
+   * So the read-out is of the line AS IT STOOD when the hand last stopped
+   * (`WRITING_PAUSE_MS`), which is the same judgement Today's check makes on
+   * the same pause. It refreshes at each pause rather than vanishing when
+   * typing resumes: a reading that disappears the moment you add a word is a
+   * page that flinches.
+   *
+   * Only the line being WRITTEN waits. Every settled card above it is read the
+   * instant it is committed, exactly as before — this is the composer's own
+   * preview and nothing else.
+   */
+  const [atRest, setAtRest] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setAtRest(activeValue), WRITING_PAUSE_MS);
+    return () => clearTimeout(t);
+  }, [activeValue]);
+  const activeRows = useMemo(() => {
+    // An emptied field takes its reading with it on the keystroke that empties
+    // it — including the commit, which clears the line. No pause needed to
+    // know that nothing is written.
+    if (atRest.trim().length === 0 || activeValue.trim().length === 0) return null;
+    const rows = buildReceipt(demoParseText(atRest), []).rows;
+    return rows.length > 0 ? rows : null;
+  }, [atRest, activeValue]);
 
   return (
     <>

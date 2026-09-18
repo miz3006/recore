@@ -54,7 +54,7 @@ import { useCurrentNote, useSession } from '@/state/session-store';
 import { CheckInNote } from './check-in-note';
 import { DaySwipe } from './day-swipe';
 
-import { comparisonOf, PrLabel, ReadingLine, ReadingMark } from './gutter-value';
+import { comparisonOf, PrLabel, ReadingLine, ReadingMark, WaitingMark } from './gutter-value';
 import { Icon } from './icon';
 import { PressableScale } from './motion';
 import { BODY_PADDING_H, BODY_PADDING_TOP } from './note-metrics';
@@ -130,6 +130,16 @@ export function NoteSurface({
   const setNote = useSession((s) => s.setNote);
   const receipt = useSession((s) => s.receipt);
   const parsing = useSession((s) => s.parsing);
+  /**
+   * A READING ASKED FOR WITH NO SIGNAL TO SPEND IT ON (`session-store.ts`).
+   *
+   * It outlives `parsing` on purpose — the retry chain gives up after half a
+   * minute and the debt does not — so it is what the page draws amber for as
+   * long as the phone is underground. Never both: a line is either being read
+   * or waiting to be.
+   */
+  const parseStalled = useSession((s) => s.parseStalled);
+  const waiting = parseStalled && !parsing;
   const parsedSnapshot = useSession((s) => s.parsedSnapshot);
   const requestParse = useSession((s) => s.requestParse);
   const openFixSheet = useSession((s) => s.openFixSheet);
@@ -143,6 +153,10 @@ export function NoteSurface({
   const openEntryNote = useSession((s) => s.openEntryNote);
   const openCheckIn = useSession((s) => s.openCheckIn);
   const checkInOpen = useSession((s) => s.checkInOpen);
+  const deleteCheckIn = useSession((s) => s.deleteCheckIn);
+  /** Bumped by a swipe delete (and by its undo), which is the one write to the
+   * check-in that happens with no sheet to close — see the reflection memo. */
+  const checkInRevision = useSession((s) => s.checkInRevision);
   const userId = useSession((s) => s.userId);
   const workoutId = useSession((s) => s.workoutId);
   // Which day the page is showing — the reset below returns to the top of it.
@@ -241,6 +255,39 @@ export function NoteSurface({
   // A line's parse counts only while its text is unchanged since that parse —
   // an edited line goes back to "reading" until the next result lands.
   const parsedFresh = (i: number) => parsedSnapshot !== null && lines[i] === snapshotLines[i];
+
+  /**
+   * PUTTING THE PHONE DOWN IS AN ANSWER (owner, 17 September 2026).
+   *
+   * Since the check became the only way a written line becomes a record
+   * (15 September), a line typed and then abandoned stayed unread FOR EVER:
+   * the words are in `raw_text` and the record is honest, but no card ever
+   * settles, the totals never count it, and the person who wrote it has no
+   * idea anything is outstanding. The gesture that ends writing on this page
+   * is the keyboard going down — Done on the bar, a tap on the canvas, a
+   * sheet opening — so that is where the app asks for the reading it was not
+   * asked for.
+   *
+   * It is not a second confirm. It reads what is already written, exactly as
+   * the check does, and it can never overwrite or invent: `requestParse` is
+   * the same call, and the words it reads are the athlete's own.
+   *
+   * The work is held in a ref rather than in the listener's deps, so the
+   * subscription is made once instead of being torn down and rebuilt on every
+   * keystroke — and it still reads the line as it stands at the moment the
+   * keyboard leaves, never as it stood when the listener was made.
+   */
+  const readOnHide = useRef<() => void>(() => {});
+  useEffect(() => {
+    readOnHide.current = () => {
+      if (parsing || activeValue.trim().length === 0 || parsedFresh(activeIndex)) return;
+      requestParse();
+    };
+  });
+  useEffect(() => {
+    const hidden = Keyboard.addListener('keyboardDidHide', () => readOnHide.current());
+    return () => hidden.remove();
+  }, []);
 
   /**
    * WHAT A LINE WITH NO READING IS MISSING (15 September 2026) — computed once
@@ -545,6 +592,9 @@ export function NoteSurface({
           // checkmark is not being read — it is the athlete's text, at rest,
           // wearing the check that asks (16 Sep 2026) until they tap it.
           reading={parsing}
+          // Asked for, and no connection to ask over. The card keeps its shape
+          // and turns its marks amber — `PendingCard`'s `waiting` carries why.
+          waiting={waiting}
           order={parsing ? pendingOrder++ : 0}
           reduceMotion={reduceMotion}
           onPress={() => {
@@ -612,6 +662,8 @@ export function NoteSurface({
   // nothing under the field — the raw text is the whole statement until the
   // checkmark asks for its reading.
   const activePending = parsing && activeValue.trim().length > 0 && !parsedFresh(activeIndex);
+  /** The same fact about the line being typed: asked for, and underground. */
+  const activeWaiting = waiting && activeValue.trim().length > 0 && !parsedFresh(activeIndex);
   const empty = note.trim().length === 0;
 
   // The end-of-session prompt: work on the record, the session no longer live,
@@ -656,7 +708,9 @@ export function NoteSurface({
    * reads; that file designs.
    *
    * Read on the same beat as the prompt it replaces — the check-in writes it,
-   * so closing that sheet (or changing day) is what makes this current.
+   * so closing that sheet (or changing day) is what makes this current. Plus
+   * `checkInRevision`, for the one write that has no sheet behind it: the swipe
+   * that deletes the block, and the undo that puts it back.
    */
   const reflection = useMemo(() => {
     const stored = workoutId ? getReflection(workoutId) : null;
@@ -676,7 +730,7 @@ export function NoteSurface({
     // one thing that makes them readable as answers.
     return { rating, tags: words?.tags ?? [], text: words?.text ?? '' };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workoutId, checkInOpen, receipt]);
+  }, [workoutId, checkInOpen, receipt, checkInRevision]);
   /**
    * The invitation below the line is about WORDS, so a session that was rated
    * and not written about still gets it. Gating on `reflection === null` would
@@ -753,21 +807,33 @@ export function NoteSurface({
 
             Tapping re-opens the same check-in, so the note is editable from
             the page that shows it and there is still exactly one place the
-            words are written. */}
+            words are written; SWIPING IT LEFT removes it (17 September 2026),
+            the same gesture, the same undo pill and the same reasoning as the
+            entries above — the drag is the decision, `undo-delete.tsx` is the
+            way back. Both halves go together, because the block is one answer,
+            and the invitation to write another returns below the line as soon
+            as it has. */}
         {reflection ? (
-          <CheckInNote
-            rating={reflection.rating}
-            tags={reflection.tags}
-            text={reflection.text}
-            railWidth={RAIL_W}
-            railGap={RAIL_GAP}
-            reduceMotion={reduceMotion}
-            onPress={() => {
-              tap();
-              Keyboard.dismiss(); // the check-in brings its own field
-              openCheckIn();
-            }}
-          />
+          <SwipeToDelete
+            onDelete={() => deleteCheckIn()}
+            reduceMotion={reduceMotion}>
+            <CheckInNote
+              rating={reflection.rating}
+              tags={reflection.tags}
+              text={reflection.text}
+              railWidth={RAIL_W}
+              railGap={RAIL_GAP}
+              reduceMotion={reduceMotion}
+              onPress={() => {
+                tap();
+                Keyboard.dismiss(); // the check-in brings its own field
+                openCheckIn();
+              }}
+              // No haptic of its own: the gesture already ticked when it armed,
+              // and the pill is the report. VoiceOver reaches it on the rotor.
+              onDelete={() => deleteCheckIn()}
+            />
+          </SwipeToDelete>
         ) : null}
 
         {/* WHAT IS SETTLED AND WHAT IS BEING WRITTEN are separated by AIR, not
@@ -791,6 +857,7 @@ export function NoteSurface({
           afterRecord={blocks.length > 0}
           rows={activeRows}
           pending={activePending}
+          waiting={activeWaiting}
           prefill={
             lastPrefill ? { reading: lastPrefill.reading, onAccept: acceptPrefill } : null
           }
@@ -951,6 +1018,28 @@ export function NoteInput({
 export const COMPOSER_HINT = 'like “bench 3x8 60, felt easy”';
 
 /**
+ * HOW LONG A HAND HAS TO BE STILL BEFORE THE APP DECIDES THE LINE IS WRITTEN
+ * (owner, 17 September 2026).
+ *
+ * Typing is not a request for anything, and until this constant existed both
+ * surfaces answered mid-word: Today put its check on the page at the first
+ * character — a control offered beside `b` — and the onboarding demo re-read
+ * the line on every keystroke, so the reading under it rewrote itself from
+ * `3` to `8·8·8` to `60 kg × 8·8·8` while the athlete was still
+ * writing it. The one moment that screen exists for was being spent three
+ * letters at a time.
+ *
+ * 700 ms is the gap between words a person is still writing and a person who
+ * has stopped. Long enough to sit through a thought mid-sentence, short enough
+ * that putting the phone down and looking at it is not a wait.
+ *
+ * EXPORTED, and one number: the check and the reading are the same judgement
+ * about the same hand, made on two screens that must not disagree about when
+ * somebody has finished a line.
+ */
+export const WRITING_PAUSE_MS = 700;
+
+/**
  * THE LINE BEING WRITTEN. One definition, used by Today and by the onboarding
  * demo (10 September 2026).
  *
@@ -1028,6 +1117,13 @@ export function Composer({
   /** The line is being read — the blue line under the field and the working
    * mark in the value column. */
   pending,
+  /**
+   * The line's reading is owed and the phone cannot reach the service. Same
+   * slot, same geometry, amber and still — see `PendingCard`'s `waiting`, whose
+   * two marks this matches so the state looks the same wherever the athlete is
+   * looking (which is the whole reason the mark moved onto the line).
+   */
+  waiting = false,
   /** Last session's real sets, offered for the exercise being named (Today
    * only: it takes a history to read one from). */
   prefill,
@@ -1057,6 +1153,7 @@ export function Composer({
   afterRecord: boolean;
   rows: { exercise: string; setText: string }[] | null;
   pending: boolean;
+  waiting?: boolean;
   prefill: { reading: string; onAccept: () => void } | null;
   onConfirm?: (() => void) | null;
   hint?: string | null;
@@ -1064,6 +1161,30 @@ export function Composer({
   inputAccessoryViewID?: string;
   reduceMotion: boolean;
 }) {
+  /**
+   * THE LINE AS IT STOOD WHEN THE WRITING LAST STOPPED — the check's one
+   * condition (`WRITING_PAUSE_MS`).
+   *
+   * It is a pause, NOT a judgement about whether the line reads yet. The
+   * offline grammar has an opinion and it is not allowed to hold this door:
+   * the real parser reads names and shapes that grammar cannot, so a check
+   * withheld until a small regex approves would be a line nobody can ask to
+   * have read — a dead end on the one screen that must not have one (§3).
+   *
+   * Once it has arrived on a line it STAYS, however much more is typed. It is
+   * an affordance, and an affordance that blinks out every time the hand moves
+   * is worse than one offered early.
+   */
+  const [atRest, setAtRest] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setAtRest(value), WRITING_PAUSE_MS);
+    return () => clearTimeout(t);
+  }, [value]);
+  /** Something is written, and the hand has been still since it was. An empty
+   * field withdraws the check on the keystroke that empties it — there is
+   * nothing left to read, and that answer needs no pause. */
+  const confirm = value.trim().length > 0 && atRest.trim().length > 0 ? onConfirm : null;
+
   return (
     <>
       {/* The active line — where you write. A hollow marker until it settles;
@@ -1091,49 +1212,92 @@ export function Composer({
         <Animated.View
           style={styles.activeBody}
           layout={reduceMotion ? undefined : LinearTransition.duration(DUR.slow)}>
-          <NoteInput
-            inputRef={inputRef}
-            value={value}
-            /**
-             * MULTILINE, WITH RETURN HANDLED BY HAND (15 Sep 2026). The field
-             * looks and acts single-line, but a single-line UITextField
-             * FLATTENS a multi-line paste — the owner pasted a whole session
-             * and every affordance that works on physical lines (edit,
-             * delete, fix) then opened the entire note as one line; the
-             * exercise cards masked it because the parser reads several
-             * exercises out of one line by design. Multiline keeps the pasted
-             * newlines, `setActive` writes them into the note verbatim, and
-             * the note re-derives into real lines.
-             *
-             * The return key therefore arrives as a trailing "\n" instead of
-             * `onSubmitEditing`, and it MUST keep meaning commit — the bare-
-             * name prefill accept rides on it — so exactly that shape is
-             * turned back into a submit here. A "\n" anywhere else is a
-             * paste (or a mid-line return, which splits the line — the same
-             * thing a paste does) and passes through as text.
-             */
-            multiline
-            onChangeText={(raw) => {
-              // Windows/Notes clipboards carry \r\n; one newline spelling
-              // before anything downstream splits on "\n".
-              const text = raw.replace(/\r\n?/g, '\n');
-              if (text === `${value}\n`) {
-                onSubmitEditing();
-                return;
-              }
-              onChangeText(text);
-            }}
-            onSubmitEditing={onSubmitEditing}
-            /**
-             * NO SCROLL ON FOCUS. It was here to compensate for the
-             * `KeyboardAvoidingView` that used to wrap this page; with
-             * `automaticallyAdjustKeyboardInsets` the scroll view brings its
-             * own first responder into view, on the UI thread, which is the
-             * whole reason that prop replaced the wrapper.
-             */
-            placeholder={placeholder}
-            inputAccessoryViewID={inputAccessoryViewID}
-          />
+          {/* THE LINE AND THE ONE MARK IT CARRIES, ON THE SAME ROW (owner,
+              17 September 2026 — the 16 September ruling `PendingCard` already
+              keeps: *"kljukica mora biti desno v isti vrstici … tam kjer so
+              tiste tri pikice"*).
+
+              It was under the field, right-aligned, and on an empty canvas
+              that is not "on the line": with one short word written and no
+              record above it, the pill stood alone in the middle of the page,
+              a full line below the words it belongs to and directly on top of
+              the example sentence — a floating button with nothing to be about
+              (photographed on the owner's device, 17 September 2026).
+
+              So the check stands where it stands on the card it settles into:
+              the words on the left, the app's one slot hard against the right
+              of the same line. The reading dots take that same slot the moment
+              it is tapped, so the tap and the work it starts trade places
+              without anything moving — which is the whole reason the slot
+              exists. */}
+          <View style={styles.activeLine}>
+            <View style={styles.activeField}>
+              <NoteInput
+                inputRef={inputRef}
+                value={value}
+                /**
+                 * MULTILINE, WITH RETURN HANDLED BY HAND (15 Sep 2026). The field
+                 * looks and acts single-line, but a single-line UITextField
+                 * FLATTENS a multi-line paste — the owner pasted a whole session
+                 * and every affordance that works on physical lines (edit,
+                 * delete, fix) then opened the entire note as one line; the
+                 * exercise cards masked it because the parser reads several
+                 * exercises out of one line by design. Multiline keeps the pasted
+                 * newlines, `setActive` writes them into the note verbatim, and
+                 * the note re-derives into real lines.
+                 *
+                 * The return key therefore arrives as a trailing "\n" instead of
+                 * `onSubmitEditing`, and it MUST keep meaning commit — the bare-
+                 * name prefill accept rides on it — so exactly that shape is
+                 * turned back into a submit here. A "\n" anywhere else is a
+                 * paste (or a mid-line return, which splits the line — the same
+                 * thing a paste does) and passes through as text.
+                 */
+                multiline
+                onChangeText={(raw) => {
+                  // Windows/Notes clipboards carry \r\n; one newline spelling
+                  // before anything downstream splits on "\n".
+                  const text = raw.replace(/\r\n?/g, '\n');
+                  if (text === `${value}\n`) {
+                    onSubmitEditing();
+                    return;
+                  }
+                  onChangeText(text);
+                }}
+                onSubmitEditing={onSubmitEditing}
+                /**
+                 * NO SCROLL ON FOCUS. It was here to compensate for the
+                 * `KeyboardAvoidingView` that used to wrap this page; with
+                 * `automaticallyAdjustKeyboardInsets` the scroll view brings its
+                 * own first responder into view, on the UI thread, which is the
+                 * whole reason that prop replaced the wrapper.
+                 */
+                placeholder={placeholder}
+                inputAccessoryViewID={inputAccessoryViewID}
+              />
+            </View>
+            {pending ? (
+              <Animated.View
+                entering={reduceMotion ? undefined : FadeIn.duration(180)}
+                style={styles.composerMark}
+                accessibilityRole="progressbar"
+                accessibilityLabel="reading, in progress">
+                <ReadingMark />
+              </Animated.View>
+            ) : waiting ? (
+              <Animated.View
+                entering={reduceMotion ? undefined : FadeIn.duration(180)}
+                style={styles.composerMark}>
+                <WaitingMark />
+              </Animated.View>
+            ) : confirm ? (
+              <Animated.View
+                entering={reduceMotion ? undefined : FadeIn.duration(180)}
+                style={styles.composerMark}>
+                <ConfirmMark onPress={confirm} />
+              </Animated.View>
+            ) : null}
+          </View>
           {/* Live read-out of what you're typing — the parse, before you commit. */}
           {rows && rows.length ? (
             <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(180)}>
@@ -1177,38 +1341,19 @@ export function Composer({
               </Text>
             </Animated.View>
           ) : pending ? (
-            // THE COMPOSER'S VALUE COLUMN. There are no committed words here
-            // for a light to pass under — the line is still in the field
-            // above, and moving anything under a cursor mid-sentence is the
-            // one thing §14 rules out outright. So the working mark waits in
-            // the column the live read-out prints its value in, and the
-            // answer takes its place without moving.
+            // THE BLUE LINE UNDER THE FIELD, and nothing else down here since
+            // the dots moved up onto the line itself (17 September 2026).
             //
-            // The BLUE LINE joins it (9 September 2026) and does not break
-            // that rule, because it is under the FIELD rather than under the
+            // It does not break §14's rule about moving what somebody has
+            // written, because it is under the FIELD rather than under the
             // cursor: nothing the athlete has written moves, is dimmed, or is
             // crossed. It is the same mark the settled row wears while it is
             // being read, so the working state looks the same wherever the
             // athlete happens to be looking.
-            <Animated.View
-              entering={reduceMotion ? undefined : FadeIn.duration(180)}
-              accessibilityRole="progressbar"
-              accessibilityLabel="reading, in progress">
+            <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(180)}>
               <View style={styles.composerLine}>
                 <ReadingLine />
               </View>
-              <View style={styles.previewPending}>
-                <ReadingMark />
-              </View>
-            </Animated.View>
-          ) : onConfirm ? (
-            // The check, standing exactly where the dots will: unread words on
-            // the left, the one control that asks for their reading on the
-            // right of the same line's column (owner, 16 September 2026).
-            <Animated.View
-              entering={reduceMotion ? undefined : FadeIn.duration(180)}
-              style={[styles.previewPending, styles.confirmSlot]}>
-              <ConfirmMark onPress={onConfirm} />
             </Animated.View>
           ) : null}
         </Animated.View>
@@ -1730,6 +1875,7 @@ export function EditRow({
 export function PendingCard({
   text,
   reading = true,
+  waiting = false,
   order,
   reduceMotion,
   onPress,
@@ -1745,6 +1891,21 @@ export function PendingCard({
    * pending moment really is a read in progress.
    */
   reading?: boolean;
+  /**
+   * THE READING WAS ASKED FOR AND THERE IS NO SIGNAL (owner, 17 September
+   * 2026: *"oznaci tudi to vrstico da je v obdelavi … z oranzno/rumeno
+   * barvo"*).
+   *
+   * The third state this card has, and the one that was missing: not being
+   * read, not idle either. The request is queued in `needs_parse` and owed;
+   * what is absent is a connection to spend it on. So the card keeps the words
+   * exactly as they are and turns its two marks amber — the rail ring and the
+   * three still dots — which says *asked, and waiting* without claiming work
+   * that is not happening. Never true at the same time as `reading`:
+   * `session-store.ts` owns the flag (`parseStalled`) and `net-state.ts` is
+   * the only thing that can end it.
+   */
+  waiting?: boolean;
   /** Rank among the lines being read — the beam's stagger. */
   order: number;
   reduceMotion: boolean;
@@ -1774,10 +1935,16 @@ export function PendingCard({
         activeScale={ROW_SCALE}
         wash
         washStyle={styles.rowWash}
-        accessibilityLabel={reading ? `${text} — reading` : `${text} — not read yet`}
+        accessibilityLabel={
+          reading
+            ? `${text} — reading`
+            : waiting
+              ? `${text} — saved on this phone, waiting for a connection to be read`
+              : `${text} — not read yet`
+        }
         style={styles.card}>
         <View style={styles.rail}>
-          <View style={styles.railHollow} />
+          <View style={[styles.railHollow, waiting && styles.railHollowWaiting]} />
         </View>
         {/* ONE ROW, CENTRED ON THE WORDS. The ⋯ column lives inside this row
             rather than beside it, so the mark sits on the words' own optical
@@ -1809,7 +1976,18 @@ export function PendingCard({
               the dots while one is in flight — same slot, so the tap and the
               work it starts trade places without anything moving. */}
           <View style={styles.pendingMark}>
-            {reading ? <ReadingMark /> : onConfirm ? <ConfirmMark onPress={onConfirm} /> : null}
+            {reading ? (
+              <ReadingMark />
+            ) : waiting ? (
+              // The check is NOT offered here, and that is the honest choice:
+              // tapping it would ask for a reading the phone cannot fetch, and
+              // a control whose only outcome is the state you are already in is
+              // a control that lies. The reading is already asked for — this
+              // mark says so, and it goes when the signal comes back.
+              <WaitingMark />
+            ) : onConfirm ? (
+              <ConfirmMark onPress={onConfirm} />
+            ) : null}
           </View>
         </View>
       </PressableScale>
@@ -1978,6 +2156,14 @@ const PENDING_LINE = lineFor(22);
  * hitSlop on each side restores exactly the 44 pt target: 28 + 2 × 8.
  */
 const CONFIRM_PILL = moderateScale(28);
+/**
+ * ONE LINE OF THE COMPOSER, as the field sets it. Read by the field's own
+ * `lineHeight` and by the mark beside it, which centres on the FIRST line of
+ * whatever is in the field — so the two cannot drift, and a pasted session ten
+ * lines long still wears its check next to line one, exactly where the card it
+ * settles into will draw it.
+ */
+const COMPOSER_LINE = lineFor(23);
 /** One line box for a remark — the glyph's slot and the prose's line height are
  * the same number, which is what puts the bubble on the first line's centre. */
 const REMARK_LINE = lineFor(18);
@@ -2113,6 +2299,13 @@ const styles = StyleSheet.create({
     borderRadius: MARK / 2,
     borderWidth: 1.5,
     borderColor: color.textMuted,
+  },
+  /** The ring of a line whose reading is owed and cannot be fetched. Amber at
+   * the SAME 1.5 pt the idle ring wears: §Motion's rule that a border never
+   * grows applies to a border that changes colour too — the mark restates
+   * itself, it does not get louder. */
+  railHollowWaiting: {
+    borderColor: color.warning,
   },
   railEditing: {
     width: MARK,
@@ -2352,11 +2545,38 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...shadow.card,
   },
-  /** The same pill under the line being WRITTEN. It needs the air the card's
-   * own `paddingVertical` gives the other one, or it crowds the field it sits
-   * beneath. */
-  confirmSlot: {
-    marginTop: spacing.xs,
+  /**
+   * THE LINE BEING WRITTEN, AS A ROW: the field takes the width, and the app's
+   * one slot stands at the end of it (see the composer's note).
+   *
+   * `flex-start` so the mark holds line ONE when the field grows — a pasted
+   * session is several lines tall and its check belongs where the check on the
+   * card it becomes will be, not beside the last thing typed.
+   */
+  activeLine: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  /** The words' own column. `flex: 1` and nothing else: the field is as wide
+   * as the line minus whatever the mark is holding, and as wide as the whole
+   * line when it is holding nothing. */
+  activeField: {
+    flex: 1,
+  },
+  /**
+   * THE MARK'S SLOT ON THAT ROW — the check, then the dots, in the same place.
+   *
+   * Centred on the first LINE rather than on the row, by the arithmetic
+   * `pendingMark` uses one card down: a 28 pt pill in a 23 pt line box is
+   * hung by a negative top margin, never by `justifyContent` on a box the
+   * pill is taller than — Yoga clamps an oversized child and leaves it
+   * sitting low, which is the defect this whole change is about.
+   */
+  composerMark: {
+    height: CONFIRM_PILL,
+    marginTop: (COMPOSER_LINE - CONFIRM_PILL) / 2,
+    justifyContent: 'center',
   },
   /** The words' row, and the only row this card has: the line on the left,
    * whatever the app has to say about it hard against the right, and the ⋯
@@ -2418,7 +2638,7 @@ const styles = StyleSheet.create({
   },
   input: {
     fontSize: moderateScale(17),
-    lineHeight: lineFor(23),
+    lineHeight: COMPOSER_LINE,
     color: color.textPrimary,
     fontWeight: '400',
     padding: 0,
@@ -2510,11 +2730,6 @@ const styles = StyleSheet.create({
     ...readingStyle('400'),
     fontSize: moderateScale(13),
     color: color.textSecondary,
-  },
-  previewPending: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
   },
   /**
    * The blue line's room under the composer's field. `ReadingLine` pins itself

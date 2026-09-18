@@ -97,6 +97,9 @@ const KEYS = {
   restAutoStart: 'pref_rest_auto_start',
   /** Whether the first automatic rest has explained itself yet. */
   restAutoTaught: 'pref_rest_auto_taught',
+  // --- Apple Health (17 September 2026) ---
+  /** Whether finished sessions are copied out to Health (`lib/health/`). */
+  healthWrite: 'pref_health_write',
 } as const;
 
 export function isOnboardingDone(): boolean {
@@ -646,4 +649,26 @@ export function setRecapHour(hour: number) {
 export function getRecapHour(): number {
   const n = Number.parseInt(getMeta(KEYS.recapHour) ?? '', 10);
   return Number.isInteger(n) && n >= 0 && n <= 23 ? n : RECAP_DEFAULT_HOUR;
+}
+
+/**
+ * APPLE HEALTH — whether finished sessions are copied out as workouts.
+ *
+ * OFF until somebody turns it on, and off is the honest default: Health is the
+ * most personal store on the phone and nothing should start writing to it
+ * because an app was installed. The switch lives in You → Your record → Apple
+ * Health, and `lib/health/index.ts` refuses to write whenever this is false —
+ * the pref is checked on every sweep, not only at the moment of the tap, so
+ * turning it off stops the next session as well as this one.
+ *
+ * It is a preference and not an authorization: HealthKit holds the permission
+ * and can revoke it from the Health app at any time. Both have to be true for
+ * anything to move, and the screen says which one is missing.
+ */
+export function setHealthWriteEnabled(on: boolean) {
+  setMeta(KEYS.healthWrite, on ? '1' : '0');
+}
+
+export function isHealthWriteEnabled(): boolean {
+  return getMeta(KEYS.healthWrite) === '1';
 }

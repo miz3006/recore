@@ -79,7 +79,14 @@ export type IconName =
   | 'tour-checkin'
   | 'tour-next'
   | 'tour-progress'
-  | 'tour-you';
+  | 'tour-you'
+  // --- The offline line under Today's dateline (17 September 2026). Two
+  // --- states, one slot: the service is out of reach, and the queue has
+  // --- drained after it came back. Both are Apple's own marks for those two
+  // --- sentences, which is the point — a person has met them in Settings and
+  // --- in the status bar long before they met Recore.
+  | 'no-signal'
+  | 'synced';
 
 type Glyph =
   | { set: 'ion'; name: ComponentProps<typeof Ionicons>['name'] }
@@ -152,6 +159,8 @@ const MAP: Record<IconName, Glyph> = {
   'tour-next': { set: 'ion', name: 'arrow-forward' },
   'tour-progress': { set: 'ion', name: 'analytics-outline' },
   'tour-you': { set: 'ion', name: 'person-outline' },
+  'no-signal': { set: 'ion', name: 'cloud-offline-outline' },
+  synced: { set: 'ion', name: 'cloud-done-outline' },
 };
 
 /**
@@ -317,6 +326,18 @@ const SF: Partial<Record<IconName, Symbol>> = {
   // face marks an entry that already carries words — state, not decoration.
   note: { name: 'text.bubble' },
   'note-on': { name: 'text.bubble.fill' },
+
+  // --- THE OFFLINE LINE (17 September 2026) --------------------------------
+  //
+  // `wifi.slash` was the first choice and is the wrong one: the fact the app
+  // actually knows is that ITS SERVICE could not be reached, which happens on
+  // a full four bars behind a gym's sign-in portal as readily as it does in a
+  // basement. `icloud.slash` is the symbol Apple uses for exactly that
+  // sentence, and its filled-check counterpart is the one it uses for the
+  // other half of the story — the queue having gone up. Same family, same
+  // weight, so the line does not change shape when it changes state.
+  'no-signal': { name: 'icloud.slash' },
+  synced: { name: 'checkmark.icloud' },
 };
 
 /** The weight every SF glyph is drawn at. `regular` is a hair thin against the

@@ -16,6 +16,7 @@ import {
 
 import { PressableScale } from './motion';
 import { Eyebrow } from './primitives';
+import { DELETE_ROTOR_ACTIONS } from './swipe-to-delete';
 
 /**
  * THE CHECK-IN, READ BACK ON TODAY (10 September 2026).
@@ -72,6 +73,17 @@ import { Eyebrow } from './primitives';
  *
  * Tapping anywhere re-opens the check-in, so the note is editable from the page
  * that prints it and there is still exactly one place the words are written.
+ *
+ * SWIPING IT LEFT REMOVES IT (owner, 17 September 2026), the same gesture and
+ * the same undo pill every entry above it takes (`swipe-to-delete.tsx`,
+ * `undo-delete.tsx`). Editing was the only door out of a check-in until now:
+ * the sheet KEEPS whatever is on it by every exit it has, so emptying the field
+ * by hand still left the rating armed and the block on the page. What a person
+ * wrote about their own session they may unwrite, and the answer they take back
+ * is the whole of it — rating, chips and words — after which the invitation to
+ * write one returns below the line. The gesture lives on the wrapper; this file
+ * publishes the verb for VoiceOver, on the element the rotor lands on, because
+ * a drag nobody can see is not a door for everyone.
  */
 export function CheckInNote({
   rating,
@@ -81,6 +93,7 @@ export function CheckInNote({
   railGap,
   reduceMotion,
   onPress,
+  onDelete,
 }: {
   /** How hard the whole session was, as the word the athlete picked
    * (`SESSION_EFFORT_LABEL`). Null when they did not answer. */
@@ -95,6 +108,9 @@ export function CheckInNote({
   railGap: number;
   reduceMotion: boolean;
   onPress: () => void;
+  /** Remove the whole check-in — the swipe's verb, published on the rotor so
+   * VoiceOver has the door the gesture is. */
+  onDelete: () => void;
 }) {
   if (rating === null && tags.length === 0 && text.length === 0) return null;
 
@@ -120,6 +136,12 @@ export function CheckInNote({
           .filter((part) => part.length > 0)
           .join('. ')}
         accessibilityHint="Opens the check-in to edit it"
+        // Delete, on the rotor, because the gesture that carries it cannot be
+        // seen — the rule `ExerciseCard` follows one block up the same page.
+        accessibilityActions={DELETE_ROTOR_ACTIONS}
+        onAccessibilityAction={(e) => {
+          if (e.nativeEvent.actionName === 'delete') onDelete();
+        }}
         style={[styles.row, { gap: railGap }]}>
         <View style={[styles.rail, { width: railWidth }]}>
           <View style={styles.rule} />

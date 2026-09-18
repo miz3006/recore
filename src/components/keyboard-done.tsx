@@ -34,13 +34,30 @@ import { color, hairline, HIT, MAX_FONT_SCALE, spacing, type } from '@/lib/theme
  */
 export const DONE_ACCESSORY = 'recore.keyboard.done';
 
-export function KeyboardDoneBar() {
+/**
+ * ## ONE BAR PER FIELD WHEN THE FIELDS COME AND GO (17 September 2026)
+ *
+ * `nativeID` exists because of how iOS binds a bar to a field, which is worth
+ * stating precisely — it is not obvious and it fails silently:
+ *
+ * `RCTInputAccessoryComponentView` binds itself **once**, inside
+ * `didMoveToWindow`, by walking the window for a text field whose
+ * `inputAccessoryViewID` matches. There is no retry. So a bar mounted while
+ * its field does not yet exist stays unbound for ever, and a bar sharing an ID
+ * with several fields binds to the FIRST one it finds and leaves the rest bare.
+ *
+ * Every original call site has one permanently-mounted field, which is why one
+ * shared id was enough. A screen with several number fields — onboarding's key
+ * lifts — gives each field its own bar and its own id, and each binds to the
+ * field beside it.
+ */
+export function KeyboardDoneBar({ nativeID = DONE_ACCESSORY }: { nativeID?: string }) {
   // Not a `Platform.select` on the component: on Android the export is RN's
   // UnimplementedView, which draws an empty box and warns. Nothing is rendered
   // there at all — the system back button already dismisses the keyboard.
   if (Platform.OS !== 'ios') return null;
   return (
-    <InputAccessoryView nativeID={DONE_ACCESSORY} backgroundColor={color.surface}>
+    <InputAccessoryView nativeID={nativeID} backgroundColor={color.surface}>
       <Pressable
         onPress={() => {
           tap();

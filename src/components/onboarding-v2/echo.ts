@@ -95,6 +95,11 @@ export function echoFor(id: string, a: V2Answers): string | null {
           return 'Grouped by muscle';
         case 'flat':
           return 'Scheduled by lift, not by day';
+        // A split that is not on the list. The rotation path reads which
+        // session is due from the sessions they actually wrote, so this is a
+        // statement about how it works, not a guess at which split it is.
+        case 'other':
+          return 'Grouped the way your own sessions repeat';
         default:
           return null;
       }

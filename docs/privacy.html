@@ -38,7 +38,7 @@
 <body>
 <main>
   <h1>Privacy Policy</h1>
-  <p class="updated">Recore · last updated 10 September 2026</p>
+  <p class="updated">Recore · last updated 17 September 2026</p>
   <p class="intro">Recore is a training log. It holds what you typed and the record built from it, and nothing else. There is no advertising, no tracking, and no analytics SDK in this app. The only thing it sends on its own initiative is a crash report when it breaks, and that report carries nothing you wrote — see “If Recore crashes”.</p>
   <h2>What stays on your device</h2>
 <p>Everything, first. Your notes are written to a database on the phone in the same instant you type them, and the app is fully usable with no connection at all. Sync is a backup of your own data to your own account, never the place the app reads from.</p>
@@ -49,6 +49,11 @@
 <p>A check-in note — for a whole session or for one exercise in it — is your own record of how it felt. Recore never reads it as training data, never turns it into a number, a chart or a score, and never treats it as a health, medical or nutritional assessment. It may be shown back to you, in your own words, beside the exercise you wrote it about.</p>
 <p>That is the whole list. Every row is scoped to your account at the database level, so no other user can read it unless you deliberately link a coach — see “If you link a coach” — and the same scoping is mirrored on the device: signing in as a different account wipes the local copy first.</p>
 <p>We do not collect your location, your contacts, your photos, your health records, or your device advertising identifier.</p>
+<h2>If you turn on Apple Health</h2>
+<p>Apple Health is off until you turn it on, in You → Apple Health, and it goes one way only.</p>
+<p>With it on, each session you finish is added to the Health app on your iPhone as a workout: when it started, when it ended, and whether it was strength training or cardio. Nothing else. Recore does not write a calorie figure or a distance, because it cannot measure either, and it never writes a word you typed — not the note, not the check-in, not a lift name.</p>
+<p>Recore reads nothing from Health. It does not ask for permission to read, and it holds none, so nothing in Health can change what your record says.</p>
+<p>This happens entirely on your phone, between Recore and the Health app. It is not sent to us, it is not part of your account, and it does not sync. Turning it off stops Recore adding anything new; the workouts already in Health are yours and stay there until you delete them from the Health app.</p>
 <h2>What leaves your device, and why</h2>
 <p>Four things, all only when you are online:</p>
 <ul><li>The text of a note, to read it into structure. It goes to Recore’s own server function, which forwards it to Anthropic, the language-model provider that returns the reading. The note is sent as data, it is never written to a log, it is never attached to an error report, and Recore does not use it to train anything.</li><li>A single already-computed sentence, when Recore rephrases the reason for a prescription in your language. The weight itself is always computed on your device by code, never chosen by a model.</li><li>Your Recore account identifier, to RevenueCat, so the app can ask whether your subscription is active. No note text, no training data and no name goes with it. This happens once when you sign in, and again only when you buy or restore.</li><li>A crash report, to Sentry, if Recore stops working — the error, where in the code it happened, the app version, the operating system and the device model. Nothing you wrote and nothing that identifies you goes with it. See “If Recore crashes” below.</li></ul>

@@ -63,6 +63,14 @@
           "project": "react-native",
           "organization": "recore-l3"
         }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthUpdateUsageDescription": "Recore adds the training sessions you finish to Health as workouts, so the work you log here counts in the rest of your Health record.",
+          "NSHealthShareUsageDescription": "Recore does not read anything from Health. It only adds the sessions you finish.",
+          "background": false
+        }
       ]
     ],
     "experiments": {

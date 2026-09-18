@@ -4,7 +4,6 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { releaseEntitlement, resolveEntitlement } from '@/lib/billing/state';
 import { ensureLocalUser } from '@/lib/db/index';
 import { markFirstOpen } from '@/lib/funnel';
-import { seedOnboardingDemo } from '@/lib/onboarding-seed';
 import { startSync, stopSync } from '@/lib/sync/index';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/state/session-store';
@@ -60,9 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /**
    * WHO THE LOCAL DATABASE BELONGS TO — and it is not always an account.
    *
-   * The funnel writes before an account exists: onboarding answers, the demo
-   * line that becomes the first session (`onboarding-seed.ts`), a plan. Sign-in
-   * is the LAST step (`app/sign-in.tsx`), so SQLite has to be scoped to
+   * The funnel writes before an account exists: onboarding answers, a plan.
+   * Sign-in is the LAST step (`app/sign-in.tsx`), so SQLite has to be scoped to
    * somebody from the first screen. That is what the local id is for, and it is
    * local-first working as designed (CLAUDE.md §3).
    *
@@ -116,10 +114,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // (owner, 4 September 2026). Two real accounts on one device still wipe:
     // `claimFrom` names the pre-account scope and nothing else can match it.
     ensureLocalUser(userId, LOCAL_USER_ID);
-    // The line they wrote on the demo screen becomes their first session —
-    // between scoping the database and hydrating the store, so Today opens on
-    // it instead of on an empty page (`lib/onboarding-seed.ts`).
-    seedOnboardingDemo(userId);
+    /**
+     * NOTHING THE FUNNEL WROTE BECOMES A SESSION (owner, 17 September 2026).
+     *
+     * A line used to be carried from the demo screen into the record here, so
+     * that Today opened on the person's own words rather than on an empty page
+     * (`lib/onboarding-seed.ts`, now deleted). The owner's ruling is that the
+     * demo is a REHEARSAL: what is typed there exists to watch the parser read
+     * it, and the sentence that proves the app works is not a set anybody did.
+     * Writing it into the record made the first thing the athlete owned a
+     * fiction they had to delete — and the record is the one thing in this app
+     * that is only ever theirs (CLAUDE.md §3).
+     *
+     * The flow still keeps the answer (`demoText`, `demoEntries`): the reading
+     * screen prints it back, the key-lift screen pre-selects from it and the
+     * projection is built out of it. It simply never reaches SQLite.
+     */
     hydrate(userId);
     markFirstOpen();
 

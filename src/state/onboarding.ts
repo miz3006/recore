@@ -58,10 +58,13 @@ export type AnswerKey =
    * a `DemoEntry` as JSON (`lib/demo-parse.ts`).
    *
    * It is the one answer that is not an option id, and the one answer that
-   * leaves the flow: the key-lift screen pre-selects from it, the overload card
-   * and the projection are built out of it, and after signup its RAW TEXT is
-   * seeded as the first real session (`lib/onboarding-seed.ts`) so the app
-   * opens on the person's own writing rather than on an empty page.
+   * leaves the flow: the key-lift screen pre-selects from it, and the overload
+   * card and the projection are built out of it.
+   *
+   * IT NEVER BECOMES A SESSION (owner, 17 September 2026). Its raw text used
+   * to be written into the record at signup so the app opened on the person's
+   * own writing; the demo is a rehearsal, and the record starts with the first
+   * thing they log for real.
    *
    * Null when the demo was never completed, or when all the person saw was the
    * canned fallback — nothing the app invents is ever stored here.
@@ -87,9 +90,9 @@ export type AnswerKey =
    *
    * It exists because the reading is not the record: `raw_text` is (CLAUDE.md
    * §3), and a line the demo's small grammar missed is a line the real parser
-   * may well read. This is what `lib/onboarding-seed.ts` writes as the first
-   * session, so what lands in the database is the person's own page and not
-   * the subset of it this flow happened to understand.
+   * may well read — so what the flow carries forward is the person's own page
+   * and not the subset of it this flow happened to understand. It is read back
+   * on screen 7 and nowhere else; nothing written here reaches the database.
    *
    * Never the canned example: a line the app typed for them is a
    * demonstration, not their training.

@@ -369,15 +369,35 @@ export const FLOW: readonly ScreenDef[] = [
         sub: 'Recore schedules by lift, not by day.',
         drivesBranch: true,
       },
+      /**
+       * A SPLIT THAT IS NOT ON THE LIST (owner, 17 September 2026).
+       *
+       * Four named splits do not cover the ones people actually run — Arnold,
+       * PHUL, 5/3/1, a coach's own week — and until now the only rows left for
+       * any of them were a split they do not train or "I don't follow a split",
+       * which is a different and untrue answer: it routes to flat mode.
+       *
+       * It is a GHOST ROW and `flat` is not, and the test between them is the
+       * one `GhostRow.tsx` states: does the app GET anything. Flat mode is a
+       * second clustering engine; this option turns nothing on. The rotation
+       * path already reads which session is due from their own history rather
+       * than from the split's name, so "something else" needs no branch — it
+       * needs only to stop being a wrong answer.
+       */
+      { id: 'other', label: 'Something else', sub: "A split that isn't listed here.", optOut: true },
     ],
-    why: 'Drives the clustering engine. The last option routes to flat mode.',
+    why: 'Drives the clustering engine. The flat option routes to flat mode; the rest personalise copy.',
   },
   {
     step: 15,
     kind: 'lifts',
     id: 'lifts',
     headline: 'Your key lifts, and what you lift now.',
-    subline: "Use today's working weight. Add or drop lifts to match how you train.",
+    // THE SUBLINE TEACHES THE FIELD (owner, 17 September 2026). The steppers
+    // are a plate at a time, and the distance from a default to a real working
+    // weight is not measured in plates — a 140 kg deadlift was sixteen taps.
+    // The number is a field now, and one clause is what makes that findable.
+    subline: "Use today's working weight — tap a number to type it.",
     why: 'Fuel for both the projection and the first-session targets.',
   },
   {

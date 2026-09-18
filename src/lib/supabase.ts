@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
 
 import { isSupabaseConfigured, SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/env';
+import { deadlineFetch, REQUEST_DEADLINE_MS } from '@/lib/net-deadline';
 import { secureSessionStorage } from '@/lib/secure-storage';
 
 /**
@@ -12,6 +13,15 @@ import { secureSessionStorage } from '@/lib/secure-storage';
  * The client is safe to import when .env is not yet filled in (a placeholder
  * URL keeps createClient from throwing at startup); every network call simply
  * fails until the real project is configured, and the app stays local-first.
+ *
+ * AND EVERY REQUEST IT MAKES HAS AN END (17 September 2026). React Native's
+ * `fetch` has no deadline and supabase-js adds none, so a request whose socket
+ * the network dropped without saying so hung for the life of the app — and
+ * took the parse flag, the one-parse-per-workout guard and the sync latch with
+ * it. `lib/net-deadline.ts` is the whole account, including the customer
+ * screenshot that found it. It is built in HERE rather than at the call sites
+ * because auth, PostgREST and the edge functions all inherit `global.fetch`,
+ * and three call sites remembering a timeout is three places to forget one.
  */
 export const supabase = createClient(
   isSupabaseConfigured() ? SUPABASE_URL : 'https://placeholder.supabase.co',
@@ -23,6 +33,9 @@ export const supabase = createClient(
       persistSession: true,
       detectSessionInUrl: false,
       flowType: 'pkce',
+    },
+    global: {
+      fetch: deadlineFetch(REQUEST_DEADLINE_MS),
     },
   },
 );

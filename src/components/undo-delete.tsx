@@ -61,6 +61,15 @@ import { joinNames } from './swipe-to-delete';
  * says all of them: "Deleted “Bench press” and “Rows”". The alternative was a
  * pill that says "Deleted that line" while two cards leave the page, which is
  * the app declining to name what it just took.
+ *
+ * ## It is the check-in's way back too (17 September 2026)
+ *
+ * The session's own note can be swiped away like any row now
+ * (`check-in-note.tsx`), and it lands here rather than behind a dialog for the
+ * same reason the entries did: the drag is the decision and this is the report.
+ * One pill, two kinds of offer — the store holds whichever is outstanding
+ * (`PendingUndo`), because two overlays low on one screen, each offering a
+ * different thing back, is a choice nobody asked for.
  */
 /**
  * How long the offer stands. Apple's own undo toasts sit for about five
@@ -104,12 +113,26 @@ export function UndoDelete({
   }, []);
 
   const id = pending?.id ?? null;
-  const labels = pending?.labels;
-  // Each name in its own quotes, because "“Bench press and Rows”" reads as one
-  // entry with a comical name rather than as the two that actually went.
-  const message = labels?.length
-    ? `Deleted ${joinNames(labels.map((n) => `“${n}”`))}`
-    : 'Deleted that line';
+  /**
+   * WHAT WENT, in the words of the thing that went.
+   *
+   * A line names its entries — each in its own quotes, because
+   * "“Bench press and Rows”" reads as one entry with a comical name rather than
+   * as the two that actually went. A check-in names itself: the block holds a
+   * rating and the athlete's own words, and "Deleted “Hard”" would report a
+   * fragment of it as though that were the whole. "Check-in" is the word the
+   * receipt already prints for the same thing (`session-receipt.tsx`).
+   */
+  const message =
+    pending?.kind === 'checkIn'
+      ? 'Deleted your check-in'
+      : pending?.labels.length
+        ? `Deleted ${joinNames(pending.labels.map((n) => `“${n}”`))}`
+        : 'Deleted that line';
+  const hint =
+    pending?.kind === 'checkIn'
+      ? 'Puts your check-in back on this session'
+      : 'Puts the line back where it was';
 
   /**
    * THE WINDOW, keyed on `id` and not on the object.
@@ -171,7 +194,7 @@ export function UndoDelete({
             style={styles.pill}
             accessibilityRole="button"
             accessibilityLabel={`Undo. ${message}`}
-            accessibilityHint="Puts the line back where it was">
+            accessibilityHint={hint}>
             {/* Two lines, not one: the pill grows off `minHeight`, and
                 truncating the sibling names would quietly undo the only reason
                 they are printed here. */}

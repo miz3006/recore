@@ -58,7 +58,17 @@ export type AnalyticsEvent =
    * for somebody who is not new here (28 Aug 2026). */
   | 'onboarding_sign_in_tap'
   | 'paywall_view'
-  | 'paywall_cta_tap';
+  | 'paywall_cta_tap'
+  /**
+   * APPLE HEALTH (`lib/health/`). Three events, all of them counts and
+   * booleans — there is no version of this feature in which a date, a duration
+   * or a lift name may appear in an event, because what would be described is
+   * somebody's health record.
+   */
+  | 'health_write_enabled'
+  | 'health_write_disabled'
+  /** One sweep landed: `count`, and nothing else. */
+  | 'health_sessions_written';
 
 export interface QueuedEvent {
   event: AnalyticsEvent;

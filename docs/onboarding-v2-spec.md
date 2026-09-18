@@ -177,11 +177,13 @@ that follows from the goal. Multiplication on their own answer — no adherence 
 drop-off curve, no claim about whether they will do it.
 → The first moment the flow has a number worth multiplying.
 
-**14 — Which split do you train on?** Push / Pull / Legs · Upper / Lower · Full body · Bro split · **I don't follow a split**
-→ Drives the clustering engine directly. The last option is mandatory, routes to flat mode, and stays a **peer row** — it drives a branch, so it is never demoted to a ghost row. Use an inline info banner here rather than a separate explainer screen (Gravl does this at its positions 18–19).
+**14 — Which split do you train on?** Push / Pull / Legs · Upper / Lower · Full body · Bro split · **I don't follow a split** · *Something else* (amended 17 Sep 2026)
+→ Drives the clustering engine directly. "I don't follow a split" is mandatory, routes to flat mode, and stays a **peer row** — it drives a branch, so it is never demoted to a ghost row. Use an inline info banner here rather than a separate explainer screen (Gravl does this at its positions 18–19).
+→ **"Something else" was added on the owner's instruction, 17 September 2026**, as the screen's one **ghost row**. Four named splits do not cover Arnold, PHUL, 5/3/1 or a coach's own week, and the only rows left for any of them were a split the person does not train or an answer that routes them into flat mode — which is untrue and changes app behaviour. It turns nothing on (the rotation path reads which session is due from their own history, not from the split's name), so by this file's own test it is a ghost row and not a peer.
 
-**15 — Your key lifts, and what you lift now.** Multi-select of lifts, then a weight per lift.
+**15 — Your key lifts, and what you lift now.** Multi-select of lifts, then a weight per lift. **Skippable** (amended 17 Sep 2026).
 → Fuel for both the projection and the first-session targets. A heavy screen late in the funnel is fine when it visibly improves the result — Gravl's equipment picker is the same bet.
+→ **A load is typed as well as stepped, and the screen can be declined** (owner, 17 September 2026). The number in each row is a field: tapping it opens the decimal pad, because a plate at a time is the wrong unit for the distance between a default and a real working weight. And a skip under the button empties `keyLifts` so the commit writes no lifts and no loads — nobody remembers their overhead press standing in a queue, and every screen downstream already has an honest shape for an empty sheet. A skipped screen must not leave the seeded big three behind: see `liftsSkipped`.
 
 **16 — Why progressive overload works.** No question. One chart, one sentence. **Must use their numbers from screen 13**, not a generic curve. Cal AI's four explainers are all generic; that is the opening.
 

@@ -34,3 +34,23 @@ export function loadUndoneKeys(workoutId: string): Set<string> {
 export function saveUndone(workoutId: string, keys: string[]): void {
   setMeta(metaKey(workoutId), keys.length ? JSON.stringify(keys) : null);
 }
+
+/**
+ * FINISH, REMEMBERED PER WORKOUT — a different done-ness from the one above,
+ * in the same KV and for the same reason: a session settled yesterday has to
+ * re-open settled today.
+ *
+ * The key lived as a private literal in `state/session-store.ts` until Apple
+ * Health needed to ask the same question (17 September 2026). Health writes
+ * FINISHED sessions and nothing else, so its sweep has to read exactly the flag
+ * Finish sets — and a second copy of `session_done:${id}` in another file is a
+ * copy that drifts, at which point the sweep silently writes nothing and
+ * nothing on any screen says why. One definition, two readers.
+ *
+ * It is a string rather than a function on purpose at the call site in
+ * `db/health-writes.ts`: that query joins `meta` by `'session_done:' || w.id`,
+ * so the PREFIX is what it needs.
+ */
+export const SESSION_DONE_PREFIX = 'session_done:';
+
+export const sessionDoneKey = (workoutId: string) => `${SESSION_DONE_PREFIX}${workoutId}`;

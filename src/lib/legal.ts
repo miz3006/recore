@@ -53,7 +53,7 @@ export const APPLE_STANDARD_EULA_URL =
 /** Where a subscription is actually cancelled. Named in both documents. */
 export const MANAGE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
 
-export const LAST_UPDATED = '10 September 2026';
+export const LAST_UPDATED = '17 September 2026';
 
 /**
  * Three documents, one route. `parsing` is not a legal document — it is the
@@ -269,6 +269,15 @@ const PRIVACY: LegalDoc = {
           ? 'That is the whole list. Every row is scoped to your account at the database level, so no other user can read it unless you deliberately link a coach — see “If you link a coach” — and the same scoping is mirrored on the device: signing in as a different account wipes the local copy first.'
           : 'That is the whole list. Every row is scoped to your account at the database level, so no other user can read it, and the same scoping is mirrored on the device — signing in as a different account wipes the local copy first.',
         'We do not collect your location, your contacts, your photos, your health records, or your device advertising identifier.',
+      ],
+    },
+    {
+      heading: 'If you turn on Apple Health',
+      body: [
+        'Apple Health is off until you turn it on, in You → Apple Health, and it goes one way only.',
+        'With it on, each session you finish is added to the Health app on your iPhone as a workout: when it started, when it ended, and whether it was strength training or cardio. Nothing else. Recore does not write a calorie figure or a distance, because it cannot measure either, and it never writes a word you typed — not the note, not the check-in, not a lift name.',
+        'Recore reads nothing from Health. It does not ask for permission to read, and it holds none, so nothing in Health can change what your record says.',
+        'This happens entirely on your phone, between Recore and the Health app. It is not sent to us, it is not part of your account, and it does not sync. Turning it off stops Recore adding anything new; the workouts already in Health are yours and stay there until you delete them from the Health app.',
       ],
     },
     {

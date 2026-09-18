@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
   interpolateColor,
@@ -11,6 +11,7 @@ import Animated, {
 
 import { Icon } from '@/components/icon';
 import { PressableScale } from '@/components/motion';
+import { useDictation } from '@/components/use-dictation';
 import { track } from '@/lib/analytics';
 import {
   DEMO_EXAMPLE,
@@ -23,7 +24,7 @@ import {
 import { remoteDemoParse } from '@/lib/demo-parse-remote';
 import { success } from '@/lib/haptics';
 import { DUR, EASE } from '@/lib/motion';
-import { startDictation, voiceAvailable, type DictationHandle } from '@/lib/voice';
+import { voiceAvailable } from '@/lib/voice';
 import {
   alpha,
   blend,
@@ -68,8 +69,8 @@ import { useSelectFill } from './use-select-fill';
  * account yet — so the line is read by `lib/demo-parse.ts`, a small grammar for
  * exactly the shape this screen asks for. The real parser is asked only when a
  * session happens to exist (a replay from You), with a 2.5 s ceiling. Neither
- * path writes anything: the record starts at signup, from the person's own raw
- * text (`lib/onboarding-seed.ts`).
+ * path writes anything, and neither does the screen: the record starts with
+ * the first session the person logs for real (owner, 17 September 2026).
  *
  * ## It cannot dead-end
  *
@@ -130,18 +131,13 @@ export function ParseDemo({
   const latest = useRef('');
   const [focused, setFocused] = useState(false);
   const [landed, setLanded] = useState<Landed | null>(null);
-  const [recording, setRecording] = useState(false);
   const [mic] = useState(() => voiceAvailable());
 
-  const dictation = useRef<DictationHandle | null>(null);
   /** How many times this person asked the screen to read something. The number
    * that says whether the demo is a moment or a fight (§13). */
   const attempts = useRef(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const typing = useRef<ReturnType<typeof setInterval> | null>(null);
-  /** The words dictation started from — the same base-note shape the Today
-   * toolbar uses, so an utterance replaces itself instead of stacking. */
-  const spoken = useRef(false);
 
   const flash = useSharedValue(0);
   const reveal = useSharedValue(0);
@@ -165,9 +161,10 @@ export function ParseDemo({
     return () => clearTimeout(t);
   }, []);
 
+  // Dictation tears itself down — `useDictation` owns that, and it is the
+  // only thing on this screen that can outlive the render.
   useEffect(
     () => () => {
-      dictation.current?.stop();
       if (typing.current) clearInterval(typing.current);
       for (const t of timers.current) clearTimeout(t);
     },
@@ -272,30 +269,25 @@ export function ParseDemo({
     }, TYPE_MS);
   }, [run, write]);
 
-  const toggleMic = useCallback(async () => {
-    if (recording) {
-      dictation.current?.stop();
-      return;
-    }
-    spoken.current = false;
-    const handle = await startDictation({
-      onTranscript: (transcript) => {
-        spoken.current = true;
-        write(transcript);
-      },
-      onEnd: () => {
-        dictation.current = null;
-        setRecording(false);
-        // The utterance is the submission: nobody dictates a line and then
-        // reaches for a return key.
-        if (spoken.current) void run('dictated', latest.current);
-      },
-    });
-    if (handle) {
-      dictation.current = handle;
-      setRecording(true);
-    }
-  }, [recording, run, write]);
+  /**
+   * DICTATION — `use-dictation.ts`, the same engine Today's toolbar uses, so
+   * the demo cannot promise a microphone that behaves differently from the one
+   * a person meets five minutes later. The field is a single line, so the
+   * dictated block is joined with spaces rather than newlines.
+   */
+  const dictation = useDictation({
+    control: useMemo(
+      () => ({ get: () => latest.current, set: (text: string) => write(text.replace(/\n+/g, ' ')) }),
+      [write],
+    ),
+    value: text,
+    // The utterance is the submission: nobody dictates a line and then reaches
+    // for a return key.
+    onSettled: (_reason, spoke) => {
+      if (spoke) void run('dictated', latest.current);
+    },
+    onUnavailable: () => {},
+  });
 
   // Two washes on one surface: focus is the steady state, the flash rides over
   // it for one beat. Nested rather than blended by hand, so a field that is
@@ -337,16 +329,16 @@ export function ParseDemo({
             module is not linked, and then there is no microphone here at all. */}
         {mic ? (
           <Pressable
-            onPress={() => void toggleMic()}
+            onPress={dictation.toggle}
             hitSlop={spacing.sm}
             accessibilityRole="button"
-            accessibilityLabel={recording ? 'Stop dictation' : 'Dictate a line'}
-            accessibilityState={{ selected: recording }}
+            accessibilityLabel={dictation.listening ? 'Stop dictation' : 'Dictate a line'}
+            accessibilityState={{ selected: dictation.listening }}
             style={({ pressed }) => [styles.mic, pressed && styles.pressed]}>
             <Icon
-              name={recording ? 'mic-on' : 'mic'}
+              name={dictation.listening ? 'mic-on' : 'mic'}
               size={moderateScale(20)}
-              tint={recording ? color.brand : color.textMuted}
+              tint={dictation.listening ? color.brand : color.textMuted}
             />
           </Pressable>
         ) : null}

@@ -38,6 +38,22 @@ import type { ScreenProps } from './types';
  * screen 6 named a lift in this list, its load arrives pre-filled with the
  * weight they wrote — `matchKeyLift` is the same matcher the shipping flow
  * uses. The defaults fill in around it, never over it.
+ *
+ * ## IT CAN BE DECLINED (owner, 17 September 2026)
+ *
+ * This is the heaviest screen in the flow and it is the one screen whose
+ * answer a person may genuinely not have to hand — nobody remembers their
+ * overhead press standing in a queue. So there is a skip under the button, and
+ * it is a real skip: `keyLifts` is emptied, so the commit writes no lifts and
+ * no loads, and every screen downstream already has an honest shape for that
+ * (screen 16 states the rule in words instead of drawing a chart, the reveal
+ * leaves the row out, the paywall drops its figure). The lifts are then added
+ * in You, where they can be changed anyway.
+ *
+ * What the skip must NOT do is leave the seed behind. `liftsSkipped` is why
+ * the flag exists: without it, stepping back one screen re-seeded the big
+ * three and a Continue from there would have written 60/80/100 kg as the
+ * person's own numbers.
  */
 export function LiftsScreen({ def, progress, onAdvance, onBack, echo }: ScreenProps) {
   const answers = useV2((s) => s.answers);
@@ -50,7 +66,7 @@ export function LiftsScreen({ def, progress, onAdvance, onBack, echo }: ScreenPr
   // Seed once, into empty state only: the demo line first (their own words
   // beat any default), then the big three around whatever it claimed.
   useEffect(() => {
-    if (answers.keyLifts.length > 0) return;
+    if (answers.keyLifts.length > 0 || answers.liftsSkipped) return;
     const offered = KEY_LIFTS.map((l) => l.id);
     for (const entry of answers.demoEntries) {
       const matched = matchKeyLift(entry.exerciseName, offered);
@@ -73,8 +89,24 @@ export function LiftsScreen({ def, progress, onAdvance, onBack, echo }: ScreenPr
 
   const onToggle = (id: string) => {
     toggle('keyLifts', id, MAX_KEY_LIFTS);
+    // A lift back on the sheet is no longer a declined screen.
+    if (answers.liftsSkipped) set('liftsSkipped', false);
     if (answers.liftLoads[id] === undefined) setLoad(id, START_KG[id] ?? FALLBACK_START_KG);
     track('onboarding_answer', { flow: 'v2', step: def.step, step_id: def.id, value: id });
+  };
+
+  /**
+   * DECLINE THE SCREEN. The sheet is emptied rather than left seeded, because
+   * the seed is the app's guess and the commit may only ever write the
+   * person's own numbers. The loads themselves are kept: nothing downstream
+   * reads a load for a lift that is not on the sheet, and a person who comes
+   * back and re-adds bench press should find the number they typed.
+   */
+  const onSkip = () => {
+    set('keyLifts', []);
+    set('liftsSkipped', true);
+    track('onboarding_answer', { flow: 'v2', step: def.step, step_id: 'lifts_skip', value: 'skip' });
+    onAdvance();
   };
 
   // The rows keep the offered order, whatever order the taps came in — the
@@ -88,7 +120,11 @@ export function LiftsScreen({ def, progress, onAdvance, onBack, echo }: ScreenPr
       progress={progress}
       echo={echo}
       onBack={onBack}
-      cta={{ enabled: chosen.length > 0, onPress: onAdvance }}
+      // A SKIPPED SCREEN IS AN ANSWERED SCREEN. Stepping back onto one that
+      // was declined used to find the button dead with an empty sheet under
+      // it, which reads as a dead end rather than as a choice already made.
+      cta={{ enabled: chosen.length > 0 || answers.liftsSkipped, onPress: onAdvance }}
+      footerLink={{ label: "Skip — I'll add these later", onPress: onSkip }}
       testID="v2-screen-lifts">
       <View>
         <Enter index={2}>

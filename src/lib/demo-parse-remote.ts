@@ -1,5 +1,6 @@
 import { isSupabaseConfigured } from '@/lib/env';
 import { devLog } from '@/lib/log';
+import { withDeadline } from '@/lib/net-deadline';
 import { supabase } from '@/lib/supabase';
 import { validateParseResult } from '@/lib/parse/types';
 
@@ -23,8 +24,8 @@ import { canonicalLift, type DemoReading } from './demo-parse';
  *    example is a better answer than a spinner (CLAUDE.md §2 invariant 1 — no
  *    screen waits on a model).
  *  · **Nothing is written.** No workout row, no parse cache, no funnel counter:
- *    this reads a line the person is looking at, and the record starts at
- *    signup with their raw text (`lib/onboarding-seed.ts`).
+ *    this reads a line the person is looking at, and the record starts with
+ *    the first session they log for real.
  *  · **Never throws.** Every failure is null, and null means "show the canned
  *    example", which is a screen rather than an error state.
  */
@@ -38,9 +39,16 @@ export async function remoteDemoParse(text: string): Promise<DemoReading | null>
 
   try {
     // No session → no JWT → the function would refuse. Asking first keeps the
-    // ordinary case (a first run, signed out) at zero network cost.
-    const { data: auth } = await supabase.auth.getSession();
-    if (!auth.session) return null;
+    // ordinary case (a first run, signed out) at zero network cost — and the
+    // ceiling covers this half too (17 September 2026): `getSession` waits on
+    // the same auth lock a stuck token refresh holds, so without it the demo's
+    // 2.5 s promise was only ever about the second await of the two.
+    const session = await withDeadline(
+      supabase.auth.getSession().then(({ data }) => data.session),
+      DEMO_PARSE_TIMEOUT_MS,
+      null,
+    );
+    if (!session) return null;
 
     const response = await Promise.race([
       supabase.functions.invoke('parse-workout', { body: { raw_text: line } }),

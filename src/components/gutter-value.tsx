@@ -686,6 +686,48 @@ export function ReadingMark() {
   );
 }
 
+/**
+ * THE MARK FOR A READING THAT CANNOT HAPPEN YET — the same three dots, holding
+ * still, in amber (17 September 2026, owner: *"oznaci tudi to vrstico da je v
+ * obdelavi … z oranzno/rumeno barvo"*).
+ *
+ * It stands in the slot `ReadingMark` stands in, wears the same geometry, and
+ * differs in exactly the two ways the state differs:
+ *
+ * - **It does not move.** Movement on this row is the app's claim that work is
+ *   happening, and underground no work is happening: the request never left the
+ *   phone. Dots waving at a service nobody can reach would be the one thing
+ *   §14 forbids outright — a mark that claims progress it is not making.
+ * - **It is `warning` amber**, the token whose own definition names this job
+ *   ("offline/allowance banners"). Blue on this page means the parser is
+ *   reading; the line has to be able to say *asked, and waiting* without
+ *   borrowing the colour of a thing that is under way.
+ *
+ * Nothing about the record changes while it stands there. The words are the
+ * athlete's, saved in `raw_text` on this phone, exported like any other line —
+ * the only thing missing is the reading, and the reading is owed, not lost.
+ * `session-store.ts`'s `parseStalled` is the fact behind it and the reconnect
+ * listener beside it is what ends it.
+ *
+ * Reduce Motion needs no branch here: a mark that never moves is already the
+ * accessible one, which is also why it needs no `ReadingWord` fallback.
+ */
+export function WaitingMark() {
+  return (
+    <View
+      style={styles.markSlot}
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel="waiting for a connection — this line is saved on your phone and will be read when you are back online">
+      <View style={styles.pendingRow}>
+        <View style={[styles.pendingDot, styles.waitingDot]} />
+        <View style={[styles.pendingDot, styles.waitingDot]} />
+        <View style={[styles.pendingDot, styles.waitingDot]} />
+      </View>
+    </View>
+  );
+}
+
 export function GutterPending({ rowHeight }: { rowHeight: number }) {
   return (
     <View style={[{ height: rowHeight }, styles.row]}>
@@ -728,6 +770,13 @@ const styles = StyleSheet.create({
     height: PENDING_DOT,
     borderRadius: PENDING_DOT / 2,
     backgroundColor: color.textSecondary,
+  },
+  /** `WaitingMark`'s ink. Full strength, unlike the waving dots, which spend
+   * their opacity on the wave: a mark that holds still has nothing else to be
+   * seen with. `warning` measures 5.59:1 on the canvas — the best-contrasting
+   * accent in the palette, which is what a small mark needs. */
+  waitingDot: {
+    backgroundColor: color.warning,
   },
   /**
    * The track the band runs along: the whole row, edge to edge, absolutely

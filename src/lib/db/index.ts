@@ -128,13 +128,11 @@ const OWNED_TABLES = [
 /**
  * HAND THE PRE-ACCOUNT RECORD TO THE ACCOUNT (owner's ruling, 4 September 2026).
  *
- * The funnel writes before an account exists — onboarding answers, a plan, the
- * demo line that becomes the first session — all scoped to the local id
- * (`auth/provider.tsx`). Until this existed, `ensureLocalUser` saw the id change
- * at the instant sign-in succeeded and did what it does for any change: wiped
- * everything. The person's plan and every `pref_*` answer were deleted at the
- * exact moment they finished the funnel, and the only reason it was survivable
- * is that `seedOnboardingDemo` re-runs afterwards and re-seeds the one line.
+ * The funnel writes before an account exists — onboarding answers, a plan —
+ * all scoped to the local id (`auth/provider.tsx`). Until this existed,
+ * `ensureLocalUser` saw the id change at the instant sign-in succeeded and did
+ * what it does for any change: wiped everything. The person's plan and every
+ * `pref_*` answer were deleted at the exact moment they finished the funnel.
  *
  * So a claim, not a delete. **`meta` is kept whole** — that is where `prefs.ts`
  * stores every onboarding answer — and only its `user_id` key is re-pointed.

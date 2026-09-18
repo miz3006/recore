@@ -24,11 +24,11 @@ import type { ParsedItem, ParseResult } from './parse/types.ts';
  * ## What it is NOT
  *
  * It is not a second source of truth and nothing it produces is ever written
- * into the record as a reading. What the person typed is kept VERBATIM
- * (`rawText`) and seeded as raw text after signup (`lib/onboarding-seed.ts`);
- * the real parser reads that text like any other line the moment there is an
- * account. This grammar only decides what the demo CARD says for the two
- * seconds it is on screen.
+ * into the record as a reading — nor is the line it read, which stays inside
+ * the flow (owner, 17 September 2026: the demo is a rehearsal, not a session).
+ * What the person typed is kept VERBATIM (`rawText`) for the screens after it.
+ * This grammar only decides what the demo CARD says for the two seconds it is
+ * on screen.
  *
  * ## The grammar
  *

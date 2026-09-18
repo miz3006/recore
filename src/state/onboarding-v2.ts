@@ -61,6 +61,22 @@ export interface V2Answers {
   /** Screen 13 — current load per lift, in kilograms. */
   liftLoads: Record<string, number>;
   /**
+   * Screen 15 — they declined the screen and will fill it in later.
+   *
+   * It exists because the screen SEEDS itself (the big three, loads editable),
+   * and a seed is not an answer. Without this, skipping and then stepping back
+   * one screen re-seeded the sheet, and a Continue from there would have
+   * written 60/80/100 kg as the person's own loads — the exact "previous
+   * answer silently replaced by a guess" that `onboarding-v2-commit.ts` is
+   * written against.
+   *
+   * Nothing downstream reads it: a skipped screen commits no lifts, which is
+   * already what an empty `keyLifts` means. It is the screen's memory of
+   * having been declined, and it is cleared the moment a lift goes back on the
+   * sheet.
+   */
+  liftsSkipped: boolean;
+  /**
    * Screen 13 — the smallest plate in their gym, in kilograms.
    *
    * `null` means "not answered", which is a first-class outcome: the screen
@@ -97,6 +113,7 @@ export const EMPTY_V2: V2Answers = {
   split: null,
   keyLifts: [],
   liftLoads: {},
+  liftsSkipped: false,
   smallestPlateKg: null,
   committed: false,
   recap: null,

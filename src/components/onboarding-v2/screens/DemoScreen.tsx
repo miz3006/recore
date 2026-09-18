@@ -1,7 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   InputAccessoryView,
   Keyboard,
   Platform,
@@ -12,9 +11,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { DictationBar } from '@/components/dictation-bar';
 import { GlassGroup, GlassPressable } from '@/components/glass';
 import { Icon } from '@/components/icon';
 import { PressableScale } from '@/components/motion';
+import { useDictation } from '@/components/use-dictation';
 import { track } from '@/lib/analytics';
 import { tap, tapMedium } from '@/lib/haptics';
 import {
@@ -28,7 +29,6 @@ import {
   spacing,
   type,
 } from '@/lib/theme';
-import { startDictation, voiceAvailable, type DictationHandle } from '@/lib/voice';
 import { useV2 } from '@/state/onboarding-v2';
 
 import { ContinueButton } from '../ContinueButton';
@@ -120,52 +120,17 @@ export function DemoScreen({ def, progress, onAdvance, onBack }: ScreenProps) {
    * the only difference is where the words land — the page's own note,
    * through the `noteControl` door, instead of the session store.
    */
-  const [recording, setRecording] = useState(false);
-  const dictation = useRef<DictationHandle | null>(null);
-  const baseNote = useRef('');
   const noteControl = useRef<{ get: () => string; set: (text: string) => void } | null>(null);
-
-  useEffect(
-    () => () => {
-      dictation.current?.stop();
-    },
-    [],
-  );
-
-  const handleMic = useCallback(async () => {
-    if (recording) {
-      tapMedium();
-      dictation.current?.stop();
-      return;
-    }
-    tap();
-    if (!voiceAvailable()) {
-      Alert.alert(
-        'Voice input',
-        'Dictation needs the development build (npx expo run:ios) — it is not available in Expo Go.',
-      );
-      return;
-    }
-    baseNote.current = (noteControl.current?.get() ?? '').replace(/\s+$/, '');
-    const handle = await startDictation({
-      onTranscript: (text, final) => {
-        const base = baseNote.current;
-        const joined = base.length > 0 ? `${base}\n${text}` : text;
-        noteControl.current?.set(joined);
-        if (final) baseNote.current = joined; // next utterance starts a new line
-      },
-      onEnd: () => {
-        dictation.current = null;
-        setRecording(false);
-      },
-    });
-    if (handle) {
-      dictation.current = handle;
-      setRecording(true);
-    } else {
-      Alert.alert('Voice input', 'Microphone or speech permission was not granted.');
-    }
-  }, [recording]);
+  const dictation = useDictation({
+    control: useMemo(
+      () => ({
+        get: () => noteControl.current?.get() ?? '',
+        set: (text: string) => noteControl.current?.set(text),
+      }),
+      [],
+    ),
+    settleOnEnd: true,
+  });
 
   useEffect(() => {
     const show = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -259,22 +224,37 @@ export function DemoScreen({ def, progress, onAdvance, onBack }: ScreenProps) {
               lines · volume" label that stood here followed Today's own
               status pill out of the app — the moment the bar is up the person
               is WRITING, and the reading is already on the page as cards. */}
+          {/* THE LISTENING BAR — Today's, unchanged. The demo promises "the
+              same dictation as Today", and that promise now includes the
+              microphone visibly letting go when the words are finished. */}
+          {dictation.listening ? (
+            <DictationBar
+              level={dictation.level}
+              seconds={dictation.seconds}
+              fallbackLanguage={dictation.usingFallbackLanguage}
+              onStop={() => {
+                tapMedium();
+                dictation.stop('user');
+              }}
+            />
+          ) : null}
+
           <GlassGroup style={styles.row}>
             {/* THE MIC — Today's dictation, on Today's own control: outline
                 at rest, filled ink circle while it listens. */}
             <GlassPressable
-              onPress={() => void handleMic()}
+              onPress={dictation.toggle}
               haptic="none"
               activeScale={0.92}
               radius={ROUND / 2}
               style={styles.round}
               contentStyle={styles.roundContent}
-              solidFill={recording ? color.accent : undefined}
-              accessibilityLabel={recording ? 'Stop dictation' : 'Dictate'}>
+              solidFill={dictation.listening ? color.accent : undefined}
+              accessibilityLabel={dictation.listening ? 'Stop dictation' : 'Dictate'}>
               <Icon
-                name={recording ? 'mic-on' : 'mic'}
+                name={dictation.listening ? 'mic-on' : 'mic'}
                 size={ACCESSORY_GLYPH}
-                tint={recording ? color.onInk : color.textPrimary}
+                tint={dictation.listening ? color.onInk : color.textPrimary}
               />
             </GlassPressable>
 

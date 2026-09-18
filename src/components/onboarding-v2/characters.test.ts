@@ -191,15 +191,25 @@ test('an option that drives a branch in app logic is never an opt-out', () => {
   }
 });
 
-test('"I don\'t follow a split" is a peer row on a five-row screen', () => {
+test('the split screen separates "no split" from "a split you do not list"', () => {
   const split = FLOW.find((s) => s.id === 'split');
   assert.ok(split);
   const options = split.options ?? [];
-  assert.equal(options.length, 5);
-  assert.equal(options.filter((o) => o.optOut).length, 0, 'screen 12 has no ghost row');
+  assert.equal(options.length, 6);
+
+  // The two answers that look alike and are not. `flat` is the only route into
+  // flat clustering mode, so it stays a peer row however much it reads like an
+  // opt-out; `other` turns nothing on, so it is the screen's one ghost row.
   const flat = options.find((o) => o.id === 'flat');
   assert.ok(flat?.drivesBranch, 'flat mode is a branch and must be declared as one');
+  assert.ok(!flat?.optOut, 'flat mode is a peer row, never a ghost row');
   assert.equal(flat?.icon, undefined);
+
+  const other = options.find((o) => o.id === 'other');
+  assert.ok(other?.optOut, '"Something else" gives the app nothing and belongs below the list');
+  assert.ok(!other?.drivesBranch);
+
+  assert.equal(options.filter((o) => o.optOut).length, 1, 'screen 14 has exactly one ghost row');
 });
 
 /**

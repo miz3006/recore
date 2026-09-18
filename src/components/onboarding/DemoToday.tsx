@@ -26,6 +26,7 @@ import { Icon } from '@/components/icon';
 import { PressableScale } from '@/components/motion';
 import { PaperField } from '@/components/paper-field';
 import { SetTable, worthTable } from '@/components/set-table';
+import { useDictation } from '@/components/use-dictation';
 import { track } from '@/lib/analytics';
 import {
   DEMO_EXAMPLE,
@@ -55,7 +56,7 @@ import {
   spacing,
   type,
 } from '@/lib/theme';
-import { startDictation, voiceAvailable, type DictationHandle } from '@/lib/voice';
+import { voiceAvailable } from '@/lib/voice';
 
 import { PrimaryCta } from './PrimaryCta';
 import { ProgressRail } from './ProgressRail';
@@ -181,18 +182,14 @@ export function DemoToday({
   /** The field's current words, readable from a callback that is not a render —
    * dictation ends outside React's flow and must not read a stale closure. */
   const latest = useRef('');
-  const [recording, setRecording] = useState(false);
   const [mic] = useState(() => voiceAvailable());
   /** With the keyboard up the avoiding view already owns the bottom of the
    * screen, home indicator included — adding the inset over it would float the
    * button a second time. Exactly what the Today toolbar does. */
   const [keyboardOpen, setKeyboardOpen] = useState(false);
 
-  const dictation = useRef<DictationHandle | null>(null);
   /** How many times this person asked the screen to read something (§13). */
   const attempts = useRef(0);
-  /** Whether dictation produced words — an utterance is its own submission. */
-  const spoken = useRef(false);
 
   const write = useCallback((value: string) => {
     latest.current = value;
@@ -217,13 +214,6 @@ export function DemoToday({
       h.remove();
     };
   }, []);
-
-  useEffect(
-    () => () => {
-      dictation.current?.stop();
-    },
-    [],
-  );
 
   const page = lines.join('\n');
 
@@ -314,30 +304,25 @@ export function DemoToday({
     [land],
   );
 
-  const toggleMic = useCallback(async () => {
-    if (recording) {
-      dictation.current?.stop();
-      return;
-    }
-    spoken.current = false;
-    const handle = await startDictation({
-      onTranscript: (transcript) => {
-        spoken.current = true;
-        write(transcript);
-      },
-      onEnd: () => {
-        dictation.current = null;
-        setRecording(false);
-        // The utterance is the submission: nobody dictates a line and then
-        // reaches for a return key.
-        if (spoken.current) commit('dictated', latest.current);
-      },
-    });
-    if (handle) {
-      dictation.current = handle;
-      setRecording(true);
-    }
-  }, [commit, recording, write]);
+  /**
+   * DICTATION — `use-dictation.ts`, the engine Today's toolbar runs on, so the
+   * demo microphone stops behaving differently from the real one: it ends on
+   * the button, on a spoken "done", on silence, and the moment this field is
+   * typed into.
+   */
+  const dictation = useDictation({
+    control: useMemo(
+      () => ({ get: () => latest.current, set: write }),
+      [write],
+    ),
+    value: text,
+    // The utterance is the submission: nobody dictates a line and then reaches
+    // for a return key.
+    onSettled: (_reason, spoke) => {
+      if (spoke) commit('dictated', latest.current);
+    },
+    onUnavailable: () => {},
+  });
 
   /** The live read-out of the line being typed — Today draws exactly this. */
   const preview = useMemo(
@@ -486,16 +471,16 @@ export function DemoToday({
                         microphone here at all. */}
                     {mic ? (
                       <PressableScale
-                        onPress={() => void toggleMic()}
+                        onPress={dictation.toggle}
                         activeScale={0.94}
                         accessibilityRole="button"
-                        accessibilityLabel={recording ? 'Stop dictation' : 'Dictate a line'}
-                        accessibilityState={{ selected: recording }}
+                        accessibilityLabel={dictation.listening ? 'Stop dictation' : 'Dictate a line'}
+                        accessibilityState={{ selected: dictation.listening }}
                         style={styles.mic}>
                         <Icon
-                          name={recording ? 'mic-on' : 'mic'}
+                          name={dictation.listening ? 'mic-on' : 'mic'}
                           size={moderateScale(19)}
-                          tint={recording ? color.brand : color.textSecondary}
+                          tint={dictation.listening ? color.brand : color.textSecondary}
                         />
                       </PressableScale>
                     ) : null}

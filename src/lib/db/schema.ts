@@ -6,7 +6,7 @@
  * table, and `parse_cache` (the last parse result + gutter signals per
  * workout, kept so the gutter renders instantly after a cold start).
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export const SCHEMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -151,6 +151,24 @@ CREATE TABLE IF NOT EXISTS parse_cache (
   signals_json TEXT NOT NULL,
   updated_at   TEXT NOT NULL
 );
+
+-- LOCAL ONLY: which finished sessions have already been handed to Apple Health
+-- (\`lib/health/\`). One row per workout, written after HealthKit accepts the
+-- sample, so nothing can ever put the same session into somebody's Health app
+-- twice — not a second Finish, not a re-open, not a catch-up pass.
+--
+-- It is LOCAL because Health is a property of a PHONE, not of an account: the
+-- same session written from an iPad has to be written again on the iPhone, and
+-- a synced ledger would silently suppress exactly that. It also holds the span
+-- that was actually written, which is the only way this app can say what is in
+-- Health rather than what it computes today.
+CREATE TABLE IF NOT EXISTS health_writes (
+  workout_id TEXT PRIMARY KEY NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+  started_at TEXT NOT NULL,                 -- UTC ISO, the workout's start in Health
+  ended_at   TEXT NOT NULL,                 -- UTC ISO, its end
+  activity   TEXT NOT NULL,                 -- the HealthActivity that was chosen
+  written_at TEXT NOT NULL
+);
 `;
 
 /**
@@ -209,6 +227,7 @@ CREATE TABLE IF NOT EXISTS parse_cache (
  */
 export const WIPE_SQL = [
   'DELETE FROM parse_cache',
+  'DELETE FROM health_writes',
   'DELETE FROM corrections',
   'DELETE FROM alias_overrides',
   'DELETE FROM sets',

@@ -287,6 +287,7 @@ of drift this repository has actually suffered before.
 | **One reflection prompt per session, not per card** (owner ask, 12 Aug) | **done** | `src/lib/session-activity.ts` (+ test), `src/components/use-session-active.ts`, `note-surface.tsx` (`showReflectionRow`), `session-store.ts` (`finishSession`, `lastActivityAt`, `sessionFinished`), `bottom-toolbar.tsx` | §8.1 asks once, about the session; the note bubble asked once per exercise, five times a session. One quiet row now sits under the ledger — "Add a note about this session" — opening the check-in that already existed. It appears when the session has ENDED: Finish pressed, or 90 quiet minutes with work on the record (so the athlete who never presses Finish is still asked), and disappears once a reflection exists. Finish is remembered per workout in the meta KV (`session_done:<id>`), like receipt mode; writing another line re-opens the session. |
 | **The session's reflection printed under its lifts** (owner ask, 20 Aug · redrawn 10 Sep 2026) | **done** | `src/components/check-in-note.tsx` (new — `CheckInNote`), `src/components/note-surface.tsx` (the `reflection` memo, which now also reads `getSessionEffort`) | The check-in was write-only from Today: the words went into `workouts.reflection` and no screen printed them back, so the prompt row simply vanished and the note was only visible by re-opening the sheet. The day prints it where the day's lifts end — and since 10 Sep it prints it as ONE QUOTED BLOCK rather than two grey lines. Owner's ask: *"naredi cim lepsi mozen nacin napisa tistih informaciji na today … naj izgleda tudi cim bolj native ios"*. Four things, in the order the eye reads them: an eyebrow (`HOW IT WENT`) that says what the block is; the session's rating as the word the athlete picked; the armed chips **as the app's own chips** (`chip-row.tsx`'s white pill, hairline, `shadow.card`, ink label, one step smaller because they are answers already given, not controls); and their prose in **ink** at 16/23, a step under an exercise name. A 2 pt block-quote rule runs down the record's rail column, under the check rings, which is what lets the block hold together with no card on the one screen the design system forbids cards on. Three defects it fixes, each one a rule the repository already had: a chip that read as a pill in the sheet and as `a · b` prose on Today (the drift `chip-row.tsx` was written to end); the athlete's own sentence set in `textSecondary`, which §Colour reserves for what the eye may skip; and no label at all, so a note under a ledger could be read as a comment on the last lift. The prose clamps at six lines — ten was tried on the simulator and pushed the writing line off the page, which is the one thing Today may not do — with iOS's own ellipsis as the tell and the whole note in the VoiceOver label. Verified on the iPhone 17 Pro simulator (iOS 26.5) in four states: rating + chips + prose, rating only, a 737-character note, and Dynamic Type accessibility-extra-large. It sits **above** the writing line, with the settled record, while the invitation to write it stays below — and that prompt is now gated on the WORDS, not on the block, so a session someone rated and did not write about is still asked. Tapping re-opens the same check-in. Day-scoped by construction: `workoutId` follows the selected day. No new column, no new event, no model.
 | **Every text field has a way to close the keyboard** (owner ask, 20 Aug) | **done** | `src/components/keyboard-done.tsx` (new), `app/(tabs)/you.tsx`, `app/plan-day.tsx`, `components/check-in-sheet.tsx`, `entry-note-sheet.tsx`, `fix-sheet.tsx`, `planned-checklist.tsx`, `note-surface.tsx` | Audited against three exits — tap outside, return/done, scroll. iOS number pads (`decimal-pad`, `number-pad`) have **no return key**, so the ten fields using one now carry a `Done` accessory bar (`inputAccessoryViewID`); the bar is mounted inside each sheet that needs it, since a `BottomSheet` is its own RN `Modal` window. Five input-bearing ScrollViews gained `keyboardDismissMode="interactive"`. The four sheets whose field is multiline or numeric make their title block a `Keyboard.dismiss()` target (`accessible={false}`, so VoiceOver still reads it as text). The ⋯ sheet's Note row and both reflection rows dismiss before presenting, as the Fix reading row already did. Today's composer is the deliberate exception: return commits a line and a page tap re-focuses, because the page IS the composer — its labelled hide-keyboard button is the exit. |
+| **The microphone behaves like a dictaphone, and always lets go** (owner, 17 Sep 2026) | **built; the bar seen running, the recogniser NOT — the simulator has no microphone** | `src/lib/voice-lines.ts` (new, pure + tested), `src/lib/voice.ts` (rewritten), `src/lib/voice.test.ts` (new, 13), `src/components/use-dictation.ts` (new), `src/components/dictation-bar.tsx` (new), `src/components/bottom-toolbar.tsx`, `src/components/onboarding-v2/screens/DemoScreen.tsx`, `src/components/onboarding/ParseDemo.tsx`, `src/components/onboarding/DemoToday.tsx` | The owner's report was two bugs in one coat: *"kr ostane vklopljen … in ko hočem zapisati novo vajo zapisuje nazaj v to prvo vrstico"*. **Staying on:** nothing ended a session except tapping the mic again — not Finish, not the keyboard going down, not the app backgrounding, and `stop()` was a request with no follow-up, so a wedged recogniser left the UI claiming to listen for ever. It now ends on the button, on a spoken **"done" / "that's it"** (`stripStopPhrase`, stripped from the text so the command is never recorded), on 8 s with nothing recognised, on a 3-minute cap, on backgrounding, on **typing**, and on the writing surface going away — with `stop → abort → declare-it-over` watchdogs behind each. **Writing back into the first line:** the recogniser hands back ONE growing transcript, and the record is written one exercise per line; word timings now break it on pauses ≥ 700 ms (`splitOnPauses`), every update carries the whole block rather than a fragment to append, a foreign edit ends the session instead of overwriting it, and the block settles with an empty composer line so the next thing typed starts a line of its own. **The dictaphone:** a listening bar in the accessory row's first slot — a live waveform driven by the recogniser's own volume metering, the elapsed clock, the word *listening*, and a labelled `Stop` — which exists only while the microphone is live and leaves with it. Pattern studied on Appllama first (SpeakApp AI, Noted, ABA English, Song AI: all four carry a level readout, a clock and an unmissable stop); the red those apps use was left behind, because this row is monochrome and colour here means state. Motion is `transform` only, Reduce Motion gets a still silhouette (verified: pixel-identical across a second), and Dynamic Type at `accessibility-extra-large` drops the clock rather than clip the action — which it did, to "Sto", before it was measured. All four dictating surfaces now run one engine (`useDictation`) instead of four copies of the same fifteen lines. **Language, same day, on the owner's question:** dictation was pinned to `en-US` on every phone — the module defaults `lang` to English and the comment in `voice.ts` claimed it defaulted to the device locale. It now resolves the device's language against `getSupportedLocales()` and falls back to English only when Apple has no recogniser for it, which it does not for **Slovene** (measured on iOS 26.5: 63 locales, the Slavic ones `cs-CZ`, `hr-HR`, `pl-PL`, `ru-RU`, `sk-SK`, `uk-UA`). The bar then reads `listening · English`, because a microphone quietly hearing a language you are not speaking is a §2 problem, not a cosmetic one. The spoken exit is multilingual and diacritic-proof (Slovene, Croatian/Serbian, German, Italian); words that are ordinary inside a workout remark — "dovolj", "dosta" — were deliberately left out of it. |
 | **The accessory bar is three glyphs, drawn by iOS** (owner ask, 20 Aug) | **done** | `src/components/bottom-toolbar.tsx`, `src/components/icon.tsx` (`SF` map, `mic-on`) | Two changes to the bar over the keyboard. **(1) The plan button is removed** — the labelled round that wrote the next prescribed line into the note. It was the "still within reach" clause of the 18 Aug ruling that took the PLANNED strip off Today, and on demand meant a fourth control standing in the row all session for a line most days never have; the bar now holds only what helps someone WRITE (time, voice, a way down) and Today carries no prescription at any depth. `nextPlanLine`/`handlePlan` and the `planRow` style are gone; `checkGhostLine` stays because `ghost-prediction.tsx` still writes through it, and `icon.tsx`'s `plan` glyph + indigo tint stay as vocabulary with no call site. **(2) The three survivors draw as SF Symbols on iOS** — `timer`, `mic` / `mic.fill`, `keyboard.chevron.compact.down` — via one opt-in map inside `Icon`; `SymbolView` renders the existing Ionicons/MCI outline as its own fallback off-iOS, so no call site has a platform branch and the two can't drift. `expo-symbols` was already a dependency and had never been used. The mic gains a FILLED state while listening (`mic-on`, the `note`/`note-on` contract). Only these three are mapped, so no screen shows a mixed pair. |
 | **§8.2** Session-start question on an empty Today (owner ask, 6 Aug) | **done** | `src/components/session-start.tsx`, `src/app/(tabs)/today.tsx`, `src/lib/db/plan.ts` (`getPlanDayChoice`/`setPlanDayChoice`, choice read in `resolveTodayPlanDay`), `src/lib/db/strip.ts` (`PlanStrip.dayId`), `src/state/session-store.ts` (`choosePlanDay`), `src/components/empty-note-cards.tsx` | Shows only with a split AND ≥1 logged session, on today, note empty, keyboard down; otherwise the plain `PlanStrip` rendered as before — **both are gone: the card was removed 17 Aug and the strip 18 Aug (see the change log), so nothing from this row is on Today any more; `getPlanDayChoice`/`setPlanDayChoice` and `PlanStrip.dayId` survive because the calendar sheet and Next's brief still read them.** The chip answer is persisted day-keyed in the local meta KV and read inside `resolveTodayPlanDay`, so the strip, calendar sheet and Next brief agree with it by construction (deliberately not synced — a gym-device answer that expires at midnight). Start only calls `focusNote()`; nothing is written into `raw_text`. The empty-day LAST SESSION peek yields to the card's own last-session line in exactly the card's eligibility condition. Entirely deterministic — no model call, so no §9.4 evaluation needed. No §13 event exists for this surface; none was invented. |
 
@@ -393,6 +394,7 @@ of drift this repository has actually suffered before.
 | Profile makes onboarding context editable | **done** | `src/app/(tabs)/you.tsx` (About you), `src/components/profile/answer-sheet.tsx`, `lifts-sheet.tsx`, `pref-sheet.tsx`, `recap-sheet.tsx` | **Rewritten against the v2 flow, 28 Aug 2026.** All five v2 answers are editable (goal, experience, sessions a week, split, key lifts + loads), each in the flow's own picker, plus a "Run setup again" row. The settings the flow does *not* ask — units, rest, bar, writing language, set readings, recap — open the same kind of sheet. "Usual days" was deleted: `pref_usual_days` is a v1 question and no code reads it. |
 | Preferred days never become a broken streak or guilt | **done** | `src/lib/streak.ts:7–27`, `src/app/(tabs)/you.tsx` | Streak counts *training days* with a seven-day tolerance and states "Rest days never break it." Deliberate and consistent with CLAUDE.md §2 rule 6. |
 | Import always available in You | **done** | `src/app/(tabs)/you.tsx`, `src/lib/import/pick.ts`, `src/lib/import/formats.ts` | Strong and Hevy CSV. |
+| Apple Health as a door onto the record | **done, one direction, 17 Sep 2026** | `src/app/(tabs)/you/health.tsx`, `src/lib/health/plan.ts`, `src/lib/health/index.ts`, `src/lib/db/health-writes.ts`, `app.json` (plugin) | Finished sessions are written to Health as workouts — start, end, kind of training, and nothing else. No energy and no distance (neither is derivable from a note, and Health adds what it is given to the day's totals). **Nothing is read**: no read permission is requested, and the bodyweight read the old TODO proposed is deliberately absent until §11's body context exists as a surface — `getBodyWeightKg` still has zero callers. Not verified on a device: needs a prebuild and a native rebuild. |
 | Subscription management, restore, export, privacy, deletion direct and clear | **done** | `src/app/(tabs)/you.tsx` (Subscription / Your data / Privacy / Account sections), `src/lib/account/delete.ts`, `supabase/functions/delete-account/` | The subscription row now shows the store's own state with the real renewal or charge date; Manage opens the customer-specific URL; Restore is real and reports what it found in the section footnote. |
 
 ---
@@ -999,6 +1001,100 @@ that were resolved rather than followed literally are in `FINDINGS.md`.
 ---
 
 ## Change log
+
+- **17 Sep 2026 — Apple Health is connected, one direction, and the switch does something.**
+  Owner: *"dej mi poglej v recore kje in kako bi lahko uporabil apple healt in kr vkljuci to."*
+
+  **What was there before was an honest refusal, and it was right at the time.** `/you/health`
+  said "Recore does not read or write Apple Health" and carried the only `TODO(owner)` in `src/`,
+  which named the missing pieces exactly: no dependency, no `com.apple.developer.healthkit`
+  entitlement, no usage strings, no native rebuild. Its reasoning for being a SCREEN rather than a
+  switch is quoted forward into the new file, because it is still the rule: a toggle that stores a
+  flag while nothing moves is a fabricated feature (CLAUDE.md §3), and health is the worst category
+  to fake one in — somebody who believes their training is going to Health stops checking.
+
+  **All four pieces now exist, so the switch does.**
+
+  | Piece | Where |
+  |---|---|
+  | `@kingstinct/react-native-healthkit` 15.1.0 + `react-native-nitro-modules` | `package.json` |
+  | The entitlement and both usage strings | `app.json` plugin props — `ios/` is generated, so this is the source of truth |
+  | The rules, pure and tested | `src/lib/health/plan.ts`, 10 tests in `plan.test.ts` |
+  | The only HealthKit calls in the app | `src/lib/health/index.ts` |
+  | The once-only ledger | `src/lib/db/health-writes.ts`, table `health_writes` (schema v9) |
+
+  **The direction is OUT and only out.** Finished sessions are written to Health as workouts;
+  nothing is read, no read permission is requested, and `requestAuthorization` is called with
+  `toShare` alone, so the sheet iOS presents has one section on it. That was the half the old
+  file's own TODO called "safe, useful".
+
+  **The read half was deliberately NOT built, and the reason is the invariant, not the effort.**
+  The TODO proposed reading bodyweight "to keep §11's body context current". There is no body
+  context: `getBodyWeightKg` has zero callers in `src/` — the v3 flow stopped asking, and §11's
+  editable body context is not a surface that exists. Reading somebody's weight out of Health into
+  a field no screen shows is the same fabricated feature pointed the other way, and a Health READ
+  request with nothing to use it for is also a request App Review declines. It becomes possible the
+  day §11's body context ships; until then the screen says in words that nothing comes back.
+
+  **Three things cross, and they are the record's own.** Start, end, and the kind of training.
+
+  - **No energy, ever.** It is not derivable from a lifting note — it needs body mass and an
+    activity coefficient, both of which would have to be invented — and Health ADDS what it is
+    given to the day's totals, where every other app on the phone reads it as measured. The same
+    argument retires distance: a parsed "5k easy" is not a measured route.
+  - **No words.** Not the note, not the reflection, not a lift name. Health receives a workout.
+  - **`HKWasUserEntered` is set**, because it was typed and not sensed.
+
+  **A session is eligible under the app's own existing honesty rules, not new ones.** It must be
+  finished (`session_done:<id>` — the flag moved out of `state/session-store.ts` into
+  `db/done-state.ts` so Health's sweep and Finish read one definition), its span must be one
+  `sessionMinutes` will accept (10 minutes to 6 hours, the rule that already refuses a note typed
+  from memory on the sofa or left open overnight), and its reading must have landed, because the
+  activity type is the second thing a workout sample carries. A note that is a good note but not a
+  timed session simply stays here.
+
+  **It is a SWEEP, not a write at Finish, because eligibility arrives late.** A session finished
+  before its parse lands is ineligible for ten seconds and eligible afterwards; without a second
+  trigger it would wait for the next Finish, which for somebody's last session before a rest week is
+  days. So `sweepHealth` runs from Finish (`bottom-toolbar.tsx`), from a landed parse
+  (`parse/client.ts`), and from the switch itself — and a sweep with nothing to do is two SQLite
+  reads and no native call at all.
+
+  **Nothing waits on HealthKit.** Every entry point is fire-and-forget (CLAUDE.md §2 rule 1 covers
+  models, sync, purchases and entitlements; HealthKit is the same kind of dependency and gets the
+  same treatment), a failed write leaves the row out of the ledger so the next sweep retries it, and
+  the native module is a lazy `import()` inside a try/catch — an OTA landing on a binary that
+  predates the pod reports `unavailable` instead of taking the You tab down with it.
+
+  **The ledger is local-only and that is a decision, not an omission.** Health belongs to a PHONE.
+  A synced ledger would tell the iPhone that the iPad had already written a session, and the
+  training would be missing from the Health app the person actually looks at. It is never pushed
+  and never pulled; `sync/index.ts` enumerates its columns everywhere, so it is invisible to both
+  directions by construction.
+
+  **Turning it off is not an undo.** What is in Health stays in Health — deleting somebody's health
+  records from under them is not a thing a settings toggle may do — and the screen says so. The one
+  repair, behind a destructive Alert that states its cost, is "write every session again" for
+  somebody who cleared Recore's data from inside the Health app; it can duplicate everything, and
+  the Alert says that too.
+
+  **What the screen may claim.** Counts of what the LEDGER proves Recore wrote, never what Health
+  currently holds — a person can delete Recore's data in the Health app and this app is never told.
+  Hence "Recore has written 12 sessions to Health from this iPhone", not "12 sessions are in
+  Health".
+
+  §13 gains three events, all counts and booleans: `health_write_enabled`, `health_write_disabled`,
+  `health_sessions_written` (`count`). No date, no duration, no lift — what would be described is
+  somebody's health record.
+
+  **Not verified on a device.** Everything below the JS boundary is unexercised: the simulator has
+  a Health app but this needs `npx expo prebuild --platform ios` and a native rebuild before a
+  single sample can move, and the HealthKit capability has to be enabled on the App ID (EAS can do
+  it). `RELEASE.md`'s App Privacy answer for Health also has to change from a flat "No" —
+  writing is not collecting, but the entitlement is now in the binary and the reviewer will ask.
+
+  Gates: `npm run typecheck` **pass**, `npm test` **1034/1034 pass**, `npx expo lint` **pass**
+  (0 errors), `npx expo export --platform ios` **pass**.
 
 - **16 Sep 2026 — the sign-in screen becomes a composition, and the development door gets a second
   gate and its first test.** Owner: *"naj bo dejansko lepši dizajn pri prijavi ... lepo strukturiraj
@@ -10898,3 +10994,646 @@ records. Nothing in the two files touched here reports anything.
 the free disk there is; the argument above is read off the code paths, not off a screen. The one
 thing to watch on a device is the moment after Done: the answered lifts should go to reading dots
 and settle back into cards on their own, with no confirm check on any of them.
+
+## 17 September 2026 — the demo stops becoming a session, the check moves onto the line, and the parse waits for the hand to stop
+
+Owner, two asks in one message: *"ko nekdo vpiše nekaj v onboarding tam kjer je wow efekt … naj se
+tisto ne zapiše v Today, ker je tisto le kot test in primer"*, and *"popravi pozicijo te kljukice"*
+with a photograph of Today's composer.
+
+### The rehearsal stops being written down
+
+Screen 6 of the v2 flow is the Today page, live: you type a line, the offline grammar reads it, and
+the card settles under your own words. Since 20 August 2026 that line was also carried into the
+record at signup (`lib/onboarding-seed.ts`), so the app opened on the person's own writing instead
+of on an empty page. The conversion argument was good and the product argument is better: **what is
+typed on that screen exists to watch the parser work.** `bench` on its own, a lift the person is not
+doing today, a sentence typed twice to see the animation again — none of it is training, and all of
+it landed on Today dated the day they signed up. The first thing the athlete owned was a fiction
+they had to delete, on the one surface in this app that is only ever theirs (CLAUDE.md §3).
+
+So the seed is gone: the file, the call between `ensureLocalUser` and `hydrate`, the `ob_demo_seeded`
+marker and the per-workout `ob_demo_origin` flag (which nothing read). **The flow keeps the answer** —
+`demoText` and `demoEntries` still feed the reading screen, the key-lift pre-selection and the
+projection. It simply never reaches SQLite, and Today opens on the empty canvas it was designed
+around.
+
+Nothing migrates. The marker is per-install and only ever ran once, at the first sign-in; an install
+that already seeded keeps the line it has, which is a real row the athlete can swipe away like any
+other.
+
+### The check stands on the line it is about
+
+`PendingCard` has carried the owner's 16 September ruling since the day it was made — *"kljukica
+mora biti desno v isti vrstici … tam kjer so tiste tri pikice"*. The COMPOSER never did. Its pill
+was mounted under the field, right-aligned, in the column the live read-out prints its values in,
+which is defensible on a page with a record above it and wrong on the canvas the owner photographed:
+one short word at the left margin, no card anywhere, and a white pill floating a full line below it —
+directly on top of the example sentence, reading as a button about nothing.
+
+It now sits at the end of the line being written, with the field taking the width beside it, and the
+reading dots take that same slot the moment it is tapped, so the tap and the work it starts still
+trade places without anything moving. The blue line stays under the field where it was: it is not
+under the cursor, so nothing written moves, dims or is crossed (§14).
+
+The pill is centred on the FIRST line of the field — a new `COMPOSER_LINE` constant is both the
+field's `lineHeight` and the mark's centring, so the two cannot drift, and a pasted ten-line session
+wears its check next to line one, where the card it settles into will draw it. It is hung by a
+negative top margin rather than by `justifyContent` on a box the 28 pt pill is taller than: Yoga
+clamps an oversized child and leaves it sitting low, which is a version of the same defect.
+
+### The parse waits for the hand to stop
+
+Owner: *"predlagaj boljši flow … da počaka, da uporabnik vpiše do konca, preden začne parsat"*, and
+then all three parts of the proposal. Two surfaces answered mid-word, in opposite ways, and one
+door was missing.
+
+**One constant, `WRITING_PAUSE_MS` (700 ms)**, exported from `note-surface.tsx`, because the check
+and the reading are the same judgement about the same hand and must not disagree about when
+somebody has finished a line. 700 ms sits through a thought mid-sentence and is not a wait once the
+phone is down.
+
+1. **The onboarding demo reads the line AS IT STOOD when the writing stopped.** The grammar is a
+   regex answering in the tick it is asked, so the screen re-read on every keystroke and the
+   read-out rewrote itself on the way to one sentence — `bench 3` said "3", `bench 3x8` said
+   "8·8·8", `bench 3x8 60` said "60 kg × 8·8·8". Every one of those is true about a line nobody had
+   finished, and the aha moment cannot happen once it has already happened twice, half-formed. It
+   now refreshes at each pause rather than vanishing when typing resumes — a reading that
+   disappears the moment you add a word is a page that flinches. **Only the line being written
+   waits**; every committed card above it still settles the instant it is committed.
+2. **Today's check waits for the same pause** instead of arriving at the first character. It is a
+   pause and **not** a judgement about whether the line reads yet: the offline grammar is not
+   allowed to hold this door, because the real parser reads names and shapes that grammar cannot,
+   and a check withheld until a small regex approves is a line nobody can ask to have read (§3).
+   Once it has arrived on a line it stays, however much more is typed — an affordance that blinks
+   out every time the hand moves is worse than one offered early. An emptied field withdraws it on
+   the keystroke that empties it; nothing written needs no pause to be nothing.
+3. **Putting the phone down is an answer.** The writing hold does not expire — `parse_next_at` is
+   parked at the year 9999 by the owner's second ruling of 15 September (*"naj sploh ne začne
+   delati parser dokler nekdo ne klikne gor"*) — so a note is read when something the athlete did
+   asks for it, and otherwise never. A line that was COMMITTED and not read is at least visible:
+   it settles as a `PendingCard` wearing the check, under "sets not read · not counted". **A line
+   still in the composer when the phone goes down has no card at all**, and that is the case with
+   no door. `keyboardDidHide` now asks for the reading that was not asked for — Done on the bar, a
+   tap on the canvas, a sheet opening — and saves the tap in every other case.
+
+   **This is the part of the change closest to the 15 September ruling's edge**, and the argument
+   for it is that the keyboard going down is an ACT, not a timer: the hold was written against a
+   900 ms debounce that re-asked the model while somebody was still mid-sentence. It is not a
+   second confirm either — the same `requestParse`, on the athlete's own words, with the store's
+   own guards making it a no-op when there is nothing new, no account, or a parse already in
+   flight. If the owner reads the ruling strictly, the revert is the two effects named in Files
+   and nothing else.
+
+### Files
+
+`src/lib/onboarding-seed.ts` **deleted**; `src/lib/auth/provider.tsx` (the call, the import, and the
+comment that named it); `src/components/note-surface.tsx` (`Composer`'s `activeLine`/`activeField`/
+`composerMark`, the `previewPending` and `confirmSlot` styles removed, `COMPOSER_LINE`,
+`WRITING_PAUSE_MS`, the composer's rest gate, `NoteSurface`'s `keyboardDidHide` read);
+`src/components/onboarding-v2/DemoPage.tsx` (the read-out's rest gate); comment-only edits in
+`src/state/onboarding.ts`, `src/lib/demo-parse.ts`, `src/lib/demo-parse-remote.ts`,
+`src/lib/db/index.ts`, `src/components/onboarding/ParseDemo.tsx`.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npx expo export --platform ios` **pass**. `npx expo lint --no-cache`
+**0 errors**, 66 warnings, none of them new and none from the code added here.
+
+`npm test` **978/979**. The one failure is not this change: the palette test walks every file under
+`src/app` and `src/app/kbprobe.tsx` — an untracked keyboard probe another session wrote into this
+working tree at 09:10 today — carries three raw hex literals. It passes 979/979 with that file
+absent, and deleting another session's working file is not this change's business.
+
+**NOT seen running.** The booted simulator is mid-run for the lapsed-entitlement workstream — Today
+is the read-only ledger there, with no composer to photograph — so all of this is read off the code
+paths and off `PendingCard`'s proven arithmetic, not off a screen. Worth a look on device: the
+pill's vertical centring on the first line at the largest Dynamic Type setting, the 36 pt the field
+gives up while a line is unread, and the 700 ms itself, which is the one number here that can only
+be judged with a thumb.
+
+---
+
+## 17 September 2026 — the split admits it is not a list of four, and a load is typed rather than counted
+
+Three owner instructions, all inside onboarding v2's back half: *"pri onboardingu: tam kjer piše
+which split do you train on? → dodej tudi opcijo other; pri Your key lifts and what you lift now
+dodej da se lahko skipa … in naredi tko da če kdo klikne gor na težo recimo od bench pressa naj mu
+da možnost da lahko napiše, ker je malo zamudno z + in -"*. `docs/onboarding-v2-spec.md` is amended
+in place for screens 14 and 15, dated, because a spec that contradicts the shipped screen is worse
+than one that records the ruling.
+
+### Screen 14 — "Something else", and why it is a ghost row while "I don't follow a split" is not
+
+Four named splits do not cover the ones people actually run — Arnold, PHUL, 5/3/1, a week a coach
+wrote — and until today the only rows left for any of them were **a split they do not train** or
+**"I don't follow a split"**, which is not a near miss: it is the single route into flat clustering
+mode (`getAnswer('split') === 'flat'`, read by `lib/predict/data.ts` and the Next tab). Answering it
+untruthfully re-plans somebody's training.
+
+The new option gives the app nothing — no branch, no schedule, no default displaced — so by the
+spec's own test it renders below the list as a `GhostRow`, while `flat` stays a peer row. The two
+now sit one above the other, which is the clearest possible statement of the difference between
+them. `characters.test.ts` pins it: six options, exactly one opt-out, `flat` a peer that declares
+`drivesBranch`, `other` an opt-out that does not.
+
+Nothing downstream needed a branch, and that is the point: the rotation path already reads which
+session is due from the sessions the person actually wrote (`pickBaseWorkout`), never from the
+split's name. The echo says exactly that — *"Grouped the way your own sessions repeat"* — and
+`profile-answers.ts` validates against the flow's own option list, so the answer is storable,
+changeable in You, and printed on the reveal like any other.
+
+### Screen 15 — the load is a field
+
+The steppers move a plate at a time, which is the wrong unit for the distance between a seeded
+default and a real working weight: a 140 kg deadlift was **sixteen taps** from the 100 the row opens
+on. The number itself is now the target. It wears the recessed 5 % ink the stepper discs wear, in a
+rounded rect rather than a circle; tapping it opens the decimal pad; the field **clears on focus**
+with the current load standing behind it as a placeholder, so the new number is typed rather than
+edited into the middle of the old one (verified: `selectTextOnFocus` did not hold — the autofocused
+field kept its text and 142.5 landed inside 100 as `00142.5`). A typed load is rounded to the half
+kilo and clamped into the steppers' own range; nonsense reverts. A stepper pressed while the field
+is open takes the typed number with it and lands the result on the 2.5 grid — 142 + a plate is 145,
+not 144.5.
+
+**The field is mounted whether or not it is being typed into, and that is not a style choice.**
+`RCTInputAccessoryComponentView` binds a keyboard's `Done` bar to a field exactly once, in
+`didMoveToWindow`, by walking the window for a field carrying its `nativeID`. There is no retry. A
+field that springs into existence on tap therefore gets a **bare number pad with no way off it** —
+which is precisely what the 20 August rule forbids, and precisely what the simulator showed, four
+times, before the mechanism was read out of the RN source. Each row now mounts its own bar with its
+own id (`KeyboardDoneBar` gained an optional `nativeID`), because one shared id binds every bar to
+the first field in the window and leaves the rest bare.
+
+### Screen 15 — and it can be declined
+
+A skip under the button, and a real one: `keyLifts` is emptied, so `commitV2Onboarding` writes no
+lifts and no loads. Every screen downstream already had an honest shape for that and now gets to
+use it — screen 16 states the overload rule in words instead of drawing a chart from numbers
+nobody gave, the reveal leaves the row out, the paywall drops its figure. The lifts are added later
+in You, where they can be changed anyway.
+
+`liftsSkipped` (new, in `V2Answers`) exists because the screen SEEDS itself with the big three at
+60/80/100 kg. Without it, skipping and stepping back one screen re-seeded the sheet, and a Continue
+from there would have written the app's guess as the person's own loads — the exact "previous
+answer silently replaced by a guess" that `onboarding-v2-commit.ts` is written against. It also
+makes a skipped screen an ANSWERED screen: the CTA is live when you step back onto it, rather than
+dead above an empty sheet.
+
+### Files
+
+`src/components/onboarding-v2/flow.ts` (screen 14's sixth option; screen 15's subline now teaches
+the field), `echo.ts` (the `other` case), `LiftLoadRow.tsx` (rewritten around a permanent field),
+`screens/LiftsScreen.tsx` (the skip, the footer link, the seed guard, the CTA gate), `Frame.tsx`
+(`automaticallyAdjustKeyboardInsets` on the scroll view, so a focused row is not left under the
+keyboard), `characters.test.ts`; `src/components/keyboard-done.tsx` (optional `nativeID`);
+`src/state/onboarding-v2.ts` (`liftsSkipped`); the three answer factories in `echo.test.ts`,
+`projection.test.ts` and `paywall-v2/copy.test.ts`; `docs/onboarding-v2-spec.md` (screens 14 and 15,
+amended in place and dated).
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **pass**. `npx expo lint --no-cache` **0 errors**, 66
+warnings, none of them new and none from this code.
+
+### Seen running
+
+On the simulator, screen by screen, and the whole reason three of the decisions above are worded
+the way they are. Screen 14: the ghost row renders below the hairline under "I don't follow a
+split", selects blue like any other answer, and screen 15's echo reads "Grouped the way your own
+sessions repeat". Screen 15: tapping 100 kg opens the decimal pad **with the Done bar on it**, the
+placeholder holds the old number, typing 142 and pressing Done leaves `142 kg` in ink, `+` then
+lands on 145; a lift added from the picker gets the same working bar; the skip advances to a screen
+16 that says the rule in words and has no chart; stepping back finds the sheet still empty and
+Continue live.
+
+Dynamic Type at `accessibility-extra-large` too: the row keeps one line, the field pill grows with
+the number, "kg" stays on its baseline, and only the lift's name truncates — which it already did.
+
+Not yet heard: VoiceOver over the field. The label reads "Bench press, 145 kilograms" and the
+wrapping press target is `accessible={false}`, but that is read off the code.
+
+---
+
+## 17 September 2026 — the microphone stops behaving like a stuck switch
+
+Owner: *"naredi neko animacijo ko uporabnik uporablja mikrofon … naj se vidi da to posluša kot
+nek diktafon in potem ko konča oz napiše done al that's it oz ko prekine na gumb naj se umakne
+in ugasne mikrofon, ker zdaj kr ostane vklopljen in ko hočem zapisati novo vajo zapisuje nazaj v
+to prvo vrstico."*
+
+One sentence, two bugs and a missing piece of design, and the two bugs turned out to be the same
+bug: **nothing in the app had an opinion about when a dictation session ends.**
+
+### What was actually wrong
+
+`startDictation` streamed the recogniser's current transcript at the caller and left every other
+decision to it. Four callers each re-implemented the same fifteen lines, and the two that mattered
+got them wrong in the same two ways:
+
+1. **The session had exactly one ending — tapping the mic a second time.** Finish did not end it.
+   Hiding the keyboard deliberately did not end it (the 20 August ruling, on the reasonable ground
+   that dictation "never needed the keyboard" — true, but it did need somewhere to show that it was
+   on). Backgrounding did not end it. And `stop()` asked the module to stop with no follow-up, so a
+   recogniser that never answered left `recording` true for ever.
+2. **Every result was pasted onto the note as `base + '\n' + transcript`,** where `base` was
+   captured once. So a live session wrote over whatever the person typed underneath it — and
+   because iOS hands back one transcript that grows for the whole session (`isFinal` only fires at
+   `stop()` before iOS 18), every new exercise extended the SAME line. That is the sentence the
+   owner wrote, exactly.
+
+### The four rules that replace it
+
+In `voice.ts`, with the text half split into `voice-lines.ts` so it can be tested without a
+microphone:
+
+1. **A session always ends** — button, spoken "done"/"that's it", 8 s of nothing recognised, a
+   3-minute cap, backgrounding, and (from `use-dictation.ts`) typing or the writing surface
+   leaving. Only recognised WORDS hold the silence timer open, so a loud gym cannot.
+2. **Stopping is guaranteed, not requested** — `stop()`, then `abort()` 1.2 s later, then the
+   session is declared over locally. A UI that says "listening" at a dead recogniser is the same
+   lie as a mic that never switched off.
+3. **A pause is a line break** — word timings split the transcript wherever the speaker stopped for
+   ≥ 700 ms, so "bench 100 times 5" … pause … "squat 140 times 3" arrives as two lines.
+4. **The session's text is a block, not a stream** — every update carries all of it, the caller
+   writes `anchor + block`, and if the note stops matching what dictation last wrote, the session
+   ends rather than fighting the other writer.
+
+And one rule that belongs to the composer rather than the recogniser: **the block settles.** A
+session that ends with the last spoken phrase still sitting in the input means the next thing typed
+joins it — "zapisuje nazaj v to prvo vrstico" by a second route. It now leaves an empty line, which
+is what committing a line by hand already does.
+
+### The bar
+
+Researched on Appllama before anything was drawn: SpeakApp AI's active recording, Noted's
+live-transcribe header, ABA English's speak screen, Song AI's voice capture. All four carry the
+same three things and Recore keeps all three — a live level readout, an elapsed clock, and a
+labelled stop at the end of the bar. What was left behind is the red: those are full-screen
+recorders where red is the convention, and this row is monochrome by a standing ruling.
+
+`dictation-bar.tsx` draws it in the accessory row's first slot — the rest bar's slot, with the rest
+bar's exact geometry, because the two can be on screen together and must not read as two pieces of
+chrome. A moving waveform is allowed here for the same reason the rest ring's sweep is: **every bar
+is a sample of the microphone's actual input**, so it is a readout of something happening, not an
+animation playing over a still fact. It answers the only question a person has while dictating —
+*is it hearing me?* — and a flat line is a real answer to it.
+
+### Files
+
+`src/lib/voice-lines.ts` (new), `src/lib/voice.ts` (rewritten), `src/lib/voice.test.ts` (new),
+`src/components/use-dictation.ts` (new), `src/components/dictation-bar.tsx` (new),
+`src/components/bottom-toolbar.tsx`, `src/components/onboarding-v2/screens/DemoScreen.tsx`,
+`src/components/onboarding/ParseDemo.tsx`, `src/components/onboarding/DemoToday.tsx`.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **992 pass** (13 new). `npx expo lint --no-cache`
+**0 errors**, warnings unchanged and none from this code. `npx expo export --platform ios`
+**pass**.
+
+### Seen running
+
+The bar, on the iPhone 17 Pro simulator (iOS 26.5), through a throwaway route since the app is
+signed out here and **the simulator has no microphone at all** — `expo-speech-recognition` cannot
+run on it, so the recogniser half is verified by its tests and by reading the module's own iOS
+source, not by hearing it.
+
+- Default text size: waveform, `0:17`, *listening*, `Stop`, sitting on the rest bar's geometry
+  directly above the ink-filled mic.
+- Dynamic Type `accessibility-extra-large`: **this caught a real defect.** `Stop` clipped to "Sto"
+  — the one label on the bar that may never be cut. The reading now absorbs the squeeze and the
+  clock drops above 1.3×, leaving waveform + *listening* + `Stop`, all intact.
+- Reduce Motion: the still silhouette renders and the waveform region is **pixel-identical across
+  a second**, so nothing animates.
+
+### Not verified
+
+**The dictation loop itself has not been heard.** Everything above about pauses becoming lines,
+"done" ending a session, the silence timeout and the watchdogs is covered by `voice.test.ts` and by
+the iOS module's source, but none of it has run against a real recogniser — that needs a device.
+The line-break threshold (700 ms) in particular is a number chosen from how people speak between
+exercises, and it is the first thing to re-measure on hardware.
+
+---
+
+## 17 September 2026, later — "kako dobro dela ta mikrofon za druge jezike?"
+
+The owner's question, and the answer was worse than expected: **it did not work for any language
+but English, and a comment in `voice.ts` said otherwise.**
+
+### The false comment
+
+`startDictation` omitted `lang`, under a comment reading *"lang omitted → device locale; workout
+terms parse fine either way"*. The module's own `ios/SpeechRecognitionOptions.swift` declares
+`var lang: String = "en-US"`. Omitting it is **English**, not the phone's language. Every Recore
+dictation session ever run has been an English recogniser, on every device.
+
+The parse side was never the problem: `parse-workout/prompt.ts` reads any language and has
+Slovene worked examples in it (*"osemdeset kil"* → 80 kg, *"pet ponovitev"* → 5 reps, *"4 serije
+po 10"*, ordinals, notes kept verbatim). The gap was hearing, never reading.
+
+### What Apple actually supports
+
+Read off `getSupportedLocales()` on the iOS 26.5 simulator, not assumed, and not read off the
+macOS framework:
+
+```
+count=63 · SL? NO
+slavic: cs-CZ  hr-HR  pl-PL  ru-RU  sk-SK  uk-UA
+```
+
+**Slovene has no recogniser at all.** So the device locale cannot simply be forwarded: handing
+`sl-SI` to `SFSpeechRecognizer` returns nil, the module throws `language-not-supported`, and the
+session dies the moment it starts — the failure would have looked exactly like the bug that had
+just been fixed.
+
+### The ruling (owner, asked)
+
+**Device language when Apple has it, English when it does not, and say which.** `resolveLocale`
+matches the device locale against the supported list — exactly, then by language, so a `de-LU`
+phone gets `de-AT` rather than English — and caches the answer. When it falls back, the listening
+bar reads **`listening · English`**, and the clock leaves to make room for it: what the microphone
+is hearing outranks how long it has been hearing it. Nothing else branches on the flag.
+
+This is a strict improvement for German, Italian, French, Spanish, Croatian, Czech, Polish,
+Hungarian, Romanian, Ukrainian and the rest of the 63, and for Slovene it turns a silent nothing
+into a stated fallback.
+
+### The spoken exit, in four languages
+
+`STOP_PHRASES` was English-only, which for a Slovene speaker meant no spoken exit at all. It now
+carries Slovene (`konec`, `to je to`, `končaj`, `zaključi`, `ustavi snemanje`),
+Croatian/Serbian (`završi`, `gotovo`, `kraj`), German (`fertig`, `das war's`, `Aufnahme stoppen`)
+and Italian (`fatto`, `basta così`, `ho finito`).
+
+Two deliberate constraints, both from CLAUDE.md §2 — the record is the source of truth, so a false
+positive (a remark cut short AND the word deleted from the note) costs more than a missed command
+(the `Stop` button is right there):
+
+- **Matching is word-based and folds diacritics**, so "Končaj.", "koncaj" and "KONČAJ" are one
+  phrase. That matters most for Slovene precisely because an English recogniser will never produce
+  a háček. Folding changes a string's length, which is why the cut is computed from word lists
+  rather than character indices — an index-based cut would slice the line in the wrong place.
+- **Slovene `dovolj` and Croatian `dosta` were offered and left out.** "to je bilo dovolj" is a
+  sentence someone might genuinely write about a set, and matching it would both stop the session
+  and delete the word from their record.
+
+### Files
+
+`src/lib/voice-lines.ts` (`STOP_PHRASES`, word-based `stripStopPhrase`, `matchLocale`),
+`src/lib/voice.ts` (`resolveLocale`, `DictationLocale`, `lang` passed explicitly),
+`src/components/use-dictation.ts` (`usingFallbackLanguage`),
+`src/components/dictation-bar.tsx` (`fallbackLanguage`), `src/components/bottom-toolbar.tsx`,
+`src/components/onboarding-v2/screens/DemoScreen.tsx`.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **1000 pass** (8 more: the four languages, the
+diacritic-dropping recogniser, the words that must NOT be exits, and `matchLocale` against Apple's
+real 63-locale list). `npx expo lint --no-cache` **0 errors, 66 warnings** — the baseline, none
+from this code. `npx expo export --platform ios` **pass**.
+
+### Seen running
+
+Both bar states photographed on the iPhone 17 Pro simulator at default size and at
+`accessibility-extra-large`: `listening` and `listening · English`, nothing clipped at either size,
+`Stop` intact in all four shots.
+
+### Not verified
+
+**No recogniser has been heard in any language.** The simulator has no microphone at all, so
+`matchLocale` is tested against the list Apple really returned but the resolution has never
+actually started a session, and none of the spoken exits has been said out loud. Two things to
+check first on a device: that a Slovene phone starts in English and says so rather than erroring,
+and whether an English recogniser hearing Slovene produces anything the parser can use — if it
+does not, the honest next question is whether `hr-HR` is a better lie than `en-US`, and that is a
+device test, not a code change.
+
+
+---
+
+## Offline, said out loud (owner ask, 17 September 2026) — what shipped
+
+> *"nekje v aplikaciji lepo namesti ce oseba dela offline da ji lepo prikaze da je trenutno ni
+> signala oz da je offline in da se bo zapis shranil brez problema takoj ko pride do signala in da
+> ne skrbi nic da kr naprej vpisuje, mogoce tko neka oranzna barva … naj ne bo tko vsiljivo …
+> oznaci tudi to vrstico da je v obdelavi … z oranzno/rumeno barvo"*
+
+Gyms are underground, and the app has always worked down there: SQLite is the source of truth, the
+dirty flags hold the queue, and nothing has ever been lost to a lost signal (CLAUDE.md §3). What
+the app had never done is **say so**. Somebody who noticed their lines were not being read had no
+way to tell "this phone has no signal and is keeping everything" from "this is broken and I am
+losing my session" — and the second guess is the one people make.
+
+### What the app knows, and how
+
+**There is no reachability module, and that is a decision, not a shortcut.** `NetInfo` answers
+"is there Wi-Fi", and the fact this feature needs is "can the athlete's writing reach the account"
+— a phone joined to a gym's sign-in portal reports four bars and reaches nothing. So the state is
+fed by the outcome of requests the app was already making:
+
+| Caller | Reports |
+|---|---|
+| `lib/sync/index.ts` — the pull | reachable on any answer, unreachable when the request never left |
+| `lib/sync/index.ts` — the whole pass | `reportSynced()`, the only thing that licenses "it's saved" |
+| `lib/parse/client.ts` | the line `failureKind` already drew: `FunctionsFetchError` is underground, everything else is the service answering |
+
+`net-reach.ts` holds every rule, pure and unit-tested; `net-state.ts` holds the one cell, the
+subscription and the probe. **Unrecognised errors count as the service having ANSWERED** — a missed
+offline costs one un-drawn amber line, a false one costs the app's word.
+
+### Three things on screen, and one that is not on screen at all
+
+1. **A quiet amber line under Today's dateline** (`components/offline-line.tsx`) —
+   `No connection · saved on this phone`, and under it *Keep writing — it syncs itself the moment
+   you're back.* Not a toast, not a banner, not a pinned strip: §Structure gives this page three
+   layers and the record has no cards, so the status is type on canvas like the dateline above it.
+   It renders `null` whenever it is not true — no placeholder, no reserved height, no "connected"
+   badge.
+2. **The amber mark on a line whose reading is owed** — the rail ring and the three dots of
+   `WaitingMark` (`gutter-value.tsx`), in the slot the reading dots use, **holding still**. Movement
+   on that row is the app's claim that work is happening, and underground no work is happening. The
+   confirm check is not offered while it stands: a control whose only outcome is the state you are
+   already in is a control that lies.
+3. **One confirmation when the queue drains**, `Back online · everything is saved`, in ink, for
+   3.2 s, then gone. It is stamped by the sync pass completing, not by the radio returning — being
+   reachable again is not what was promised. No haptic, no celebration (§2.6).
+4. **The probe** — the half with no pixels. A failed pass used to leave the work queued and schedule
+   *nothing*: the next attempt waited for a foreground, a keystroke or a parse landing, so a backup
+   that died in a basement did not resume until the app was next opened. `net-state` now re-runs the
+   pass on a widening schedule (4 s → 90 s) for exactly as long as the service is unreachable. That
+   is the line of code that makes the sentence on screen true.
+
+### The colour, and why it is this one
+
+`warning` `#8A5613`, whose definition in `color.ts` already named this job ("offline/allowance
+banners"), measured 5.59:1 on the canvas — the best-contrasting accent in the palette. Deliberately
+**not** `error` red (nothing has failed) and **not** `attention` `#B45309`, which is reserved for
+facts about TRAINING and is barred from chrome. Blue stays what it has been since 9 September: the
+parser actually reading. Colour is never the only carrier — the words say it and the VoiceOver
+labels say it in full.
+
+### `parseStalled`, and the bug it closes on the way past
+
+The retry chain gives up after ~31 s (`3 s · 8 s · 20 s`) and `parsing` goes false with it — but the
+request does not go away: `needs_parse` still stands and the sync loop still owes the line a
+reading. So for the rest of a session underground the line wore the untapped checkmark again, as
+though nobody had ever asked. `parseStalled` is that debt, and it lives as long as the debt does.
+`onReconnect` in `session-store.ts` asks again the moment there is a signal.
+
+### Files
+
+`src/lib/net-reach.ts` (new, pure), `src/lib/net-state.ts` (new), `src/lib/net-reach.test.ts` (new),
+`src/components/offline-line.tsx` (new), `src/lib/sync/index.ts`, `src/lib/parse/client.ts`,
+`src/state/session-store.ts` (`parseStalled`, `onReconnect`), `src/components/note-surface.tsx`
+(`PendingCard`'s `waiting`, `Composer`'s `waiting`), `src/components/gutter-value.tsx`
+(`WaitingMark`), `src/components/icon.tsx` (`no-signal` → `icloud.slash`, `synced` →
+`checkmark.icloud`), `src/app/(tabs)/today/index.tsx`.
+
+### Gates
+
+`npx tsc --noEmit` **pass**. `npm test` **1013 pass** (13 new: the error classifier against real
+PostgREST/supabase-js/CFNetwork shapes, and the state machine's rule that only a completed pass
+after an outage may confirm). `npx expo lint --no-cache` **0 errors** — the 66 warnings are the
+baseline, none from this code.
+
+### Seen running
+
+iPhone 17 Pro, iOS 26.5, driven by a throwaway probe route (deleted): the offline line under the
+dateline, two unread lines wearing the amber ring and the still amber dots beside a settled card,
+the `Back online` beat and its withdrawal leaving no gap, and the whole thing at
+`accessibility-extra-large`, where both lines wrap onto the glyph's hanging indent with nothing
+clipped.
+
+### Not verified
+
+**No real loss of signal has been observed.** The simulator shares the Mac's network, so every
+state above was driven by calling the reporters directly; what has not been watched is a genuine
+`FunctionsFetchError` arriving from a phone in a basement, the probe chain widening across a real
+outage, and the reading landing by itself on the way back up. That is a device test on Airplane
+Mode — write two lines, confirm them, kill the radio, walk away, come back — and it is the one that
+proves the promise rather than the pixels.
+
+---
+
+## The reading that never ended (customer report, 17 September 2026) — what shipped
+
+> *"eni stranki se je tukaj zaustavilo … kr tko vrti v prazno verjetno po temu k je kliknu finish
+> in se je je hotlo updejat"*
+
+The screenshot is the whole diagnosis. A finished session — five lifts, the check-in printed under
+them, a sixth line written after it — and **every one of those lines wearing the reading line and
+the three dots.** Not one line being read: the record, entire, claiming to be under a parse that
+was never going to land. The phone had been left to it long enough to photograph.
+
+### What was actually stuck
+
+`parsing` in `state/session-store.ts` is one boolean, and while it is up three things are true at
+once: every unread line draws the beam and the dots (`PendingCard`), `requestParse` REFUSES to ask
+again (it queues on `reparseFor` instead), and the page has no other way back. Nothing in the app
+lowered it, and two independent paths could raise it for ever.
+
+**1. No request the app made had an end.** React Native's `fetch` carries no deadline and
+supabase-js adds none, so a request whose socket the network dropped without saying so — a 5G→LTE
+handoff mid-request, a gym's sign-in portal, a carrier NAT that forgot the connection — leaves a
+promise that is never resolved and never rejected. Every guard held around a request is then held
+with it, and all three of the app's are:
+
+| Guard | Where | What it costs when the request hangs |
+|---|---|---|
+| `parsing` | `state/session-store.ts` | the beam for ever, and no tap can ask again |
+| `inFlight` | `lib/parse/client.ts` | one parse per workout — so every LATER reading of that note queues behind a dead promise |
+| `syncing` | `lib/sync/index.ts` | one pass at a time — so the backup stops, silently, for the life of the app |
+
+None of the three is wrong; each assumes the thing it guards eventually finishes. The retry chain
+(`3 s · 8 s · 20 s`) never ran either — it lives past the `await` that was hanging. Killing the app
+was the only way out, which is a thing no one should have to know. **The demo reader has had a hard
+ceiling since it was written** (`demo-parse-remote.ts`, 2.5 s, *"a request that has not answered by
+then has missed its moment"*); the reader people actually train in had none.
+
+**2. A run could raise the flag and then be forbidden to lower it.** `runParse`'s `finally` settled
+`parsing` only `if (workoutId === the open one)`, and did nothing at all when it was not — so if
+the open workout changed while the request was out, the flag stayed up with no request behind it.
+That is not exotic: `hydrate` after an import or a restore, a `loadDay` that comes back with a
+different row, a note cleared and re-typed into a new one. The day swipe was the one path that had
+been thought about (`selectDay` lowers the flag itself), which is why this went unseen.
+
+### What shipped
+
+1. **`lib/net-deadline.ts` (new, pure, tested).** `deadlineFetch` is the `fetch` the Supabase client
+   is now built with (`global.fetch`), so auth, PostgREST and the edge functions all inherit one
+   ceiling instead of three call sites remembering a timeout. Two signals, one request: supabase-js
+   passes its own `signal` when an invoke carries a timeout, so the caller's abort is relayed onto
+   ours and the request ends on whichever comes first; the timer is cleared on the way out either
+   way. `REQUEST_DEADLINE_MS` is **45 s** and is deliberately generous — a whole-note parse is
+   output-bound and was measured at 21 s, so this is a backstop against a DEAD request, not a policy
+   about a slow one.
+2. **The auth lock cannot hold a reading.** `supabase.auth.getSession()` is a memory read in the
+   ordinary case and a lock in the case that matters: supabase-js serialises auth work, so a stuck
+   token refresh holds every later reader behind it — including the one the parse path makes before
+   it will spend a request. It is now raced against `SESSION_DEADLINE_MS` (10 s) in
+   `parse/client.ts`, and an expired answer is treated exactly like *signed out*: the reading stays
+   owed on `needs_parse` and the sync loop asks again. The demo reader's `getSession` got the same
+   guard, which is what makes its 2.5 s promise true — it had only ever covered the second of its
+   two awaits.
+3. **The run that raises the flag is the run that lowers it.** `parsingFor` names the workout whose
+   run owns `parsing`. When the open note has moved on, the run clears the flag it raised instead of
+   walking away from it — and if a parse the NEW note started owns the flag by then, it is left
+   alone. That is what the ownership test is for.
+
+**Nothing here decides what a failure MEANS.** An expired request comes back through the door that
+was already there: `net-reach.ts` counts an abort as the phone not having got through, so it draws
+the amber line, costs nothing, keeps `needs_parse`, and is asked again the moment the signal is
+back. The words were on disk before any of it ran (CLAUDE.md §2); no keystroke, no Finish and no
+record ever waited on this.
+
+### What the live probe caught on the way past
+
+The deadline was run against the real project before it was believed, and the first shape it
+produced did not classify. Through an edge function an abort is a `FunctionsFetchError` and
+`isOfflineError` has always named that. **Through PostgREST it has no class at all:**
+`postgrest-js` builds a plain object and flattens the class into the sentence
+(`"AbortError: This operation was aborted"`, `name` absent), so every test in the classifier missed
+and a pull the app itself had cut would have been reported as the phone having got through — the
+amber line un-drawn, the probe loop never started, the page quietly claiming things were fine. The
+classifier now reads the flattened class (`aborterror` / `timeouterror`) rather than the sentence,
+because the sentence is three different sentences across undici, React Native and WebKit, and
+because the loose test for *abort* would have swallowed Postgres saying `current transaction is
+aborted` — an answer from a service that read the request, and the false report `net-state` is most
+careful about. Both directions are now tested.
+
+### Files
+
+`src/lib/net-deadline.ts` (new), `src/lib/net-deadline.test.ts` (new), `src/lib/supabase.ts`
+(`global.fetch`), `src/lib/parse/client.ts` (the session race), `src/lib/demo-parse-remote.ts` (the
+same race, on the demo's own ceiling), `src/state/session-store.ts` (`parsingFor`, and `runParse`'s
+`finally`), `src/lib/net-reach.ts` + `net-reach.test.ts` (the flattened class).
+
+### Gates
+
+`npm run typecheck` **pass**. `npm test` **1024 pass** (11 new: a promise that never settles settles
+anyway, a failure the clock must not swallow, work that beats a late clock, a hanging request ending
+in the words `net-reach` reads, a caller's own abort still winning, a spent signal, the deadline
+being handed to the request rather than kept as a wrapper, the real PostgREST and edge-function
+abort shapes, and the Postgres sentence that must NOT read as a lost signal). `npx expo lint
+--no-cache` **0 errors** — the 66 warnings are the baseline, none from this code. `npx expo export
+--platform ios` **pass**.
+
+### Probed against the live service
+
+Not the simulator — a Node harness building the real client with `deadlineFetch` and calling the
+real project (17 September 2026): an ordinary read answers in **516 ms** and is untouched; the same
+read behind a 1 ms deadline ends in **6 ms**; `auth.getSession()` inherits the ceiling and still
+answers in **0 ms** with no session; and both the cut PostgREST read and the cut
+`functions.invoke` classify as underground, which is what draws the amber line and asks again. That
+is what turned up the classifier gap above.
+
+### Not verified
+
+**The hang itself has not been reproduced on a device.** It cannot be conjured from the simulator,
+which shares the Mac's network and gets an honest refusal rather than a stalled socket; what was
+tested is the machinery that ends one, and an abort the app raised itself stands in for a socket the
+network dropped. The device test that would close it is the same one the offline pass is still owed
+— write a line, confirm it, kill the radio mid-request (Airplane Mode the moment the dots appear),
+and watch the beam stop, the line go amber, and the reading land by itself on the way back up.

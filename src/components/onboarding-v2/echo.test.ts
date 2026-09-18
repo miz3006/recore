@@ -21,6 +21,7 @@ function answers(partial: Partial<V2Answers> = {}): V2Answers {
     split: null,
     keyLifts: [],
     liftLoads: {},
+    liftsSkipped: false,
     smallestPlateKg: null,
     committed: false,
     recap: null,

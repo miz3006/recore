@@ -9,6 +9,7 @@ import { EntryNoteSheet } from '@/components/entry-note-sheet';
 import { FixSheet } from '@/components/fix-sheet';
 import { InsightHeader } from '@/components/insight-header';
 import { NoteSurface } from '@/components/note-surface';
+import { OfflineLine } from '@/components/offline-line';
 import { PaperField } from '@/components/paper-field';
 import { ReadOnlyLedger } from '@/components/read-only-ledger';
 import { SpotlightTour } from '@/components/spotlight-tour';
@@ -169,6 +170,14 @@ export default function Today() {
               sessionCount={sessionCount}
               onOpenStreak={openStreak}
             />
+            {/* NO SIGNAL, AND NOTHING TO WORRY ABOUT (owner, 17 September
+                2026). One quiet amber line under the dateline for as long as
+                the phone cannot reach the service, and one confirmation once
+                the queue has drained — `offline-line.tsx` carries the whole
+                argument, including why this is a line on the page rather than
+                a banner over it. It renders nothing at all the rest of the
+                time, which is almost always. */}
+            <OfflineLine />
             {/* THE FURNITURE ARRIVES WITH THE RECORD (owner, 12 Aug 2026): the
                 weekly line renders nothing at all until the day has produced a
                 reading, so an untouched day is the dateline and a blank page.

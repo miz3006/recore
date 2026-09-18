@@ -4,7 +4,11 @@ import { clearParseBackoff, recordParseFailure } from '@/lib/db/parse-backoff';
 import { getWorkoutById } from '@/lib/db/workouts';
 import { isSupabaseConfigured } from '@/lib/env';
 import { bumpParsedItems } from '@/lib/funnel';
+import { sweepHealthSoon } from '@/lib/health/index';
 import { devLog, errorText } from '@/lib/log';
+import { SESSION_DEADLINE_MS, withDeadline } from '@/lib/net-deadline';
+import { isOfflineError } from '@/lib/net-reach';
+import { reportReachable, reportUnreachable } from '@/lib/net-state';
 import { settlePredictionOutcome } from '@/lib/predict/adherence';
 import { recachePrediction } from '@/lib/predict/cache';
 import { supabase } from '@/lib/supabase';
@@ -235,10 +239,22 @@ async function parseWorkoutOnce(userId: string, workoutId: string): Promise<Pars
    * The workout keeps `needs_parse = 1`, so the first sync pass after sign-in
    * reads it through `retryPendingParses`. Nothing is dropped; the reading
    * simply arrives with the account, which is when it could first have existed.
+   *
+   * AND IT IS NOT ALLOWED TO BE THE THING THAT HANGS (17 September 2026).
+   * `getSession` is a memory read in the ordinary case and a LOCK in the case
+   * that matters: supabase-js serialises auth work, so a stuck token refresh
+   * holds this line — and with it `parsing`, `inFlight` and the sync pass —
+   * for as long as it is stuck. `lib/net-deadline.ts` carries the reasoning and
+   * the customer screenshot. An expired answer is treated exactly like "signed
+   * out": the reading stays owed, and the sync loop asks again.
    */
-  const { data: auth } = await supabase.auth.getSession();
-  if (!auth.session) {
-    devLog('parse skipped: no session yet — queued until sign-in');
+  const session = await withDeadline(
+    supabase.auth.getSession().then(({ data }) => data.session),
+    SESSION_DEADLINE_MS,
+    null,
+  );
+  if (!session) {
+    devLog('parse skipped: no session in hand — queued until there is one');
     return null;
   }
 
@@ -286,6 +302,19 @@ async function parseWorkoutOnce(userId: string, workoutId: string): Promise<Pars
       // adherence is telemetry; never let it break the parse flow
     }
     recachePrediction(userId, workoutId);
+
+    /**
+     * A SESSION CAN BECOME ELIGIBLE FOR APPLE HEALTH RIGHT HERE, and this is
+     * the only moment at which it does so silently.
+     *
+     * `health/plan.ts` will not write a workout it cannot describe, so a note
+     * finished before its reading landed is ineligible at Finish and eligible
+     * the instant this line runs. Without a nudge here it would wait for the
+     * next Finish — which, for somebody's last session before a rest week, is
+     * days. Fire-and-forget, a no-op when the switch is off, and two SQLite
+     * reads when there is nothing pending.
+     */
+    sweepHealthSoon(userId);
 
     return {
       workoutId,
@@ -343,8 +372,18 @@ async function parseWorkoutOnce(userId: string, workoutId: string): Promise<Pars
         // shorter schedule. `failureKind` above draws both lines.
         const kind = failureKind(error);
         if (kind) recordParseFailure(workoutId, kind);
+        // THE SAME LINE, REPORTED TO THE SCREEN. `failureKind` returns null for
+        // exactly one case — the request never leaving the phone — which is
+        // what Today draws amber. Anything else is the service having answered,
+        // and the page must not blame a connection that is working
+        // (`lib/net-state.ts`).
+        if (kind) reportReachable();
+        else reportUnreachable();
         return null;
       }
+
+      // An answer arrived, whatever it turns out to say: the phone got through.
+      reportReachable();
 
       // Treat the response as untrusted until validated.
       const result = validateParseResult(data);
@@ -382,8 +421,10 @@ async function parseWorkoutOnce(userId: string, workoutId: string): Promise<Pars
         : answer.result.items;
 
     return settle({ items, parse_version: answer.result.parse_version }, answer.result.items.length);
-  } catch {
+  } catch (err) {
     devLog('parse unreachable (offline?), will retry on sync');
+    // The question in that message has an answer now, and the screen wants it.
+    if (isOfflineError(err)) reportUnreachable();
     return null;
   }
 }

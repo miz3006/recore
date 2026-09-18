@@ -215,6 +215,21 @@ export function Frame({
             { paddingBottom: avoidKeyboard ? spacing.xxxl : footerHeight + EDGE_FADE },
           ]}
           showsVerticalScrollIndicator={false}
+          /**
+           * A FIELD INSIDE THE LIST IS NOT ALLOWED TO END UP UNDER THE
+           * KEYBOARD (17 September 2026).
+           *
+           * Screen 15's loads are typed now, and a load row three rows down a
+           * scrolling list is exactly where the decimal pad lands. UIKit grows
+           * the bottom inset by the keyboard's height and scrolls the first
+           * responder into view, on the UI thread, without React knowing the
+           * keyboard exists — the same mechanism Today's page and the check-in
+           * sheet already use.
+           *
+           * It is inert on every screen with nothing to focus, which is most
+           * of them: no keyboard, no inset.
+           */
+          automaticallyAdjustKeyboardInsets
           keyboardShouldPersistTaps="handled">
           {body}
         </ScrollView>

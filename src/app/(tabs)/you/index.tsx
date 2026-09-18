@@ -54,6 +54,7 @@ import { seedV2FromRecord } from '@/lib/onboarding-v2-seed';
 import { PAPER_FIELD_CSS } from '@/lib/paper-field';
 import { simulateFreshInstall } from '@/lib/dev-fresh-install';
 import { tap, tapMedium } from '@/lib/haptics';
+import { healthCounts, healthState, isHealthSupported, type HealthState } from '@/lib/health/index';
 import { pickAndImportCsv } from '@/lib/import/pick';
 import type { LegalDocId } from '@/lib/legal';
 import { groupThousands } from '@/lib/parse/estimate';
@@ -278,6 +279,34 @@ export default function You() {
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [answerRevision],
+  );
+
+  /**
+   * APPLE HEALTH, AS ONE ROW (17 September 2026). Two facts, because either one
+   * alone would let the row lie: the switch in `pref_health_write`, and what
+   * HealthKit says about actually accepting a write. A person who turned it on
+   * and later revoked Recore in the Health app has the first without the
+   * second, and the row must not read "On" for them.
+   *
+   * Null while the native answer is in flight, and null forever on a device
+   * with no HealthKit — `isHealthSupported` gates the request.
+   */
+  const [health, setHealth] = useState<HealthRow | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isHealthSupported() || !userId) return;
+      let alive = true;
+      void healthState().then((state) => {
+        if (!alive) return;
+        const counts = healthCounts(userId);
+        setHealth({ state, written: counts.written, enabled: counts.enabled });
+      });
+      return () => {
+        alive = false;
+      };
+      // FOCUS is the trigger; `userId` is here only because the body reads it.
+    }, [userId]),
   );
 
   /**
@@ -977,16 +1006,20 @@ export default function You() {
             keywords: 'csv json backup download share data copy',
             onPress: handleExportChoice,
           },
-          // ONE ROW, and it opens an honest "not connected". A switch here would
-          // be a promise the app cannot keep: there is no HealthKit code in the
-          // project (see `app/(tabs)/you/health.tsx`).
+          // ONE ROW, AND THE SWITCH IS ON THE SCREEN BEHIND IT, not here.
+          // Health is a permission as well as a preference — flipping it can
+          // put a system sheet on screen and can be refused — and a settings
+          // row that sometimes opens a dialog and sometimes does not is a row
+          // nobody can predict. The value states which way it is pointing; the
+          // screen is where it is changed and where it is explained
+          // (`app/(tabs)/you/health.tsx`).
           {
             key: 'health',
             icon: 'target',
             label: 'Apple Health',
-            value: 'Not connected',
-            sub: 'Recore does not read or write Health data',
-            keywords: 'healthkit fitness activity rings sync',
+            value: healthRowValue(health),
+            sub: healthRowSub(health),
+            keywords: 'healthkit fitness activity rings sync workouts export',
             onPress: () => {
               tap();
               router.push('/you/health');
@@ -1409,6 +1442,9 @@ export default function You() {
     roleBusy,
     toggleCoachRole,
     answers,
+    // Apple Health's row prints a permission that can change while this screen
+    // is off-stage — the same lesson as the coaching pair above.
+    health,
     prefs,
     recapValue,
     busy,
@@ -1626,6 +1662,47 @@ function earliest(days: ReadonlySet<string>): string {
  * "1.2M kg" — still specific (§15), and it stops the column shrinking. */
 function compactKg(kg: number): string {
   return kg >= 1_000_000 ? `${(kg / 1_000_000).toFixed(1)}M` : groupThousands(kg);
+}
+
+/**
+ * THE HEALTH ROW'S TWO LINES, and the rule they follow is the one the whole
+ * screen follows: say what is true of THIS device, never what would be nice.
+ *
+ * `null` covers two different silences — a device with no HealthKit, and the
+ * tick before the native answer lands — and both print nothing rather than a
+ * guess that will be replaced a frame later.
+ */
+interface HealthRow {
+  state: HealthState;
+  written: number;
+  /** The switch in `pref_health_write` — read here rather than called for, so
+   * the row cannot render a preference and a permission from two moments. */
+  enabled: boolean;
+}
+
+function healthRowValue(health: HealthRow | null): string | undefined {
+  if (!isHealthSupported()) return 'Not available';
+  if (!health) return undefined;
+  if (health.state === 'unavailable') return 'Not available';
+  return health.enabled && health.state === 'granted' ? 'On' : 'Off';
+}
+
+function healthRowSub(health: HealthRow | null): string {
+  if (!isHealthSupported() || health?.state === 'unavailable') {
+    return 'Health is on iPhone';
+  }
+  // The switch is on but Health has stopped taking writes — the one state that
+  // has to be named on the row itself, because the row would otherwise read
+  // "Off" for somebody who never turned it off.
+  if (health?.enabled && health.state === 'denied') {
+    return 'Health is not letting Recore add workouts';
+  }
+  if (!health || !health.enabled || health.state !== 'granted') {
+    return 'Your finished sessions can go to Health as workouts';
+  }
+  return health.written === 0
+    ? 'Finished sessions go to Health as workouts'
+    : `${health.written} ${health.written === 1 ? 'session' : 'sessions'} written to Health`;
 }
 
 /**

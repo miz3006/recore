@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
+    "@kingstinct/react-native-healthkit": "^15.1.0",
     "@sentry/react-native": "~7.11.0",
     "@supabase/supabase-js": "^2.110.5",
     "expo": "^57.0.20",
@@ -40,6 +41,7 @@
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-gesture-handler": "~2.32.0",
+    "react-native-nitro-modules": "^0.37.1",
     "react-native-purchases": "^10.9.0",
     "react-native-purchases-ui": "^10.9.0",
     "react-native-reanimated": "4.5.1",

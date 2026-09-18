@@ -554,9 +554,9 @@ Beta App Review dies.
 | `(tabs)/today` | **Implemented**: free-text note surface, per-line cards, fix sheet, rest timer, dictation, Finish → check-in sheet, day swipe, calendar. An empty day is the header plus a blank page, deliberately (`today.tsx:82-95`). Becomes the read-only ledger when lapsed (`today.tsx:92`). |
 | `(tabs)/next` | **Implemented** with three real states: a skeleton while the account resolves, a designed empty state ("Write two sessions and this fills itself", `next.tsx:204-232`), and the brief. |
 | `(tabs)/progress` | **Implemented**, with a designed empty state that offers the Hevy/Strong import (`progress.tsx:281-311`). |
-| `(tabs)/you` | **Implemented and complete for beta**: profile, subscription (state + manage + restore), training settings, weekly recap, body context, split, alias corrections, import, export (CSV/JSON), Apple Health, display, support, privacy/terms/parsing, restart onboarding, version, clear cache, **delete account**, **sign out**. |
+| `(tabs)/you` | **Implemented and complete for beta**: profile, subscription (state + manage + restore), training settings, weekly recap, split, alias corrections, import, export (CSV/JSON), Apple Health, display, support, privacy/terms/parsing, restart onboarding, version, clear cache, **delete account**, **sign out**. |
 | `import-start`, `split`, `plan-day`, `lifts`, `aliases`, `legal` | **Implemented.** |
-| `health` | **Implemented as an honest explainer**, not a stub: "Recore does not read or write Apple Health" (`src/app/health.tsx:44`). The only `TODO(owner)` in `src/` sits in its header comment (`health.tsx:14`) and describes exactly this. |
+| `health` | **Connected, one direction, 17 Sep 2026** (`src/app/(tabs)/you/health.tsx`). A real switch: finished sessions are written to Apple Health as workouts — start, end, kind of training, no energy, no distance, no words. **Nothing is read** and no read permission is requested. The `TODO(owner)` that used to be the only one in `src/` is gone with it. Needs `npx expo prebuild --platform ios` and a native rebuild before a TestFlight build carries it, plus the HealthKit capability on the App ID. |
 | Lorem ipsum / `{placeholder}` / unfinished copy | **None.** Every `placeholder` hit in `src/` is a `placeholderTextColor` prop or a comment. |
 | Sunday recap | Real local notification, but single-shot and re-armed on app open — H4. |
 | Settings minimum for beta | Sign out ✓, delete account ✓, privacy policy ✓ (in-app, plus generated HTML), support contact ✓ (mailto — B5 on the address). |
@@ -584,7 +584,8 @@ What must exist in App Store Connect is listed in §5. What the code says about 
   | Onboarding answers incl. attribution, optional bodyweight/height | Yes, linked | `src/lib/prefs.ts`, synced with the account's `meta` |
   | Usage data / analytics | **No third party.** Counters stay on device (`src/lib/funnel.ts:3-12`) and ride along in the user's own export (`export-json.ts:180`); `analytics.flush()` is a no-op (`analytics.ts:175`) | |
   | Diagnostics / crash data | **Yes since 21 Aug 2026**, **not** linked to the user, App Functionality — but only in a build carrying `EXPO_PUBLIC_SENTRY_DSN` | `src/lib/crash.ts`; policy section "If Recore crashes" in `src/lib/legal.ts` |
-  | Location, contacts, photos, health, advertising id | No — no such API is called | |
+  | Location, contacts, photos, advertising id | No — no such API is called | |
+  | Health & fitness | **No collection.** Recore WRITES finished sessions to Apple Health (17 Sep 2026) and reads nothing back; it requests no read permission | `src/lib/health/`, `app.json` plugin props, `RELEASE.md` App Privacy table |
   | Tracking across apps | No — `NSPrivacyTracking=false`, no ATT prompt, no IDFA | |
 
   Processors, as the policy states and the code confirms: Supabase (hosting, auth, functions),
@@ -609,7 +610,7 @@ What must exist in App Store Connect is listed in §5. What the code says about 
   RevenueCat; you will not see where the other testers dropped out.
 - **Known-broken list for testers:** see §7 — the honest set is the disabled paywall (if B1
   ships unresolved), the single-shot recap (H4), silent pending cards after ~30 AI calls in 10
-  minutes (H5), and Apple Health being deliberately absent.
+  minutes (H5), and Apple Health being write-only — sessions go out, nothing comes back.
 @
 ---
 
@@ -649,7 +650,8 @@ ALREADY KNOWN — please do not report these:
   pauses quietly for a few minutes.
 · The weekly recap notification only re-arms when you open the app, so it can be late or
   missing if you have not opened Recore that week.
-· Apple Health is not connected — the screen in You says so on purpose.
+· Apple Health is one-way on purpose: You → Apple Health writes your finished sessions
+  out as workouts, and Recore reads nothing back from Health.
 · The paywall shows no price when the App Store cannot be reached (e.g. offline).
 · If a screen fails, Recore shows a page saying so and prints what the error said. Please
   screenshot that line — it is the fastest bug report there is.

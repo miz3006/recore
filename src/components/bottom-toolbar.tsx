@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Keyboard, StyleSheet, Text, View } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Keyboard, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeInDown, FadeOutDown, useReducedMotion } from 'react-native-reanimated';
 
 import { markFirstWorkoutFinished } from '@/lib/funnel';
 import { tap, tapMedium } from '@/lib/haptics';
+import { sweepHealthSoon } from '@/lib/health/index';
+import { DUR } from '@/lib/motion';
 import { refreshRecapNotification } from '@/lib/recap';
 import { markFinishedOnce } from '@/lib/prefs';
 import { maybeAskForReview } from '@/lib/review';
@@ -17,14 +19,15 @@ import {
   spacing,
   type,
 } from '@/lib/theme';
-import { startDictation, voiceAvailable, type DictationHandle } from '@/lib/voice';
 import { useCurrentNote, useSession } from '@/state/session-store';
 
+import { DictationBar } from './dictation-bar';
 import { GlassGroup, GlassPressable } from './glass';
 import { Icon } from './icon';
 import { PressableScale } from './motion';
 import { revealReceipt } from './note-focus';
 import { ACCESSORY_GLYPH, RestBar, RestRing, useRestEngine } from './rest-controls';
+import { useDictation } from './use-dictation';
 
 /**
  * The ACCESSORY BAR — rebuilt 28 July on the owner's reference: FLOATING GLASS
@@ -144,9 +147,20 @@ import { ACCESSORY_GLYPH, RestBar, RestRing, useRestEngine } from './rest-contro
  * geometry, a bar with the reading and `+30 s` / `Skip`, and a rest that starts
  * itself when a set lands in the note. That file carries the reasoning.
  *
- * THE MIC dictates: on-device speech (never a cloud API) streams interim text
- * straight into the note, so the parse pipeline just works. While recording,
- * the button inverts to a solid ink fill.
+ * THE MIC dictates: on-device speech (never a cloud API) writes into the note,
+ * so the parse pipeline just works. While recording the button inverts to a
+ * solid ink fill, and a LISTENING BAR takes the slot above it — a live level
+ * meter, the elapsed clock and a labelled `Stop` (`dictation-bar.tsx`).
+ *
+ * **The bar and the microphone are the same fact** (owner, 17 September 2026:
+ * *"kr ostane vklopljen … in ko hočem zapisati novo vajo zapisuje nazaj v to
+ * prvo vrstico"*). A session ends on the button, on a spoken "done", on
+ * silence, on Finish, on typing, and on the keyboard going down — including the
+ * hide-keyboard button, which until now deliberately left it running on the
+ * grounds that dictation "never needed the keyboard". It did not; it needed
+ * somewhere to show that it was on, and a microphone live behind an empty
+ * screen is the defect the owner reported. `use-dictation.ts` and `voice.ts`
+ * carry the rules; this file's job is the two endings only a screen can see.
  *
  * THE HIDE-KEYBOARD BUTTON puts the keyboard away without settling anything.
  * The note dismisses on an interactive scroll drag already, but that is a
@@ -219,58 +233,51 @@ export function BottomToolbar({
     active,
   });
 
-  const [recording, setRecording] = useState(false);
-  const dictation = useRef<DictationHandle | null>(null);
-  // The note as it was when dictation started — interim results re-render the
-  // utterance in place instead of stacking duplicates.
-  const baseNote = useRef('');
   const reviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
     () => () => {
-      dictation.current?.stop();
       if (reviewTimer.current) clearTimeout(reviewTimer.current);
     },
     [],
   );
 
-  const handleMic = async () => {
-    if (recording) {
-      tapMedium();
-      dictation.current?.stop();
-      return;
-    }
+  /**
+   * DICTATION — the whole of it lives in `use-dictation.ts` now, shared with
+   * the three demo composers so all four behave the same way. What this screen
+   * adds is the two ends only it can see: the note is passed in, so a keystroke
+   * closes the session on the frame it happens, and the effects below close it
+   * when the writing surface goes away.
+   */
+  const dictation = useDictation({
+    control: useMemo(
+      () => ({ get: () => useSession.getState().note, set: setNote }),
+      [setNote],
+    ),
+    value: note,
+    settleOnEnd: true,
+  });
+  const stopDictation = dictation.stop;
 
-    tap();
-    if (!voiceAvailable()) {
-      Alert.alert(
-        'Voice input',
-        'Dictation needs the development build (npx expo run:ios) — it is not available in Expo Go.',
-      );
-      return;
-    }
-
-    baseNote.current = note.replace(/\s+$/, '');
-    const handle = await startDictation({
-      onTranscript: (text, final) => {
-        const base = baseNote.current;
-        const joined = base.length > 0 ? `${base}\n${text}` : text;
-        setNote(joined);
-        if (final) baseNote.current = joined; // next utterance starts a new line
-      },
-      onEnd: () => {
-        dictation.current = null;
-        setRecording(false);
-      },
-    });
-
-    if (handle) {
-      dictation.current = handle;
-      setRecording(true);
-    } else {
-      Alert.alert('Voice input', 'Microphone or speech permission was not granted.');
-    }
-  };
+  /**
+   * THE MICROPHONE NEVER OUTLIVES THE BAR THAT SHOWS IT (owner, 17 September
+   * 2026: *"kr ostane vklopljen"*).
+   *
+   * `active` is the keyboard being up, and this toolbar — the listening bar
+   * included — only exists while it is. A session that kept running past it
+   * would be a live microphone with nothing on screen saying so, which is the
+   * exact complaint. It also settles the older ruling on the hide-keyboard
+   * button, which deliberately left dictation running on the grounds that it
+   * "never needed the keyboard": true, but it did need somewhere to show that
+   * it was on.
+   */
+  useEffect(() => {
+    if (!active && dictation.listening) stopDictation('user');
+    // `listening` is in the deps on purpose: the permission prompt can resign
+    // the field on a first run, so a session can arrive a beat AFTER the
+    // keyboard has gone. Without it that session would run with nothing on
+    // screen — the very state this effect exists to make impossible.
+  }, [active, dictation.listening, stopDictation]);
 
   /**
    * Put the keyboard away without committing anything.
@@ -282,11 +289,12 @@ export function BottomToolbar({
    * declare the second to get the first.
    *
    * Nothing is written here, so it is a light tap, not the committed-action
-   * haptic (§5.6). Dictation deliberately keeps running: it never needed the
-   * keyboard.
+   * haptic (§5.6). The keyboard leaving takes dictation with it — see the
+   * effect above.
    */
   const handleHideKeyboard = () => {
     tap();
+    stopDictation('user');
     Keyboard.dismiss();
   };
 
@@ -296,6 +304,11 @@ export function BottomToolbar({
   const handleFinish = () => {
     if (!canFinish) return;
     tapMedium();
+    // THE SESSION IS OVER, SO THE MICROPHONE IS OVER. Same sentence as the
+    // rest below: Finish says there is nothing more to say, and a mic left
+    // listening past it would write the next thing it heard into a workout the
+    // person has already settled.
+    stopDictation('user');
     // Still written even though this toolbar no longer prints the caption:
     // note-surface's coach hint reads `hasFinishedOnce()` to retire itself.
     markFinishedOnce();
@@ -309,6 +322,11 @@ export function BottomToolbar({
     // A finished session changed this week's numbers — the pending §12.1 recap
     // notice re-computes so Sunday's text stays true. No-op while it is off.
     if (userId) void refreshRecapNotification(userId);
+    // FINISH IS WHAT APPLE HEALTH WRITES (`lib/health/`). Nothing is awaited
+    // and nothing can fail here: the sweep is a no-op unless the switch is on,
+    // and a session whose reading has not landed yet is picked up by the same
+    // sweep from `parse/client.ts` when it does.
+    sweepHealthSoon(userId);
     // THE SESSION IS OVER, SO THE REST IS OVER. A rest is the gap before the
     // next set and Finish says there is no next set — leaving one counting (and
     // a pocket alert pending) would have the app ring after training, about
@@ -351,6 +369,13 @@ export function BottomToolbar({
   /** The rest owns row 1 whenever it has something to report. */
   const resting = rest.mode !== 'idle';
 
+  /** The bar's labelled way out. Same haptic as the button, because it is the
+   * same act — §15: a button says exactly what happens, and both say stop. */
+  const handleStopDictation = useCallback(() => {
+    tapMedium();
+    stopDictation('user');
+  }, [stopDictation]);
+
   return (
     <View style={[styles.wrap, { paddingBottom: bottomInset }]}>
       {/* ROW 1 — THE REST, AND NOTHING ELSE (owner, 16 September 2026).
@@ -366,26 +391,45 @@ export function BottomToolbar({
           the next two minutes and nowhere else. */}
       {resting ? <RestBar engine={rest} /> : null}
 
+      {/* THE LISTENING BAR, directly above the button it describes. It arrives
+          with the microphone and LEAVES WITH IT — the withdrawal the owner
+          asked for on 17 September 2026 is this component unmounting, and it
+          is the app's way of saying the microphone is off. Below the rest bar
+          rather than above it, so the two never swap places: the rest is the
+          older reading and keeps the outer slot. */}
+      {dictation.listening ? (
+        <Animated.View
+          entering={reduceMotion ? undefined : FadeInDown.duration(DUR.fast)}
+          exiting={reduceMotion ? undefined : FadeOutDown.duration(DUR.press)}>
+          <DictationBar
+            level={dictation.level}
+            seconds={dictation.seconds}
+            fallbackLanguage={dictation.usingFallbackLanguage}
+            onStop={handleStopDictation}
+          />
+        </Animated.View>
+      ) : null}
+
       <GlassGroup style={styles.row}>
         <RestRing engine={rest} />
 
         <GlassPressable
-          onPress={() => void handleMic()}
+          onPress={dictation.toggle}
           haptic="none"
           activeScale={0.92}
           radius={ROUND / 2}
           style={styles.round}
           contentStyle={styles.roundContent}
           // Listening = the app has taken the button over: solid ink, no glass.
-          solidFill={recording ? color.accent : undefined}
-          accessibilityLabel={recording ? 'Stop dictation' : 'Dictate'}>
+          solidFill={dictation.listening ? color.accent : undefined}
+          accessibilityLabel={dictation.listening ? 'Stop dictation' : 'Dictate'}>
           {/* Outline at rest, FILLED while it listens — the glyph carries the
               state, not only the ink circle behind it (`note`/`note-on` set
               the pattern). */}
           <Icon
-            name={recording ? 'mic-on' : 'mic'}
+            name={dictation.listening ? 'mic-on' : 'mic'}
             size={ACCESSORY_GLYPH}
-            tint={recording ? color.onInk : color.textPrimary}
+            tint={dictation.listening ? color.onInk : color.textPrimary}
           />
         </GlassPressable>
 

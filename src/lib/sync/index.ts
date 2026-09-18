@@ -30,6 +30,14 @@ import {
 import { getWorkoutsNeedingParse } from '@/lib/db/workouts';
 import { isSupabaseConfigured } from '@/lib/env';
 import { devLog, errorText } from '@/lib/log';
+import { isOfflineError } from '@/lib/net-reach';
+import {
+  reportReachable,
+  reportSynced,
+  reportUnreachable,
+  reset as resetNetState,
+  setProbe,
+} from '@/lib/net-state';
 import { parseWorkout, type ParseOutcome } from '@/lib/parse/client';
 import { supabase } from '@/lib/supabase';
 
@@ -80,7 +88,24 @@ export function startSync(userId: string) {
 
 export function stopSync() {
   activeUserId = null;
+  // No account, no claim about reachability. Leaving the amber state behind
+  // would have Today reporting on a service this phone is no longer talking to
+  // (`lib/net-state.ts`).
+  resetNetState();
 }
+
+/**
+ * WHILE THERE IS NO SIGNAL, SOMETHING HAS TO KEEP KNOCKING.
+ *
+ * A failed pass leaves the work queued on its dirty flags and schedules
+ * nothing — so before this, a backup that died underground waited for a
+ * foreground, a keystroke or a parse to land before it tried again. Today now
+ * tells the athlete in as many words that their writing "syncs itself when
+ * you're back", and this is the line of code that makes that sentence true:
+ * `net-state` re-runs the pass on a widening schedule for exactly as long as
+ * the service is unreachable, and stops the moment one gets through.
+ */
+setProbe(() => void syncNow());
 
 /** Debounced nudge after local writes. */
 export function scheduleSync() {
@@ -129,18 +154,37 @@ export async function syncNow(): Promise<void> {
      */
     try {
       if (await pullRemote(userId)) queued = true;
+      // THE PULL IS ALSO THE PROBE. It is the one step of a pass that makes a
+      // request whatever the local state is — a phone with nothing dirty
+      // pushes nothing and would otherwise touch the network never — so it is
+      // the step whose outcome can be trusted as evidence either way.
+      reportReachable();
     } catch (err) {
       devLog('pull failed:', errorText(err));
+      if (isOfflineError(err)) reportUnreachable();
+      else reportReachable();
     }
 
     await repairDuplicateDays(userId);
 
     // Anything the parse writes is dirty; queue another pass to push it.
     if ((await retryPendingParses(userId)) > 0) queued = true;
+
+    // A WHOLE PASS, WITH NOTHING HAVING FAILED TO LEAVE THE PHONE. Only this
+    // licenses Today to say the record reached the account after a stretch
+    // underground — being reachable again is not the same as the queue having
+    // drained, and the second is what was promised. A no-op when the app was
+    // never offline (`lib/net-state.ts`).
+    reportSynced();
   } catch (err) {
     // The cause, not a guess at it. "(offline?)" was a question the log could
     // already have answered and usually printed nothing after.
     devLog('sync pass failed:', errorText(err));
+    // A push that never left the phone is the gym, not a fault. Anything the
+    // service actually answered — an RLS refusal, a constraint — proves the
+    // phone got through, and must not paint the page amber.
+    if (isOfflineError(err)) reportUnreachable();
+    else reportReachable();
   } finally {
     syncing = false;
     if (queued) {

@@ -2,7 +2,12 @@ import { router } from 'expo-router';
 import { create } from 'zustand';
 
 import { shiftDayKey, todayKey, type DayKey } from '@/lib/db/dates';
-import { loadUndoneKeys, loadUndoneMap, saveUndone } from '@/lib/db/done-state';
+import {
+  loadUndoneKeys,
+  loadUndoneMap,
+  saveUndone,
+  sessionDoneKey,
+} from '@/lib/db/done-state';
 import { getEntryNotes, setEntryNote } from '@/lib/db/entry-notes';
 import { getMeta, setMeta } from '@/lib/db/index';
 import { setPlanDayChoice } from '@/lib/db/plan';
@@ -15,7 +20,16 @@ import {
   type PlannedSession,
 } from '@/lib/planned-session';
 import type { SessionOption } from '@/lib/session-options';
-import { computeStreak, countSessions, getWorkoutForDay, saveRawText } from '@/lib/db/workouts';
+import {
+  computeStreak,
+  countSessions,
+  getReflection,
+  getSessionEffort,
+  getWorkoutForDay,
+  saveRawText,
+  setReflection,
+  setSessionEffort,
+} from '@/lib/db/workouts';
 import { getPredictionForOpen, markPredictionAccepted } from '@/lib/db/predictions';
 import { computePlanStrip, type PlanStrip } from '@/lib/db/strip';
 import { setEffortOnLine, type Effort } from '@/lib/effort';
@@ -24,6 +38,7 @@ import { markEntryNoteAdded } from '@/lib/funnel';
 import { removeLine, restoreLine } from '@/lib/note-lines';
 import { getParseCache, reapplyDoneState } from '@/lib/parse/apply';
 import { hydrateFromStructure, warmRecentReadings } from '@/lib/parse/rehydrate';
+import { isOffline, onReconnect } from '@/lib/net-state';
 import { parseWorkout, type ParseOutcome } from '@/lib/parse/client';
 import { applyCorrection, getFixTarget, type FixTarget } from '@/lib/parse/correct';
 import { buildReceipt, type ReceiptData } from '@/lib/parse/receipt';
@@ -53,6 +68,36 @@ export interface GhostData {
   ghostText: string;
   reason: string | null;
 }
+
+/**
+ * WHAT THE UNDO PILL IS HOLDING — one shape per thing a delete can take, and
+ * exactly one of them outstanding at a time (`lastDelete`).
+ *
+ * `line` is the original: a physical line of `raw_text`, remembered as the
+ * WORDS rather than as the reading, because the reading rebuilds itself from
+ * the words (§3).
+ *
+ * `checkIn` is the session's own answer — the rating and the reflection, the
+ * two columns `check-in-sheet.tsx` writes. It is remembered as the two STORED
+ * values, so putting it back is the same pair of writes that made it, and the
+ * chips come back armed because the tag line is inside the reflection string
+ * (`lib/reflection.ts`). It names its `workoutId` rather than trusting the day:
+ * an undo for a check-in is an undo for THAT session's words wherever the
+ * athlete has since swiped to, which the line case cannot say (a line has no
+ * identity but its position in a note).
+ */
+export type PendingUndo =
+  | { kind: 'line'; line: number; text: string; labels: string[]; day: DayKey; id: number }
+  | {
+      kind: 'checkIn';
+      workoutId: string;
+      /** The stored reflection column, tag line and all, or null. */
+      reflection: string | null;
+      /** The stored CR-10 rating, or null when the session was never rated. */
+      effort: number | null;
+      day: DayKey;
+      id: number;
+    };
 
 interface SessionState {
   userId: string | null;
@@ -90,6 +135,24 @@ interface SessionState {
   /** True while a background parse is in flight — drives the gutter's quiet
    * "analyzing" dots so the user sees something is happening. */
   parsing: boolean;
+  /**
+   * A READING WAS ASKED FOR AND THE PHONE COULD NOT REACH THE SERVICE.
+   *
+   * It is not `parsing`, and the difference is the whole point of it.
+   * `parsing` means WORK IS HAPPENING — the blue beam crossing the line, the
+   * dots waving — and it goes false when the retry chain gives up, roughly
+   * thirty seconds in. The request does not go away with it: `needs_parse`
+   * still stands in SQLite and the sync loop still owes the line its reading.
+   * So for the rest of a session in a basement the line wore the untapped
+   * checkmark again, as though nobody had ever asked.
+   *
+   * This flag is that debt, and it lives exactly as long as the debt does: set
+   * when a parse comes back empty while `net-state` says the service is
+   * unreachable, cleared by the reading landing, by leaving the day, or by the
+   * service coming back (the reconnect listener at the foot of this file asks
+   * again). The screen draws it amber — see `PendingCard`.
+   */
+  parseStalled: boolean;
   /** line index → canonical exercise; tap on a gutter value opens the sheet. */
   lineExercises: Record<number, string>;
   /** RECEIPT MODE (CLAUDE.md §9): the whole workout was typed in at once, so
@@ -224,8 +287,15 @@ interface SessionState {
    * unless something says otherwise. `id` rises on every delete so the pill can
    * tell "a second delete" from "the same one re-rendered" and restart its
    * window.
+   *
+   * SINCE 17 SEPTEMBER 2026 IT ALSO CARRIES THE CHECK-IN (`PendingUndo`), for
+   * the plain reason that there is one pill and one window: two overlays each
+   * offering a different thing back, low on the same screen, is a choice nobody
+   * asked for. The two kinds restore through different doors — a line goes back
+   * through `setNote`, a check-in back through its own two columns — and
+   * `undoDelete` branches on `kind` rather than the caller knowing which.
    */
-  lastDelete: { line: number; text: string; labels: string[]; day: DayKey; id: number } | null;
+  lastDelete: PendingUndo | null;
   /** Put the deleted line back where it was. A no-op with nothing to restore. */
   undoDelete: () => void;
   /** Withdraw the offer — the window closed, or the athlete moved on. */
@@ -264,6 +334,35 @@ interface SessionState {
   checkInOpen: boolean;
   openCheckIn: () => void;
   /**
+   * SWIPE THE CHECK-IN NOTE LEFT TO REMOVE IT (owner, 17 September 2026).
+   *
+   * Today prints the session's answer back (`check-in-note.tsx`) and tapping it
+   * re-opened the sheet, so the note could be rewritten but never taken back:
+   * the sheet's own doors only ever KEEP what is on them, and emptying a field
+   * by hand still left the rating armed. The record is the athlete's (§3), and
+   * what they can write they can unwrite — so the note takes the same gesture
+   * every other row on this page takes, and lands in the same undo pill.
+   *
+   * It clears BOTH columns, because the block is one answer: a rating left
+   * standing under a deleted reflection is half a note the athlete did not
+   * choose to keep, and it would still be counted into the week's load
+   * (`session-effort.ts`). Afterwards the invitation to write comes back, which
+   * is what makes this a delete and not a hide.
+   */
+  deleteCheckIn: () => void;
+  /**
+   * Rises whenever the check-in's stored answer changes OUTSIDE the sheet — a
+   * swipe delete, or the undo that puts it back.
+   *
+   * The surfaces that print it read SQLite directly and re-read on the beat the
+   * sheet closes (`checkInOpen`), which covers every write the sheet makes.
+   * This gesture makes a write with no sheet in it, so it needs a beat of its
+   * own; a counter rather than the value itself, because the reading belongs to
+   * the surface that prints it and the store must not become a second copy of
+   * what is already a column.
+   */
+  checkInRevision: number;
+  /**
    * The ROUTE reports its own presence, and is the ONLY writer of
    * `checkInOpen` — see `app/check-in.tsx`. Two writers for one flag is how it
    * ends up stuck true and `bottom-toolbar` silently stops asking for ratings.
@@ -300,6 +399,23 @@ let parseRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let parseRetryAttempt = 0;
 
 /**
+ * WHOSE READING THE BEAM IS ABOUT — the workout whose run raised `parsing`, or
+ * null (17 September 2026).
+ *
+ * `parsing` is a fact about the OPEN note, and `runParse` is a run about one
+ * particular workout; for as long as those are the same thing the flag can be
+ * raised and lowered by a plain id comparison, which is what it did. They stop
+ * being the same thing the moment the open workout changes mid-request — and
+ * then the comparison failed, the flag stayed up, and `requestParse` refused
+ * to ask for anything ever again. `runParse`'s `finally` carries the full
+ * account.
+ *
+ * One cell, because only one run can own the flag: a run only ever raises it
+ * for the note that is open, and there is only one of those.
+ */
+let parsingFor: string | null = null;
+
+/**
  * A READING ASKED FOR WHILE ONE WAS IN FLIGHT — the workout it was asked
  * about, or null (16 September 2026).
  *
@@ -332,8 +448,9 @@ const receiptModeKey = (workoutId: string) => `receipt_mode:${workoutId}`;
 let dumpStartedAt: number | null = null;
 
 /** Finish, remembered per workout — the same sticky-meta shape receipt mode
- * uses, so a session that was settled yesterday re-opens settled today. */
-const sessionDoneKey = (workoutId: string) => `session_done:${workoutId}`;
+ * uses, so a session that was settled yesterday re-opens settled today. It
+ * moved into `db/done-state.ts` on 17 September 2026 because Apple Health's
+ * sweep has to read the identical flag; see the comment there. */
 
 /** The receipt's one AI line: the freshly cached next-session reason. Only on
  * today — a past day's receipt must not carry tomorrow's justification. */
@@ -500,6 +617,7 @@ export const useSession = create<SessionState>((set, get) => ({
   parsedSnapshot: null,
   parsedVolume: 0,
   parsing: false,
+  parseStalled: false,
   lineExercises: {},
   receiptMode: false,
   receipt: null,
@@ -576,6 +694,7 @@ export const useSession = create<SessionState>((set, get) => ({
       parsedSnapshot: null,
       parsedVolume: 0,
       parsing: false,
+      parseStalled: false,
       lineExercises: {},
       receiptMode: false,
       receipt: null,
@@ -604,6 +723,10 @@ export const useSession = create<SessionState>((set, get) => ({
     dumpStartedAt = null;
     set({
       selectedDay: day,
+      // The stalled reading belonged to the note being left behind. The new
+      // day has asked for nothing yet, so it is owed nothing.
+      parsing: false,
+      parseStalled: false,
       ...loadDay(userId, day),
       // A note sheet belongs to the entry it was opened from; another day's
       // ledger is not that entry.
@@ -803,7 +926,14 @@ export const useSession = create<SessionState>((set, get) => ({
       sheetLine: null,
       // Remembered BEFORE the write, so the offer is already standing by the
       // time the record re-renders without the entry in it.
-      lastDelete: { line: cut.line, text: cut.text, labels, day: selectedDay, id: ++undoToken },
+      lastDelete: {
+        kind: 'line',
+        line: cut.line,
+        text: cut.text,
+        labels,
+        day: selectedDay,
+        id: ++undoToken,
+      },
     });
     get().setNote(cut.note);
     // Deleting is deliberate: without a fresh reading the cards would keep
@@ -830,6 +960,23 @@ export const useSession = create<SessionState>((set, get) => ({
     const { lastDelete, note, selectedDay } = get();
     if (!lastDelete) return;
     set({ lastDelete: null });
+
+    /**
+     * THE CHECK-IN GOES BACK THROUGH ITS OWN TWO COLUMNS, and it does NOT ask
+     * what day is on screen. The offer names a `workoutId`, so there is no
+     * index to land on the wrong session and nothing to splice — restoring
+     * yesterday's words into yesterday's row while today is open is simply the
+     * right answer, and refusing it would throw the note away to protect
+     * against a mistake this shape cannot make.
+     */
+    if (lastDelete.kind === 'checkIn') {
+      setReflection(lastDelete.workoutId, lastDelete.reflection);
+      setSessionEffort(lastDelete.workoutId, lastDelete.effort);
+      set({ checkInRevision: get().checkInRevision + 1 });
+      scheduleSync();
+      return;
+    }
+
     if (lastDelete.day !== selectedDay) return;
     get().setNote(restoreLine(note, lastDelete.line, lastDelete.text));
     get().requestParse();
@@ -904,6 +1051,7 @@ export const useSession = create<SessionState>((set, get) => ({
   },
 
   checkInOpen: false,
+  checkInRevision: 0,
   /**
    * The check-in is a native form sheet on the root stack (`app/check-in.tsx`),
    * so opening it is a NAVIGATION, not a flag flip. It deliberately does not
@@ -919,6 +1067,43 @@ export const useSession = create<SessionState>((set, get) => ({
    */
   openCheckIn: () => router.push('/check-in'),
   setCheckInOnScreen: (on) => set({ checkInOpen: on }),
+
+  /**
+   * Clear the session's answer, and stand behind the offer to put it back.
+   *
+   * Read BEFORE the write, so what the undo holds is what was actually stored
+   * rather than what the last render happened to be showing. A session with
+   * neither half answered is a no-op: there is nothing to take, and an undo
+   * pill offering back an empty note would be the app reporting its own
+   * bookkeeping.
+   *
+   * Nothing here touches `raw_text` or asks for a parse — a reflection is not
+   * part of the written note and never was (`lib/reflection.ts`). The two
+   * writes mark the row dirty themselves, so sync carries the clearing the same
+   * way it carried the answer.
+   */
+  deleteCheckIn: () => {
+    const { workoutId, selectedDay } = get();
+    if (!workoutId) return;
+    const reflection = getReflection(workoutId);
+    const effort = getSessionEffort(workoutId);
+    if (reflection === null && effort === null) return;
+
+    setReflection(workoutId, null);
+    setSessionEffort(workoutId, null);
+    set({
+      lastDelete: {
+        kind: 'checkIn',
+        workoutId,
+        reflection,
+        effort,
+        day: selectedDay,
+        id: ++undoToken,
+      },
+      checkInRevision: get().checkInRevision + 1,
+    });
+    scheduleSync();
+  },
 
   startEditLine: (line) => set({ editingLine: line, sheetExercise: null, sheetLine: null }),
   stopEditLine: () => set({ editingLine: null }),
@@ -1021,6 +1206,7 @@ async function runParse(workoutId: string) {
   if (!userId) return;
 
   if (useSession.getState().workoutId === workoutId) {
+    parsingFor = workoutId;
     useSession.setState({ parsing: true });
   }
 
@@ -1044,9 +1230,48 @@ async function runParse(workoutId: string) {
       }, delay);
     }
   } finally {
+    // Dots stay on while a retry is pending; off on success or final failure.
+    const stillReading = outcome === null && parseRetryTimer !== null;
     if (useSession.getState().workoutId === workoutId) {
-      // Dots stay on while a retry is pending; off on success or final failure.
-      useSession.setState({ parsing: outcome === null && parseRetryTimer !== null });
+      useSession.setState({
+        parsing: stillReading,
+        /**
+         * AND THE DEBT OUTLIVES THE DOTS. A reading that failed because the
+         * request never left the phone is still owed — `needs_parse` stands,
+         * the sync loop will ask again, and the line should keep saying so for
+         * as long as that is true rather than for the thirty seconds the retry
+         * chain happens to run. `parseStalled` in the state above carries the
+         * reasoning; `net-state` is the only thing that can end it.
+         */
+        parseStalled: outcome === null && isOffline(),
+      });
+      if (!stillReading && parsingFor === workoutId) parsingFor = null;
+    } else if (parsingFor === workoutId) {
+      /**
+       * THE NOTE MOVED OUT FROM UNDER THE RUN (17 September 2026).
+       *
+       * This branch used to do nothing at all, and what it left behind was the
+       * flag: the run had raised `parsing` on the way in, the open workout
+       * changed while the request was out, and the `if` above then declined to
+       * lower it. Nothing else would — `requestParse` REFUSES while the flag is
+       * up (it queues on `reparseFor` instead), so from that moment the page
+       * beamed over a reading nobody was doing and no tap could ask again.
+       * Killing the app was the only way out of it.
+       *
+       * A workout is swapped under a run more often than it looks: `hydrate`
+       * after an import or a restore, a `loadDay` that comes back with a
+       * different row, a note cleared and re-typed into a new one. The day
+       * swipe was the one path that had been thought about (`selectDay` lowers
+       * the flag itself), which is why this went unseen.
+       *
+       * So the run that raised the flag is the run that lowers it: `parsingFor`
+       * is who it belongs to. If the day it was raised for has moved on, the
+       * reading being reported is not on screen any more and the honest state
+       * of the page is quiet. A parse the NEW note started owns the flag by
+       * then and this leaves it alone — that is what the ownership test is for.
+       */
+      parsingFor = null;
+      useSession.setState({ parsing: false, parseStalled: false });
     }
     drainReparse(workoutId);
   }
@@ -1079,6 +1304,25 @@ setParseListener((outcome) => {
   const { userId } = useSession.getState();
   if (!userId) return;
   applyParseOutcome(userId, outcome);
+});
+
+/**
+ * THE SIGNAL CAME BACK — ASK AGAIN, NOW.
+ *
+ * `parseStalled` is a reading the athlete asked for underground, and the page
+ * has been drawing it amber ever since. The sync loop would get to it on its
+ * own (`retryPendingParses` is the long-tail net), but "on its own" can be a
+ * whole pass away, and the one moment the line must stop saying *waiting for
+ * signal* is the moment there is one.
+ *
+ * `parsing` is false by the time this can fire — the retry chain gave up long
+ * before — so this goes through the front door like any other request, and
+ * `requestParse` still refuses if the text has meanwhile been read.
+ */
+onReconnect(() => {
+  const { userId, workoutId, parseStalled } = useSession.getState();
+  if (!userId || !workoutId || !parseStalled) return;
+  useSession.getState().requestParse();
 });
 
 /** The note text for the currently-selected day. */
